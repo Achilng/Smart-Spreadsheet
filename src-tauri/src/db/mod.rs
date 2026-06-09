@@ -1,7 +1,9 @@
 mod migrations;
+mod query;
 mod tags;
 mod workbook;
 
+pub use query::{MAX_PAGE_SIZE, RowPage, RowQuery, RowRecord, TagMatchMode, TagSummary};
 pub use tags::{TagMutationError, TagMutationResult};
 
 use std::path::Path;
@@ -23,6 +25,12 @@ pub enum DatabaseError {
     IntegrityCheckFailed(String),
     #[error("工作簿行数超出 SQLite 可表示范围")]
     RowCountOverflow,
+    #[error("分页大小 {requested} 无效，允许范围为 1..={maximum}")]
+    InvalidPageSize { requested: u32, maximum: u32 },
+    #[error("分页偏移超出 SQLite 可表示范围")]
+    OffsetOverflow,
+    #[error("查询计数超出可表示范围")]
+    CountOverflow,
 }
 
 pub struct Database {

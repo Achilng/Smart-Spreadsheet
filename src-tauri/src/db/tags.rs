@@ -105,7 +105,7 @@ fn normalize_row_ids(row_ids: &[i64]) -> Result<Vec<i64>, TagMutationError> {
     Ok(normalized)
 }
 
-fn normalize_tags(tags: &[String]) -> Vec<String> {
+pub(super) fn normalize_tags(tags: &[String]) -> Vec<String> {
     let mut seen = HashSet::with_capacity(tags.len());
     let mut normalized = Vec::with_capacity(tags.len());
     for tag in tags {
