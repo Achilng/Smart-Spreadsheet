@@ -1,4 +1,5 @@
 mod migrations;
+mod workbook;
 
 use std::path::Path;
 use std::time::Duration;
@@ -17,6 +18,8 @@ pub enum DatabaseError {
     UnsupportedSchemaVersion { found: u32, supported: u32 },
     #[error("数据库完整性检查失败: {0}")]
     IntegrityCheckFailed(String),
+    #[error("工作簿行数超出 SQLite 可表示范围")]
+    RowCountOverflow,
 }
 
 pub struct Database {

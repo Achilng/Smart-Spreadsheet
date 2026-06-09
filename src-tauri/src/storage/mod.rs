@@ -1,3 +1,4 @@
+mod import;
 mod migration;
 
 use std::fs::{self, File, OpenOptions};
@@ -9,6 +10,7 @@ use thiserror::Error;
 
 use crate::db::{Database, DatabaseError};
 
+pub use import::{ImportOutcome, WorkbookImportError};
 pub use migration::MigrationOutcome;
 
 pub(super) const FORMAT_VERSION: u32 = 1;

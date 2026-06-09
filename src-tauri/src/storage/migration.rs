@@ -226,7 +226,7 @@ fn verify_directory(
     Ok(())
 }
 
-fn files_equal(left: &Path, right: &Path) -> Result<bool, StorageError> {
+pub(super) fn files_equal(left: &Path, right: &Path) -> Result<bool, StorageError> {
     if fs::metadata(left)?.len() != fs::metadata(right)?.len() {
         return Ok(false);
     }
