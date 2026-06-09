@@ -213,7 +213,9 @@ name = "smart-spreadsheet"
 version = "0.1.0"
 dependencies = [
  "calamine",
+ "quick-xml",
  "thiserror",
+ "zip",
 ]
 
 [[package]]
