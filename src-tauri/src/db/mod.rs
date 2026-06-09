@@ -4,7 +4,7 @@ mod tags;
 mod workbook;
 
 pub use query::{MAX_PAGE_SIZE, RowPage, RowQuery, RowRecord, TagMatchMode, TagSummary};
-pub use tags::{TagMutationError, TagMutationResult};
+pub use tags::{RowSelection, TagMutationError, TagMutationResult};
 
 use std::path::Path;
 use std::time::Duration;

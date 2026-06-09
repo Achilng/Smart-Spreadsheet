@@ -3,13 +3,27 @@ use std::collections::HashSet;
 use rusqlite::{OptionalExtension, Transaction, TransactionBehavior, params};
 use thiserror::Error;
 
+use super::query::{FILTER_TAGS_TABLE, TagMatchMode, create_filter_tags, filter_predicate};
 use super::{Database, DatabaseError};
 
 const TARGET_ROWS_TABLE: &str = "temp.tag_target_rows";
+const EXCLUDED_ROWS_TABLE: &str = "temp.tag_excluded_rows";
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RowSelection {
+    Explicit {
+        row_ids: Vec<i64>,
+    },
+    Filtered {
+        tags: Vec<String>,
+        tag_mode: TagMatchMode,
+        excluded_row_ids: Vec<i64>,
+    },
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TagMutationResult {
-    pub affected_rows: usize,
+    pub affected_rows: u64,
     pub normalized_tags: Vec<String>,
     pub associations_changed: usize,
 }
@@ -36,7 +50,12 @@ impl Database {
         row_ids: &[i64],
         tags: &[String],
     ) -> Result<TagMutationResult, TagMutationError> {
-        mutate_tags(&mut self.connection, row_ids, tags, Mutation::Add)
+        self.add_tags_to_selection(
+            &RowSelection::Explicit {
+                row_ids: row_ids.to_vec(),
+            },
+            tags,
+        )
     }
 
     pub fn remove_tags_from_rows(
@@ -44,7 +63,40 @@ impl Database {
         row_ids: &[i64],
         tags: &[String],
     ) -> Result<TagMutationResult, TagMutationError> {
-        mutate_tags(&mut self.connection, row_ids, tags, Mutation::Remove)
+        self.remove_tags_from_selection(
+            &RowSelection::Explicit {
+                row_ids: row_ids.to_vec(),
+            },
+            tags,
+        )
+    }
+
+    pub fn add_tags_to_selection(
+        &mut self,
+        selection: &RowSelection,
+        tags: &[String],
+    ) -> Result<TagMutationResult, TagMutationError> {
+        mutate_tags(&mut self.connection, selection, tags, Mutation::Add)
+    }
+
+    pub fn remove_tags_from_selection(
+        &mut self,
+        selection: &RowSelection,
+        tags: &[String],
+    ) -> Result<TagMutationResult, TagMutationError> {
+        mutate_tags(&mut self.connection, selection, tags, Mutation::Remove)
+    }
+
+    pub fn count_selected_rows(
+        &mut self,
+        selection: &RowSelection,
+    ) -> Result<u64, TagMutationError> {
+        let transaction = self.connection.transaction()?;
+        create_selection_rows(&transaction, selection)?;
+        let count = target_row_count(&transaction)?;
+        drop_selection_tables(&transaction)?;
+        transaction.commit()?;
+        Ok(count)
     }
 }
 
@@ -56,36 +108,27 @@ enum Mutation {
 
 fn mutate_tags(
     connection: &mut rusqlite::Connection,
-    row_ids: &[i64],
+    selection: &RowSelection,
     tags: &[String],
     mutation: Mutation,
 ) -> Result<TagMutationResult, TagMutationError> {
-    let row_ids = normalize_row_ids(row_ids)?;
     let normalized_tags = normalize_tags(tags);
-    if row_ids.is_empty() || normalized_tags.is_empty() {
-        return Ok(TagMutationResult {
-            affected_rows: row_ids.len(),
-            normalized_tags,
-            associations_changed: 0,
-        });
-    }
-
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    create_target_rows(&transaction, &row_ids)?;
-    let unknown_rows = find_unknown_rows(&transaction)?;
-    if !unknown_rows.is_empty() {
-        return Err(TagMutationError::UnknownRows(unknown_rows));
-    }
-
-    let associations_changed = match mutation {
-        Mutation::Add => add_tags(&transaction, &normalized_tags)?,
-        Mutation::Remove => remove_tags(&transaction, &normalized_tags)?,
+    create_selection_rows(&transaction, selection)?;
+    let affected_rows = target_row_count(&transaction)?;
+    let associations_changed = if affected_rows == 0 || normalized_tags.is_empty() {
+        0
+    } else {
+        match mutation {
+            Mutation::Add => add_tags(&transaction, &normalized_tags)?,
+            Mutation::Remove => remove_tags(&transaction, &normalized_tags)?,
+        }
     };
-    transaction.execute_batch(&format!("DROP TABLE {TARGET_ROWS_TABLE};"))?;
+    drop_selection_tables(&transaction)?;
     transaction.commit()?;
 
     Ok(TagMutationResult {
-        affected_rows: row_ids.len(),
+        affected_rows,
         normalized_tags,
         associations_changed,
     })
@@ -117,18 +160,66 @@ pub(super) fn normalize_tags(tags: &[String]) -> Vec<String> {
     normalized
 }
 
-fn create_target_rows(
+fn create_selection_rows(
     transaction: &Transaction<'_>,
-    row_ids: &[i64],
-) -> Result<(), rusqlite::Error> {
+    selection: &RowSelection,
+) -> Result<(), TagMutationError> {
     transaction.execute_batch(&format!(
         "DROP TABLE IF EXISTS {TARGET_ROWS_TABLE};
          CREATE TEMP TABLE {TARGET_ROWS_TABLE} (
              id INTEGER PRIMARY KEY
          ) STRICT, WITHOUT ROWID;"
     ))?;
-    let mut insert =
-        transaction.prepare(&format!("INSERT INTO {TARGET_ROWS_TABLE}(id) VALUES (?1)"))?;
+
+    match selection {
+        RowSelection::Explicit { row_ids } => {
+            let row_ids = normalize_row_ids(row_ids)?;
+            insert_row_ids(transaction, TARGET_ROWS_TABLE, &row_ids)?;
+            let unknown_rows = find_unknown_rows(transaction)?;
+            if !unknown_rows.is_empty() {
+                return Err(TagMutationError::UnknownRows(unknown_rows));
+            }
+        }
+        RowSelection::Filtered {
+            tags,
+            tag_mode,
+            excluded_row_ids,
+        } => {
+            let tags = normalize_tags(tags);
+            let excluded_row_ids = normalize_row_ids(excluded_row_ids)?;
+            create_filter_tags(transaction, &tags)?;
+            transaction.execute_batch(&format!(
+                "DROP TABLE IF EXISTS {EXCLUDED_ROWS_TABLE};
+                 CREATE TEMP TABLE {EXCLUDED_ROWS_TABLE} (
+                     id INTEGER PRIMARY KEY
+                 ) STRICT, WITHOUT ROWID;"
+            ))?;
+            insert_row_ids(transaction, EXCLUDED_ROWS_TABLE, &excluded_row_ids)?;
+            let predicate = filter_predicate(*tag_mode);
+            transaction.execute(
+                &format!(
+                    "INSERT INTO {TARGET_ROWS_TABLE}(id)
+                     SELECT rows.id
+                     FROM rows
+                     WHERE ({predicate})
+                       AND NOT EXISTS (
+                           SELECT 1 FROM {EXCLUDED_ROWS_TABLE}
+                           WHERE {EXCLUDED_ROWS_TABLE}.id = rows.id
+                       )"
+                ),
+                [],
+            )?;
+        }
+    }
+    Ok(())
+}
+
+fn insert_row_ids(
+    transaction: &Transaction<'_>,
+    table: &str,
+    row_ids: &[i64],
+) -> Result<(), rusqlite::Error> {
+    let mut insert = transaction.prepare(&format!("INSERT INTO {table}(id) VALUES (?1)"))?;
     for row_id in row_ids {
         insert.execute([row_id])?;
     }
@@ -146,6 +237,23 @@ fn find_unknown_rows(transaction: &Transaction<'_>) -> Result<Vec<i64>, rusqlite
     statement
         .query_map([], |row| row.get(0))?
         .collect::<Result<Vec<_>, _>>()
+}
+
+fn target_row_count(transaction: &Transaction<'_>) -> Result<u64, TagMutationError> {
+    let count: i64 = transaction.query_row(
+        &format!("SELECT COUNT(*) FROM {TARGET_ROWS_TABLE}"),
+        [],
+        |row| row.get(0),
+    )?;
+    u64::try_from(count).map_err(|_| TagMutationError::Database(DatabaseError::CountOverflow))
+}
+
+fn drop_selection_tables(transaction: &Transaction<'_>) -> Result<(), rusqlite::Error> {
+    transaction.execute_batch(&format!(
+        "DROP TABLE IF EXISTS {TARGET_ROWS_TABLE};
+         DROP TABLE IF EXISTS {EXCLUDED_ROWS_TABLE};
+         DROP TABLE IF EXISTS {FILTER_TAGS_TABLE};"
+    ))
 }
 
 fn add_tags(transaction: &Transaction<'_>, tags: &[String]) -> Result<usize, rusqlite::Error> {
@@ -296,6 +404,77 @@ mod tests {
         assert!(stored_tags(&database).is_empty());
     }
 
+    #[test]
+    fn filtered_selection_handles_ten_thousand_rows_with_only_exclusions() {
+        let mut database = database_with_rows(10_000);
+        let selection = RowSelection::Filtered {
+            tags: Vec::new(),
+            tag_mode: TagMatchMode::And,
+            excluded_row_ids: vec![2, 9_999],
+        };
+
+        assert_eq!(database.count_selected_rows(&selection).unwrap(), 9_998);
+        let result = database
+            .add_tags_to_selection(&selection, &["selected".into()])
+            .unwrap();
+
+        assert_eq!(result.affected_rows, 9_998);
+        assert_eq!(result.associations_changed, 9_998);
+        assert!(!row_has_tag(&database, 2, "selected"));
+        assert!(!row_has_tag(&database, 9_999, "selected"));
+        assert!(row_has_tag(&database, 10_000, "selected"));
+    }
+
+    #[test]
+    fn filtered_selection_uses_and_mode_and_exclusions() {
+        let mut database = database_with_rows(5);
+        database
+            .add_tags_to_rows(&[1, 2, 3], &["A".into()])
+            .unwrap();
+        database
+            .add_tags_to_rows(&[2, 3, 4], &["B".into()])
+            .unwrap();
+        let selection = RowSelection::Filtered {
+            tags: vec![" A ".into(), "B".into()],
+            tag_mode: TagMatchMode::And,
+            excluded_row_ids: vec![3],
+        };
+
+        let result = database
+            .add_tags_to_selection(&selection, &["matched".into()])
+            .unwrap();
+
+        assert_eq!(result.affected_rows, 1);
+        assert!(row_has_tag(&database, 2, "matched"));
+        assert!(!row_has_tag(&database, 3, "matched"));
+
+        let removed = database
+            .remove_tags_from_selection(&selection, &["A".into()])
+            .unwrap();
+        assert_eq!(removed.affected_rows, 1);
+        assert_eq!(removed.associations_changed, 1);
+        assert!(!row_has_tag(&database, 2, "A"));
+        assert!(row_has_tag(&database, 3, "A"));
+    }
+
+    #[test]
+    fn empty_filtered_selection_does_not_create_orphan_tag() {
+        let mut database = database_with_rows(2);
+        let selection = RowSelection::Filtered {
+            tags: vec!["missing".into()],
+            tag_mode: TagMatchMode::And,
+            excluded_row_ids: Vec::new(),
+        };
+
+        let result = database
+            .add_tags_to_selection(&selection, &["unused".into()])
+            .unwrap();
+
+        assert_eq!(result.affected_rows, 0);
+        assert_eq!(result.associations_changed, 0);
+        assert!(stored_tags(&database).is_empty());
+    }
+
     fn database_with_rows(count: i64) -> Database {
         let mut database = Database::open_in_memory().unwrap();
         let workbook = ParsedWorkbook {
@@ -334,6 +513,23 @@ mod tests {
         database
             .connection
             .query_row("SELECT COUNT(*) FROM row_tags", [], |row| row.get(0))
+            .unwrap()
+    }
+
+    fn row_has_tag(database: &Database, row_id: i64, tag: &str) -> bool {
+        database
+            .connection
+            .query_row(
+                "SELECT EXISTS (
+                    SELECT 1
+                    FROM row_tags
+                    JOIN tags ON tags.id = row_tags.tag_id
+                    WHERE row_tags.row_id = ?1
+                      AND tags.name = ?2 COLLATE BINARY
+                 )",
+                params![row_id, tag],
+                |row| row.get(0),
+            )
             .unwrap()
     }
 }

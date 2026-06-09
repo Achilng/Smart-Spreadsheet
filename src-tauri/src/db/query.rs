@@ -6,7 +6,7 @@ use super::tags::normalize_tags;
 use super::{Database, DatabaseError};
 
 pub const MAX_PAGE_SIZE: u32 = 500;
-const FILTER_TAGS_TABLE: &str = "temp.query_filter_tags";
+pub(super) const FILTER_TAGS_TABLE: &str = "temp.query_filter_tags";
 const PAGE_ROWS_TABLE: &str = "temp.query_page_rows";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -69,6 +69,7 @@ impl Database {
         let tags = normalize_tags(&query.tags);
         let transaction = self.connection.transaction()?;
         create_filter_tags(&transaction, &tags)?;
+        create_page_rows_table(&transaction)?;
         create_page_rows(&transaction, query.tag_mode, query.limit, offset)?;
 
         let total_count = query_total_count(&transaction, query.tag_mode)?;
@@ -116,7 +117,7 @@ impl Database {
     }
 }
 
-fn create_filter_tags(
+pub(super) fn create_filter_tags(
     transaction: &Transaction<'_>,
     tags: &[String],
 ) -> Result<(), rusqlite::Error> {
@@ -124,12 +125,7 @@ fn create_filter_tags(
         "DROP TABLE IF EXISTS {FILTER_TAGS_TABLE};
          CREATE TEMP TABLE {FILTER_TAGS_TABLE} (
              name TEXT PRIMARY KEY COLLATE BINARY
-         ) STRICT, WITHOUT ROWID;
-         DROP TABLE IF EXISTS {PAGE_ROWS_TABLE};
-         CREATE TEMP TABLE {PAGE_ROWS_TABLE} (
-             ordinal INTEGER PRIMARY KEY,
-             id INTEGER NOT NULL UNIQUE
-         ) STRICT;"
+         ) STRICT, WITHOUT ROWID;"
     ))?;
     let mut insert = transaction.prepare(&format!(
         "INSERT INTO {FILTER_TAGS_TABLE}(name) VALUES (?1)"
@@ -138,6 +134,16 @@ fn create_filter_tags(
         insert.execute([tag])?;
     }
     Ok(())
+}
+
+fn create_page_rows_table(transaction: &Transaction<'_>) -> Result<(), rusqlite::Error> {
+    transaction.execute_batch(&format!(
+        "DROP TABLE IF EXISTS {PAGE_ROWS_TABLE};
+         CREATE TEMP TABLE {PAGE_ROWS_TABLE} (
+             ordinal INTEGER PRIMARY KEY,
+             id INTEGER NOT NULL UNIQUE
+         ) STRICT;"
+    ))
 }
 
 fn create_page_rows(
@@ -229,7 +235,7 @@ fn attach_page_tags(
     Ok(())
 }
 
-fn filter_predicate(mode: TagMatchMode) -> &'static str {
+pub(super) fn filter_predicate(mode: TagMatchMode) -> &'static str {
     match mode {
         TagMatchMode::And => {
             "(SELECT COUNT(*) FROM query_filter_tags) = 0
