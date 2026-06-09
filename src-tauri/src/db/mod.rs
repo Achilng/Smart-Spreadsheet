@@ -3,7 +3,7 @@ mod migrations;
 use std::path::Path;
 use std::time::Duration;
 
-use rusqlite::{Connection, TransactionBehavior};
+use rusqlite::{Connection, MAIN_DB, TransactionBehavior};
 use thiserror::Error;
 
 pub use migrations::CURRENT_SCHEMA_VERSION;
@@ -15,6 +15,8 @@ pub enum DatabaseError {
     Sqlite(#[from] rusqlite::Error),
     #[error("数据库版本 {found} 高于当前支持版本 {supported}")]
     UnsupportedSchemaVersion { found: u32, supported: u32 },
+    #[error("数据库完整性检查失败: {0}")]
+    IntegrityCheckFailed(String),
 }
 
 pub struct Database {
@@ -36,6 +38,22 @@ impl Database {
         Ok(self
             .connection
             .pragma_query_value(None, "user_version", |row| row.get(0))?)
+    }
+
+    pub fn backup_to(&self, destination: impl AsRef<Path>) -> Result<(), DatabaseError> {
+        self.connection.backup(MAIN_DB, destination, None)?;
+        Ok(())
+    }
+
+    pub fn verify_integrity(&self) -> Result<(), DatabaseError> {
+        let result: String = self
+            .connection
+            .query_row("PRAGMA integrity_check(1)", [], |row| row.get(0))?;
+        if result == "ok" {
+            Ok(())
+        } else {
+            Err(DatabaseError::IntegrityCheckFailed(result))
+        }
     }
 
     fn initialize(mut connection: Connection) -> Result<Self, DatabaseError> {

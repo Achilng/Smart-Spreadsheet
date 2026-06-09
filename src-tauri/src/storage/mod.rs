@@ -1,3 +1,5 @@
+mod migration;
+
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -7,9 +9,11 @@ use thiserror::Error;
 
 use crate::db::{Database, DatabaseError};
 
-const FORMAT_VERSION: u32 = 1;
-const MARKER_FILE: &str = ".smart-spreadsheet-data.json";
-const DATABASE_FILE: &str = "smart-spreadsheet.sqlite3";
+pub use migration::MigrationOutcome;
+
+pub(super) const FORMAT_VERSION: u32 = 1;
+pub(super) const MARKER_FILE: &str = ".smart-spreadsheet-data.json";
+pub(super) const DATABASE_FILE: &str = "smart-spreadsheet.sqlite3";
 
 #[derive(Debug, Error)]
 pub enum StorageError {
@@ -29,6 +33,18 @@ pub enum StorageError {
     UnsupportedFormatVersion { found: u32, supported: u32 },
     #[error("受管数据目录缺少必要路径: {0}")]
     MissingRequiredPath(PathBuf),
+    #[error("迁移目标与当前数据目录相同: {0}")]
+    SameMigrationDestination(PathBuf),
+    #[error("迁移目标位于当前数据目录内部: {0}")]
+    DestinationInsideSource(PathBuf),
+    #[error("迁移目标文件夹不是空文件夹: {0}")]
+    NonEmptyDestination(PathBuf),
+    #[error("数据目录包含不支持迁移的符号链接或特殊文件: {0}")]
+    UnsupportedEntry(PathBuf),
+    #[error("迁移文件校验失败: {0}")]
+    MigrationVerificationFailed(PathBuf),
+    #[error("无法恢复迁移失败前的数据目录标记: {0}")]
+    MarkerRestoreFailed(PathBuf),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
