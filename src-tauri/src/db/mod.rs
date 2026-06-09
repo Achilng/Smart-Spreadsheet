@@ -5,6 +5,7 @@ mod workbook;
 
 pub use query::{MAX_PAGE_SIZE, RowPage, RowQuery, RowRecord, TagMatchMode, TagSummary};
 pub use tags::{RowSelection, TagMutationError, TagMutationResult};
+pub use workbook::WorkbookSummary;
 
 use std::path::Path;
 use std::time::Duration;

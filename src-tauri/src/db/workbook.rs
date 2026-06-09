@@ -1,11 +1,49 @@
 use std::collections::HashMap;
 
-use rusqlite::params;
+use rusqlite::{OptionalExtension, params};
 
 use super::{Database, DatabaseError};
 use crate::excel::{EmbeddedImageRef, ParsedWorkbook};
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkbookSummary {
+    pub imported_name: String,
+    pub imported_at: String,
+    pub sheet_name: String,
+    pub row_count: u64,
+}
+
 impl Database {
+    pub fn workbook_summary(&self) -> Result<Option<WorkbookSummary>, DatabaseError> {
+        let stored = self
+            .connection
+            .query_row(
+                "SELECT imported_name, imported_at, sheet_name, row_count
+                 FROM workbook WHERE id = 1",
+                [],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, i64>(3)?,
+                    ))
+                },
+            )
+            .optional()?;
+        stored
+            .map(|(imported_name, imported_at, sheet_name, row_count)| {
+                Ok(WorkbookSummary {
+                    imported_name,
+                    imported_at,
+                    sheet_name,
+                    row_count: u64::try_from(row_count)
+                        .map_err(|_| DatabaseError::CountOverflow)?,
+                })
+            })
+            .transpose()
+    }
+
     pub fn replace_workbook(
         &mut self,
         imported_name: &str,
