@@ -1,0 +1,13 @@
+[package]
+name = "smart-spreadsheet"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "smart_spreadsheet_lib"
+path = "src/lib.rs"
+
+[dependencies]
+calamine = "0.35.0"
+thiserror = "2.0.18"
+
