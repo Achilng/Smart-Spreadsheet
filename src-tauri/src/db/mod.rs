@@ -1,5 +1,8 @@
 mod migrations;
+mod tags;
 mod workbook;
+
+pub use tags::{TagMutationError, TagMutationResult};
 
 use std::path::Path;
 use std::time::Duration;
