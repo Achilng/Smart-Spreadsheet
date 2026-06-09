@@ -6,6 +6,10 @@ edition = "2024"
 [lib]
 name = "smart_spreadsheet_lib"
 path = "src/lib.rs"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.6.2", features = [] }
 
 [dependencies]
 calamine = "0.35.0"
@@ -13,5 +17,7 @@ quick-xml = "0.39.4"
 rusqlite = { version = "0.39.0", default-features = false, features = ["backup", "bundled"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"
+tauri = { version = "2.11.2", features = [] }
+tauri-plugin-dialog = "2.7.1"
 thiserror = "2.0.18"
 zip = { version = "7.2.0", default-features = false, features = ["deflate"] }

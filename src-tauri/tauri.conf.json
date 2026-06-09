@@ -1,0 +1,33 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "智能表格",
+  "version": "0.1.0",
+  "identifier": "com.achilng.smart-spreadsheet",
+  "build": {
+    "beforeDevCommand": "npm.cmd run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm.cmd run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "智能表格",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 1080,
+        "minHeight": 680,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all"
+  }
+}
