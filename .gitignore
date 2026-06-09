@@ -1,0 +1,27 @@
+# Rust / Tauri build output
+/target/
+/src-tauri/target/
+
+# Frontend dependencies and output
+/node_modules/
+/dist/
+
+# Local runtime data
+/*.sqlite
+/*.sqlite3
+/data/
+/cache/
+
+# Local environment and logs
+.env
+.env.*
+!.env.example
+*.log
+*.tmp
+*.bak
+
+# Editor and OS metadata
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
