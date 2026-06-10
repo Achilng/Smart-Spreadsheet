@@ -79,12 +79,13 @@
 
 ### 4.3 浏览和筛选
 
-- 主界面采用表格式布局，展示缩略图、时间、画师、折叠的长提示词和 Tag。
-- 筛选区展示已使用 Tag、当前 AND / OR 模式、匹配数和总数。
+- 主界面为三栏工作台：左侧 Tag 库与筛选侧栏，中间数据视图，右侧常驻详情面板（可收起）。
+- 数据视图提供两种模式，顶栏切换：画廊（默认，虚拟网格大图卡片）和表格（多列虚拟列表：缩略图、行号、时间、正向提示词、画师串、Tags）。
+- Tag 库侧栏展示全部 Tag 及关联行数，点击即加入筛选；AND / OR 切换与匹配数在侧栏顶部。
 - AND：结果必须包含全部选中 Tag。
 - OR：结果只需包含任意一个选中 Tag。
 - 清除筛选恢复全部行。
-- 图片点击后显示大图；长文本可展开、收起和复制。
+- 单击行或卡片在详情面板查看大图与全部字段；字段可复制；大图可点击放大。
 
 ### 4.4 Tag 编辑
 
@@ -126,7 +127,7 @@
 
 - 桌面框架：Tauri v2。
 - 后端：Rust + Tauri Commands。
-- 前端：模块化 HTML / CSS / TypeScript，优先保持轻量，不采用单个超大 HTML 文件。
+- 前端：Svelte 5（runes）+ Vite + TypeScript，组件化三栏工作台，状态集中在响应式 store，保持轻量。
 - 业务持久化：SQLite，Rust 侧使用成熟的 SQLite crate，并启用事务和迁移。
 - Excel 单元格读取：优先使用只读解析库。
 - 嵌入图片读取与 Excel 导出：直接处理 XLSX 的 OOXML ZIP 包，避免完整重写工作簿造成图片、样式或关系文件损坏。
@@ -187,15 +188,26 @@ settings
 
 ```text
 智能表格/
-├── AGENTS.md
+├── CLAUDE.md
 ├── PLAN.md
 ├── PROGRESS.md
 ├── Examples/
 │   └── novelai_metadata.xlsx
+├── index.html
+├── vite.config.ts
+├── svelte.config.js
 ├── src/
-│   ├── index.html
-│   ├── styles/
-│   └── scripts/
+│   ├── main.ts            # 挂载 Svelte 应用
+│   ├── App.svelte         # 状态路由：设置 / 导入 / 工作台
+│   ├── app.css            # 设计 token 与基础控件样式
+│   ├── api.ts             # Tauri command 封装
+│   ├── image-loader.ts    # 缩略图队列与 LRU 缓存
+│   └── lib/
+│       ├── app-state.svelte.ts       # 应用快照、busy、通知、导入导出迁移流程
+│       ├── row-store.svelte.ts       # 行数据分页缓存与筛选
+│       ├── selection-store.svelte.ts # explicit / filtered 选择模型
+│       ├── tag-store.svelte.ts       # Tag 库列表
+│       └── components/               # TopBar、TagSidebar、GalleryView、TableView、DetailPanel、SelectionBar 等
 ├── src-tauri/
 │   ├── Cargo.toml
 │   ├── tauri.conf.json
@@ -270,6 +282,18 @@ M1 是后续开发的前置门槛，导出保真验证未通过前不搭建完�
 - Windows 构建和安装包验证。
 - 错误提示、空状态和迁移失败恢复。
 - 发布首个 GitHub Release。
+
+### M8 - 首轮交互优化
+
+- 根据首轮使用反馈优化启动行为、窗口尺寸、表格布局和 Tag 编辑交互（详见 `PROGRESS.md`）。
+
+### M9 - 前端重构（Svelte 工作台）
+
+- 以 Svelte 5 重建前端，替换手写 DOM 同步实现。
+- 三栏工作台布局：Tag 库侧栏 / 画廊与表格双视图 / 常驻详情面板。
+- 画廊为默认视图：虚拟网格 + 缩略图懒加载；表格视图保留多列信息密度。
+- 选择交互改为勾选框 + Shift 范围选 + 底部浮动批量操作条；Ctrl+A 全选筛选结果。
+- 单行 Tag 编辑移入详情面板，去除右键菜单和弹窗套弹窗。
 
 ## 9. 验收标准
 

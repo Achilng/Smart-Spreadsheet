@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { untrack } from "svelte";
+
   import { app } from "../app-state.svelte";
   import { clearSelection, selectAllFiltered } from "../selection-store.svelte";
   import { resetRows, rowStore } from "../row-store.svelte";
@@ -11,13 +13,16 @@
   import TagSidebar from "./TagSidebar.svelte";
   import TopBar from "./TopBar.svelte";
 
-  // 首次挂载和工作簿替换时：清缩略图缓存（行 ID 可能复用）、重载数据、刷新 Tag 库、清空选择
+  // 首次挂载和工作簿替换时：清缩略图缓存（行 ID 可能复用）、重载数据、刷新 Tag 库、清空选择。
+  // untrack：这些调用内部有“读-改-写”（如 pagesVersion += 1），不能注册为本 effect 的依赖。
   $effect(() => {
     void app.dataVersion;
-    thumbnails.clear();
-    resetRows();
-    clearSelection();
-    void loadTags();
+    untrack(() => {
+      thumbnails.clear();
+      resetRows();
+      clearSelection();
+      void loadTags();
+    });
   });
 
   function onKeydown(event: KeyboardEvent): void {
@@ -129,21 +134,4 @@
     color: var(--text);
   }
 
-  .panel-placeholder {
-    margin: auto;
-    text-align: center;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-
-  .panel-placeholder h3 {
-    font-size: 14px;
-    color: var(--text-2);
-    font-weight: 600;
-  }
-
-  .panel-placeholder p {
-    font-size: 12px;
-  }
 </style>
