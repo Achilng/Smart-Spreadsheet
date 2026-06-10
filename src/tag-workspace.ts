@@ -2,8 +2,10 @@ import { confirm as confirmDialog } from "@tauri-apps/plugin-dialog";
 import {
   addTagsToSelection,
   countSelectedRows,
-  listUsedTags,
+  createTag,
+  listTags,
   removeTagsFromSelection,
+  setTagsForRow,
   type RowSelection,
   type TagMatchMode,
   type TagSummary,
@@ -26,7 +28,8 @@ export class TagWorkspace {
   readonly #filterRoot: HTMLElement;
   readonly #selectionRoot: HTMLElement;
   readonly #table: VirtualTable;
-  #usedTags: TagSummary[] = [];
+  #tags: TagSummary[] = [];
+  #selectedBatchTags = new Set<string>();
   #activeTags: string[] = [];
   #tagMode: TagMatchMode = "and";
   #selection: SelectionState = explicitSelection();
@@ -54,12 +57,13 @@ export class TagWorkspace {
       query: { tags: this.#activeTags, tagMode: this.#tagMode },
       isRowSelected: rowId => this.#isRowSelected(rowId),
       onRowSelectionChange: (rowId, selected) => this.#toggleRow(rowId, selected),
-      onAddTagToRow: (rowId, sourceRow, tag) => this.#addTagToRow(rowId, sourceRow, tag),
+      getAvailableTags: () => [...this.#tags],
+      onSetTagsForRow: (rowId, sourceRow, tags) => this.#setTagsForRow(rowId, sourceRow, tags),
       onPageStateChange: state => this.#handlePageState(state),
     });
     this.#refreshFilterUi();
     this.#refreshSelectionUi();
-    void this.#loadUsedTags();
+    void this.#loadTags();
   }
 
   dispose(): void {
@@ -80,6 +84,13 @@ export class TagWorkspace {
             <button type="button" data-tag-mode="or">OR</button>
           </div>
         </div>
+        <form class="tag-create-form">
+          <label>
+            <span>新建自定义 Tag（区分大小写）</span>
+            <input type="text" class="tag-create-input" autocomplete="off" placeholder="例如：苹果" />
+          </label>
+          <button type="submit" class="secondary-action create-tag">新建 Tag</button>
+        </form>
         <div class="tag-filter-list" aria-live="polite"></div>
         <div class="filter-footer">
           <span class="filter-match-count">正在统计匹配记录…</span>
@@ -102,10 +113,10 @@ export class TagWorkspace {
           </div>
         </div>
         <div class="batch-editor">
-          <label>
-            <span>待操作 Tag（每行一个）</span>
-            <textarea class="batch-tags" rows="2" placeholder="Landscape&#10;favorite"></textarea>
-          </label>
+          <div class="batch-tag-picker">
+            <span>待操作 Tag（从 Tag 库点选）</span>
+            <div class="batch-tag-list"></div>
+          </div>
           <div class="batch-buttons">
             <button type="button" class="primary-action add-tags">批量添加</button>
             <button type="button" class="danger-action remove-tags">批量删除</button>
@@ -142,6 +153,13 @@ export class TagWorkspace {
         }
       },
     );
+    requiredElement<HTMLFormElement>(this.#filterRoot, ".tag-create-form").addEventListener(
+      "submit",
+      event => {
+        event.preventDefault();
+        void this.#createTag();
+      },
+    );
     requiredElement<HTMLButtonElement>(this.#selectionRoot, ".select-page").addEventListener(
       "click",
       () => this.#toggleCurrentPage(),
@@ -164,18 +182,62 @@ export class TagWorkspace {
     );
   }
 
-  async #loadUsedTags(): Promise<void> {
+  async #loadTags(): Promise<void> {
     try {
-      const tags = await listUsedTags();
+      const tags = await listTags();
       if (this.#disposed) {
         return;
       }
-      this.#usedTags = tags;
+      this.#tags = tags;
+      const names = new Set(tags.map(tag => tag.name));
+      this.#selectedBatchTags = new Set(
+        [...this.#selectedBatchTags].filter(tag => names.has(tag)),
+      );
       this.#setFilterStatus("");
       this.#refreshFilterUi();
+      this.#refreshSelectionUi();
     } catch (error) {
       if (!this.#disposed) {
         this.#setFilterStatus(`Tag 列表加载失败：${errorText(error)}`, true);
+      }
+    }
+  }
+
+  async #createTag(): Promise<void> {
+    if (this.#busy) {
+      return;
+    }
+    const input = requiredElement<HTMLInputElement>(this.#filterRoot, ".tag-create-input");
+    const name = input.value.trim();
+    if (!name) {
+      this.#setFilterStatus("请输入一个非空 Tag。", true);
+      input.focus();
+      return;
+    }
+    this.#setBusy(true);
+    this.#setFilterStatus("");
+    try {
+      const created = await createTag(name);
+      if (this.#disposed) {
+        return;
+      }
+      await this.#loadTags();
+      if (this.#disposed) {
+        return;
+      }
+      if (created) {
+        input.value = "";
+        this.#setFilterStatus(`已新建 Tag“${name}”。`);
+      } else {
+        this.#setFilterStatus(`Tag“${name}”已存在。`);
+      }
+    } catch (error) {
+      if (!this.#disposed) {
+        this.#setFilterStatus(`新建 Tag 失败：${errorText(error)}`, true);
+      }
+    } finally {
+      if (!this.#disposed) {
+        this.#setBusy(false);
       }
     }
   }
@@ -309,14 +371,15 @@ export class TagWorkspace {
       return;
     }
     const selectedCount = this.#selectionCount();
-    const textarea = requiredElement<HTMLTextAreaElement>(this.#selectionRoot, ".batch-tags");
-    const tags = parseTags(textarea.value);
+    const tags = this.#tags
+      .map(tag => tag.name)
+      .filter(tag => this.#selectedBatchTags.has(tag));
     if (selectedCount === 0) {
       this.#setBatchStatus("请先选择至少一行。", true);
       return;
     }
     if (tags.length === 0) {
-      this.#setBatchStatus("请输入至少一个非空 Tag，每行一个。", true);
+      this.#setBatchStatus("请先从 Tag 库选择至少一个 Tag。", true);
       return;
     }
     if (mutation === "remove") {
@@ -341,13 +404,13 @@ export class TagWorkspace {
         return;
       }
       this.#selection = explicitSelection();
-      textarea.value = "";
+      this.#selectedBatchTags.clear();
       this.#setBatchStatus(
         `已处理 ${formatCount(result.affectedRows)} 行，实际变更 ${formatCount(result.associationsChanged)} 个 Tag 关联。`,
       );
       this.#table.reload();
       this.#table.refreshSelection();
-      await this.#loadUsedTags();
+      await this.#loadTags();
     } catch (error) {
       if (!this.#disposed) {
         this.#setBatchStatus(`批量操作失败：${errorText(error)}`, true);
@@ -359,26 +422,26 @@ export class TagWorkspace {
     }
   }
 
-  async #addTagToRow(rowId: number, sourceRow: number, tag: string): Promise<void> {
+  async #setTagsForRow(rowId: number, sourceRow: number, tags: string[]): Promise<void> {
     if (this.#busy) {
       throw new Error("当前有其他操作正在进行，请稍后重试。");
     }
     this.#setBusy(true);
     this.#setBatchStatus("");
     try {
-      const result = await addTagsToSelection({ kind: "explicit", rowIds: [rowId] }, [tag]);
+      const result = await setTagsForRow(rowId, tags);
       if (this.#disposed) {
         return;
       }
       this.#setBatchStatus(
         result.associationsChanged > 0
-          ? `已为 Excel 第 ${sourceRow} 行添加 Tag“${tag}”。`
-          : `Excel 第 ${sourceRow} 行已经包含 Tag“${tag}”。`,
+          ? `已更新 Excel 第 ${sourceRow} 行的 Tag，共变更 ${formatCount(result.associationsChanged)} 个关联。`
+          : `Excel 第 ${sourceRow} 行的 Tag 没有变化。`,
       );
-      await this.#loadUsedTags();
+      await this.#loadTags();
     } catch (error) {
       if (!this.#disposed) {
-        this.#setBatchStatus(`单行 Tag 添加失败：${errorText(error)}`, true);
+        this.#setBatchStatus(`单行 Tag 保存失败：${errorText(error)}`, true);
       }
       throw error;
     } finally {
@@ -412,8 +475,8 @@ export class TagWorkspace {
 
   #refreshFilterUi(): void {
     const list = requiredElement<HTMLElement>(this.#filterRoot, ".tag-filter-list");
-    const countByName = new Map(this.#usedTags.map(tag => [tag.name, tag.rowCount]));
-    const names = [...this.#usedTags.map(tag => tag.name)];
+    const countByName = new Map(this.#tags.map(tag => [tag.name, tag.rowCount]));
+    const names = [...this.#tags.map(tag => tag.name)];
     for (const active of this.#activeTags) {
       if (!countByName.has(active)) {
         names.push(active);
@@ -423,7 +486,7 @@ export class TagWorkspace {
     if (names.length === 0) {
       const empty = document.createElement("span");
       empty.className = "empty-tags";
-      empty.textContent = "还没有 Tag。选择记录后可在下方批量添加。";
+      empty.textContent = "还没有 Tag。请先在上方新建自定义 Tag。";
       fragment.append(empty);
     } else {
       for (const name of names) {
@@ -451,11 +514,41 @@ export class TagWorkspace {
     }
     const clear = requiredElement<HTMLButtonElement>(this.#filterRoot, ".clear-filter");
     clear.disabled = this.#busy || this.#activeTags.length === 0;
+    requiredElement<HTMLInputElement>(this.#filterRoot, ".tag-create-input").disabled = this.#busy;
+    requiredElement<HTMLButtonElement>(this.#filterRoot, ".create-tag").disabled = this.#busy;
     requiredElement<HTMLElement>(this.#filterRoot, ".filter-match-count").textContent =
       `${formatCount(this.#pageState.totalCount)} 条匹配 · ${this.#tagMode.toUpperCase()} · 区分大小写`;
   }
 
   #refreshSelectionUi(): void {
+    const tagList = requiredElement<HTMLElement>(this.#selectionRoot, ".batch-tag-list");
+    const tagFragment = document.createDocumentFragment();
+    if (this.#tags.length === 0) {
+      const empty = document.createElement("span");
+      empty.className = "empty-tags";
+      empty.textContent = "请先新建 Tag。";
+      tagFragment.append(empty);
+    } else {
+      for (const tag of this.#tags) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = `batch-tag-chip${this.#selectedBatchTags.has(tag.name) ? " is-active" : ""}`;
+        button.disabled = this.#busy;
+        button.setAttribute("aria-pressed", String(this.#selectedBatchTags.has(tag.name)));
+        button.textContent = tag.name;
+        button.addEventListener("click", () => {
+          if (this.#selectedBatchTags.has(tag.name)) {
+            this.#selectedBatchTags.delete(tag.name);
+          } else {
+            this.#selectedBatchTags.add(tag.name);
+          }
+          this.#refreshSelectionUi();
+        });
+        tagFragment.append(button);
+      }
+    }
+    tagList.replaceChildren(tagFragment);
+
     const rows = this.#pageState.rows;
     const allPageSelected = rows.length > 0 && rows.every(row => this.#isRowSelected(row.id));
     const pageButton = requiredElement<HTMLButtonElement>(this.#selectionRoot, ".select-page");
@@ -486,11 +579,11 @@ export class TagWorkspace {
           : "显式选择，可跨页继续勾选";
 
     const hasSelection = this.#selectionCount() > 0;
+    const hasBatchTags = this.#selectedBatchTags.size > 0;
     requiredElement<HTMLButtonElement>(this.#selectionRoot, ".add-tags").disabled =
-      this.#busy || !hasSelection;
+      this.#busy || !hasSelection || !hasBatchTags;
     requiredElement<HTMLButtonElement>(this.#selectionRoot, ".remove-tags").disabled =
-      this.#busy || !hasSelection;
-    requiredElement<HTMLTextAreaElement>(this.#selectionRoot, ".batch-tags").disabled = this.#busy;
+      this.#busy || !hasSelection || !hasBatchTags;
   }
 
   #setBusy(busy: boolean): void {
@@ -514,19 +607,6 @@ export class TagWorkspace {
 
 function explicitSelection(): SelectionState {
   return { kind: "explicit", rowIds: new Set<number>() };
-}
-
-function parseTags(value: string): string[] {
-  const seen = new Set<string>();
-  const tags: string[] = [];
-  for (const line of value.split(/\r?\n/)) {
-    const tag = line.trim();
-    if (tag && !seen.has(tag)) {
-      seen.add(tag);
-      tags.push(tag);
-    }
-  }
-  return tags;
 }
 
 function formatCount(value: number): string {

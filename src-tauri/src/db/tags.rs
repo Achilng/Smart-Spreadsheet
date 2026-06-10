@@ -36,6 +36,10 @@ pub enum TagMutationError {
     UnknownRows(Vec<i64>),
     #[error("行 ID 必须为正整数: {0}")]
     InvalidRowId(i64),
+    #[error("Tag 名称不能为空")]
+    EmptyTagName,
+    #[error("Tag 不存在: {0:?}")]
+    UnknownTags(Vec<String>),
 }
 
 impl From<rusqlite::Error> for TagMutationError {
@@ -45,6 +49,16 @@ impl From<rusqlite::Error> for TagMutationError {
 }
 
 impl Database {
+    pub fn create_tag(&mut self, name: &str) -> Result<bool, TagMutationError> {
+        let Some(name) = normalize_tags(&[name.to_owned()]).into_iter().next() else {
+            return Err(TagMutationError::EmptyTagName);
+        };
+        Ok(self
+            .connection
+            .execute("INSERT OR IGNORE INTO tags(name) VALUES (?1)", [name])?
+            > 0)
+    }
+
     pub fn add_tags_to_rows(
         &mut self,
         row_ids: &[i64],
@@ -85,6 +99,76 @@ impl Database {
         tags: &[String],
     ) -> Result<TagMutationResult, TagMutationError> {
         mutate_tags(&mut self.connection, selection, tags, Mutation::Remove)
+    }
+
+    pub fn set_tags_for_row(
+        &mut self,
+        row_id: i64,
+        tags: &[String],
+    ) -> Result<TagMutationResult, TagMutationError> {
+        if row_id <= 0 {
+            return Err(TagMutationError::InvalidRowId(row_id));
+        }
+        let normalized_tags = normalize_tags(tags);
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let row_exists: bool = transaction.query_row(
+            "SELECT EXISTS (SELECT 1 FROM rows WHERE id = ?1)",
+            [row_id],
+            |row| row.get(0),
+        )?;
+        if !row_exists {
+            return Err(TagMutationError::UnknownRows(vec![row_id]));
+        }
+
+        let mut desired_ids = Vec::with_capacity(normalized_tags.len());
+        let mut unknown_tags = Vec::new();
+        for tag in &normalized_tags {
+            let tag_id = transaction
+                .query_row(
+                    "SELECT id FROM tags WHERE name = ?1 COLLATE BINARY",
+                    [tag],
+                    |row| row.get::<_, i64>(0),
+                )
+                .optional()?;
+            match tag_id {
+                Some(tag_id) => desired_ids.push(tag_id),
+                None => unknown_tags.push(tag.clone()),
+            }
+        }
+        if !unknown_tags.is_empty() {
+            return Err(TagMutationError::UnknownTags(unknown_tags));
+        }
+
+        let desired = desired_ids.iter().copied().collect::<HashSet<_>>();
+        let existing = {
+            let mut statement = transaction
+                .prepare("SELECT tag_id FROM row_tags WHERE row_id = ?1 ORDER BY tag_id")?;
+            statement
+                .query_map([row_id], |row| row.get::<_, i64>(0))?
+                .collect::<Result<HashSet<_>, _>>()?
+        };
+        let mut associations_changed = 0;
+        for tag_id in existing.difference(&desired) {
+            associations_changed += transaction.execute(
+                "DELETE FROM row_tags WHERE row_id = ?1 AND tag_id = ?2",
+                params![row_id, tag_id],
+            )?;
+        }
+        for tag_id in desired.difference(&existing) {
+            associations_changed += transaction.execute(
+                "INSERT INTO row_tags(row_id, tag_id) VALUES (?1, ?2)",
+                params![row_id, tag_id],
+            )?;
+        }
+        transaction.commit()?;
+
+        Ok(TagMutationResult {
+            affected_rows: 1,
+            normalized_tags,
+            associations_changed,
+        })
     }
 
     pub fn count_selected_rows(
@@ -297,13 +381,6 @@ fn remove_tags(transaction: &Transaction<'_>, tags: &[String]) -> Result<usize, 
             )?;
         }
     }
-    transaction.execute(
-        "DELETE FROM tags
-         WHERE NOT EXISTS (
-             SELECT 1 FROM row_tags WHERE row_tags.tag_id = tags.id
-         )",
-        [],
-    )?;
     Ok(changed)
 }
 
@@ -345,7 +422,7 @@ mod tests {
     }
 
     #[test]
-    fn batch_remove_is_case_sensitive_and_prunes_unused_tags() {
+    fn batch_remove_is_case_sensitive_and_keeps_tag_definitions() {
         let mut database = database_with_rows(2);
         database
             .add_tags_to_rows(&[1, 2], &["Landscape".into(), "landscape".into()])
@@ -361,8 +438,44 @@ mod tests {
             .remove_tags_from_rows(&[2], &["Landscape".into()])
             .unwrap();
         assert_eq!(second.associations_changed, 1);
-        assert_eq!(stored_tags(&database), vec!["landscape"]);
+        assert_eq!(stored_tags(&database), vec!["Landscape", "landscape"]);
         assert_eq!(stored_row_tags(&database), 2);
+    }
+
+    #[test]
+    fn creates_unassigned_tags_and_sets_a_row_from_existing_definitions() {
+        let mut database = database_with_rows(2);
+        assert!(database.create_tag(" 苹果 ").unwrap());
+        assert!(database.create_tag("香蕉").unwrap());
+        assert!(!database.create_tag("苹果").unwrap());
+
+        let first = database
+            .set_tags_for_row(1, &["苹果".into(), "香蕉".into()])
+            .unwrap();
+        assert_eq!(first.associations_changed, 2);
+        assert!(row_has_tag(&database, 1, "苹果"));
+        assert!(row_has_tag(&database, 1, "香蕉"));
+
+        let second = database.set_tags_for_row(1, &["香蕉".into()]).unwrap();
+        assert_eq!(second.associations_changed, 1);
+        assert!(!row_has_tag(&database, 1, "苹果"));
+        assert!(row_has_tag(&database, 1, "香蕉"));
+        assert_eq!(stored_tags(&database), vec!["苹果", "香蕉"]);
+    }
+
+    #[test]
+    fn setting_row_tags_rejects_unknown_definitions_without_changes() {
+        let mut database = database_with_rows(1);
+        database.create_tag("existing").unwrap();
+        database.set_tags_for_row(1, &["existing".into()]).unwrap();
+
+        let error = database
+            .set_tags_for_row(1, &["existing".into(), "missing".into()])
+            .unwrap_err();
+
+        assert!(matches!(error, TagMutationError::UnknownTags(tags) if tags == vec!["missing"]));
+        assert!(row_has_tag(&database, 1, "existing"));
+        assert!(!row_has_tag(&database, 1, "missing"));
     }
 
     #[test]
@@ -401,7 +514,7 @@ mod tests {
 
         assert_eq!(added.associations_changed, 10_000);
         assert_eq!(removed.associations_changed, 10_000);
-        assert!(stored_tags(&database).is_empty());
+        assert_eq!(stored_tags(&database), vec!["large-batch"]);
     }
 
     #[test]

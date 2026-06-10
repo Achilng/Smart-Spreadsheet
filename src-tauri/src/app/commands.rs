@@ -188,11 +188,16 @@ pub(crate) fn query_rows(
 }
 
 #[tauri::command]
-pub(crate) fn list_used_tags(runtime: State<'_, AppRuntime>) -> Result<Vec<TagSummaryDto>, String> {
+pub(crate) fn list_tags(runtime: State<'_, AppRuntime>) -> Result<Vec<TagSummaryDto>, String> {
     runtime
-        .list_used_tags()
+        .list_tags()
         .map(|tags| tags.into_iter().map(TagSummaryDto::from).collect())
         .map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn create_tag(name: String, runtime: State<'_, AppRuntime>) -> Result<bool, String> {
+    runtime.create_tag(&name).map_err(error_text)
 }
 
 #[tauri::command]
@@ -225,6 +230,18 @@ pub(crate) fn remove_tags_from_selection(
 ) -> Result<TagMutationResultDto, String> {
     runtime
         .remove_tags_from_selection(&selection.into(), &tags)
+        .map(TagMutationResultDto::from)
+        .map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn set_tags_for_row(
+    row_id: i64,
+    tags: Vec<String>,
+    runtime: State<'_, AppRuntime>,
+) -> Result<TagMutationResultDto, String> {
+    runtime
+        .set_tags_for_row(row_id, &tags)
         .map(TagMutationResultDto::from)
         .map_err(error_text)
 }

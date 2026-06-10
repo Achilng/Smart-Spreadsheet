@@ -100,8 +100,12 @@ export function queryRows(query: RowQuery): Promise<RowPage> {
   return invoke<RowPage>("query_rows", { query });
 }
 
-export function listUsedTags(): Promise<TagSummary[]> {
-  return invoke<TagSummary[]>("list_used_tags");
+export function listTags(): Promise<TagSummary[]> {
+  return invoke<TagSummary[]>("list_tags");
+}
+
+export function createTag(name: string): Promise<boolean> {
+  return invoke<boolean>("create_tag", { name });
 }
 
 export function countSelectedRows(selection: RowSelection): Promise<number> {
@@ -120,6 +124,10 @@ export function removeTagsFromSelection(
   tags: string[],
 ): Promise<TagMutationResult> {
   return invoke<TagMutationResult>("remove_tags_from_selection", { selection, tags });
+}
+
+export function setTagsForRow(rowId: number, tags: string[]): Promise<TagMutationResult> {
+  return invoke<TagMutationResult>("set_tags_for_row", { rowId, tags });
 }
 
 export function getRowThumbnail(rowId: number): Promise<ArrayBuffer> {

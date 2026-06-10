@@ -90,11 +90,11 @@ impl Database {
         })
     }
 
-    pub fn list_used_tags(&self) -> Result<Vec<TagSummary>, DatabaseError> {
+    pub fn list_tags(&self) -> Result<Vec<TagSummary>, DatabaseError> {
         let mut statement = self.connection.prepare(
             "SELECT tags.name, COUNT(row_tags.row_id)
              FROM tags
-             JOIN row_tags ON row_tags.tag_id = tags.id
+             LEFT JOIN row_tags ON row_tags.tag_id = tags.id
              GROUP BY tags.id, tags.name
              ORDER BY tags.name COLLATE BINARY",
         )?;
@@ -319,10 +319,11 @@ mod tests {
     }
 
     #[test]
-    fn lists_used_tag_counts_in_binary_order() {
-        let database = tagged_database();
+    fn lists_all_tag_counts_in_binary_order() {
+        let mut database = tagged_database();
+        database.create_tag("Unused").unwrap();
 
-        let tags = database.list_used_tags().unwrap();
+        let tags = database.list_tags().unwrap();
 
         assert_eq!(
             tags,
@@ -338,6 +339,10 @@ mod tests {
                 TagSummary {
                     name: "Red".into(),
                     row_count: 2
+                },
+                TagSummary {
+                    name: "Unused".into(),
+                    row_count: 0
                 },
                 TagSummary {
                     name: "red".into(),

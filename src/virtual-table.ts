@@ -4,6 +4,7 @@ import {
   type RowQuery,
   type RowRecord,
   type TagMatchMode,
+  type TagSummary,
 } from "./api";
 import { ThumbnailLoader, binaryBuffer } from "./image-loader";
 
@@ -25,7 +26,8 @@ export interface VirtualTableOptions {
   query: TableQuery;
   isRowSelected: (rowId: number) => boolean;
   onRowSelectionChange: (rowId: number, selected: boolean) => void;
-  onAddTagToRow: (rowId: number, sourceRow: number, tag: string) => Promise<void>;
+  getAvailableTags: () => TagSummary[];
+  onSetTagsForRow: (rowId: number, sourceRow: number, tags: string[]) => Promise<void>;
   onPageStateChange: (state: VirtualTablePageState) => void;
 }
 
@@ -210,8 +212,8 @@ export class VirtualTable {
     element.style.transform = `translateY(${index * ROW_HEIGHT}px)`;
     element.setAttribute("role", "row");
     element.setAttribute("aria-selected", String(selected));
-    element.setAttribute("aria-label", `Excel 第 ${row.sourceRow} 行，点击切换选择，右键添加 Tag`);
-    element.title = "点击切换选择；右键添加 Tag";
+    element.setAttribute("aria-label", `Excel 第 ${row.sourceRow} 行，点击切换选择，右键编辑 Tag`);
+    element.title = "点击切换选择；右键编辑 Tag";
     element.tabIndex = 0;
     const toggleSelection = (): void => {
       this.#options.onRowSelectionChange(row.id, !this.#options.isRowSelected(row.id));
@@ -503,23 +505,70 @@ export class VirtualTable {
     const menu = document.createElement("form");
     menu.className = "row-context-menu";
     menu.setAttribute("role", "dialog");
-    menu.setAttribute("aria-label", `为 Excel 第 ${row.sourceRow} 行添加 Tag`);
+    menu.setAttribute("aria-label", `编辑 Excel 第 ${row.sourceRow} 行的 Tag`);
 
     const heading = document.createElement("strong");
     heading.textContent = `Excel 第 ${row.sourceRow} 行`;
     const label = document.createElement("label");
+    label.className = "row-context-search";
     const labelText = document.createElement("span");
-    labelText.textContent = "添加 Tag（区分大小写）";
+    labelText.textContent = "搜索已有 Tag";
     const input = document.createElement("input");
-    input.type = "text";
+    input.type = "search";
     input.autocomplete = "off";
-    input.placeholder = "输入一个 Tag";
+    input.placeholder = "仅用于筛选，不会新建 Tag";
     label.append(labelText, input);
+
+    const selectedTags = new Set(row.tags);
+    const availableNames = this.#options.getAvailableTags().map(tag => tag.name);
+    for (const rowTag of row.tags) {
+      if (!availableNames.includes(rowTag)) {
+        availableNames.push(rowTag);
+      }
+    }
+    const tagList = document.createElement("div");
+    tagList.className = "row-context-tag-list";
+    const renderTagList = (): void => {
+      const query = input.value.trim().toLocaleLowerCase();
+      const visibleNames = availableNames.filter(name =>
+        name.toLocaleLowerCase().includes(query),
+      );
+      const fragment = document.createDocumentFragment();
+      if (visibleNames.length === 0) {
+        const empty = document.createElement("span");
+        empty.className = "empty-tags";
+        empty.textContent = availableNames.length === 0 ? "请先在 Tag 筛选区新建 Tag。" : "没有匹配的 Tag。";
+        fragment.append(empty);
+      } else {
+        for (const name of visibleNames) {
+          const option = document.createElement("label");
+          option.className = "row-context-tag-option";
+          const checkbox = document.createElement("input");
+          checkbox.type = "checkbox";
+          checkbox.checked = selectedTags.has(name);
+          checkbox.addEventListener("change", () => {
+            if (checkbox.checked) {
+              selectedTags.add(name);
+            } else {
+              selectedTags.delete(name);
+            }
+          });
+          const text = document.createElement("span");
+          text.textContent = name;
+          option.append(checkbox, text);
+          fragment.append(option);
+        }
+      }
+      tagList.replaceChildren(fragment);
+    };
+    input.addEventListener("input", renderTagList);
+    renderTagList();
 
     const status = document.createElement("p");
     status.className = "row-context-status";
     status.setAttribute("role", "status");
     const actions = document.createElement("div");
+    actions.className = "row-context-actions";
     const cancel = document.createElement("button");
     cancel.type = "button";
     cancel.className = "text-action";
@@ -527,9 +576,9 @@ export class VirtualTable {
     const submit = document.createElement("button");
     submit.type = "submit";
     submit.className = "primary-action compact-action";
-    submit.textContent = "添加";
+    submit.textContent = "保存";
     actions.append(cancel, submit);
-    menu.append(heading, label, status, actions);
+    menu.append(heading, label, tagList, status, actions);
     this.#detailHost.append(menu);
 
     const bounds = menu.getBoundingClientRect();
@@ -564,19 +613,16 @@ export class VirtualTable {
     cancel.addEventListener("click", closeMenu);
     menu.addEventListener("submit", event => {
       event.preventDefault();
-      const tag = input.value.trim();
-      if (!tag) {
-        status.textContent = "请输入一个非空 Tag。";
-        status.classList.add("is-error");
-        input.focus();
-        return;
-      }
       input.disabled = true;
+      for (const checkbox of tagList.querySelectorAll<HTMLInputElement>("input")) {
+        checkbox.disabled = true;
+      }
       cancel.disabled = true;
       submit.disabled = true;
-      status.textContent = "正在添加…";
+      status.textContent = "正在保存…";
       status.classList.remove("is-error");
-      void this.#options.onAddTagToRow(row.id, row.sourceRow, tag).then(
+      const tags = availableNames.filter(name => selectedTags.has(name));
+      void this.#options.onSetTagsForRow(row.id, row.sourceRow, tags).then(
         () => {
           closeMenu();
           if (!this.#disposed) {
@@ -585,9 +631,12 @@ export class VirtualTable {
         },
         error => {
           input.disabled = false;
+          for (const checkbox of tagList.querySelectorAll<HTMLInputElement>("input")) {
+            checkbox.disabled = false;
+          }
           cancel.disabled = false;
           submit.disabled = false;
-          status.textContent = `添加失败：${errorText(error)}`;
+          status.textContent = `保存失败：${errorText(error)}`;
           status.classList.add("is-error");
           input.focus();
         },

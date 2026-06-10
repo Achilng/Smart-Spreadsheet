@@ -153,14 +153,24 @@ impl AppRuntime {
         Ok(database.query_rows(query)?)
     }
 
-    pub(crate) fn list_used_tags(&self) -> Result<Vec<TagSummary>, AppRuntimeError> {
+    pub(crate) fn list_tags(&self) -> Result<Vec<TagSummary>, AppRuntimeError> {
         let state = self.lock_state()?;
         ensure_startup_valid(&state)?;
         let directory = state
             .active
             .as_ref()
             .ok_or(AppRuntimeError::NotConfigured)?;
-        Ok(directory.open_database()?.list_used_tags()?)
+        Ok(directory.open_database()?.list_tags()?)
+    }
+
+    pub(crate) fn create_tag(&self, name: &str) -> Result<bool, AppRuntimeError> {
+        let state = self.lock_state()?;
+        ensure_startup_valid(&state)?;
+        let directory = state
+            .active
+            .as_ref()
+            .ok_or(AppRuntimeError::NotConfigured)?;
+        Ok(directory.open_database()?.create_tag(name)?)
     }
 
     pub(crate) fn count_selected_rows(
@@ -206,6 +216,20 @@ impl AppRuntime {
         Ok(directory
             .open_database()?
             .remove_tags_from_selection(selection, tags)?)
+    }
+
+    pub(crate) fn set_tags_for_row(
+        &self,
+        row_id: i64,
+        tags: &[String],
+    ) -> Result<TagMutationResult, AppRuntimeError> {
+        let state = self.lock_state()?;
+        ensure_startup_valid(&state)?;
+        let directory = state
+            .active
+            .as_ref()
+            .ok_or(AppRuntimeError::NotConfigured)?;
+        Ok(directory.open_database()?.set_tags_for_row(row_id, tags)?)
     }
 
     pub(crate) fn row_thumbnail(&self, row_id: i64) -> Result<Vec<u8>, AppRuntimeError> {
@@ -436,7 +460,7 @@ mod tests {
             .unwrap();
         assert_eq!(added.affected_rows, 3);
         assert_eq!(added.associations_changed, 6);
-        assert_eq!(runtime.list_used_tags().unwrap().len(), 2);
+        assert_eq!(runtime.list_tags().unwrap().len(), 2);
 
         let filtered = RowSelection::Filtered {
             tags: vec!["Keep".into()],
@@ -490,7 +514,7 @@ mod tests {
             reloaded.snapshot().unwrap().data_directory,
             Some(destination.clone())
         );
-        assert_eq!(reloaded.list_used_tags().unwrap()[0].name, "migrated");
+        assert_eq!(reloaded.list_tags().unwrap()[0].name, "migrated");
     }
 
     #[test]
