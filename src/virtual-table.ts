@@ -25,6 +25,7 @@ export interface VirtualTableOptions {
   query: TableQuery;
   isRowSelected: (rowId: number) => boolean;
   onRowSelectionChange: (rowId: number, selected: boolean) => void;
+  onAddTagToRow: (rowId: number, sourceRow: number, tag: string) => Promise<void>;
   onPageStateChange: (state: VirtualTablePageState) => void;
 }
 
@@ -45,6 +46,7 @@ export class VirtualTable {
   #renderFrame = 0;
   #lastPageSignature = "";
   #closeDetails: (() => void) | null = null;
+  #closeContextMenu: (() => void) | null = null;
 
   constructor(root: HTMLElement, detailHost: HTMLElement, options: VirtualTableOptions) {
     this.#root = root;
@@ -74,12 +76,14 @@ export class VirtualTable {
     this.#viewport.removeEventListener("scroll", this.#scheduleRender);
     window.removeEventListener("resize", this.#scheduleRender);
     window.cancelAnimationFrame(this.#renderFrame);
+    this.#closeContextMenu?.();
     this.#closeDetails?.();
     this.#thumbnailLoader.dispose();
     this.#detailHost.replaceChildren();
   }
 
   setQuery(query: TableQuery): void {
+    this.#closeContextMenu?.();
     this.#query = cloneQuery(query);
     this.#generation += 1;
     this.#pages.clear();
@@ -206,7 +210,8 @@ export class VirtualTable {
     element.style.transform = `translateY(${index * ROW_HEIGHT}px)`;
     element.setAttribute("role", "row");
     element.setAttribute("aria-selected", String(selected));
-    element.setAttribute("aria-label", `Excel 第 ${row.sourceRow} 行，点击切换选择`);
+    element.setAttribute("aria-label", `Excel 第 ${row.sourceRow} 行，点击切换选择，右键添加 Tag`);
+    element.title = "点击切换选择；右键添加 Tag";
     element.tabIndex = 0;
     const toggleSelection = (): void => {
       this.#options.onRowSelectionChange(row.id, !this.#options.isRowSelected(row.id));
@@ -222,6 +227,11 @@ export class VirtualTable {
         event.preventDefault();
         toggleSelection();
       }
+    });
+    element.addEventListener("contextmenu", event => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.#showTagContextMenu(row, event.clientX, event.clientY);
     });
 
     const rowCell = document.createElement("div");
@@ -334,6 +344,7 @@ export class VirtualTable {
   }
 
   #showDetails(row: RowRecord): void {
+    this.#closeContextMenu?.();
     this.#closeDetails?.();
     const backdrop = document.createElement("div");
     backdrop.className = "detail-backdrop";
@@ -401,6 +412,7 @@ export class VirtualTable {
   }
 
   #showImagePreview(row: RowRecord): void {
+    this.#closeContextMenu?.();
     this.#closeDetails?.();
     const backdrop = document.createElement("div");
     backdrop.className = "detail-backdrop image-preview-backdrop";
@@ -484,6 +496,108 @@ export class VirtualTable {
         }
       },
     );
+  }
+
+  #showTagContextMenu(row: RowRecord, clientX: number, clientY: number): void {
+    this.#closeContextMenu?.();
+    const menu = document.createElement("form");
+    menu.className = "row-context-menu";
+    menu.setAttribute("role", "dialog");
+    menu.setAttribute("aria-label", `为 Excel 第 ${row.sourceRow} 行添加 Tag`);
+
+    const heading = document.createElement("strong");
+    heading.textContent = `Excel 第 ${row.sourceRow} 行`;
+    const label = document.createElement("label");
+    const labelText = document.createElement("span");
+    labelText.textContent = "添加 Tag（区分大小写）";
+    const input = document.createElement("input");
+    input.type = "text";
+    input.autocomplete = "off";
+    input.placeholder = "输入一个 Tag";
+    label.append(labelText, input);
+
+    const status = document.createElement("p");
+    status.className = "row-context-status";
+    status.setAttribute("role", "status");
+    const actions = document.createElement("div");
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.className = "text-action";
+    cancel.textContent = "取消";
+    const submit = document.createElement("button");
+    submit.type = "submit";
+    submit.className = "primary-action compact-action";
+    submit.textContent = "添加";
+    actions.append(cancel, submit);
+    menu.append(heading, label, status, actions);
+    this.#detailHost.append(menu);
+
+    const bounds = menu.getBoundingClientRect();
+    const margin = 10;
+    menu.style.left = `${Math.max(margin, Math.min(clientX, window.innerWidth - bounds.width - margin))}px`;
+    menu.style.top = `${Math.max(margin, Math.min(clientY, window.innerHeight - bounds.height - margin))}px`;
+
+    let closed = false;
+    const closeMenu = (): void => {
+      if (closed) {
+        return;
+      }
+      closed = true;
+      window.removeEventListener("pointerdown", onOutsidePointerDown, true);
+      window.removeEventListener("keydown", onKeydown);
+      this.#viewport.removeEventListener("scroll", closeMenu);
+      menu.remove();
+      if (this.#closeContextMenu === closeMenu) {
+        this.#closeContextMenu = null;
+      }
+    };
+    const onOutsidePointerDown = (event: PointerEvent): void => {
+      if (!menu.contains(event.target as Node)) {
+        closeMenu();
+      }
+    };
+    const onKeydown = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") {
+        closeMenu();
+      }
+    };
+    cancel.addEventListener("click", closeMenu);
+    menu.addEventListener("submit", event => {
+      event.preventDefault();
+      const tag = input.value.trim();
+      if (!tag) {
+        status.textContent = "请输入一个非空 Tag。";
+        status.classList.add("is-error");
+        input.focus();
+        return;
+      }
+      input.disabled = true;
+      cancel.disabled = true;
+      submit.disabled = true;
+      status.textContent = "正在添加…";
+      status.classList.remove("is-error");
+      void this.#options.onAddTagToRow(row.id, row.sourceRow, tag).then(
+        () => {
+          closeMenu();
+          if (!this.#disposed) {
+            this.reload();
+          }
+        },
+        error => {
+          input.disabled = false;
+          cancel.disabled = false;
+          submit.disabled = false;
+          status.textContent = `添加失败：${errorText(error)}`;
+          status.classList.add("is-error");
+          input.focus();
+        },
+      );
+    });
+    window.addEventListener("pointerdown", onOutsidePointerDown, true);
+    window.addEventListener("keydown", onKeydown);
+    this.#viewport.addEventListener("scroll", closeMenu, { passive: true });
+    this.#closeContextMenu = closeMenu;
+    input.focus();
   }
 }
 

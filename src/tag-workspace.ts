@@ -54,6 +54,7 @@ export class TagWorkspace {
       query: { tags: this.#activeTags, tagMode: this.#tagMode },
       isRowSelected: rowId => this.#isRowSelected(rowId),
       onRowSelectionChange: (rowId, selected) => this.#toggleRow(rowId, selected),
+      onAddTagToRow: (rowId, sourceRow, tag) => this.#addTagToRow(rowId, sourceRow, tag),
       onPageStateChange: state => this.#handlePageState(state),
     });
     this.#refreshFilterUi();
@@ -351,6 +352,35 @@ export class TagWorkspace {
       if (!this.#disposed) {
         this.#setBatchStatus(`批量操作失败：${errorText(error)}`, true);
       }
+    } finally {
+      if (!this.#disposed) {
+        this.#setBusy(false);
+      }
+    }
+  }
+
+  async #addTagToRow(rowId: number, sourceRow: number, tag: string): Promise<void> {
+    if (this.#busy) {
+      throw new Error("当前有其他操作正在进行，请稍后重试。");
+    }
+    this.#setBusy(true);
+    this.#setBatchStatus("");
+    try {
+      const result = await addTagsToSelection({ kind: "explicit", rowIds: [rowId] }, [tag]);
+      if (this.#disposed) {
+        return;
+      }
+      this.#setBatchStatus(
+        result.associationsChanged > 0
+          ? `已为 Excel 第 ${sourceRow} 行添加 Tag“${tag}”。`
+          : `Excel 第 ${sourceRow} 行已经包含 Tag“${tag}”。`,
+      );
+      await this.#loadUsedTags();
+    } catch (error) {
+      if (!this.#disposed) {
+        this.#setBatchStatus(`单行 Tag 添加失败：${errorText(error)}`, true);
+      }
+      throw error;
     } finally {
       if (!this.#disposed) {
         this.#setBusy(false);

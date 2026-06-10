@@ -771,6 +771,61 @@ h2 {
   color: #69756d;
 }
 
+.row-context-menu {
+  position: fixed;
+  z-index: 30;
+  display: grid;
+  width: min(290px, calc(100vw - 20px));
+  gap: 12px;
+  padding: 15px;
+  border: 1px solid rgb(23 33 27 / 18%);
+  border-radius: 7px;
+  background: #f5f7f3;
+  box-shadow: 0 18px 60px rgb(16 24 19 / 24%);
+}
+
+.row-context-menu > strong {
+  color: #354139;
+  font-size: 13px;
+}
+
+.row-context-menu label {
+  display: grid;
+  gap: 6px;
+}
+
+.row-context-menu label span {
+  color: #68746c;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.row-context-menu input {
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid rgb(23 33 27 / 18%);
+  border-radius: 4px;
+  background: #fff;
+  color: #253129;
+}
+
+.row-context-menu > div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.row-context-status {
+  min-height: 17px;
+  margin: 0;
+  color: #2e6942;
+  font-size: 11px;
+}
+
+.row-context-status.is-error {
+  color: #8a352d;
+}
+
 .detail-backdrop {
   position: fixed;
   z-index: 20;
