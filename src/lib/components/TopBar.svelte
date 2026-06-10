@@ -7,6 +7,7 @@
     formatCount,
     type ViewMode,
   } from "../app-state.svelte";
+  import WindowControls from "./WindowControls.svelte";
 
   const workbook = $derived(app.snapshot?.workbook ?? null);
 
@@ -16,11 +17,15 @@
   ];
 </script>
 
-<header class="topbar">
-  <div class="workbook-info">
+<header class="topbar" data-tauri-drag-region>
+  <div class="workbook-info" data-tauri-drag-region>
     {#if workbook}
-      <strong class="name" title={workbook.importedName}>{workbook.importedName}</strong>
-      <span class="meta faint">{workbook.sheetName} · {formatCount(workbook.rowCount)} 行</span>
+      <strong class="name" data-tauri-drag-region title={workbook.importedName}>
+        {workbook.importedName}
+      </strong>
+      <span class="meta faint" data-tauri-drag-region>
+        {workbook.sheetName} · {formatCount(workbook.rowCount)} 行
+      </span>
     {/if}
   </div>
 
@@ -48,6 +53,8 @@
       导出副本
     </button>
   </div>
+
+  <WindowControls />
 </header>
 
 <style>
@@ -56,7 +63,7 @@
     align-items: center;
     gap: 16px;
     height: 48px;
-    padding: 0 12px;
+    padding: 0 0 0 12px;
     background: var(--surface);
     border-bottom: 1px solid var(--border);
     flex: none;
@@ -110,5 +117,6 @@
     display: flex;
     gap: 8px;
     flex: none;
+    margin-right: 4px;
   }
 </style>

@@ -182,6 +182,9 @@ M9 - 前端重构（Svelte 工作台，已完成）
 - 首次设置、导入、启动错误页简化为居中卡片；操作结果改为底部 toast 通知，成功提示 5 秒自动消失。
 - 实机验收发现并修复 `$effect` 内调用含“读-改-写”逻辑导致的 `effect_update_depth_exceeded` 无限循环（用 `untrack` 包裹副作用调用）。
 - Tauri 实机冒烟验证通过：导入样表后画廊、Tag 筛选、详情面板、字段复制和缩略图加载均正常；`svelte-check` 0 错误 0 警告。
+- 窗口改为无系统边框（`decorations: false`）+ 内联标题栏：顶栏承担拖拽（`data-tauri-drag-region`，双击可最大化/还原），右上角自绘最小化/最大化/关闭按钮；流程页使用独立标题条。新增窗口控制相关 capability 权限。用户实机确认拖拽和窗口按钮可用。
+- 应用版本提升到 0.2.0；`tauri.conf.json` 补充 bundle 图标配置并将打包目标固定为 NSIS。
+- 安装器 `智能表格_0.2.0_x64-setup.exe` 大小为 3,774,303 字节，SHA-256 为 `F305CBFC7FF7090D17D7C785B2A1FBAA897FFA13B1D41386DD894B2FDA9833B4`；以 ASCII 文件名上传至 GitHub Release `v_2`。
 
 ## 进行中
 

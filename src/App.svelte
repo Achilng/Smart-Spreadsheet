@@ -3,29 +3,75 @@
   import ImportScreen from "./lib/components/ImportScreen.svelte";
   import Notice from "./lib/components/Notice.svelte";
   import SetupScreen from "./lib/components/SetupScreen.svelte";
+  import WindowControls from "./lib/components/WindowControls.svelte";
   import Workspace from "./lib/components/Workspace.svelte";
 
   void refreshSnapshot();
+
+  const inWorkspace = $derived(
+    Boolean(
+      app.loaded &&
+        app.snapshot &&
+        !app.snapshot.startupError &&
+        app.snapshot.dataDirectory &&
+        app.snapshot.workbook,
+    ),
+  );
 </script>
 
-{#if !app.loaded}
-  <div class="center-screen">
-    <p class="muted">正在读取应用状态…</p>
-  </div>
-{:else if app.snapshot?.startupError}
-  <div class="center-screen">
-    <div class="flow-card">
-      <h2>无法打开已配置的数据目录</h2>
-      <p class="muted">{app.snapshot.startupError}</p>
-      <p class="flow-hint">定位文件未被自动覆盖，避免误切换到另一份工作区。</p>
-    </div>
-  </div>
-{:else if !app.snapshot?.dataDirectory}
-  <SetupScreen />
-{:else if !app.snapshot.workbook}
-  <ImportScreen />
-{:else}
+{#if inWorkspace}
   <Workspace />
+{:else}
+  <!-- 无系统边框：流程页用独立标题条承担拖拽和窗口控制 -->
+  <div class="flow-titlebar" data-tauri-drag-region>
+    <span class="flow-app-name" data-tauri-drag-region>智能表格</span>
+    <WindowControls />
+  </div>
+  <div class="flow-body">
+    {#if !app.loaded}
+      <div class="center-screen">
+        <p class="muted">正在读取应用状态…</p>
+      </div>
+    {:else if app.snapshot?.startupError}
+      <div class="center-screen">
+        <div class="flow-card">
+          <h2>无法打开已配置的数据目录</h2>
+          <p class="muted">{app.snapshot.startupError}</p>
+          <p class="flow-hint">定位文件未被自动覆盖，避免误切换到另一份工作区。</p>
+        </div>
+      </div>
+    {:else if !app.snapshot?.dataDirectory}
+      <SetupScreen />
+    {:else}
+      <ImportScreen />
+    {/if}
+  </div>
 {/if}
 
 <Notice />
+
+<style>
+  .flow-titlebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-left: 14px;
+    z-index: 50;
+  }
+
+  .flow-app-name {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--text-3);
+    letter-spacing: 0.04em;
+  }
+
+  .flow-body {
+    height: 100%;
+  }
+</style>
