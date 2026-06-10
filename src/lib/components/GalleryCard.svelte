@@ -1,16 +1,19 @@
 <script lang="ts">
   import type { RowRecord } from "../../api";
   import { rowStore } from "../row-store.svelte";
+  import { getSelectedCount, isRowSelected, toggleRow } from "../selection-store.svelte";
   import { thumbnails } from "../thumbnails";
 
   let {
     row,
+    index,
     x,
     y,
     width,
     imageHeight,
   }: {
     row: RowRecord | undefined;
+    index: number;
     x: number;
     y: number;
     width: number;
@@ -21,6 +24,8 @@
     Boolean(row && (row.imagePath?.trim() || row.embeddedImageRef?.trim())),
   );
   const isActive = $derived(row != null && rowStore.activeRow?.id === row.id);
+  const isChecked = $derived(row != null && isRowSelected(row.id));
+  const selectionActive = $derived(getSelectedCount() > 0);
 
   let thumbUrl = $state<string | null>(null);
   let thumbFailed = $state(false);
@@ -57,12 +62,26 @@
 <div
   class="card"
   class:is-active={isActive}
+  class:is-checked={isChecked}
   class:is-skeleton={!row}
+  class:selection-active={selectionActive}
   style:left="{x}px"
   style:top="{y}px"
   style:width="{width}px"
 >
   {#if row}
+    <input
+      type="checkbox"
+      class="select-box"
+      checked={isChecked}
+      aria-label="选择 Excel 第 {row.sourceRow} 行"
+      onclick={event => {
+        const current = row;
+        if (current) {
+          toggleRow(current.id, index, event.shiftKey);
+        }
+      }}
+    />
     <button
       type="button"
       class="thumb"
@@ -122,6 +141,31 @@
   .card.is-active {
     border-color: var(--accent);
     box-shadow: 0 0 0 2px var(--accent-soft-border);
+  }
+
+  .card.is-checked {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+
+  .select-box {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    z-index: 5;
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    accent-color: var(--accent);
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.1s ease;
+  }
+
+  .card:hover .select-box,
+  .card.is-checked .select-box,
+  .card.selection-active .select-box {
+    opacity: 1;
   }
 
   .thumb {

@@ -86,9 +86,15 @@
     void app.dataVersion;
     thumbnails.clear();
     resetRows();
-    scrollTop = 0;
-    if (viewport) {
-      viewport.scrollTop = 0;
+  });
+
+  // 任何整体重载（筛选变化、批量操作）都回到顶部
+  $effect(() => {
+    if (rowStore.initialLoading) {
+      scrollTop = 0;
+      if (viewport) {
+        viewport.scrollTop = 0;
+      }
     }
   });
 </script>
@@ -120,6 +126,7 @@
       {#each cells as cell (cell.index)}
         <GalleryCard
           row={cell.row}
+          index={cell.index}
           x={cell.x}
           y={cell.y}
           width={cardWidth}

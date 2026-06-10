@@ -1,25 +1,44 @@
 <script lang="ts">
   import { app } from "../app-state.svelte";
+  import { clearSelection, selectAllFiltered } from "../selection-store.svelte";
+  import { rowStore } from "../row-store.svelte";
   import { loadTags } from "../tag-store.svelte";
   import DetailPanel from "./DetailPanel.svelte";
   import GalleryView from "./GalleryView.svelte";
+  import SelectionBar from "./SelectionBar.svelte";
+  import TagSidebar from "./TagSidebar.svelte";
   import TopBar from "./TopBar.svelte";
 
-  // 首次挂载和工作簿替换时刷新 Tag 库
+  // 首次挂载和工作簿替换时刷新 Tag 库并清空选择
   $effect(() => {
     void app.dataVersion;
+    clearSelection();
     void loadTags();
   });
+
+  function onKeydown(event: KeyboardEvent): void {
+    // Ctrl+A 全选筛选结果（输入框内除外）
+    if (
+      event.key.toLowerCase() === "a" &&
+      (event.ctrlKey || event.metaKey) &&
+      !(event.target instanceof HTMLInputElement) &&
+      !(event.target instanceof HTMLTextAreaElement)
+    ) {
+      event.preventDefault();
+      if (rowStore.totalCount > 0) {
+        void selectAllFiltered();
+      }
+    }
+  }
 </script>
+
+<svelte:window onkeydown={onKeydown} />
 
 <div class="workspace">
   <TopBar />
   <div class="workspace-body">
     <aside class="sidebar">
-      <div class="panel-placeholder">
-        <h3>Tag 库</h3>
-        <p class="faint">筛选与新建 Tag（阶段 4 接入）</p>
-      </div>
+      <TagSidebar />
     </aside>
 
     <main class="main-area">
@@ -31,6 +50,7 @@
           <p class="faint">多列表格（阶段 5 接入）</p>
         </div>
       {/if}
+      <SelectionBar />
     </main>
 
     {#if app.detailOpen}
@@ -80,6 +100,7 @@
     display: flex;
     flex-direction: column;
     background: var(--bg);
+    position: relative;
   }
 
   .detail {
