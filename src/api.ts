@@ -70,6 +70,11 @@ export interface TagMutationResult {
   associationsChanged: number;
 }
 
+export interface ExportResult {
+  path: string;
+  rowCount: number;
+}
+
 export function getAppSnapshot(): Promise<AppSnapshot> {
   return invoke<AppSnapshot>("get_app_snapshot");
 }
@@ -118,4 +123,8 @@ export function getRowThumbnail(rowId: number): Promise<ArrayBuffer> {
 
 export function getRowPreview(rowId: number): Promise<ArrayBuffer> {
   return invoke<ArrayBuffer>("get_row_preview", { rowId });
+}
+
+export function exportWorkbook(path: string): Promise<ExportResult> {
+  return invoke<ExportResult>("export_workbook", { path });
 }

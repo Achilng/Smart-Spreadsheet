@@ -1,7 +1,8 @@
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 
 import {
   getAppSnapshot,
+  exportWorkbook,
   importWorkbook,
   initializeDataDirectory,
   openDataDirectory,
@@ -138,9 +139,18 @@ function renderWorkspace(state: AppSnapshot): string {
           <h2 id="workspace-title">${workbook ? "数据已准备好" : "导入第一份工作簿"}</h2>
           <p class="directory-path" title="${directory}">${directory}</p>
         </div>
-        <button id="import-workbook" class="primary-action compact-action" type="button" ${disabled()}>
-          ${workbook ? "替换工作簿" : "选择 Excel"}
-        </button>
+        <div class="workspace-heading-actions">
+          ${
+            workbook
+              ? `<button id="export-workbook" class="secondary-action compact-action" type="button" ${disabled()}>
+                   导出副本
+                 </button>`
+              : ""
+          }
+          <button id="import-workbook" class="primary-action compact-action" type="button" ${disabled()}>
+            ${workbook ? "替换工作簿" : "选择 Excel"}
+          </button>
+        </div>
       </div>
       ${workbook ? renderWorkbookSummary(workbook) : renderEmptyWorkbook()}
       ${workbook ? renderTableSection(workbook.rowCount) : ""}
@@ -224,6 +234,9 @@ function bindActions(): void {
   document
     .querySelector<HTMLButtonElement>("#import-workbook")
     ?.addEventListener("click", () => void chooseWorkbook());
+  document
+    .querySelector<HTMLButtonElement>("#export-workbook")
+    ?.addEventListener("click", () => void chooseExport());
 }
 
 function mountTagWorkspace(): void {
@@ -278,6 +291,29 @@ async function chooseWorkbook(): Promise<void> {
     notice = {
       tone: "success",
       text: `已导入 ${result.importedRows.toLocaleString("zh-CN")} 行，识别 ${result.embeddedImages.toLocaleString("zh-CN")} 张嵌入图片。`,
+    };
+  });
+}
+
+async function chooseExport(): Promise<void> {
+  const workbook = snapshot?.workbook;
+  if (!workbook) {
+    return;
+  }
+  const baseName = workbook.importedName.replace(/\.xlsx$/i, "") || "smart-spreadsheet";
+  const selection = await save({
+    title: "导出新的 Excel 副本（不覆盖已有文件）",
+    defaultPath: `${baseName}-tagged.xlsx`,
+    filters: [{ name: "Excel 工作簿", extensions: ["xlsx"] }],
+  });
+  if (typeof selection !== "string") {
+    return;
+  }
+  await runAction(async () => {
+    const result = await exportWorkbook(selection);
+    notice = {
+      tone: "success",
+      text: `已导出 ${result.rowCount.toLocaleString("zh-CN")} 行到 ${result.path}`,
     };
   });
 }

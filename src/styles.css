@@ -241,6 +241,13 @@ h2 {
   margin-bottom: 32px;
 }
 
+.workspace-heading-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  justify-content: flex-end;
+}
+
 .workspace-heading h2 {
   margin-bottom: 12px;
   font-size: clamp(38px, 5vw, 64px);
@@ -1071,6 +1078,12 @@ h2 {
   .selection-actions {
     flex-direction: column;
     gap: 18px;
+  }
+
+
+  .workspace-heading-actions {
+    width: 100%;
+    justify-content: flex-start;
   }
 
   .mode-switch,
