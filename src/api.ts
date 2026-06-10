@@ -111,3 +111,11 @@ export function removeTagsFromSelection(
 ): Promise<TagMutationResult> {
   return invoke<TagMutationResult>("remove_tags_from_selection", { selection, tags });
 }
+
+export function getRowThumbnail(rowId: number): Promise<ArrayBuffer> {
+  return invoke<ArrayBuffer>("get_row_thumbnail", { rowId });
+}
+
+export function getRowPreview(rowId: number): Promise<ArrayBuffer> {
+  return invoke<ArrayBuffer>("get_row_preview", { rowId });
+}

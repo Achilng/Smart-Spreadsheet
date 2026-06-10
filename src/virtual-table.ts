@@ -1,4 +1,11 @@
-import { queryRows, type RowQuery, type RowRecord, type TagMatchMode } from "./api";
+import {
+  getRowPreview,
+  queryRows,
+  type RowQuery,
+  type RowRecord,
+  type TagMatchMode,
+} from "./api";
+import { ThumbnailLoader, binaryBuffer } from "./image-loader";
 
 const PAGE_SIZE = 200;
 const ROW_HEIGHT = 116;
@@ -25,6 +32,7 @@ export class VirtualTable {
   readonly #root: HTMLElement;
   readonly #detailHost: HTMLElement;
   readonly #options: VirtualTableOptions;
+  readonly #thumbnailLoader = new ThumbnailLoader();
   readonly #pages = new Map<number, RowRecord[]>();
   readonly #pendingPages = new Map<number, number>();
   #viewport: HTMLElement;
@@ -67,6 +75,7 @@ export class VirtualTable {
     window.removeEventListener("resize", this.#scheduleRender);
     window.cancelAnimationFrame(this.#renderFrame);
     this.#closeDetails?.();
+    this.#thumbnailLoader.dispose();
     this.#detailHost.replaceChildren();
   }
 
@@ -80,6 +89,7 @@ export class VirtualTable {
     this.#viewport.scrollTop = 0;
     this.#spacer.style.height = "0px";
     this.#layer.replaceChildren();
+    this.#thumbnailLoader.retain(new Set());
     this.#showStatus("正在加载表格…");
     this.#emitPageState();
     void this.#loadPage(0, this.#generation);
@@ -157,15 +167,20 @@ export class VirtualTable {
     const first = Math.max(0, Math.floor(this.#viewport.scrollTop / ROW_HEIGHT) - OVERSCAN);
     const last = Math.min(this.#totalCount, first + visibleCount + OVERSCAN * 2);
     const fragment = document.createDocumentFragment();
+    const visibleRowIds = new Set<number>();
 
     for (let index = first; index < last; index += 1) {
       const pageIndex = Math.floor(index / PAGE_SIZE);
       const row = this.#pages.get(pageIndex)?.[index % PAGE_SIZE];
+      if (row) {
+        visibleRowIds.add(row.id);
+      }
       fragment.append(row ? this.#createRow(row, index) : this.#createSkeleton(index));
       if (!row) {
         void this.#loadPage(pageIndex, this.#generation);
       }
     }
+    this.#thumbnailLoader.retain(visibleRowIds);
     this.#layer.replaceChildren(fragment);
 
     const nextPage = Math.floor(last / PAGE_SIZE);
@@ -197,7 +212,7 @@ export class VirtualTable {
     element.append(
       selection,
       cell(String(row.sourceRow), "row-number"),
-      imageCell(row),
+      this.#createImageCell(row),
       cell(row.time ?? "—", "time-cell"),
       cell(row.positivePrompt ?? "—", "prompt-cell"),
       cell(row.negativePrompt ?? "—", "prompt-cell muted-cell"),
@@ -226,6 +241,45 @@ export class VirtualTable {
       placeholder.className = "skeleton-line";
       element.append(placeholder);
     }
+    return element;
+  }
+
+  #createImageCell(row: RowRecord): HTMLElement {
+    const element = document.createElement("div");
+    element.className = "sheet-cell image-cell";
+    const hasSource = Boolean(row.imagePath?.trim() || row.embeddedImageRef?.trim());
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "thumbnail-button";
+    button.disabled = !hasSource;
+    button.setAttribute("aria-label", `预览 Excel 第 ${row.sourceRow} 行图片`);
+    const placeholder = document.createElement("span");
+    placeholder.textContent = hasSource ? "加载中" : "缺失";
+    button.append(placeholder);
+    if (hasSource) {
+      button.addEventListener("click", () => this.#showImagePreview(row));
+      void this.#thumbnailLoader.load(row.id).then(
+        url => {
+          if (!button.isConnected) {
+            return;
+          }
+          const image = document.createElement("img");
+          image.src = url;
+          image.alt = `Excel 第 ${row.sourceRow} 行缩略图`;
+          button.replaceChildren(image);
+          button.classList.add("is-loaded");
+        },
+        error => {
+          if (!button.isConnected) {
+            return;
+          }
+          placeholder.textContent = "不可用";
+          button.title = errorText(error);
+          button.classList.add("is-error");
+        },
+      );
+    }
+    element.append(button);
     return element;
   }
 
@@ -333,6 +387,92 @@ export class VirtualTable {
     this.#detailHost.replaceChildren(backdrop);
     close.focus();
   }
+
+  #showImagePreview(row: RowRecord): void {
+    this.#closeDetails?.();
+    const backdrop = document.createElement("div");
+    backdrop.className = "detail-backdrop image-preview-backdrop";
+    const panel = document.createElement("article");
+    panel.className = "image-preview-panel";
+    panel.setAttribute("role", "dialog");
+    panel.setAttribute("aria-modal", "true");
+    panel.setAttribute("aria-label", `Excel 第 ${row.sourceRow} 行图片预览`);
+
+    const header = document.createElement("header");
+    const title = document.createElement("div");
+    const eyebrow = document.createElement("span");
+    eyebrow.textContent = `Excel 第 ${row.sourceRow} 行`;
+    const heading = document.createElement("h3");
+    heading.textContent = row.time ?? "图片预览";
+    title.append(eyebrow, heading);
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "detail-close";
+    close.textContent = "关闭";
+    header.append(title, close);
+
+    const stage = document.createElement("div");
+    stage.className = "image-preview-stage";
+    const loading = document.createElement("span");
+    loading.textContent = "正在加载预览…";
+    stage.append(loading);
+    panel.append(header, stage);
+    backdrop.append(panel);
+
+    let closed = false;
+    let previewUrl: string | null = null;
+    const onKeydown = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") {
+        closePreview();
+      }
+    };
+    const closePreview = (): void => {
+      if (closed) {
+        return;
+      }
+      closed = true;
+      window.removeEventListener("keydown", onKeydown);
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+      }
+      this.#detailHost.replaceChildren();
+      if (this.#closeDetails === closePreview) {
+        this.#closeDetails = null;
+      }
+    };
+    close.addEventListener("click", closePreview);
+    backdrop.addEventListener("click", event => {
+      if (event.target === backdrop) {
+        closePreview();
+      }
+    });
+    window.addEventListener("keydown", onKeydown);
+    this.#closeDetails = closePreview;
+    this.#detailHost.replaceChildren(backdrop);
+    close.focus();
+
+    void getRowPreview(row.id).then(
+      response => {
+        const buffer = binaryBuffer(response);
+        const url = URL.createObjectURL(new Blob([buffer], { type: "image/png" }));
+        if (closed) {
+          URL.revokeObjectURL(url);
+          return;
+        }
+        previewUrl = url;
+        const image = document.createElement("img");
+        image.src = url;
+        image.alt = `Excel 第 ${row.sourceRow} 行图片预览`;
+        stage.replaceChildren(image);
+      },
+      error => {
+        if (!closed) {
+          loading.textContent = `预览加载失败：${errorText(error)}`;
+          loading.classList.add("is-error");
+        }
+      },
+    );
+  }
 }
 
 function cloneQuery(query: TableQuery): TableQuery {
@@ -344,15 +484,6 @@ function cell(value: string, className: string): HTMLElement {
   element.className = `sheet-cell ${className}`;
   element.textContent = value;
   element.title = value;
-  return element;
-}
-
-function imageCell(row: RowRecord): HTMLElement {
-  const element = document.createElement("div");
-  element.className = "sheet-cell image-cell";
-  const placeholder = document.createElement("span");
-  placeholder.textContent = row.embeddedImageRef ? "内嵌" : row.imagePath ? "路径" : "缺失";
-  element.append(placeholder);
   return element;
 }
 
