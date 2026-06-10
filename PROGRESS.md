@@ -96,7 +96,7 @@ M7 - 验收与发布（已完成）
 - 首次设置界面已接通 native 目录/文件对话框；导入固定结构 `.xlsx` 后显示工作簿名、工作表、行数和导入时间。
 - 替换已有工作簿前要求用户明确确认，并说明会清除现有行与 Tag 数据但不会修改原 Excel。
 - 前端对路径、文件名和后端错误文本做 HTML 转义，避免工作簿元数据进入 DOM 时被解释为标记。
-- 使用隔离在 `D:\Agent\Agent_temp` 的 APPDATA/LOCALAPPDATA 完成状态命令版桌面启动冒烟测试。
+- 使用 D 盘临时受管数据目录完成状态命令版桌面启动冒烟测试。
 - 新增 `query_rows` Tauri command，将既有分页、Tag AND / OR 筛选和计数能力暴露给桌面前端。
 - 实现固定 116px 行高的虚拟表格，按 200 行分页缓存，只渲染可视区域及 5 行过扫描范围。
 - 表格支持滚动到任意分页、邻页预取、加载占位和长提示词截断，不会将全部长文本一次性发送到前端。
@@ -137,7 +137,7 @@ M7 - 验收与发布（已完成）
 ### M7 - 验收与发布
 
 - 使用仓库内 Tauri CLI 生成嵌入生产前端资源的 debug 应用，确认不依赖 Vite 开发服务器即可启动。
-- 在隔离 APPDATA、LOCALAPPDATA 和临时受管目录中完成真实 Windows 桌面流程：首次设置、native 目录选择、native Excel 选择、导入 5 行及 5 张嵌入图片。
+- 使用 D 盘临时受管目录完成真实 Windows 桌面流程：首次设置、native 目录选择、native Excel 选择、导入 5 行及 5 张嵌入图片。
 - 在真实应用中添加 `CaseTag` 与 `caseTag`，确认按大小写分别计数、同一行同时显示，并在应用重启后完整恢复。
 - 点击缩略图验证 2048px 图片预览弹窗可正常打开和关闭。
 - 真实桌面验收发现 WebView `window.confirm` 无法调用；已统一改用 Tauri dialog 插件确认框，覆盖替换工作簿、迁移目录和批量删除 Tag。
@@ -151,6 +151,7 @@ M7 - 验收与发布（已完成）
 - `PLAN.md` 中全部 11 项验收标准均已通过。
 - 已创建并推送首个版本 tag `v_1`，GitHub Release 已发布为 Latest。
 - Release 地址：`https://github.com/Achilng/Smart-Spreadsheet/releases/tag/v_1`；已上传 `Smart-Spreadsheet_0.1.0_x64-setup.exe`。
+- Windows 已知目录 API 不采用临时 APPDATA 环境变量；验收结束后已将测试定位文件备份到 D 盘，并清理本应用在 C 盘生成的状态目录和 WebView2 缓存。
 
 ## 进行中
 
