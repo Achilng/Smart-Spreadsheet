@@ -90,7 +90,8 @@ export function patchRowTags(rowId: number, tags: string[]): void {
     }
   }
   if (rowStore.activeRow?.id === rowId) {
-    rowStore.activeRow = { ...rowStore.activeRow, tags: [...tags] };
+    // 原位修改而不是替换对象：详情面板依赖对象引用判断是否需要重载预览图
+    rowStore.activeRow.tags = [...tags];
   }
   rowStore.pagesVersion += 1;
 }

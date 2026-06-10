@@ -23,6 +23,7 @@ export const app = $state({
   busy: false,
   notice: null as Notice | null,
   viewMode: "gallery" as ViewMode,
+  detailOpen: true,
   /** 工作簿被导入/替换时 +1，数据视图据此整体重载 */
   dataVersion: 0,
 });

@@ -1,8 +1,15 @@
 <script lang="ts">
   import { app } from "../app-state.svelte";
-  import { rowStore } from "../row-store.svelte";
+  import { loadTags } from "../tag-store.svelte";
+  import DetailPanel from "./DetailPanel.svelte";
   import GalleryView from "./GalleryView.svelte";
   import TopBar from "./TopBar.svelte";
+
+  // 首次挂载和工作簿替换时刷新 Tag 库
+  $effect(() => {
+    void app.dataVersion;
+    void loadTags();
+  });
 </script>
 
 <div class="workspace">
@@ -26,16 +33,20 @@
       {/if}
     </main>
 
-    <aside class="detail">
-      <div class="panel-placeholder">
-        <h3>详情</h3>
-        {#if rowStore.activeRow}
-          <p class="faint">已选中 Excel 第 {rowStore.activeRow.sourceRow} 行（阶段 3 接入）</p>
-        {:else}
-          <p class="faint">点击图片查看（阶段 3 接入）</p>
-        {/if}
-      </div>
-    </aside>
+    {#if app.detailOpen}
+      <aside class="detail">
+        <DetailPanel />
+      </aside>
+    {:else}
+      <button
+        type="button"
+        class="detail-strip"
+        title="展开详情面板"
+        onclick={() => (app.detailOpen = true)}
+      >
+        «
+      </button>
+    {/if}
   </div>
 </div>
 
@@ -79,6 +90,21 @@
     display: flex;
     flex-direction: column;
     min-height: 0;
+  }
+
+  .detail-strip {
+    width: 22px;
+    flex: none;
+    border: none;
+    border-left: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-3);
+    font-size: 13px;
+  }
+
+  .detail-strip:hover {
+    background: var(--surface-2);
+    color: var(--text);
   }
 
   .panel-placeholder {
