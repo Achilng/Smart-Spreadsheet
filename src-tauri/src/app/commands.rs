@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
-use tauri::State;
+use tauri::{State, ipc::Response};
 
 use super::runtime::{AppRuntime, RuntimeSnapshot};
 use crate::db::{
@@ -212,6 +212,28 @@ pub(crate) fn remove_tags_from_selection(
     runtime
         .remove_tags_from_selection(&selection.into(), &tags)
         .map(TagMutationResultDto::from)
+        .map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn get_row_thumbnail(
+    row_id: i64,
+    runtime: State<'_, AppRuntime>,
+) -> Result<Response, String> {
+    runtime
+        .row_thumbnail(row_id)
+        .map(Response::new)
+        .map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn get_row_preview(
+    row_id: i64,
+    runtime: State<'_, AppRuntime>,
+) -> Result<Response, String> {
+    runtime
+        .row_preview(row_id)
+        .map(Response::new)
         .map_err(error_text)
 }
 

@@ -1,4 +1,5 @@
 mod app;
+mod images;
 
 pub mod db;
 pub mod excel;
@@ -25,6 +26,8 @@ pub fn run() {
             app::commands::count_selected_rows,
             app::commands::add_tags_to_selection,
             app::commands::remove_tags_from_selection,
+            app::commands::get_row_thumbnail,
+            app::commands::get_row_preview,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Smart Spreadsheet");

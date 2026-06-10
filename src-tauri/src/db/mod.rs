@@ -1,3 +1,4 @@
+mod images;
 mod migrations;
 mod query;
 mod tags;
@@ -13,6 +14,7 @@ use std::time::Duration;
 use rusqlite::{Connection, MAIN_DB, TransactionBehavior};
 use thiserror::Error;
 
+pub use images::RowImageLocator;
 pub use migrations::CURRENT_SCHEMA_VERSION;
 use migrations::MIGRATION_1;
 
@@ -32,6 +34,8 @@ pub enum DatabaseError {
     OffsetOverflow,
     #[error("查询计数超出可表示范围")]
     CountOverflow,
+    #[error("不存在的行 ID: {0}")]
+    RowNotFound(i64),
 }
 
 pub struct Database {

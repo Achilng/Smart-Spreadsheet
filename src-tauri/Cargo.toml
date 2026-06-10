@@ -13,6 +13,7 @@ tauri-build = { version = "2.6.2", features = [] }
 
 [dependencies]
 calamine = "0.35.0"
+image = { version = "0.25.10", default-features = false, features = ["bmp", "gif", "ico", "jpeg", "png", "tiff", "webp"] }
 quick-xml = "0.39.4"
 rusqlite = { version = "0.39.0", default-features = false, features = ["backup", "bundled"] }
 serde = { version = "1.0.228", features = ["derive"] }

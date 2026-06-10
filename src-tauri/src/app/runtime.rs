@@ -10,6 +10,7 @@ use crate::db::{
     RowPage, RowQuery, RowSelection, TagMutationError, TagMutationResult, TagSummary,
     WorkbookSummary,
 };
+use crate::images::{ImageVariant, RowImageError};
 use crate::storage::{DataDirectory, ImportOutcome, StorageError, WorkbookImportError};
 
 const LOCATOR_VERSION: u32 = 1;
@@ -43,6 +44,8 @@ pub(crate) enum AppRuntimeError {
     Database(#[from] crate::db::DatabaseError),
     #[error("Tag 操作失败: {0}")]
     TagMutation(#[from] TagMutationError),
+    #[error("图片读取失败: {0}")]
+    Image(#[from] RowImageError),
     #[error("无法恢复此前的数据目录定位文件: {0}")]
     LocatorRollbackFailed(PathBuf),
 }
@@ -190,6 +193,26 @@ impl AppRuntime {
         Ok(directory
             .open_database()?
             .remove_tags_from_selection(selection, tags)?)
+    }
+
+    pub(crate) fn row_thumbnail(&self, row_id: i64) -> Result<Vec<u8>, AppRuntimeError> {
+        self.row_image(row_id, ImageVariant::Thumbnail)
+    }
+
+    pub(crate) fn row_preview(&self, row_id: i64) -> Result<Vec<u8>, AppRuntimeError> {
+        self.row_image(row_id, ImageVariant::Preview)
+    }
+
+    fn row_image(&self, row_id: i64, variant: ImageVariant) -> Result<Vec<u8>, AppRuntimeError> {
+        let state = self.lock_state()?;
+        ensure_startup_valid(&state)?;
+        let directory = state
+            .active
+            .as_ref()
+            .ok_or(AppRuntimeError::NotConfigured)?
+            .clone();
+        drop(state);
+        Ok(directory.load_row_image(row_id, variant)?.png_bytes)
     }
 
     fn configure_directory<F>(
@@ -366,6 +389,21 @@ mod tests {
             .unwrap();
         assert_eq!(removed.affected_rows, 2);
         assert_eq!(removed.associations_changed, 2);
+    }
+
+    #[test]
+    fn loads_thumbnail_and_preview_for_imported_row() {
+        let temporary = TemporaryRuntime::new();
+        let runtime = AppRuntime::load(temporary.locator.clone());
+        runtime.initialize_directory(&temporary.data).unwrap();
+        runtime.import_workbook(sample_workbook()).unwrap();
+
+        let thumbnail = runtime.row_thumbnail(1).unwrap();
+        let preview = runtime.row_preview(1).unwrap();
+
+        assert!(thumbnail.starts_with(b"\x89PNG\r\n\x1a\n"));
+        assert!(preview.starts_with(b"\x89PNG\r\n\x1a\n"));
+        assert!(thumbnail.len() <= preview.len());
     }
 
     fn sample_workbook() -> PathBuf {
