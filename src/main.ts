@@ -7,6 +7,7 @@ import {
   openDataDirectory,
   type AppSnapshot,
 } from "./api";
+import { VirtualTable } from "./virtual-table";
 import "./styles.css";
 
 const app = document.querySelector<HTMLDivElement>("#app");
@@ -19,6 +20,7 @@ const appRoot: HTMLDivElement = app;
 let snapshot: AppSnapshot | null = null;
 let busy = false;
 let notice: { tone: "error" | "success"; text: string } | null = null;
+let virtualTable: VirtualTable | null = null;
 
 void refresh();
 
@@ -36,6 +38,8 @@ async function refresh(): Promise<void> {
 }
 
 function render(): void {
+  virtualTable?.dispose();
+  virtualTable = null;
   appRoot.innerHTML = `
     <main class="app-shell">
       ${renderHeader()}
@@ -44,6 +48,7 @@ function render(): void {
     </main>
   `;
   bindActions();
+  mountVirtualTable();
 }
 
 function renderHeader(): string {
@@ -138,7 +143,24 @@ function renderWorkspace(state: AppSnapshot): string {
         </button>
       </div>
       ${workbook ? renderWorkbookSummary(workbook) : renderEmptyWorkbook()}
+      ${workbook ? renderTableSection(workbook.rowCount) : ""}
       <p class="implementation-note">数据目录已经锁定；更换位置必须通过后续的“迁移数据目录”功能。</p>
+    </section>
+  `;
+}
+
+function renderTableSection(rowCount: number): string {
+  return `
+    <section class="table-section" aria-labelledby="table-title">
+      <div class="table-titlebar">
+        <div>
+          <span class="step-label">数据浏览</span>
+          <h3 id="table-title">工作簿记录</h3>
+        </div>
+        <span>${rowCount.toLocaleString("zh-CN")} 行</span>
+      </div>
+      <div id="virtual-table-root" class="virtual-table-root"></div>
+      <div id="row-detail-host"></div>
     </section>
   `;
 }
@@ -200,6 +222,14 @@ function bindActions(): void {
   document
     .querySelector<HTMLButtonElement>("#import-workbook")
     ?.addEventListener("click", () => void chooseWorkbook());
+}
+
+function mountVirtualTable(): void {
+  const root = document.querySelector<HTMLElement>("#virtual-table-root");
+  const detailHost = document.querySelector<HTMLElement>("#row-detail-host");
+  if (root && detailHost) {
+    virtualTable = new VirtualTable(root, detailHost);
+  }
 }
 
 async function chooseDirectory(mode: "initialize" | "open"): Promise<void> {

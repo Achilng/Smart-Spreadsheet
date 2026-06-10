@@ -6,7 +6,7 @@ use std::sync::{Mutex, MutexGuard};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::db::WorkbookSummary;
+use crate::db::{RowPage, RowQuery, WorkbookSummary};
 use crate::storage::{DataDirectory, ImportOutcome, StorageError, WorkbookImportError};
 
 const LOCATOR_VERSION: u32 = 1;
@@ -119,6 +119,17 @@ impl AppRuntime {
         let outcome = directory.import_workbook(path)?;
         drop(state);
         Ok((self.snapshot()?, outcome))
+    }
+
+    pub(crate) fn query_rows(&self, query: &RowQuery) -> Result<RowPage, AppRuntimeError> {
+        let state = self.lock_state()?;
+        ensure_startup_valid(&state)?;
+        let directory = state
+            .active
+            .as_ref()
+            .ok_or(AppRuntimeError::NotConfigured)?;
+        let mut database = directory.open_database()?;
+        Ok(database.query_rows(query)?)
     }
 
     fn configure_directory<F>(

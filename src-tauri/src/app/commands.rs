@@ -1,10 +1,10 @@
 use std::path::PathBuf;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use super::runtime::{AppRuntime, RuntimeSnapshot};
-use crate::db::WorkbookSummary;
+use crate::db::{RowPage, RowQuery, RowRecord, TagMatchMode, WorkbookSummary};
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -30,6 +30,47 @@ pub(crate) struct ImportResultDto {
     imported_rows: usize,
     embedded_images: usize,
     previous_copy_cleanup: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RowQueryDto {
+    offset: u64,
+    limit: u32,
+    tags: Vec<String>,
+    tag_mode: TagMatchModeDto,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum TagMatchModeDto {
+    And,
+    Or,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RowPageDto {
+    rows: Vec<RowRecordDto>,
+    total_count: u64,
+    offset: u64,
+    limit: u32,
+    has_more: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RowRecordDto {
+    id: i64,
+    source_row: u32,
+    time: Option<String>,
+    positive_prompt: Option<String>,
+    negative_prompt: Option<String>,
+    artists: Option<String>,
+    image_folder: Option<String>,
+    image_path: Option<String>,
+    embedded_image_ref: Option<String>,
+    tags: Vec<String>,
 }
 
 #[tauri::command]
@@ -80,6 +121,23 @@ pub(crate) fn import_workbook(
         .map_err(error_text)
 }
 
+#[tauri::command]
+pub(crate) fn query_rows(
+    query: RowQueryDto,
+    runtime: State<'_, AppRuntime>,
+) -> Result<RowPageDto, String> {
+    let query = RowQuery {
+        offset: query.offset,
+        limit: query.limit,
+        tags: query.tags,
+        tag_mode: query.tag_mode.into(),
+    };
+    runtime
+        .query_rows(&query)
+        .map(RowPageDto::from)
+        .map_err(error_text)
+}
+
 impl From<RuntimeSnapshot> for AppSnapshotDto {
     fn from(snapshot: RuntimeSnapshot) -> Self {
         Self {
@@ -99,6 +157,45 @@ impl From<WorkbookSummary> for WorkbookSummaryDto {
             imported_at: summary.imported_at,
             sheet_name: summary.sheet_name,
             row_count: summary.row_count,
+        }
+    }
+}
+
+impl From<TagMatchModeDto> for TagMatchMode {
+    fn from(mode: TagMatchModeDto) -> Self {
+        match mode {
+            TagMatchModeDto::And => Self::And,
+            TagMatchModeDto::Or => Self::Or,
+        }
+    }
+}
+
+impl From<RowPage> for RowPageDto {
+    fn from(page: RowPage) -> Self {
+        let has_more = page.has_more();
+        Self {
+            rows: page.rows.into_iter().map(RowRecordDto::from).collect(),
+            total_count: page.total_count,
+            offset: page.offset,
+            limit: page.limit,
+            has_more,
+        }
+    }
+}
+
+impl From<RowRecord> for RowRecordDto {
+    fn from(row: RowRecord) -> Self {
+        Self {
+            id: row.id,
+            source_row: row.source_row,
+            time: row.time,
+            positive_prompt: row.positive_prompt,
+            negative_prompt: row.negative_prompt,
+            artists: row.artists,
+            image_folder: row.image_folder,
+            image_path: row.image_path,
+            embedded_image_ref: row.embedded_image_ref,
+            tags: row.tags,
         }
     }
 }
