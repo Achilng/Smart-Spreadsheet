@@ -7,7 +7,7 @@ import {
   openDataDirectory,
   type AppSnapshot,
 } from "./api";
-import { VirtualTable } from "./virtual-table";
+import { TagWorkspace } from "./tag-workspace";
 import "./styles.css";
 
 const app = document.querySelector<HTMLDivElement>("#app");
@@ -20,7 +20,7 @@ const appRoot: HTMLDivElement = app;
 let snapshot: AppSnapshot | null = null;
 let busy = false;
 let notice: { tone: "error" | "success"; text: string } | null = null;
-let virtualTable: VirtualTable | null = null;
+let tagWorkspace: TagWorkspace | null = null;
 
 void refresh();
 
@@ -38,8 +38,8 @@ async function refresh(): Promise<void> {
 }
 
 function render(): void {
-  virtualTable?.dispose();
-  virtualTable = null;
+  tagWorkspace?.dispose();
+  tagWorkspace = null;
   appRoot.innerHTML = `
     <main class="app-shell">
       ${renderHeader()}
@@ -48,7 +48,7 @@ function render(): void {
     </main>
   `;
   bindActions();
-  mountVirtualTable();
+  mountTagWorkspace();
 }
 
 function renderHeader(): string {
@@ -159,6 +159,8 @@ function renderTableSection(rowCount: number): string {
         </div>
         <span>${rowCount.toLocaleString("zh-CN")} 行</span>
       </div>
+      <div id="tag-filter-root"></div>
+      <div id="selection-toolbar-root"></div>
       <div id="virtual-table-root" class="virtual-table-root"></div>
       <div id="row-detail-host"></div>
     </section>
@@ -224,11 +226,13 @@ function bindActions(): void {
     ?.addEventListener("click", () => void chooseWorkbook());
 }
 
-function mountVirtualTable(): void {
-  const root = document.querySelector<HTMLElement>("#virtual-table-root");
+function mountTagWorkspace(): void {
+  const filterRoot = document.querySelector<HTMLElement>("#tag-filter-root");
+  const selectionRoot = document.querySelector<HTMLElement>("#selection-toolbar-root");
+  const tableRoot = document.querySelector<HTMLElement>("#virtual-table-root");
   const detailHost = document.querySelector<HTMLElement>("#row-detail-host");
-  if (root && detailHost) {
-    virtualTable = new VirtualTable(root, detailHost);
+  if (filterRoot && selectionRoot && tableRoot && detailHost) {
+    tagWorkspace = new TagWorkspace(filterRoot, selectionRoot, tableRoot, detailHost);
   }
 }
 

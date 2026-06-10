@@ -50,6 +50,26 @@ export interface RowPage {
   hasMore: boolean;
 }
 
+export interface TagSummary {
+  name: string;
+  rowCount: number;
+}
+
+export type RowSelection =
+  | { kind: "explicit"; rowIds: number[] }
+  | {
+      kind: "filtered";
+      tags: string[];
+      tagMode: TagMatchMode;
+      excludedRowIds: number[];
+    };
+
+export interface TagMutationResult {
+  affectedRows: number;
+  normalizedTags: string[];
+  associationsChanged: number;
+}
+
 export function getAppSnapshot(): Promise<AppSnapshot> {
   return invoke<AppSnapshot>("get_app_snapshot");
 }
@@ -68,4 +88,26 @@ export function importWorkbook(path: string): Promise<ImportResult> {
 
 export function queryRows(query: RowQuery): Promise<RowPage> {
   return invoke<RowPage>("query_rows", { query });
+}
+
+export function listUsedTags(): Promise<TagSummary[]> {
+  return invoke<TagSummary[]>("list_used_tags");
+}
+
+export function countSelectedRows(selection: RowSelection): Promise<number> {
+  return invoke<number>("count_selected_rows", { selection });
+}
+
+export function addTagsToSelection(
+  selection: RowSelection,
+  tags: string[],
+): Promise<TagMutationResult> {
+  return invoke<TagMutationResult>("add_tags_to_selection", { selection, tags });
+}
+
+export function removeTagsFromSelection(
+  selection: RowSelection,
+  tags: string[],
+): Promise<TagMutationResult> {
+  return invoke<TagMutationResult>("remove_tags_from_selection", { selection, tags });
 }

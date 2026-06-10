@@ -1,32 +1,55 @@
-import { queryRows, type RowRecord } from "./api";
+import { queryRows, type RowQuery, type RowRecord, type TagMatchMode } from "./api";
 
 const PAGE_SIZE = 200;
 const ROW_HEIGHT = 116;
 const OVERSCAN = 5;
 
+type TableQuery = Pick<RowQuery, "tags" | "tagMode">;
+
+export interface VirtualTablePageState {
+  pageIndex: number;
+  start: number;
+  end: number;
+  totalCount: number;
+  rows: RowRecord[];
+}
+
+export interface VirtualTableOptions {
+  query: TableQuery;
+  isRowSelected: (rowId: number) => boolean;
+  onRowSelectionChange: (rowId: number, selected: boolean) => void;
+  onPageStateChange: (state: VirtualTablePageState) => void;
+}
+
 export class VirtualTable {
   readonly #root: HTMLElement;
   readonly #detailHost: HTMLElement;
+  readonly #options: VirtualTableOptions;
   readonly #pages = new Map<number, RowRecord[]>();
-  readonly #pendingPages = new Set<number>();
+  readonly #pendingPages = new Map<number, number>();
   #viewport: HTMLElement;
   #spacer: HTMLElement;
   #layer: HTMLElement;
+  #query: TableQuery;
   #totalCount = 0;
+  #generation = 0;
   #disposed = false;
   #renderFrame = 0;
+  #lastPageSignature = "";
+  #closeDetails: (() => void) | null = null;
 
-  constructor(root: HTMLElement, detailHost: HTMLElement) {
+  constructor(root: HTMLElement, detailHost: HTMLElement, options: VirtualTableOptions) {
     this.#root = root;
     this.#detailHost = detailHost;
+    this.#options = options;
+    this.#query = cloneQuery(options.query);
     this.#root.innerHTML = `
       <div class="sheet-header" aria-hidden="true">
-        <span>行</span><span>图片</span><span>时间</span><span>正向提示词</span>
+        <span>选</span><span>行</span><span>图片</span><span>时间</span><span>正向提示词</span>
         <span>负向提示词</span><span>画师</span><span>Tags</span><span></span>
       </div>
       <div class="sheet-viewport" role="table" aria-label="工作簿数据">
         <div class="sheet-spacer"><div class="sheet-layer"></div></div>
-        <div class="table-loading">正在加载表格…</div>
       </div>
     `;
     this.#viewport = requiredElement(this.#root, ".sheet-viewport");
@@ -34,15 +57,48 @@ export class VirtualTable {
     this.#layer = requiredElement(this.#root, ".sheet-layer");
     this.#viewport.addEventListener("scroll", this.#scheduleRender, { passive: true });
     window.addEventListener("resize", this.#scheduleRender);
-    void this.#loadPage(0);
+    this.setQuery(this.#query);
   }
 
   dispose(): void {
     this.#disposed = true;
+    this.#generation += 1;
     this.#viewport.removeEventListener("scroll", this.#scheduleRender);
     window.removeEventListener("resize", this.#scheduleRender);
     window.cancelAnimationFrame(this.#renderFrame);
+    this.#closeDetails?.();
     this.#detailHost.replaceChildren();
+  }
+
+  setQuery(query: TableQuery): void {
+    this.#query = cloneQuery(query);
+    this.#generation += 1;
+    this.#pages.clear();
+    this.#pendingPages.clear();
+    this.#totalCount = 0;
+    this.#lastPageSignature = "";
+    this.#viewport.scrollTop = 0;
+    this.#spacer.style.height = "0px";
+    this.#layer.replaceChildren();
+    this.#showStatus("正在加载表格…");
+    this.#emitPageState();
+    void this.#loadPage(0, this.#generation);
+  }
+
+  reload(): void {
+    this.setQuery(this.#query);
+  }
+
+  refreshSelection(): void {
+    this.#renderVisibleRows();
+  }
+
+  getCurrentPageRows(): RowRecord[] {
+    return [...(this.#pages.get(this.#currentPageIndex()) ?? [])];
+  }
+
+  getTotalCount(): number {
+    return this.#totalCount;
   }
 
   readonly #scheduleRender = (): void => {
@@ -50,44 +106,54 @@ export class VirtualTable {
     this.#renderFrame = window.requestAnimationFrame(() => this.#renderVisibleRows());
   };
 
-  async #loadPage(pageIndex: number): Promise<void> {
-    if (this.#disposed || this.#pages.has(pageIndex) || this.#pendingPages.has(pageIndex)) {
+  async #loadPage(pageIndex: number, generation: number): Promise<void> {
+    if (
+      this.#disposed ||
+      generation !== this.#generation ||
+      this.#pages.has(pageIndex) ||
+      this.#pendingPages.get(pageIndex) === generation
+    ) {
       return;
     }
-    this.#pendingPages.add(pageIndex);
+    this.#pendingPages.set(pageIndex, generation);
     try {
       const page = await queryRows({
         offset: pageIndex * PAGE_SIZE,
         limit: PAGE_SIZE,
-        tags: [],
-        tagMode: "and",
+        tags: [...this.#query.tags],
+        tagMode: this.#query.tagMode,
       });
-      if (this.#disposed) {
+      if (this.#disposed || generation !== this.#generation) {
         return;
       }
       this.#pages.set(pageIndex, page.rows);
       this.#totalCount = page.totalCount;
       this.#spacer.style.height = `${this.#totalCount * ROW_HEIGHT}px`;
-      this.#root.querySelector(".table-loading")?.remove();
-      this.#renderVisibleRows();
+      if (this.#totalCount === 0) {
+        this.#layer.replaceChildren();
+        this.#showStatus("当前筛选没有匹配记录。", "is-empty");
+      } else {
+        this.#hideStatus();
+        this.#renderVisibleRows();
+      }
+      this.#emitPageState();
     } catch (error) {
-      if (!this.#disposed) {
-        const loading = this.#root.querySelector<HTMLElement>(".table-loading");
-        if (loading) {
-          loading.textContent = `加载失败：${errorText(error)}`;
-          loading.classList.add("is-error");
-        }
+      if (!this.#disposed && generation === this.#generation) {
+        this.#showStatus(`加载失败：${errorText(error)}`, "is-error");
       }
     } finally {
-      this.#pendingPages.delete(pageIndex);
+      if (this.#pendingPages.get(pageIndex) === generation) {
+        this.#pendingPages.delete(pageIndex);
+      }
     }
   }
 
   #renderVisibleRows(): void {
     if (this.#disposed || this.#totalCount === 0) {
+      this.#emitPageState();
       return;
     }
-    const visibleCount = Math.ceil(this.#viewport.clientHeight / ROW_HEIGHT);
+    const visibleCount = Math.max(1, Math.ceil(this.#viewport.clientHeight / ROW_HEIGHT));
     const first = Math.max(0, Math.floor(this.#viewport.scrollTop / ROW_HEIGHT) - OVERSCAN);
     const last = Math.min(this.#totalCount, first + visibleCount + OVERSCAN * 2);
     const fragment = document.createDocumentFragment();
@@ -97,24 +163,39 @@ export class VirtualTable {
       const row = this.#pages.get(pageIndex)?.[index % PAGE_SIZE];
       fragment.append(row ? this.#createRow(row, index) : this.#createSkeleton(index));
       if (!row) {
-        void this.#loadPage(pageIndex);
+        void this.#loadPage(pageIndex, this.#generation);
       }
     }
     this.#layer.replaceChildren(fragment);
 
     const nextPage = Math.floor(last / PAGE_SIZE);
     if (nextPage * PAGE_SIZE < this.#totalCount) {
-      void this.#loadPage(nextPage);
+      void this.#loadPage(nextPage, this.#generation);
     }
+    this.#emitPageState();
   }
 
   #createRow(row: RowRecord, index: number): HTMLElement {
     const element = document.createElement("div");
-    element.className = "sheet-row";
+    const selected = this.#options.isRowSelected(row.id);
+    element.className = `sheet-row${selected ? " is-selected" : ""}`;
     element.style.transform = `translateY(${index * ROW_HEIGHT}px)`;
     element.setAttribute("role", "row");
 
+    const selection = document.createElement("div");
+    selection.className = "sheet-cell selection-cell";
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = selected;
+    checkbox.setAttribute("aria-label", `选择 Excel 第 ${row.sourceRow} 行`);
+    checkbox.addEventListener("change", () => {
+      this.#options.onRowSelectionChange(row.id, checkbox.checked);
+      this.#renderVisibleRows();
+    });
+    selection.append(checkbox);
+
     element.append(
+      selection,
       cell(String(row.sourceRow), "row-number"),
       imageCell(row),
       cell(row.time ?? "—", "time-cell"),
@@ -140,7 +221,7 @@ export class VirtualTable {
     const element = document.createElement("div");
     element.className = "sheet-row sheet-row-skeleton";
     element.style.transform = `translateY(${index * ROW_HEIGHT}px)`;
-    for (let column = 0; column < 8; column += 1) {
+    for (let column = 0; column < 9; column += 1) {
       const placeholder = document.createElement("span");
       placeholder.className = "skeleton-line";
       element.append(placeholder);
@@ -148,7 +229,50 @@ export class VirtualTable {
     return element;
   }
 
+  #currentPageIndex(): number {
+    if (this.#totalCount === 0) {
+      return 0;
+    }
+    const maximum = Math.max(0, Math.ceil(this.#totalCount / PAGE_SIZE) - 1);
+    return Math.min(maximum, Math.floor(this.#viewport.scrollTop / (PAGE_SIZE * ROW_HEIGHT)));
+  }
+
+  #emitPageState(): void {
+    const pageIndex = this.#currentPageIndex();
+    const rows = this.#pages.get(pageIndex) ?? [];
+    const start = pageIndex * PAGE_SIZE;
+    const end = Math.min(this.#totalCount, start + (rows.length || PAGE_SIZE));
+    const signature = `${this.#generation}:${pageIndex}:${this.#totalCount}:${rows.length}`;
+    if (signature === this.#lastPageSignature) {
+      return;
+    }
+    this.#lastPageSignature = signature;
+    this.#options.onPageStateChange({
+      pageIndex,
+      start,
+      end,
+      totalCount: this.#totalCount,
+      rows: [...rows],
+    });
+  }
+
+  #showStatus(message: string, modifier?: "is-empty" | "is-error"): void {
+    let status = this.#viewport.querySelector<HTMLElement>(".table-loading");
+    if (!status) {
+      status = document.createElement("div");
+      status.className = "table-loading";
+      this.#viewport.append(status);
+    }
+    status.className = `table-loading${modifier ? ` ${modifier}` : ""}`;
+    status.textContent = message;
+  }
+
+  #hideStatus(): void {
+    this.#viewport.querySelector(".table-loading")?.remove();
+  }
+
   #showDetails(row: RowRecord): void {
+    this.#closeDetails?.();
     const backdrop = document.createElement("div");
     backdrop.className = "detail-backdrop";
     const panel = document.createElement("article");
@@ -167,7 +291,6 @@ export class VirtualTable {
     close.type = "button";
     close.className = "detail-close";
     close.textContent = "关闭";
-    close.addEventListener("click", () => this.#detailHost.replaceChildren());
     header.append(title, close);
     panel.append(header);
 
@@ -181,14 +304,39 @@ export class VirtualTable {
     );
     panel.append(content);
     backdrop.append(panel);
+
+    let closed = false;
+    const onKeydown = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") {
+        closeDetails();
+      }
+    };
+    const closeDetails = (): void => {
+      if (closed) {
+        return;
+      }
+      closed = true;
+      window.removeEventListener("keydown", onKeydown);
+      this.#detailHost.replaceChildren();
+      if (this.#closeDetails === closeDetails) {
+        this.#closeDetails = null;
+      }
+    };
+    close.addEventListener("click", closeDetails);
     backdrop.addEventListener("click", (event) => {
       if (event.target === backdrop) {
-        this.#detailHost.replaceChildren();
+        closeDetails();
       }
     });
+    window.addEventListener("keydown", onKeydown);
+    this.#closeDetails = closeDetails;
     this.#detailHost.replaceChildren(backdrop);
     close.focus();
   }
+}
+
+function cloneQuery(query: TableQuery): TableQuery {
+  return { tags: [...query.tags], tagMode: query.tagMode as TagMatchMode };
 }
 
 function cell(value: string, className: string): HTMLElement {
