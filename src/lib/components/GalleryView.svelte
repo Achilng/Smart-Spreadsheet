@@ -1,6 +1,5 @@
 <script lang="ts">
   import type { RowRecord } from "../../api";
-  import { app } from "../app-state.svelte";
   import { PAGE_SIZE, ensurePage, getRow, resetRows, rowStore } from "../row-store.svelte";
   import { thumbnails } from "../thumbnails";
   import GalleryCard from "./GalleryCard.svelte";
@@ -81,14 +80,7 @@
     }
   });
 
-  // 首次挂载 + 工作簿替换时整体重载
-  $effect(() => {
-    void app.dataVersion;
-    thumbnails.clear();
-    resetRows();
-  });
-
-  // 任何整体重载（筛选变化、批量操作）都回到顶部
+  // 任何整体重载（筛选变化、批量操作、工作簿替换）都回到顶部
   $effect(() => {
     if (rowStore.initialLoading) {
       scrollTop = 0;

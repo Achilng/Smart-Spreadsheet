@@ -1,17 +1,21 @@
 <script lang="ts">
   import { app } from "../app-state.svelte";
   import { clearSelection, selectAllFiltered } from "../selection-store.svelte";
-  import { rowStore } from "../row-store.svelte";
+  import { resetRows, rowStore } from "../row-store.svelte";
   import { loadTags } from "../tag-store.svelte";
+  import { thumbnails } from "../thumbnails";
   import DetailPanel from "./DetailPanel.svelte";
   import GalleryView from "./GalleryView.svelte";
   import SelectionBar from "./SelectionBar.svelte";
+  import TableView from "./TableView.svelte";
   import TagSidebar from "./TagSidebar.svelte";
   import TopBar from "./TopBar.svelte";
 
-  // 首次挂载和工作簿替换时刷新 Tag 库并清空选择
+  // 首次挂载和工作簿替换时：清缩略图缓存（行 ID 可能复用）、重载数据、刷新 Tag 库、清空选择
   $effect(() => {
     void app.dataVersion;
+    thumbnails.clear();
+    resetRows();
     clearSelection();
     void loadTags();
   });
@@ -45,10 +49,7 @@
       {#if app.viewMode === "gallery"}
         <GalleryView />
       {:else}
-        <div class="panel-placeholder">
-          <h3>表格视图</h3>
-          <p class="faint">多列表格（阶段 5 接入）</p>
-        </div>
+        <TableView />
       {/if}
       <SelectionBar />
     </main>
