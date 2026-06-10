@@ -6,7 +6,10 @@ use std::sync::{Mutex, MutexGuard};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::db::{RowPage, RowQuery, WorkbookSummary};
+use crate::db::{
+    RowPage, RowQuery, RowSelection, TagMutationError, TagMutationResult, TagSummary,
+    WorkbookSummary,
+};
 use crate::storage::{DataDirectory, ImportOutcome, StorageError, WorkbookImportError};
 
 const LOCATOR_VERSION: u32 = 1;
@@ -38,6 +41,8 @@ pub(crate) enum AppRuntimeError {
     Import(#[from] WorkbookImportError),
     #[error("数据库操作失败: {0}")]
     Database(#[from] crate::db::DatabaseError),
+    #[error("Tag 操作失败: {0}")]
+    TagMutation(#[from] TagMutationError),
     #[error("无法恢复此前的数据目录定位文件: {0}")]
     LocatorRollbackFailed(PathBuf),
 }
@@ -130,6 +135,61 @@ impl AppRuntime {
             .ok_or(AppRuntimeError::NotConfigured)?;
         let mut database = directory.open_database()?;
         Ok(database.query_rows(query)?)
+    }
+
+    pub(crate) fn list_used_tags(&self) -> Result<Vec<TagSummary>, AppRuntimeError> {
+        let state = self.lock_state()?;
+        ensure_startup_valid(&state)?;
+        let directory = state
+            .active
+            .as_ref()
+            .ok_or(AppRuntimeError::NotConfigured)?;
+        Ok(directory.open_database()?.list_used_tags()?)
+    }
+
+    pub(crate) fn count_selected_rows(
+        &self,
+        selection: &RowSelection,
+    ) -> Result<u64, AppRuntimeError> {
+        let state = self.lock_state()?;
+        ensure_startup_valid(&state)?;
+        let directory = state
+            .active
+            .as_ref()
+            .ok_or(AppRuntimeError::NotConfigured)?;
+        Ok(directory.open_database()?.count_selected_rows(selection)?)
+    }
+
+    pub(crate) fn add_tags_to_selection(
+        &self,
+        selection: &RowSelection,
+        tags: &[String],
+    ) -> Result<TagMutationResult, AppRuntimeError> {
+        let state = self.lock_state()?;
+        ensure_startup_valid(&state)?;
+        let directory = state
+            .active
+            .as_ref()
+            .ok_or(AppRuntimeError::NotConfigured)?;
+        Ok(directory
+            .open_database()?
+            .add_tags_to_selection(selection, tags)?)
+    }
+
+    pub(crate) fn remove_tags_from_selection(
+        &self,
+        selection: &RowSelection,
+        tags: &[String],
+    ) -> Result<TagMutationResult, AppRuntimeError> {
+        let state = self.lock_state()?;
+        ensure_startup_valid(&state)?;
+        let directory = state
+            .active
+            .as_ref()
+            .ok_or(AppRuntimeError::NotConfigured)?;
+        Ok(directory
+            .open_database()?
+            .remove_tags_from_selection(selection, tags)?)
     }
 
     fn configure_directory<F>(
@@ -276,6 +336,36 @@ mod tests {
         let workbook = reloaded.workbook.unwrap();
         assert_eq!(workbook.imported_name, "novelai_metadata.xlsx");
         assert_eq!(workbook.row_count, 5);
+    }
+
+    #[test]
+    fn exposes_tag_queries_and_filtered_mutations() {
+        let temporary = TemporaryRuntime::new();
+        let runtime = AppRuntime::load(temporary.locator.clone());
+        runtime.initialize_directory(&temporary.data).unwrap();
+        runtime.import_workbook(sample_workbook()).unwrap();
+
+        let explicit = RowSelection::Explicit {
+            row_ids: vec![1, 2, 3],
+        };
+        let added = runtime
+            .add_tags_to_selection(&explicit, &[" Keep ".into(), "keep".into()])
+            .unwrap();
+        assert_eq!(added.affected_rows, 3);
+        assert_eq!(added.associations_changed, 6);
+        assert_eq!(runtime.list_used_tags().unwrap().len(), 2);
+
+        let filtered = RowSelection::Filtered {
+            tags: vec!["Keep".into()],
+            tag_mode: crate::db::TagMatchMode::And,
+            excluded_row_ids: vec![2],
+        };
+        assert_eq!(runtime.count_selected_rows(&filtered).unwrap(), 2);
+        let removed = runtime
+            .remove_tags_from_selection(&filtered, &["Keep".into()])
+            .unwrap();
+        assert_eq!(removed.affected_rows, 2);
+        assert_eq!(removed.associations_changed, 2);
     }
 
     fn sample_workbook() -> PathBuf {
