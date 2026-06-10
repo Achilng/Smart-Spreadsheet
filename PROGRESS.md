@@ -145,14 +145,18 @@ M7 - 验收与发布（进行中）
 - 已将受管目录完整迁移到新位置，确认数据库、工作簿和缓存存在，旧目录被清理；迁移后再次重启仍恢复 5 行及两个大小写 Tag。
 - 已通过 native 保存对话框导出 5 行工作簿；检查 OOXML 确认最后一列为 `Tags`，H2 为 `CaseTag, caseTag`，原 drawing 关系仍保留。
 - 前端生产构建和 51 项 Rust 自动化测试在确认框修复后全部通过。
+- 使用仓库内 Tauri CLI 完成 Windows x64 release 优化构建和 NSIS 安装包生成，bundler 缓存及临时目录均定向到 `D:\Agent\Agent_temp`。
+- 安装器 `智能表格_0.1.0_x64-setup.exe` 大小为 3,745,226 字节，SHA-256 为 `F09F3F680D1C995EEF7EBD665E8986F4D19B2A4DA9CB2736E36DB22A05DE5D61`。
+- 已将安装包静默安装到 D 盘隔离测试目录，确认已安装应用可启动并恢复工作区；静默卸载返回成功并清理安装目录。
+- `PLAN.md` 中全部 11 项验收标准均已通过。
 
 ## 进行中
 
-- 构建并验证 Windows 安装包。
+- 准备首个 GitHub Release。
 
 ## 下一目标
 
-生成 Windows 安装包，在隔离测试位置验证安装和启动，再准备首个 GitHub Release。
+创建递进版本号的首个 GitHub Release，并上传已验证的 NSIS 安装包。
 
 ## 风险与约束
 
