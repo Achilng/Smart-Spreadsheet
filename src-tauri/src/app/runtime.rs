@@ -25,6 +25,12 @@ pub(crate) struct RuntimeSnapshot {
     pub startup_error: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RuntimeMigrationOutcome {
+    pub snapshot: RuntimeSnapshot,
+    pub retired_source: Option<PathBuf>,
+}
+
 #[derive(Debug, Error)]
 pub(crate) enum AppRuntimeError {
     #[error("应用状态锁不可用")]
@@ -51,6 +57,8 @@ pub(crate) enum AppRuntimeError {
     Image(#[from] RowImageError),
     #[error("工作簿导出失败: {0}")]
     Export(#[from] WorkbookExportError),
+    #[error("定位文件更新失败且迁移回滚失败。定位错误: {locator}; 回滚错误: {rollback}")]
+    MigrationRollbackFailed { locator: String, rollback: String },
     #[error("无法恢复此前的数据目录定位文件: {0}")]
     LocatorRollbackFailed(PathBuf),
 }
@@ -233,6 +241,38 @@ impl AppRuntime {
             .clone();
         drop(state);
         Ok(directory.export_workbook(destination)?)
+    }
+
+    pub(crate) fn migrate_directory(
+        &self,
+        destination: impl AsRef<Path>,
+    ) -> Result<RuntimeMigrationOutcome, AppRuntimeError> {
+        let mut state = self.lock_state()?;
+        ensure_startup_valid(&state)?;
+        let current = state
+            .active
+            .as_ref()
+            .ok_or(AppRuntimeError::NotConfigured)?
+            .clone();
+        let prepared = current.prepare_migration(destination)?;
+        let next_root = prepared.data_directory().root().to_owned();
+        if let Err(locator_error) = write_locator(&self.locator_path, &next_root) {
+            if let Err(rollback_error) = prepared.rollback() {
+                return Err(AppRuntimeError::MigrationRollbackFailed {
+                    locator: locator_error.to_string(),
+                    rollback: rollback_error.to_string(),
+                });
+            }
+            return Err(locator_error);
+        }
+
+        let outcome = prepared.commit();
+        state.active = Some(outcome.data_directory);
+        drop(state);
+        Ok(RuntimeMigrationOutcome {
+            snapshot: self.snapshot()?,
+            retired_source: outcome.retired_source,
+        })
     }
 
     fn configure_directory<F>(
@@ -424,6 +464,59 @@ mod tests {
         assert!(thumbnail.starts_with(b"\x89PNG\r\n\x1a\n"));
         assert!(preview.starts_with(b"\x89PNG\r\n\x1a\n"));
         assert!(thumbnail.len() <= preview.len());
+    }
+
+    #[test]
+    fn migrates_directory_then_reloads_from_new_locator() {
+        let temporary = TemporaryRuntime::new();
+        let runtime = AppRuntime::load(temporary.locator.clone());
+        runtime.initialize_directory(&temporary.data).unwrap();
+        runtime.import_workbook(sample_workbook()).unwrap();
+        runtime
+            .add_tags_to_selection(
+                &RowSelection::Explicit { row_ids: vec![1] },
+                &["migrated".into()],
+            )
+            .unwrap();
+        let destination = temporary.root.join("migrated-data");
+
+        let outcome = runtime.migrate_directory(&destination).unwrap();
+        let reloaded = AppRuntime::load(temporary.locator.clone());
+
+        assert_eq!(outcome.snapshot.data_directory, Some(destination.clone()));
+        assert!(outcome.retired_source.is_none());
+        assert!(!temporary.data.exists());
+        assert_eq!(
+            reloaded.snapshot().unwrap().data_directory,
+            Some(destination.clone())
+        );
+        assert_eq!(reloaded.list_used_tags().unwrap()[0].name, "migrated");
+    }
+
+    #[test]
+    fn locator_write_failure_restores_source_and_disables_destination() {
+        let temporary = TemporaryRuntime::new();
+        let runtime = AppRuntime::load(temporary.locator.clone());
+        runtime.initialize_directory(&temporary.data).unwrap();
+        runtime.import_workbook(sample_workbook()).unwrap();
+        let destination = temporary.root.join("failed-migration");
+        let blocked_temporary = temporary.locator.parent().unwrap().join(format!(
+            ".smart-spreadsheet-state-{}.tmp",
+            std::process::id()
+        ));
+        fs::create_dir(&blocked_temporary).unwrap();
+
+        assert!(runtime.migrate_directory(&destination).is_err());
+
+        assert!(DataDirectory::open(&temporary.data).is_ok());
+        assert!(DataDirectory::open(&destination).is_err());
+        assert_eq!(
+            AppRuntime::load(temporary.locator.clone())
+                .snapshot()
+                .unwrap()
+                .data_directory,
+            Some(temporary.data.clone())
+        );
     }
 
     fn sample_workbook() -> PathBuf {

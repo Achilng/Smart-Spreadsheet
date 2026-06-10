@@ -115,6 +115,13 @@ pub(crate) struct ExportResultDto {
     row_count: usize,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct MigrationResultDto {
+    snapshot: AppSnapshotDto,
+    retired_source: Option<String>,
+}
+
 #[tauri::command]
 pub(crate) fn get_app_snapshot(runtime: State<'_, AppRuntime>) -> Result<AppSnapshotDto, String> {
     runtime
@@ -254,6 +261,22 @@ pub(crate) fn export_workbook(
         .map(|outcome| ExportResultDto {
             path: outcome.destination.to_string_lossy().into_owned(),
             row_count: outcome.row_count,
+        })
+        .map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn migrate_data_directory(
+    path: String,
+    runtime: State<'_, AppRuntime>,
+) -> Result<MigrationResultDto, String> {
+    runtime
+        .migrate_directory(PathBuf::from(path))
+        .map(|outcome| MigrationResultDto {
+            snapshot: outcome.snapshot.into(),
+            retired_source: outcome
+                .retired_source
+                .map(|path| path.to_string_lossy().into_owned()),
         })
         .map_err(error_text)
 }

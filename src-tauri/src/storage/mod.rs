@@ -13,7 +13,7 @@ use crate::db::{Database, DatabaseError};
 
 pub use export::{ExportOutcome, WorkbookExportError};
 pub use import::{ImportOutcome, WorkbookImportError};
-pub use migration::MigrationOutcome;
+pub use migration::{MigrationOutcome, PreparedMigration};
 
 pub(super) const FORMAT_VERSION: u32 = 1;
 pub(super) const MARKER_FILE: &str = ".smart-spreadsheet-data.json";

@@ -5,6 +5,7 @@ import {
   exportWorkbook,
   importWorkbook,
   initializeDataDirectory,
+  migrateDataDirectory,
   openDataDirectory,
   type AppSnapshot,
 } from "./api";
@@ -142,7 +143,10 @@ function renderWorkspace(state: AppSnapshot): string {
         <div class="workspace-heading-actions">
           ${
             workbook
-              ? `<button id="export-workbook" class="secondary-action compact-action" type="button" ${disabled()}>
+              ? `<button id="migrate-directory" class="secondary-action compact-action" type="button" ${disabled()}>
+                   迁移数据目录
+                 </button>
+                 <button id="export-workbook" class="secondary-action compact-action" type="button" ${disabled()}>
                    导出副本
                  </button>`
               : ""
@@ -237,6 +241,9 @@ function bindActions(): void {
   document
     .querySelector<HTMLButtonElement>("#export-workbook")
     ?.addEventListener("click", () => void chooseExport());
+  document
+    .querySelector<HTMLButtonElement>("#migrate-directory")
+    ?.addEventListener("click", () => void chooseMigration());
 }
 
 function mountTagWorkspace(): void {
@@ -315,6 +322,36 @@ async function chooseExport(): Promise<void> {
       tone: "success",
       text: `已导出 ${result.rowCount.toLocaleString("zh-CN")} 行到 ${result.path}`,
     };
+  });
+}
+
+async function chooseMigration(): Promise<void> {
+  if (!snapshot?.dataDirectory) {
+    return;
+  }
+  const confirmed = window.confirm(
+    "迁移会复制并校验数据库、工作簿和缓存，切换成功后再清理旧目录。目标必须是空文件夹；失败时应用继续使用当前目录。是否继续？",
+  );
+  if (!confirmed) {
+    return;
+  }
+  const selection = await open({
+    directory: true,
+    multiple: false,
+    title: "选择空的数据迁移目标目录",
+  });
+  if (typeof selection !== "string") {
+    return;
+  }
+  await runAction(async () => {
+    const result = await migrateDataDirectory(selection);
+    snapshot = result.snapshot;
+    notice = result.retiredSource
+      ? {
+          tone: "error",
+          text: `迁移成功，但旧目录未能自动清理：${result.retiredSource}`,
+        }
+      : { tone: "success", text: `数据目录已迁移到 ${selection}` };
   });
 }
 

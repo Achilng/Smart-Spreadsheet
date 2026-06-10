@@ -13,11 +13,27 @@ pub struct MigrationOutcome {
     pub retired_source: Option<PathBuf>,
 }
 
+#[derive(Debug)]
+pub struct PreparedMigration {
+    data_directory: DataDirectory,
+    source: PathBuf,
+    source_marker: PathBuf,
+    retired_marker: PathBuf,
+    finalized: bool,
+}
+
 impl DataDirectory {
     pub fn migrate_to(
         &self,
         destination: impl AsRef<Path>,
     ) -> Result<MigrationOutcome, StorageError> {
+        Ok(self.prepare_migration(destination)?.commit())
+    }
+
+    pub fn prepare_migration(
+        &self,
+        destination: impl AsRef<Path>,
+    ) -> Result<PreparedMigration, StorageError> {
         let source = fs::canonicalize(self.root())?;
         let destination = prepare_destination(&source, destination.as_ref())?;
         let staging = create_staging_directory(&destination)?;
@@ -44,20 +60,68 @@ impl DataDirectory {
         }
         staging_guard.disarm();
 
-        let data_directory = DataDirectory::open(&destination)?;
-        let retired_source = if can_remove_automatically(&source) {
-            match fs::remove_dir_all(&source) {
+        Ok(PreparedMigration {
+            data_directory: DataDirectory::open(&destination)?,
+            source,
+            source_marker,
+            retired_marker,
+            finalized: false,
+        })
+    }
+}
+
+impl PreparedMigration {
+    pub fn data_directory(&self) -> &DataDirectory {
+        &self.data_directory
+    }
+
+    pub fn commit(mut self) -> MigrationOutcome {
+        let retired_source = if can_remove_automatically(&self.source) {
+            match fs::remove_dir_all(&self.source) {
                 Ok(()) => None,
-                Err(_) => Some(source.clone()),
+                Err(_) => Some(self.source.clone()),
             }
         } else {
-            Some(source.clone())
+            Some(self.source.clone())
         };
-
-        Ok(MigrationOutcome {
-            data_directory,
+        self.finalized = true;
+        MigrationOutcome {
+            data_directory: self.data_directory.clone(),
             retired_source,
-        })
+        }
+    }
+
+    pub fn rollback(mut self) -> Result<(), StorageError> {
+        let result = self.rollback_inner();
+        if result.is_ok() {
+            self.finalized = true;
+        }
+        result
+    }
+
+    fn rollback_inner(&self) -> Result<(), StorageError> {
+        let destination_marker = self.data_directory.root().join(MARKER_FILE);
+        let disabled_marker = self
+            .data_directory
+            .migration_path()
+            .join(format!("rollback-destination-{}.json", std::process::id()));
+        fs::rename(&destination_marker, &disabled_marker)?;
+        if fs::rename(&self.retired_marker, &self.source_marker).is_err() {
+            let _ = fs::rename(&disabled_marker, &destination_marker);
+            return Err(StorageError::MarkerRestoreFailed(
+                self.source_marker.clone(),
+            ));
+        }
+        let _ = fs::remove_dir_all(self.data_directory.root());
+        Ok(())
+    }
+}
+
+impl Drop for PreparedMigration {
+    fn drop(&mut self) {
+        if !self.finalized && self.rollback_inner().is_ok() {
+            self.finalized = true;
+        }
     }
 }
 
@@ -83,7 +147,7 @@ fn prepare_destination(source: &Path, destination: &Path) -> Result<PathBuf, Sto
             return Err(StorageError::NonEmptyDestination(destination));
         }
         fs::remove_dir(&destination)?;
-        return Ok(destination);
+        return Ok(user_facing_path(destination));
     }
 
     let file_name = destination
@@ -118,7 +182,24 @@ fn prepare_destination(source: &Path, destination: &Path) -> Result<PathBuf, Sto
         return Err(StorageError::DestinationInsideSource(destination));
     }
     fs::create_dir_all(&canonical_parent)?;
-    Ok(destination)
+    Ok(user_facing_path(destination))
+}
+
+#[cfg(windows)]
+fn user_facing_path(path: PathBuf) -> PathBuf {
+    let text = path.to_string_lossy();
+    if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
+        PathBuf::from(format!(r"\\{rest}"))
+    } else if let Some(rest) = text.strip_prefix(r"\\?\") {
+        PathBuf::from(rest)
+    } else {
+        path
+    }
+}
+
+#[cfg(not(windows))]
+fn user_facing_path(path: PathBuf) -> PathBuf {
+    path
 }
 
 fn create_staging_directory(destination: &Path) -> Result<PathBuf, StorageError> {
@@ -312,10 +393,7 @@ mod tests {
         let outcome = source.migrate_to(&temporary.destination).unwrap();
 
         assert!(outcome.retired_source.is_none());
-        assert_eq!(
-            outcome.data_directory.root(),
-            fs::canonicalize(&temporary.destination).unwrap()
-        );
+        assert_eq!(outcome.data_directory.root(), temporary.destination);
         assert!(!temporary.source.exists());
         assert_eq!(
             fs::read(outcome.data_directory.thumbnail_cache_path().join("2.webp")).unwrap(),

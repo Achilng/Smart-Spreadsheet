@@ -75,6 +75,11 @@ export interface ExportResult {
   rowCount: number;
 }
 
+export interface MigrationResult {
+  snapshot: AppSnapshot;
+  retiredSource: string | null;
+}
+
 export function getAppSnapshot(): Promise<AppSnapshot> {
   return invoke<AppSnapshot>("get_app_snapshot");
 }
@@ -127,4 +132,8 @@ export function getRowPreview(rowId: number): Promise<ArrayBuffer> {
 
 export function exportWorkbook(path: string): Promise<ExportResult> {
   return invoke<ExportResult>("export_workbook", { path });
+}
+
+export function migrateDataDirectory(path: string): Promise<MigrationResult> {
+  return invoke<MigrationResult>("migrate_data_directory", { path });
 }

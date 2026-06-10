@@ -29,6 +29,7 @@ pub fn run() {
             app::commands::get_row_thumbnail,
             app::commands::get_row_preview,
             app::commands::export_workbook,
+            app::commands::migrate_data_directory,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Smart Spreadsheet");
