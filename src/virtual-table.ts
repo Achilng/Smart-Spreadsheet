@@ -53,8 +53,7 @@ export class VirtualTable {
     this.#query = cloneQuery(options.query);
     this.#root.innerHTML = `
       <div class="sheet-header" aria-hidden="true">
-        <span>选</span><span>行</span><span>图片</span><span>时间</span><span>正向提示词</span>
-        <span>负向提示词</span><span>画师</span><span>Tags</span><span></span>
+        <span>行</span><span>图片</span><span>Tags</span>
       </div>
       <div class="sheet-viewport" role="table" aria-label="工作簿数据">
         <div class="sheet-spacer"><div class="sheet-layer"></div></div>
@@ -63,6 +62,7 @@ export class VirtualTable {
     this.#viewport = requiredElement(this.#root, ".sheet-viewport");
     this.#spacer = requiredElement(this.#root, ".sheet-spacer");
     this.#layer = requiredElement(this.#root, ".sheet-layer");
+    this.#syncHeaderWidth();
     this.#viewport.addEventListener("scroll", this.#scheduleRender, { passive: true });
     window.addEventListener("resize", this.#scheduleRender);
     this.setQuery(this.#query);
@@ -113,8 +113,16 @@ export class VirtualTable {
 
   readonly #scheduleRender = (): void => {
     window.cancelAnimationFrame(this.#renderFrame);
-    this.#renderFrame = window.requestAnimationFrame(() => this.#renderVisibleRows());
+    this.#renderFrame = window.requestAnimationFrame(() => {
+      this.#syncHeaderWidth();
+      this.#renderVisibleRows();
+    });
   };
+
+  #syncHeaderWidth(): void {
+    const scrollbarWidth = Math.max(0, this.#viewport.offsetWidth - this.#viewport.clientWidth);
+    this.#root.style.setProperty("--sheet-scrollbar-width", `${scrollbarWidth}px`);
+  }
 
   async #loadPage(pageIndex: number, generation: number): Promise<void> {
     if (
@@ -163,6 +171,7 @@ export class VirtualTable {
       this.#emitPageState();
       return;
     }
+    this.#syncHeaderWidth();
     const visibleCount = Math.max(1, Math.ceil(this.#viewport.clientHeight / ROW_HEIGHT));
     const first = Math.max(0, Math.floor(this.#viewport.scrollTop / ROW_HEIGHT) - OVERSCAN);
     const last = Math.min(this.#totalCount, first + visibleCount + OVERSCAN * 2);
@@ -196,39 +205,38 @@ export class VirtualTable {
     element.className = `sheet-row${selected ? " is-selected" : ""}`;
     element.style.transform = `translateY(${index * ROW_HEIGHT}px)`;
     element.setAttribute("role", "row");
-
-    const selection = document.createElement("div");
-    selection.className = "sheet-cell selection-cell";
-    const checkbox = document.createElement("input");
-    checkbox.type = "checkbox";
-    checkbox.checked = selected;
-    checkbox.setAttribute("aria-label", `选择 Excel 第 ${row.sourceRow} 行`);
-    checkbox.addEventListener("change", () => {
-      this.#options.onRowSelectionChange(row.id, checkbox.checked);
+    element.setAttribute("aria-selected", String(selected));
+    element.setAttribute("aria-label", `Excel 第 ${row.sourceRow} 行，点击切换选择`);
+    element.tabIndex = 0;
+    const toggleSelection = (): void => {
+      this.#options.onRowSelectionChange(row.id, !this.#options.isRowSelected(row.id));
       this.#renderVisibleRows();
+    };
+    element.addEventListener("click", event => {
+      if (!isInteractiveTarget(event.target)) {
+        toggleSelection();
+      }
     });
-    selection.append(checkbox);
+    element.addEventListener("keydown", event => {
+      if ((event.key === "Enter" || event.key === " ") && !isInteractiveTarget(event.target)) {
+        event.preventDefault();
+        toggleSelection();
+      }
+    });
 
-    element.append(
-      selection,
-      cell(String(row.sourceRow), "row-number"),
-      this.#createImageCell(row),
-      cell(row.time ?? "—", "time-cell"),
-      cell(row.positivePrompt ?? "—", "prompt-cell"),
-      cell(row.negativePrompt ?? "—", "prompt-cell muted-cell"),
-      cell(row.artists ?? "—", "artists-cell"),
-      tagsCell(row.tags),
-    );
-
-    const actions = document.createElement("div");
-    actions.className = "sheet-cell row-actions";
+    const rowCell = document.createElement("div");
+    rowCell.className = "sheet-cell row-index-cell";
+    const rowNumber = document.createElement("strong");
+    rowNumber.className = "row-number";
+    rowNumber.textContent = String(row.sourceRow);
     const details = document.createElement("button");
     details.type = "button";
     details.className = "text-action";
-    details.textContent = "展开";
+    details.textContent = "展开详情";
     details.addEventListener("click", () => this.#showDetails(row));
-    actions.append(details);
-    element.append(actions);
+    rowCell.append(rowNumber, details);
+
+    element.append(rowCell, this.#createImageCell(row), tagsCell(row.tags));
     return element;
   }
 
@@ -236,7 +244,7 @@ export class VirtualTable {
     const element = document.createElement("div");
     element.className = "sheet-row sheet-row-skeleton";
     element.style.transform = `translateY(${index * ROW_HEIGHT}px)`;
-    for (let column = 0; column < 9; column += 1) {
+    for (let column = 0; column < 3; column += 1) {
       const placeholder = document.createElement("span");
       placeholder.className = "skeleton-line";
       element.append(placeholder);
@@ -351,10 +359,14 @@ export class VirtualTable {
     const content = document.createElement("div");
     content.className = "detail-content";
     content.append(
+      detailSection("时间", row.time),
       detailSection("正向提示词", row.positivePrompt),
       detailSection("负向提示词", row.negativePrompt),
       detailSection("画师串", row.artists),
+      detailSection("图片文件夹", row.imageFolder),
       detailSection("图片路径", row.imagePath),
+      detailSection("嵌入图片引用", row.embeddedImageRef),
+      detailSection("Tags", row.tags.length > 0 ? row.tags.join("\n") : null),
     );
     panel.append(content);
     backdrop.append(panel);
@@ -479,14 +491,6 @@ function cloneQuery(query: TableQuery): TableQuery {
   return { tags: [...query.tags], tagMode: query.tagMode as TagMatchMode };
 }
 
-function cell(value: string, className: string): HTMLElement {
-  const element = document.createElement("div");
-  element.className = `sheet-cell ${className}`;
-  element.textContent = value;
-  element.title = value;
-  return element;
-}
-
 function tagsCell(tags: string[]): HTMLElement {
   const element = document.createElement("div");
   element.className = "sheet-cell tags-cell";
@@ -494,17 +498,22 @@ function tagsCell(tags: string[]): HTMLElement {
     element.textContent = "—";
     return element;
   }
-  for (const tag of tags.slice(0, 3)) {
+  element.title = tags.join(", ");
+  for (const tag of tags.slice(0, 8)) {
     const chip = document.createElement("span");
     chip.textContent = tag;
     element.append(chip);
   }
-  if (tags.length > 3) {
+  if (tags.length > 8) {
     const more = document.createElement("span");
-    more.textContent = `+${tags.length - 3}`;
+    more.textContent = `+${tags.length - 8}`;
     element.append(more);
   }
   return element;
+}
+
+function isInteractiveTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && Boolean(target.closest("button, a, input, textarea, select"));
 }
 
 function detailSection(label: string, value: string | null): HTMLElement {
