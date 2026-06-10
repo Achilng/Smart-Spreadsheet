@@ -1,3 +1,4 @@
+import { confirm as confirmDialog } from "@tauri-apps/plugin-dialog";
 import {
   addTagsToSelection,
   countSelectedRows,
@@ -317,11 +318,14 @@ export class TagWorkspace {
       this.#setBatchStatus("请输入至少一个非空 Tag，每行一个。", true);
       return;
     }
-    if (
-      mutation === "remove" &&
-      !window.confirm(`将从 ${formatCount(selectedCount)} 行删除 ${tags.length} 个 Tag。是否继续？`)
-    ) {
-      return;
+    if (mutation === "remove") {
+      const confirmed = await confirmDialog(
+        `将从 ${formatCount(selectedCount)} 行删除 ${tags.length} 个 Tag。是否继续？`,
+        { title: "批量删除 Tag", kind: "warning", okLabel: "删除", cancelLabel: "取消" },
+      );
+      if (!confirmed) {
+        return;
+      }
     }
 
     this.#setBusy(true);

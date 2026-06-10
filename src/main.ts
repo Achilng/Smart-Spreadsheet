@@ -1,4 +1,4 @@
-import { open, save } from "@tauri-apps/plugin-dialog";
+import { confirm as confirmDialog, open, save } from "@tauri-apps/plugin-dialog";
 
 import {
   getAppSnapshot,
@@ -276,8 +276,9 @@ async function chooseDirectory(mode: "initialize" | "open"): Promise<void> {
 
 async function chooseWorkbook(): Promise<void> {
   if (snapshot?.workbook) {
-    const confirmed = window.confirm(
+    const confirmed = await confirmDialog(
       "替换当前工作簿会清除现有行与 Tag 数据。原 Excel 不会被修改。是否继续？",
+      { title: "替换工作簿", kind: "warning", okLabel: "继续", cancelLabel: "取消" },
     );
     if (!confirmed) {
       return;
@@ -329,8 +330,9 @@ async function chooseMigration(): Promise<void> {
   if (!snapshot?.dataDirectory) {
     return;
   }
-  const confirmed = window.confirm(
+  const confirmed = await confirmDialog(
     "迁移会复制并校验数据库、工作簿和缓存，切换成功后再清理旧目录。目标必须是空文件夹；失败时应用继续使用当前目录。是否继续？",
+    { title: "迁移数据目录", kind: "warning", okLabel: "继续", cancelLabel: "取消" },
   );
   if (!confirmed) {
     return;

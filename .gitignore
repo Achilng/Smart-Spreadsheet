@@ -6,6 +6,7 @@
 # Frontend dependencies and output
 /node_modules/
 /dist/
+/.playwright-cli/
 
 # Local runtime data
 /*.sqlite
