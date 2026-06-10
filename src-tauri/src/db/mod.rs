@@ -1,3 +1,4 @@
+mod export;
 mod images;
 mod migrations;
 mod query;
@@ -14,6 +15,7 @@ use std::time::Duration;
 use rusqlite::{Connection, MAIN_DB, TransactionBehavior};
 use thiserror::Error;
 
+pub use export::RowTagSnapshot;
 pub use images::RowImageLocator;
 pub use migrations::CURRENT_SCHEMA_VERSION;
 use migrations::MIGRATION_1;

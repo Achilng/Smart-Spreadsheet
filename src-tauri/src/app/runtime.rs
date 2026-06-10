@@ -11,7 +11,10 @@ use crate::db::{
     WorkbookSummary,
 };
 use crate::images::{ImageVariant, RowImageError};
-use crate::storage::{DataDirectory, ImportOutcome, StorageError, WorkbookImportError};
+use crate::storage::{
+    DataDirectory, ExportOutcome, ImportOutcome, StorageError, WorkbookExportError,
+    WorkbookImportError,
+};
 
 const LOCATOR_VERSION: u32 = 1;
 
@@ -46,6 +49,8 @@ pub(crate) enum AppRuntimeError {
     TagMutation(#[from] TagMutationError),
     #[error("图片读取失败: {0}")]
     Image(#[from] RowImageError),
+    #[error("工作簿导出失败: {0}")]
+    Export(#[from] WorkbookExportError),
     #[error("无法恢复此前的数据目录定位文件: {0}")]
     LocatorRollbackFailed(PathBuf),
 }
@@ -213,6 +218,21 @@ impl AppRuntime {
             .clone();
         drop(state);
         Ok(directory.load_row_image(row_id, variant)?.png_bytes)
+    }
+
+    pub(crate) fn export_workbook(
+        &self,
+        destination: impl AsRef<Path>,
+    ) -> Result<ExportOutcome, AppRuntimeError> {
+        let state = self.lock_state()?;
+        ensure_startup_valid(&state)?;
+        let directory = state
+            .active
+            .as_ref()
+            .ok_or(AppRuntimeError::NotConfigured)?
+            .clone();
+        drop(state);
+        Ok(directory.export_workbook(destination)?)
     }
 
     fn configure_directory<F>(

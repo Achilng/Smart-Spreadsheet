@@ -1,3 +1,4 @@
+mod export;
 mod import;
 mod migration;
 
@@ -10,6 +11,7 @@ use thiserror::Error;
 
 use crate::db::{Database, DatabaseError};
 
+pub use export::{ExportOutcome, WorkbookExportError};
 pub use import::{ImportOutcome, WorkbookImportError};
 pub use migration::MigrationOutcome;
 

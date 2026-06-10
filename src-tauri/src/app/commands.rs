@@ -108,6 +108,13 @@ pub(crate) struct TagMutationResultDto {
     associations_changed: usize,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ExportResultDto {
+    path: String,
+    row_count: usize,
+}
+
 #[tauri::command]
 pub(crate) fn get_app_snapshot(runtime: State<'_, AppRuntime>) -> Result<AppSnapshotDto, String> {
     runtime
@@ -234,6 +241,20 @@ pub(crate) fn get_row_preview(
     runtime
         .row_preview(row_id)
         .map(Response::new)
+        .map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn export_workbook(
+    path: String,
+    runtime: State<'_, AppRuntime>,
+) -> Result<ExportResultDto, String> {
+    runtime
+        .export_workbook(PathBuf::from(path))
+        .map(|outcome| ExportResultDto {
+            path: outcome.destination.to_string_lossy().into_owned(),
+            row_count: outcome.row_count,
+        })
         .map_err(error_text)
 }
 
