@@ -1,5 +1,7 @@
 <script lang="ts">
   import { app } from "../app-state.svelte";
+  import { rowStore } from "../row-store.svelte";
+  import GalleryView from "./GalleryView.svelte";
   import TopBar from "./TopBar.svelte";
 </script>
 
@@ -14,21 +16,24 @@
     </aside>
 
     <main class="main-area">
-      <div class="panel-placeholder">
-        {#if app.viewMode === "gallery"}
-          <h3>画廊视图</h3>
-          <p class="faint">虚拟网格（阶段 2 接入）</p>
-        {:else}
+      {#if app.viewMode === "gallery"}
+        <GalleryView />
+      {:else}
+        <div class="panel-placeholder">
           <h3>表格视图</h3>
           <p class="faint">多列表格（阶段 5 接入）</p>
-        {/if}
-      </div>
+        </div>
+      {/if}
     </main>
 
     <aside class="detail">
       <div class="panel-placeholder">
         <h3>详情</h3>
-        <p class="faint">点击图片查看（阶段 3 接入）</p>
+        {#if rowStore.activeRow}
+          <p class="faint">已选中 Excel 第 {rowStore.activeRow.sourceRow} 行（阶段 3 接入）</p>
+        {:else}
+          <p class="faint">点击图片查看（阶段 3 接入）</p>
+        {/if}
       </div>
     </aside>
   </div>

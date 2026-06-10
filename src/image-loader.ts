@@ -69,6 +69,18 @@ export class ThumbnailLoader {
     this.#pending.clear();
   }
 
+  /** 清空缓存与排队请求；工作簿替换后行 ID 可能重复，必须丢弃旧图。 */
+  clear(): void {
+    for (const request of this.#queue.splice(0)) {
+      this.#pending.delete(request.rowId);
+      request.reject(new Error("缩略图缓存已重置"));
+    }
+    for (const thumbnail of this.#cache.values()) {
+      URL.revokeObjectURL(thumbnail.url);
+    }
+    this.#cache.clear();
+  }
+
   #drain(): void {
     while (
       !this.#disposed &&
