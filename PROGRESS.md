@@ -4,7 +4,7 @@
 
 ## 当前阶段
 
-M7 - 验收与发布（进行中）
+M7 - 验收与发布（已完成）
 
 ## 已完成
 
@@ -149,14 +149,16 @@ M7 - 验收与发布（进行中）
 - 安装器 `智能表格_0.1.0_x64-setup.exe` 大小为 3,745,226 字节，SHA-256 为 `F09F3F680D1C995EEF7EBD665E8986F4D19B2A4DA9CB2736E36DB22A05DE5D61`。
 - 已将安装包静默安装到 D 盘隔离测试目录，确认已安装应用可启动并恢复工作区；静默卸载返回成功并清理安装目录。
 - `PLAN.md` 中全部 11 项验收标准均已通过。
+- 已创建并推送首个版本 tag `v_1`，GitHub Release 已发布为 Latest。
+- Release 地址：`https://github.com/Achilng/Smart-Spreadsheet/releases/tag/v_1`；已上传 `Smart-Spreadsheet_0.1.0_x64-setup.exe`。
 
 ## 进行中
 
-- 准备首个 GitHub Release。
+- 无；第一版开发、验收和发布已完成。
 
 ## 下一目标
 
-创建递进版本号的首个 GitHub Release，并上传已验证的 NSIS 安装包。
+收集实际使用反馈，后续需求按新的小目标继续迭代。
 
 ## 风险与约束
 
