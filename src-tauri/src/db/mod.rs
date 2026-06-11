@@ -1,5 +1,6 @@
 mod batches;
 mod delete;
+mod duplicates;
 mod export;
 pub mod identity;
 mod images;
@@ -9,6 +10,7 @@ mod tags;
 
 pub use batches::{AppendOutcome, BatchSummary, LibrarySummary, NewRow, SourceType};
 pub use delete::DeleteOutcome;
+pub use duplicates::{DuplicateGroup, DuplicateKey, DuplicateReport, DuplicateRow};
 pub use query::{MAX_PAGE_SIZE, RowPage, RowQuery, RowRecord, TagMatchMode, TagSummary};
 pub use tags::{RowSelection, TagMutationError, TagMutationResult};
 

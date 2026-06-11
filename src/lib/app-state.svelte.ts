@@ -31,6 +31,8 @@ export const app = $state({
   dataVersion: 0,
   /** 文件夹/压缩包导入进行中的进度，空闲时为 null */
   importProgress: null as ImageImportProgress | null,
+  /** 库内查重视图是否打开 */
+  dedupeOpen: false,
 });
 
 let noticeTimer = 0;

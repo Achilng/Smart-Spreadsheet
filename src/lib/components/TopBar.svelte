@@ -53,6 +53,9 @@
     <button type="button" class="btn btn-ghost" disabled={app.busy} onclick={() => void chooseMigration()}>
       迁移目录
     </button>
+    <button type="button" class="btn btn-ghost" disabled={app.busy} onclick={() => (app.dedupeOpen = true)}>
+      查重
+    </button>
     <button type="button" class="btn" disabled={app.busy} onclick={() => void chooseImageFolder()}>
       导入文件夹
     </button>

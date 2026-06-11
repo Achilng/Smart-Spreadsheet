@@ -7,6 +7,7 @@
   import { loadTags } from "../tag-store.svelte";
   import { thumbnails } from "../thumbnails";
   import DetailPanel from "./DetailPanel.svelte";
+  import DuplicatesView from "./DuplicatesView.svelte";
   import GalleryView from "./GalleryView.svelte";
   import SelectionBar from "./SelectionBar.svelte";
   import TableView from "./TableView.svelte";
@@ -75,6 +76,10 @@
     {/if}
   </div>
 </div>
+
+{#if app.dedupeOpen}
+  <DuplicatesView />
+{/if}
 
 <style>
   .workspace {

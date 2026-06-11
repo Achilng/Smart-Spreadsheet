@@ -55,6 +55,29 @@ export interface ImageImportProgress {
   total: number;
 }
 
+export type DuplicateKeyKind = "positivePrompt" | "artists";
+
+export interface DuplicateRow {
+  id: number;
+  batchId: number;
+  sourceOrdinal: number;
+  time: string | null;
+  imagePath: string | null;
+  storedImagePath: string | null;
+  tags: string[];
+}
+
+export interface DuplicateGroup {
+  key: string;
+  rows: DuplicateRow[];
+}
+
+export interface DuplicateReport {
+  totalGroups: number;
+  totalRedundantRows: number;
+  groups: DuplicateGroup[];
+}
+
 export type TagMatchMode = "and" | "or";
 
 export interface RowQuery {
@@ -139,6 +162,13 @@ export function importImages(path: string): Promise<ImageImportResult> {
 
 export function deleteRows(selection: RowSelection): Promise<DeleteResult> {
   return invoke<DeleteResult>("delete_rows", { selection });
+}
+
+export function findDuplicates(
+  key: DuplicateKeyKind,
+  groupLimit: number,
+): Promise<DuplicateReport> {
+  return invoke<DuplicateReport>("find_duplicates", { key, groupLimit });
 }
 
 export function listImportBatches(): Promise<BatchSummary[]> {

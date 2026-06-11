@@ -7,8 +7,8 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::db::{
-    BatchSummary, LibrarySummary, RowPage, RowQuery, RowSelection, TagMutationError,
-    TagMutationResult, TagSummary,
+    BatchSummary, DuplicateKey, DuplicateReport, LibrarySummary, RowPage, RowQuery, RowSelection,
+    TagMutationError, TagMutationResult, TagSummary,
 };
 use crate::images::{ImageVariant, RowImageError};
 use crate::storage::{
@@ -269,6 +269,20 @@ impl AppRuntime {
         drop(state);
         let report = directory.delete_rows(selection)?;
         Ok((self.snapshot()?, report))
+    }
+
+    pub(crate) fn find_duplicates(
+        &self,
+        key: DuplicateKey,
+        group_limit: u32,
+    ) -> Result<DuplicateReport, AppRuntimeError> {
+        let state = self.lock_state()?;
+        ensure_startup_valid(&state)?;
+        let directory = state
+            .active
+            .as_ref()
+            .ok_or(AppRuntimeError::NotConfigured)?;
+        Ok(directory.open_database()?.find_duplicates(key, group_limit)?)
     }
 
     pub(crate) fn list_batches(&self) -> Result<Vec<BatchSummary>, AppRuntimeError> {

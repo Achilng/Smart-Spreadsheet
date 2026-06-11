@@ -4,11 +4,11 @@ use serde::{Deserialize, Serialize};
 use tauri::{Emitter, Manager, State, ipc::Response};
 
 use super::runtime::{AppRuntime, RuntimeSnapshot};
-use crate::storage::ImageImportProgress;
 use crate::db::{
-    BatchSummary, LibrarySummary, RowPage, RowQuery, RowRecord, RowSelection, TagMatchMode,
-    TagMutationResult, TagSummary,
+    BatchSummary, DuplicateGroup, DuplicateKey, DuplicateReport, DuplicateRow, LibrarySummary,
+    RowPage, RowQuery, RowRecord, RowSelection, TagMatchMode, TagMutationResult, TagSummary,
 };
+use crate::storage::ImageImportProgress;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -65,6 +65,82 @@ pub(crate) struct ImageImportResultDto {
     skipped_existing: u64,
     changed_existing: u64,
     metadata_failed: u64,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum DuplicateKeyDto {
+    PositivePrompt,
+    Artists,
+}
+
+impl From<DuplicateKeyDto> for DuplicateKey {
+    fn from(key: DuplicateKeyDto) -> Self {
+        match key {
+            DuplicateKeyDto::PositivePrompt => Self::PositivePrompt,
+            DuplicateKeyDto::Artists => Self::Artists,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct DuplicateReportDto {
+    total_groups: u64,
+    total_redundant_rows: u64,
+    groups: Vec<DuplicateGroupDto>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DuplicateGroupDto {
+    key: String,
+    rows: Vec<DuplicateRowDto>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DuplicateRowDto {
+    id: i64,
+    batch_id: i64,
+    source_ordinal: u32,
+    time: Option<String>,
+    image_path: Option<String>,
+    stored_image_path: Option<String>,
+    tags: Vec<String>,
+}
+
+impl From<DuplicateReport> for DuplicateReportDto {
+    fn from(report: DuplicateReport) -> Self {
+        Self {
+            total_groups: report.total_groups,
+            total_redundant_rows: report.total_redundant_rows,
+            groups: report.groups.into_iter().map(DuplicateGroupDto::from).collect(),
+        }
+    }
+}
+
+impl From<DuplicateGroup> for DuplicateGroupDto {
+    fn from(group: DuplicateGroup) -> Self {
+        Self {
+            key: group.key,
+            rows: group.rows.into_iter().map(DuplicateRowDto::from).collect(),
+        }
+    }
+}
+
+impl From<DuplicateRow> for DuplicateRowDto {
+    fn from(row: DuplicateRow) -> Self {
+        Self {
+            id: row.id,
+            batch_id: row.batch_id,
+            source_ordinal: row.source_ordinal,
+            time: row.time,
+            image_path: row.image_path,
+            stored_image_path: row.stored_image_path,
+            tags: row.tags,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -264,6 +340,18 @@ pub(crate) fn delete_rows(
             deleted_rows: report.deleted_rows,
             cleanup_failures: report.cleanup_failures,
         })
+        .map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn find_duplicates(
+    key: DuplicateKeyDto,
+    group_limit: u32,
+    runtime: State<'_, AppRuntime>,
+) -> Result<DuplicateReportDto, String> {
+    runtime
+        .find_duplicates(key.into(), group_limit)
+        .map(DuplicateReportDto::from)
         .map_err(error_text)
 }
 
