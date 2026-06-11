@@ -7,13 +7,13 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::db::{
-    RowPage, RowQuery, RowSelection, TagMutationError, TagMutationResult, TagSummary,
-    WorkbookSummary,
+    BatchSummary, LibrarySummary, RowPage, RowQuery, RowSelection, TagMutationError,
+    TagMutationResult, TagSummary,
 };
 use crate::images::{ImageVariant, RowImageError};
 use crate::storage::{
-    DataDirectory, ExportOutcome, ImportOutcome, StorageError, WorkbookExportError,
-    WorkbookImportError,
+    DataDirectory, ExportOutcome, ImportOutcome, RowDeletionError, RowDeletionReport,
+    StorageError, WorkbookExportError, WorkbookImportError,
 };
 
 const LOCATOR_VERSION: u32 = 1;
@@ -21,7 +21,7 @@ const LOCATOR_VERSION: u32 = 1;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct RuntimeSnapshot {
     pub data_directory: Option<PathBuf>,
-    pub workbook: Option<WorkbookSummary>,
+    pub library: Option<LibrarySummary>,
     pub startup_error: Option<String>,
 }
 
@@ -53,6 +53,8 @@ pub(crate) enum AppRuntimeError {
     Database(#[from] crate::db::DatabaseError),
     #[error("Tag 操作失败: {0}")]
     TagMutation(#[from] TagMutationError),
+    #[error("删除行失败: {0}")]
+    RowDeletion(#[from] RowDeletionError),
     #[error("图片读取失败: {0}")]
     Image(#[from] RowImageError),
     #[error("工作簿导出失败: {0}")]
@@ -98,8 +100,8 @@ impl AppRuntime {
 
     pub(crate) fn snapshot(&self) -> Result<RuntimeSnapshot, AppRuntimeError> {
         let state = self.lock_state()?;
-        let workbook = if let Some(directory) = state.active.as_ref() {
-            directory.open_database()?.workbook_summary()?
+        let library = if let Some(directory) = state.active.as_ref() {
+            Some(directory.open_database()?.library_summary()?)
         } else {
             None
         };
@@ -108,7 +110,7 @@ impl AppRuntime {
                 .active
                 .as_ref()
                 .map(|directory| directory.root().to_owned()),
-            workbook,
+            library,
             startup_error: state.startup_error.clone(),
         })
     }
@@ -230,6 +232,32 @@ impl AppRuntime {
             .as_ref()
             .ok_or(AppRuntimeError::NotConfigured)?;
         Ok(directory.open_database()?.set_tags_for_row(row_id, tags)?)
+    }
+
+    pub(crate) fn delete_rows(
+        &self,
+        selection: &RowSelection,
+    ) -> Result<(RuntimeSnapshot, RowDeletionReport), AppRuntimeError> {
+        let state = self.lock_state()?;
+        ensure_startup_valid(&state)?;
+        let directory = state
+            .active
+            .as_ref()
+            .ok_or(AppRuntimeError::NotConfigured)?
+            .clone();
+        drop(state);
+        let report = directory.delete_rows(selection)?;
+        Ok((self.snapshot()?, report))
+    }
+
+    pub(crate) fn list_batches(&self) -> Result<Vec<BatchSummary>, AppRuntimeError> {
+        let state = self.lock_state()?;
+        ensure_startup_valid(&state)?;
+        let directory = state
+            .active
+            .as_ref()
+            .ok_or(AppRuntimeError::NotConfigured)?;
+        Ok(directory.open_database()?.list_batches()?)
     }
 
     pub(crate) fn row_thumbnail(&self, row_id: i64) -> Result<Vec<u8>, AppRuntimeError> {
@@ -410,7 +438,9 @@ mod tests {
 
         assert_eq!(configured.data_directory, reloaded.data_directory);
         assert_eq!(reloaded.data_directory, Some(temporary.data.clone()));
-        assert!(reloaded.workbook.is_none());
+        let library = reloaded.library.unwrap();
+        assert_eq!(library.row_count, 0);
+        assert_eq!(library.batch_count, 0);
         assert!(reloaded.startup_error.is_none());
     }
 
@@ -439,10 +469,35 @@ mod tests {
             .snapshot()
             .unwrap();
 
-        assert_eq!(outcome.row_count, 5);
-        let workbook = reloaded.workbook.unwrap();
-        assert_eq!(workbook.imported_name, "novelai_metadata.xlsx");
-        assert_eq!(workbook.row_count, 5);
+        assert_eq!(outcome.added, 5);
+        let library = reloaded.library.unwrap();
+        assert_eq!(library.row_count, 5);
+        assert_eq!(library.batch_count, 1);
+        let last_batch = library.last_batch.unwrap();
+        assert!(last_batch.source_path.ends_with("novelai_metadata.xlsx"));
+        assert_eq!(last_batch.added_count, 5);
+    }
+
+    #[test]
+    fn appends_second_import_and_deletes_rows() {
+        let temporary = TemporaryRuntime::new();
+        let runtime = AppRuntime::load(temporary.locator.clone());
+        runtime.initialize_directory(&temporary.data).unwrap();
+        runtime.import_workbook(sample_workbook()).unwrap();
+
+        // 重复导入：全部跳过，行数不变。
+        let (snapshot, outcome) = runtime.import_workbook(sample_workbook()).unwrap();
+        assert_eq!(outcome.added, 0);
+        assert_eq!(outcome.skipped_existing, 5);
+        assert_eq!(snapshot.library.as_ref().unwrap().row_count, 5);
+        assert_eq!(snapshot.library.as_ref().unwrap().batch_count, 2);
+        assert_eq!(runtime.list_batches().unwrap().len(), 2);
+
+        let (after_delete, report) = runtime
+            .delete_rows(&RowSelection::Explicit { row_ids: vec![1, 2] })
+            .unwrap();
+        assert_eq!(report.deleted_rows, 2);
+        assert_eq!(after_delete.library.unwrap().row_count, 3);
     }
 
     #[test]

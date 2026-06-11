@@ -9,7 +9,6 @@ use image::{DynamicImage, ImageFormat, ImageReader};
 use thiserror::Error;
 
 use crate::db::{DatabaseError, RowImageLocator};
-use crate::excel::{EmbeddedImageRef, ImageMapError, read_embedded_image};
 use crate::storage::{DataDirectory, StorageError};
 
 const THUMBNAIL_MAX_EDGE: u32 = 256;
@@ -34,7 +33,8 @@ impl ImageVariant {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ImageOrigin {
     ExternalPath,
-    EmbeddedWorkbook,
+    /// 受管数据目录中的提取副本（压缩包图片或 xlsx 嵌入图）。
+    StoredCopy,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -58,13 +58,11 @@ pub(crate) enum RowImageError {
     Io(#[from] std::io::Error),
     #[error("图片解码或编码失败: {0}")]
     Image(#[from] image::ImageError),
-    #[error("嵌入图片读取失败: {0}")]
-    Embedded(#[from] ImageMapError),
-    #[error("第 {row_id} 行没有可用图片。路径来源: {external}; 嵌入来源: {embedded}")]
+    #[error("第 {row_id} 行没有可用图片。路径来源: {external}; 副本来源: {stored}")]
     Unavailable {
         row_id: i64,
         external: String,
-        embedded: String,
+        stored: String,
     },
 }
 
@@ -95,18 +93,18 @@ fn load_row_image(
         }
     }
 
-    let mut embedded_error = "未包含嵌入图".to_owned();
-    if let Some(media_path) = nonempty_text(locator.embedded_image_ref.as_deref()) {
-        match load_embedded(directory, locator.row_id, media_path, variant) {
+    let mut stored_error = "无受管副本".to_owned();
+    if let Some(relative) = nonempty_text(locator.stored_image_path.as_deref()) {
+        match load_stored(directory, locator.row_id, relative, variant) {
             Ok(payload) => return Ok(payload),
-            Err(error) => embedded_error = error.to_string(),
+            Err(error) => stored_error = error.to_string(),
         }
     }
 
     Err(RowImageError::Unavailable {
         row_id: locator.row_id,
         external: external_error,
-        embedded: embedded_error,
+        stored: stored_error,
     })
 }
 
@@ -144,52 +142,35 @@ fn load_external(
     encode_resized(image, variant.max_edge(), ImageOrigin::ExternalPath, false)
 }
 
-fn load_embedded(
+fn load_stored(
     directory: &DataDirectory,
     row_id: i64,
-    media_path: &str,
+    relative: &str,
     variant: ImageVariant,
 ) -> Result<ImagePayload, RowImageError> {
-    let workbook = directory.source_workbook_path();
-    let metadata = fs::metadata(&workbook)?;
+    let path = directory.root().join(relative);
+    let metadata = fs::metadata(&path)?;
     if variant == ImageVariant::Thumbnail {
         let cache_path = thumbnail_cache_path(
             directory,
             row_id,
-            &("embedded", media_path, metadata_signature(&metadata)),
+            &("stored", relative, metadata_signature(&metadata)),
         );
-        if let Some(payload) = read_cached_thumbnail(&cache_path, ImageOrigin::EmbeddedWorkbook)? {
+        if let Some(payload) = read_cached_thumbnail(&cache_path, ImageOrigin::StoredCopy)? {
             return Ok(payload);
         }
-        let image = decode_embedded(&workbook, media_path)?;
+        let image = ImageReader::open(&path)?.with_guessed_format()?.decode()?;
         return encode_and_cache_thumbnail(
             directory,
             row_id,
             cache_path,
             image,
-            ImageOrigin::EmbeddedWorkbook,
+            ImageOrigin::StoredCopy,
         );
     }
 
-    let image = decode_embedded(&workbook, media_path)?;
-    encode_resized(
-        image,
-        variant.max_edge(),
-        ImageOrigin::EmbeddedWorkbook,
-        false,
-    )
-}
-
-fn decode_embedded(workbook: &Path, media_path: &str) -> Result<DynamicImage, RowImageError> {
-    let bytes = read_embedded_image(
-        workbook,
-        &EmbeddedImageRef {
-            source_row: 0,
-            source_column: 0,
-            media_path: media_path.to_owned(),
-        },
-    )?;
-    Ok(image::load_from_memory(&bytes)?)
+    let image = ImageReader::open(&path)?.with_guessed_format()?.decode()?;
+    encode_resized(image, variant.max_edge(), ImageOrigin::StoredCopy, false)
 }
 
 fn encode_and_cache_thumbnail(
@@ -330,15 +311,16 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::*;
-    use crate::excel::{map_embedded_images, read_fixed_workbook};
 
     #[test]
-    fn falls_back_to_embedded_image_and_reuses_thumbnail_cache() {
+    fn falls_back_to_stored_copy_and_reuses_thumbnail_cache() {
         let temporary = TemporaryImageDirectory::new();
         let directory = DataDirectory::initialize(&temporary.data).unwrap();
-        fs::copy(sample_workbook(), directory.source_workbook_path()).unwrap();
-        let parsed = read_fixed_workbook(sample_workbook()).unwrap();
-        let embedded = map_embedded_images(sample_workbook(), &parsed.sheet_name).unwrap();
+        let stored_dir = directory.files_path().join("1").join("embedded");
+        fs::create_dir_all(&stored_dir).unwrap();
+        image::DynamicImage::new_rgb8(800, 600)
+            .save_with_format(stored_dir.join("row-1.png"), ImageFormat::Png)
+            .unwrap();
         let locator = RowImageLocator {
             row_id: 1,
             image_path: Some(
@@ -348,13 +330,13 @@ mod tests {
                     .to_string_lossy()
                     .into_owned(),
             ),
-            embedded_image_ref: Some(embedded[0].media_path.clone()),
+            stored_image_path: Some("files/1/embedded/row-1.png".into()),
         };
 
         let first = load_row_image(&directory, &locator, ImageVariant::Thumbnail).unwrap();
         let second = load_row_image(&directory, &locator, ImageVariant::Thumbnail).unwrap();
 
-        assert_eq!(first.origin, ImageOrigin::EmbeddedWorkbook);
+        assert_eq!(first.origin, ImageOrigin::StoredCopy);
         assert!(!first.cache_hit);
         assert!(first.width <= THUMBNAIL_MAX_EDGE);
         assert!(first.height <= THUMBNAIL_MAX_EDGE);
@@ -370,7 +352,7 @@ mod tests {
     }
 
     #[test]
-    fn prefers_external_image_over_embedded_reference() {
+    fn prefers_external_image_over_stored_copy() {
         let temporary = TemporaryImageDirectory::new();
         let directory = DataDirectory::initialize(&temporary.data).unwrap();
         let external = temporary.root.join("external.png");
@@ -380,7 +362,7 @@ mod tests {
         let locator = RowImageLocator {
             row_id: 7,
             image_path: Some(external.to_string_lossy().into_owned()),
-            embedded_image_ref: Some("xl/media/missing.png".into()),
+            stored_image_path: Some("files/1/missing.png".into()),
         };
 
         let payload = load_row_image(&directory, &locator, ImageVariant::Preview).unwrap();
@@ -388,13 +370,6 @@ mod tests {
         assert_eq!(payload.origin, ImageOrigin::ExternalPath);
         assert_eq!((payload.width, payload.height), (640, 320));
         assert!(!payload.cache_hit);
-    }
-
-    fn sample_workbook() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("..")
-            .join("Examples")
-            .join("novelai_metadata.xlsx")
     }
 
     struct TemporaryImageDirectory {

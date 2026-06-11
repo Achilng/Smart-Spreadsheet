@@ -1,13 +1,16 @@
+mod batches;
+mod delete;
 mod export;
+pub mod identity;
 mod images;
 mod migrations;
 mod query;
 mod tags;
-mod workbook;
 
+pub use batches::{AppendOutcome, BatchSummary, LibrarySummary, NewRow, SourceType};
+pub use delete::DeleteOutcome;
 pub use query::{MAX_PAGE_SIZE, RowPage, RowQuery, RowRecord, TagMatchMode, TagSummary};
 pub use tags::{RowSelection, TagMutationError, TagMutationResult};
-pub use workbook::WorkbookSummary;
 
 use std::path::Path;
 use std::time::Duration;
@@ -18,7 +21,7 @@ use thiserror::Error;
 pub use export::RowTagSnapshot;
 pub use images::RowImageLocator;
 pub use migrations::CURRENT_SCHEMA_VERSION;
-use migrations::MIGRATION_1;
+use migrations::{MIGRATION_1, MIGRATION_2};
 
 #[derive(Debug, Error)]
 pub enum DatabaseError {
@@ -28,7 +31,7 @@ pub enum DatabaseError {
     UnsupportedSchemaVersion { found: u32, supported: u32 },
     #[error("数据库完整性检查失败: {0}")]
     IntegrityCheckFailed(String),
-    #[error("工作簿行数超出 SQLite 可表示范围")]
+    #[error("导入行数超出 SQLite 可表示范围")]
     RowCountOverflow,
     #[error("分页大小 {requested} 无效，允许范围为 1..={maximum}")]
     InvalidPageSize { requested: u32, maximum: u32 },
@@ -38,6 +41,12 @@ pub enum DatabaseError {
     CountOverflow,
     #[error("不存在的行 ID: {0}")]
     RowNotFound(i64),
+    #[error("导入批次包含重复的行身份键: {0}")]
+    DuplicateIdentityInBatch(String),
+    #[error("导入批次包含空的行身份键")]
+    EmptyIdentity,
+    #[error("导入收尾失败: {0}")]
+    BatchFinalizeFailed(String),
 }
 
 pub struct Database {
@@ -97,15 +106,82 @@ fn migrate(connection: &mut Connection) -> Result<(), DatabaseError> {
             supported: CURRENT_SCHEMA_VERSION,
         });
     }
-
-    if version == 0 {
-        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        transaction.execute_batch(MIGRATION_1)?;
-        transaction.pragma_update(None, "user_version", CURRENT_SCHEMA_VERSION)?;
-        transaction.commit()?;
+    if version == CURRENT_SCHEMA_VERSION {
+        return Ok(());
     }
 
+    // v2 迁移需要重建 rows 表。按 SQLite 文档要求在事务外关闭外键约束，
+    // 否则 DROP 旧表会触发 row_tags 的级联删除。
+    connection.pragma_update(None, "foreign_keys", false)?;
+    let migration_result = apply_pending_migrations(connection, version);
+    let restore_result = connection.pragma_update(None, "foreign_keys", true);
+    migration_result?;
+    restore_result?;
+    verify_foreign_keys(connection)
+}
+
+fn apply_pending_migrations(
+    connection: &mut Connection,
+    from_version: u32,
+) -> Result<(), DatabaseError> {
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    let mut version = from_version;
+    if version == 0 {
+        transaction.execute_batch(MIGRATION_1)?;
+        version = 1;
+    }
+    if version == 1 {
+        transaction.execute_batch(MIGRATION_2)?;
+        version = 2;
+    }
+    debug_assert_eq!(version, CURRENT_SCHEMA_VERSION);
+    transaction.pragma_update(None, "user_version", version)?;
+    transaction.commit()?;
     Ok(())
+}
+
+fn verify_foreign_keys(connection: &Connection) -> Result<(), DatabaseError> {
+    let mut statement = connection.prepare("PRAGMA foreign_key_check")?;
+    let mut violations = statement.query([])?;
+    if violations.next()?.is_some() {
+        return Err(DatabaseError::IntegrityCheckFailed(
+            "迁移后存在失效的外键引用".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+pub(crate) mod test_support {
+    use super::batches::{NewRow, SourceType};
+    use super::Database;
+
+    /// 构造 `count` 行测试数据：身份键为 file:d:\test\<编号>.png，
+    /// source_ordinal 与正向提示词按编号递增。
+    pub(crate) fn test_rows(count: i64) -> Vec<NewRow> {
+        (1..=count)
+            .map(|index| NewRow {
+                source_ordinal: u32::try_from(index + 1).unwrap(),
+                identity: format!(r"file:d:\test\{index}.png"),
+                time: Some(format!("time {index}")),
+                positive_prompt: Some(format!("prompt {index}")),
+                ..NewRow::default()
+            })
+            .collect()
+    }
+
+    /// 新建内存库并追加一个包含 `count` 行的 folder 批次。
+    pub(crate) fn database_with_rows(count: i64) -> Database {
+        let mut database = Database::open_in_memory().unwrap();
+        append_rows(&mut database, &test_rows(count));
+        database
+    }
+
+    pub(crate) fn append_rows(database: &mut Database, rows: &[NewRow]) {
+        database
+            .append_batch(SourceType::Folder, r"D:\test", rows, |_| Ok(()))
+            .unwrap();
+    }
 }
 
 #[cfg(test)]
@@ -119,7 +195,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn initializes_v1_schema_and_foreign_keys() {
+    fn initializes_v2_schema_and_foreign_keys() {
         let database = Database::open_in_memory().unwrap();
 
         assert_eq!(database.schema_version().unwrap(), CURRENT_SCHEMA_VERSION);
@@ -140,7 +216,14 @@ mod tests {
             .unwrap();
         assert_eq!(
             tables,
-            vec!["row_tags", "rows", "settings", "tags", "workbook"]
+            vec![
+                "import_batches",
+                "pending_embedded_extractions",
+                "row_tags",
+                "rows",
+                "settings",
+                "tags"
+            ]
         );
     }
 
@@ -170,53 +253,6 @@ mod tests {
             rusqlite::Error::SqliteFailure(ref failure, _)
                 if failure.code == ErrorCode::ConstraintViolation
         ));
-    }
-
-    #[test]
-    fn deleting_workbook_cascades_rows_and_row_tags() {
-        let database = Database::open_in_memory().unwrap();
-        let connection = &database.connection;
-        connection
-            .execute(
-                "INSERT INTO workbook(id, imported_name, imported_at, sheet_name, row_count)
-                 VALUES (1, 'sample.xlsx', '2026-06-10T00:00:00Z', 'NovelAI Metadata', 1)",
-                [],
-            )
-            .unwrap();
-        connection
-            .execute(
-                "INSERT INTO rows(workbook_id, source_row, positive_prompt) VALUES (1, 2, 'test')",
-                [],
-            )
-            .unwrap();
-        connection
-            .execute("INSERT INTO tags(name) VALUES ('keep')", [])
-            .unwrap();
-        connection
-            .execute("INSERT INTO row_tags(row_id, tag_id) VALUES (1, 1)", [])
-            .unwrap();
-
-        connection
-            .execute("DELETE FROM workbook WHERE id = 1", [])
-            .unwrap();
-
-        let counts = connection
-            .query_row(
-                "SELECT
-                    (SELECT COUNT(*) FROM rows),
-                    (SELECT COUNT(*) FROM row_tags),
-                    (SELECT COUNT(*) FROM tags)",
-                [],
-                |row| {
-                    Ok((
-                        row.get::<_, u32>(0)?,
-                        row.get::<_, u32>(1)?,
-                        row.get::<_, u32>(2)?,
-                    ))
-                },
-            )
-            .unwrap();
-        assert_eq!(counts, (0, 0, 1));
     }
 
     #[test]
@@ -260,6 +296,114 @@ mod tests {
                 supported: CURRENT_SCHEMA_VERSION
             }
         ));
+    }
+
+    #[test]
+    fn upgrades_v1_database_preserving_rows_tags_and_order() {
+        let temporary = TemporaryDatabase::new();
+        create_v1_database(&temporary.path);
+
+        let database = Database::open(&temporary.path).unwrap();
+
+        assert_eq!(database.schema_version().unwrap(), 2);
+        // 批次：旧工作簿转为唯一的 xlsx 批次。
+        let batch: (String, String, i64) = database
+            .connection
+            .query_row(
+                "SELECT source_type, source_path, added_count FROM import_batches",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(batch, ("xlsx".into(), "legacy.xlsx".into(), 3));
+
+        // 行：ID 保持不变，唯一图片路径转为 file: 身份键，
+        // 空路径与重复路径行退化为 xlsxrow: 身份键。
+        let mut statement = database
+            .connection
+            .prepare(
+                "SELECT id, source_ordinal, identity, positive_prompt
+                 FROM rows ORDER BY id",
+            )
+            .unwrap();
+        let rows = statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, u32>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                ))
+            })
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert_eq!(
+            rows,
+            vec![
+                (
+                    1,
+                    2,
+                    r"file:d:\images\one.png".to_owned(),
+                    Some("first".to_owned())
+                ),
+                (2, 3, "xlsxrow:legacy.xlsx!3".to_owned(), None),
+                (3, 4, "xlsxrow:legacy.xlsx!4".to_owned(), None),
+            ]
+        );
+
+        // Tag 关联原样保留（行 ID 不变）。
+        let tagged: i64 = database
+            .connection
+            .query_row(
+                "SELECT row_tags.row_id FROM row_tags
+                 JOIN tags ON tags.id = row_tags.tag_id
+                 WHERE tags.name = 'keep'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(tagged, 2);
+
+        // 嵌入图引用进入待提取表。
+        let pending: Vec<(i64, String)> = database
+            .pending_embedded_extractions()
+            .unwrap();
+        assert_eq!(pending, vec![(1, "xl/media/image1.png".to_owned())]);
+    }
+
+    /// 手工构造 v1 库：3 行数据。第 2、3 行 image_path 重复（必须退化为
+    /// xlsxrow 身份键），第 1 行带嵌入图引用，第 2 行带 Tag。
+    fn create_v1_database(path: &Path) {
+        let connection = Connection::open(path).unwrap();
+        connection
+            .execute_batch(
+                "PRAGMA journal_mode = WAL;
+                 BEGIN;
+                 PRAGMA user_version = 0;
+                 COMMIT;",
+            )
+            .unwrap();
+        connection.execute_batch(MIGRATION_1).unwrap();
+        connection
+            .pragma_update(None, "user_version", 1)
+            .unwrap();
+        connection
+            .execute_batch(
+                r#"
+                INSERT INTO workbook (id, imported_name, imported_at, sheet_name, row_count)
+                VALUES (1, 'legacy.xlsx', '2026-06-01T00:00:00Z', 'NovelAI Metadata', 3);
+                INSERT INTO rows (workbook_id, source_row, positive_prompt, image_path, embedded_image_ref)
+                VALUES (1, 2, 'first', 'D:/Images/One.PNG', 'xl/media/image1.png');
+                INSERT INTO rows (workbook_id, source_row, image_path)
+                VALUES (1, 3, 'D:\images\dup.png');
+                INSERT INTO rows (workbook_id, source_row, image_path)
+                VALUES (1, 4, 'D:\images\dup.png');
+                INSERT INTO tags (name) VALUES ('keep');
+                INSERT INTO row_tags (row_id, tag_id) VALUES (2, 1);
+                "#,
+            )
+            .unwrap();
     }
 
     struct TemporaryDatabase {

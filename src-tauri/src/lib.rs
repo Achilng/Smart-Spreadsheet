@@ -21,6 +21,8 @@ pub fn run() {
             app::commands::initialize_data_directory,
             app::commands::open_data_directory,
             app::commands::import_workbook,
+            app::commands::delete_rows,
+            app::commands::list_import_batches,
             app::commands::query_rows,
             app::commands::list_tags,
             app::commands::create_tag,

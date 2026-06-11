@@ -1,3 +1,4 @@
+mod delete;
 mod export;
 mod import;
 mod migration;
@@ -10,7 +11,9 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::db::{Database, DatabaseError};
+use crate::excel::EmbeddedImageRef;
 
+pub use delete::{RowDeletionError, RowDeletionReport};
 pub use export::{ExportOutcome, WorkbookExportError};
 pub use import::{ImportOutcome, WorkbookImportError};
 pub use migration::{MigrationOutcome, PreparedMigration};
@@ -78,6 +81,7 @@ impl DataDirectory {
 
         fs::create_dir_all(root)?;
         fs::create_dir_all(root.join("workbook"))?;
+        fs::create_dir_all(root.join("files"))?;
         fs::create_dir_all(root.join("cache").join("thumbnails"))?;
         fs::create_dir_all(root.join("migration"))?;
         drop(Database::open(root.join(DATABASE_FILE))?);
@@ -119,9 +123,14 @@ impl DataDirectory {
         }
         drop(Database::open(&database_path)?);
 
-        Ok(Self {
+        // v1 受管目录没有 files/，打开时按需补建（目录格式版本保持 1）。
+        fs::create_dir_all(root.join("files"))?;
+
+        let directory = Self {
             root: root.to_owned(),
-        })
+        };
+        directory.process_pending_embedded_extractions()?;
+        Ok(directory)
     }
 
     pub fn root(&self) -> &Path {
@@ -136,6 +145,10 @@ impl DataDirectory {
         self.root.join("workbook").join("source.xlsx")
     }
 
+    pub fn files_path(&self) -> PathBuf {
+        self.root.join("files")
+    }
+
     pub fn thumbnail_cache_path(&self) -> PathBuf {
         self.root.join("cache").join("thumbnails")
     }
@@ -147,6 +160,70 @@ impl DataDirectory {
     pub fn open_database(&self) -> Result<Database, StorageError> {
         Ok(Database::open(self.database_path())?)
     }
+
+    /// 处理 v1→v2 迁移遗留的嵌入图提取：从旧工作簿副本批量读出嵌入图，
+    /// 写入 `files/1/embedded/`（迁移产生的行固定属于批次 1）并更新行记录。
+    /// 工作簿副本缺失或读取失败时清空待提取项，相关行失去嵌入图回退但不阻塞打开。
+    fn process_pending_embedded_extractions(&self) -> Result<(), StorageError> {
+        let mut database = self.open_database()?;
+        let pending = database.pending_embedded_extractions()?;
+        if pending.is_empty() {
+            return Ok(());
+        }
+
+        let workbook = self.source_workbook_path();
+        let mut results: Vec<(i64, Option<String>)> =
+            pending.iter().map(|(row_id, _)| (*row_id, None)).collect();
+
+        if workbook.is_file() {
+            let target_dir = self.files_path().join("1").join("embedded");
+            fs::create_dir_all(&target_dir)?;
+            let references = pending
+                .iter()
+                .map(|(_, media_path)| EmbeddedImageRef {
+                    source_row: 0,
+                    source_column: 0,
+                    media_path: media_path.clone(),
+                })
+                .collect::<Vec<_>>();
+            let extraction = crate::excel::extract_embedded_images(
+                &workbook,
+                &references,
+                |index, image, bytes| {
+                    let row_id = pending[index].0;
+                    let extension = media_extension(&image.media_path);
+                    let file_name = format!("row-{row_id}.{extension}");
+                    fs::write(target_dir.join(&file_name), bytes)?;
+                    results[index].1 = Some(format!("files/1/embedded/{file_name}"));
+                    Ok(())
+                },
+            );
+            // 工作簿副本损坏时按“无嵌入图”降级处理，不阻塞数据目录打开。
+            if extraction.is_err() {
+                for result in &mut results {
+                    if let Some(stored) = result.1.take() {
+                        let _ = fs::remove_file(self.root.join(stored));
+                    }
+                }
+            }
+        }
+
+        database.resolve_pending_embedded_extractions(&results)?;
+        Ok(())
+    }
+}
+
+pub(super) fn media_extension(media_path: &str) -> String {
+    let extension = media_path
+        .rsplit('.')
+        .next()
+        .filter(|extension| {
+            !extension.is_empty()
+                && extension.len() <= 8
+                && extension.chars().all(|c| c.is_ascii_alphanumeric())
+        })
+        .unwrap_or("png");
+    extension.to_ascii_lowercase()
 }
 
 fn write_marker(path: &Path) -> Result<(), StorageError> {

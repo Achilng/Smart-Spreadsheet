@@ -26,14 +26,16 @@ pub struct RowQuery {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RowRecord {
     pub id: i64,
-    pub source_row: u32,
+    pub batch_id: i64,
+    pub source_ordinal: u32,
     pub time: Option<String>,
     pub positive_prompt: Option<String>,
     pub negative_prompt: Option<String>,
     pub artists: Option<String>,
     pub image_folder: Option<String>,
     pub image_path: Option<String>,
-    pub embedded_image_ref: Option<String>,
+    pub stored_image_path: Option<String>,
+    pub metadata_failed: bool,
     pub tags: Vec<String>,
 }
 
@@ -153,13 +155,14 @@ fn create_page_rows(
     offset: i64,
 ) -> Result<(), rusqlite::Error> {
     let predicate = filter_predicate(mode);
+    // 行的展示顺序即入库顺序（rows.id 单调递增）。
     transaction.execute(
         &format!(
             "INSERT INTO {PAGE_ROWS_TABLE}(ordinal, id)
-             SELECT ROW_NUMBER() OVER (ORDER BY rows.source_row, rows.id), rows.id
+             SELECT ROW_NUMBER() OVER (ORDER BY rows.id), rows.id
              FROM rows
              WHERE {predicate}
-             ORDER BY rows.source_row, rows.id
+             ORDER BY rows.id
              LIMIT ?1 OFFSET ?2"
         ),
         params![limit, offset],
@@ -182,9 +185,10 @@ fn query_total_count(
 
 fn query_page_metadata(transaction: &Transaction<'_>) -> Result<Vec<RowRecord>, DatabaseError> {
     let mut statement = transaction.prepare(&format!(
-        "SELECT rows.id, rows.source_row, rows.time, rows.positive_prompt,
-                rows.negative_prompt, rows.artists, rows.image_folder,
-                rows.image_path, rows.embedded_image_ref
+        "SELECT rows.id, rows.batch_id, rows.source_ordinal, rows.time,
+                rows.positive_prompt, rows.negative_prompt, rows.artists,
+                rows.image_folder, rows.image_path, rows.stored_image_path,
+                rows.metadata_failed
          FROM {PAGE_ROWS_TABLE} AS page
          JOIN rows ON rows.id = page.id
          ORDER BY page.ordinal"
@@ -193,14 +197,16 @@ fn query_page_metadata(transaction: &Transaction<'_>) -> Result<Vec<RowRecord>, 
         .query_map([], |row| {
             Ok(RowRecord {
                 id: row.get(0)?,
-                source_row: row.get(1)?,
-                time: row.get(2)?,
-                positive_prompt: row.get(3)?,
-                negative_prompt: row.get(4)?,
-                artists: row.get(5)?,
-                image_folder: row.get(6)?,
-                image_path: row.get(7)?,
-                embedded_image_ref: row.get(8)?,
+                batch_id: row.get(1)?,
+                source_ordinal: row.get(2)?,
+                time: row.get(3)?,
+                positive_prompt: row.get(4)?,
+                negative_prompt: row.get(5)?,
+                artists: row.get(6)?,
+                image_folder: row.get(7)?,
+                image_path: row.get(8)?,
+                stored_image_path: row.get(9)?,
+                metadata_failed: row.get(10)?,
                 tags: Vec::new(),
             })
         })?
@@ -261,8 +267,7 @@ pub(super) fn filter_predicate(mode: TagMatchMode) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use crate::excel::{ImportedRow, ParsedWorkbook};
-
+    use super::super::test_support::database_with_rows;
     use super::*;
 
     #[test]
@@ -383,8 +388,8 @@ mod tests {
 
         assert_eq!(page.total_count, 10_000);
         assert_eq!(page.rows.len(), 100);
-        assert_eq!(page.rows.first().unwrap().source_row, 9_902);
-        assert_eq!(page.rows.last().unwrap().source_row, 10_001);
+        assert_eq!(page.rows.first().unwrap().source_ordinal, 9_902);
+        assert_eq!(page.rows.last().unwrap().source_ordinal, 10_001);
         assert!(!page.has_more());
     }
 
@@ -408,28 +413,6 @@ mod tests {
         database.add_tags_to_rows(&[2], &["red".into()]).unwrap();
         database
             .add_tags_to_rows(&[3, 4], &["Blue".into()])
-            .unwrap();
-        database
-    }
-
-    fn database_with_rows(count: i64) -> Database {
-        let mut database = Database::open_in_memory().unwrap();
-        let workbook = ParsedWorkbook {
-            sheet_name: "NovelAI Metadata".into(),
-            rows: (1..=count)
-                .map(|id| ImportedRow {
-                    source_row: u32::try_from(id + 1).unwrap(),
-                    time: Some(format!("time {id}")),
-                    positive_prompt: Some(format!("prompt {id}")),
-                    negative_prompt: None,
-                    artists: None,
-                    image_folder: None,
-                    image_path: None,
-                })
-                .collect(),
-        };
-        database
-            .replace_workbook("query.xlsx", &workbook, &[])
             .unwrap();
         database
     }

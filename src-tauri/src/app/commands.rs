@@ -5,34 +5,53 @@ use tauri::{State, ipc::Response};
 
 use super::runtime::{AppRuntime, RuntimeSnapshot};
 use crate::db::{
-    RowPage, RowQuery, RowRecord, RowSelection, TagMatchMode, TagMutationResult, TagSummary,
-    WorkbookSummary,
+    BatchSummary, LibrarySummary, RowPage, RowQuery, RowRecord, RowSelection, TagMatchMode,
+    TagMutationResult, TagSummary,
 };
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct AppSnapshotDto {
     data_directory: Option<String>,
-    workbook: Option<WorkbookSummaryDto>,
+    library: Option<LibrarySummaryDto>,
     startup_error: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct WorkbookSummaryDto {
-    imported_name: String,
-    imported_at: String,
-    sheet_name: String,
+struct LibrarySummaryDto {
     row_count: u64,
+    batch_count: u64,
+    last_batch: Option<BatchSummaryDto>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct BatchSummaryDto {
+    id: i64,
+    source_type: &'static str,
+    source_path: String,
+    imported_at: String,
+    added_count: u64,
+    skipped_count: u64,
 }
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ImportResultDto {
     snapshot: AppSnapshotDto,
-    imported_rows: usize,
-    embedded_images: usize,
-    previous_copy_cleanup: Option<String>,
+    added: u64,
+    skipped_existing: u64,
+    changed_existing: u64,
+    embedded_images_stored: usize,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct DeleteResultDto {
+    snapshot: AppSnapshotDto,
+    deleted_rows: u64,
+    cleanup_failures: usize,
 }
 
 #[derive(Debug, Deserialize)]
@@ -65,14 +84,15 @@ pub(crate) struct RowPageDto {
 #[serde(rename_all = "camelCase")]
 struct RowRecordDto {
     id: i64,
-    source_row: u32,
+    batch_id: i64,
+    source_ordinal: u32,
     time: Option<String>,
     positive_prompt: Option<String>,
     negative_prompt: Option<String>,
     artists: Option<String>,
     image_folder: Option<String>,
     image_path: Option<String>,
-    embedded_image_ref: Option<String>,
+    metadata_failed: bool,
     tags: Vec<String>,
 }
 
@@ -161,12 +181,36 @@ pub(crate) fn import_workbook(
         .import_workbook(PathBuf::from(path))
         .map(|(snapshot, outcome)| ImportResultDto {
             snapshot: snapshot.into(),
-            imported_rows: outcome.row_count,
-            embedded_images: outcome.embedded_image_count,
-            previous_copy_cleanup: outcome
-                .previous_copy_cleanup
-                .map(|path| path.to_string_lossy().into_owned()),
+            added: outcome.added,
+            skipped_existing: outcome.skipped_existing,
+            changed_existing: outcome.changed_existing,
+            embedded_images_stored: outcome.embedded_images_stored,
         })
+        .map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn delete_rows(
+    selection: RowSelectionDto,
+    runtime: State<'_, AppRuntime>,
+) -> Result<DeleteResultDto, String> {
+    runtime
+        .delete_rows(&selection.into())
+        .map(|(snapshot, report)| DeleteResultDto {
+            snapshot: snapshot.into(),
+            deleted_rows: report.deleted_rows,
+            cleanup_failures: report.cleanup_failures,
+        })
+        .map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn list_import_batches(
+    runtime: State<'_, AppRuntime>,
+) -> Result<Vec<BatchSummaryDto>, String> {
+    runtime
+        .list_batches()
+        .map(|batches| batches.into_iter().map(BatchSummaryDto::from).collect())
         .map_err(error_text)
 }
 
@@ -304,19 +348,31 @@ impl From<RuntimeSnapshot> for AppSnapshotDto {
             data_directory: snapshot
                 .data_directory
                 .map(|path| path.to_string_lossy().into_owned()),
-            workbook: snapshot.workbook.map(WorkbookSummaryDto::from),
+            library: snapshot.library.map(LibrarySummaryDto::from),
             startup_error: snapshot.startup_error,
         }
     }
 }
 
-impl From<WorkbookSummary> for WorkbookSummaryDto {
-    fn from(summary: WorkbookSummary) -> Self {
+impl From<LibrarySummary> for LibrarySummaryDto {
+    fn from(summary: LibrarySummary) -> Self {
         Self {
-            imported_name: summary.imported_name,
-            imported_at: summary.imported_at,
-            sheet_name: summary.sheet_name,
             row_count: summary.row_count,
+            batch_count: summary.batch_count,
+            last_batch: summary.last_batch.map(BatchSummaryDto::from),
+        }
+    }
+}
+
+impl From<BatchSummary> for BatchSummaryDto {
+    fn from(batch: BatchSummary) -> Self {
+        Self {
+            id: batch.id,
+            source_type: batch.source_type.as_str(),
+            source_path: batch.source_path,
+            imported_at: batch.imported_at,
+            added_count: batch.added_count,
+            skipped_count: batch.skipped_count,
         }
     }
 }
@@ -347,14 +403,15 @@ impl From<RowRecord> for RowRecordDto {
     fn from(row: RowRecord) -> Self {
         Self {
             id: row.id,
-            source_row: row.source_row,
+            batch_id: row.batch_id,
+            source_ordinal: row.source_ordinal,
             time: row.time,
             positive_prompt: row.positive_prompt,
             negative_prompt: row.negative_prompt,
             artists: row.artists,
             image_folder: row.image_folder,
             image_path: row.image_path,
-            embedded_image_ref: row.embedded_image_ref,
+            metadata_failed: row.metadata_failed,
             tags: row.tags,
         }
     }

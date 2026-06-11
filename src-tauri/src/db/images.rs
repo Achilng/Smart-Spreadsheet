@@ -1,4 +1,4 @@
-use rusqlite::OptionalExtension;
+use rusqlite::{OptionalExtension, params};
 
 use super::{Database, DatabaseError};
 
@@ -6,71 +6,124 @@ use super::{Database, DatabaseError};
 pub struct RowImageLocator {
     pub row_id: i64,
     pub image_path: Option<String>,
-    pub embedded_image_ref: Option<String>,
+    /// 受管副本相对数据目录根的路径（压缩包提取副本或 xlsx 嵌入图）。
+    pub stored_image_path: Option<String>,
 }
 
 impl Database {
     pub fn row_image_locator(&self, row_id: i64) -> Result<RowImageLocator, DatabaseError> {
         self.connection
             .query_row(
-                "SELECT id, image_path, embedded_image_ref FROM rows WHERE id = ?1",
+                "SELECT id, image_path, stored_image_path FROM rows WHERE id = ?1",
                 [row_id],
                 |row| {
                     Ok(RowImageLocator {
                         row_id: row.get(0)?,
                         image_path: row.get(1)?,
-                        embedded_image_ref: row.get(2)?,
+                        stored_image_path: row.get(2)?,
                     })
                 },
             )
             .optional()?
             .ok_or(DatabaseError::RowNotFound(row_id))
     }
+
+    /// v1→v2 迁移遗留的待提取嵌入图（行 ID 升序）。
+    pub fn pending_embedded_extractions(&self) -> Result<Vec<(i64, String)>, DatabaseError> {
+        let mut statement = self.connection.prepare(
+            "SELECT row_id, media_path FROM pending_embedded_extractions ORDER BY row_id",
+        )?;
+        let pending = statement
+            .query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(pending)
+    }
+
+    /// 记录嵌入图提取结果并清空对应待提取项。
+    /// `stored_image_path` 为 None 表示提取失败或无数据可提取，该行不再保留嵌入图回退。
+    pub fn resolve_pending_embedded_extractions(
+        &mut self,
+        results: &[(i64, Option<String>)],
+    ) -> Result<(), DatabaseError> {
+        let transaction = self.connection.transaction()?;
+        {
+            let mut update = transaction
+                .prepare("UPDATE rows SET stored_image_path = ?2 WHERE id = ?1")?;
+            let mut clear = transaction
+                .prepare("DELETE FROM pending_embedded_extractions WHERE row_id = ?1")?;
+            for (row_id, stored_image_path) in results {
+                if let Some(stored) = stored_image_path {
+                    update.execute(params![row_id, stored])?;
+                }
+                clear.execute([row_id])?;
+            }
+        }
+        transaction.commit()?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::excel::{EmbeddedImageRef, ImportedRow, ParsedWorkbook};
-
+    use super::super::test_support::append_rows;
+    use super::super::{NewRow, SourceType};
     use super::*;
 
     #[test]
-    fn returns_path_and_embedded_reference_for_one_row() {
+    fn returns_path_and_stored_copy_for_one_row() {
         let mut database = Database::open_in_memory().unwrap();
+        let row = NewRow {
+            source_ordinal: 1,
+            identity: r"archive:d:\pack.zip!sample.png".into(),
+            image_path: Some(r"D:\Packs\pack.zip > sample.png".into()),
+            stored_image_rel: Some("sample.png".into()),
+            ..NewRow::default()
+        };
         database
-            .replace_workbook(
-                "images.xlsx",
-                &ParsedWorkbook {
-                    sheet_name: "Sheet1".into(),
-                    rows: vec![ImportedRow {
-                        source_row: 2,
-                        time: None,
-                        positive_prompt: None,
-                        negative_prompt: None,
-                        artists: None,
-                        image_folder: None,
-                        image_path: Some(r"D:\images\sample.png".into()),
-                    }],
-                },
-                &[EmbeddedImageRef {
-                    source_row: 2,
-                    source_column: 1,
-                    media_path: "xl/media/image1.png".into(),
-                }],
-            )
+            .append_batch(SourceType::Archive, r"D:\Packs\pack.zip", &[row], |_| Ok(()))
             .unwrap();
 
         assert_eq!(
             database.row_image_locator(1).unwrap(),
             RowImageLocator {
                 row_id: 1,
-                image_path: Some(r"D:\images\sample.png".into()),
-                embedded_image_ref: Some("xl/media/image1.png".into()),
+                image_path: Some(r"D:\Packs\pack.zip > sample.png".into()),
+                stored_image_path: Some("files/1/sample.png".into()),
             }
         );
         assert!(matches!(
             database.row_image_locator(2),
             Err(DatabaseError::RowNotFound(2))
         ));
+    }
+
+    #[test]
+    fn resolves_pending_extractions_and_updates_rows() {
+        let mut database = Database::open_in_memory().unwrap();
+        append_rows(&mut database, &super::super::test_support::test_rows(2));
+        database
+            .connection
+            .execute_batch(
+                "INSERT INTO pending_embedded_extractions (row_id, media_path)
+                 VALUES (1, 'xl/media/image1.png'), (2, 'xl/media/image2.png');",
+            )
+            .unwrap();
+
+        database
+            .resolve_pending_embedded_extractions(&[
+                (1, Some("files/1/embedded/row-1.png".to_owned())),
+                (2, None),
+            ])
+            .unwrap();
+
+        assert!(database.pending_embedded_extractions().unwrap().is_empty());
+        assert_eq!(
+            database.row_image_locator(1).unwrap().stored_image_path,
+            Some("files/1/embedded/row-1.png".to_owned())
+        );
+        assert_eq!(
+            database.row_image_locator(2).unwrap().stored_image_path,
+            None
+        );
     }
 }

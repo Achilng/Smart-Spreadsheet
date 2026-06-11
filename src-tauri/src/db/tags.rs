@@ -6,7 +6,7 @@ use thiserror::Error;
 use super::query::{FILTER_TAGS_TABLE, TagMatchMode, create_filter_tags, filter_predicate};
 use super::{Database, DatabaseError};
 
-const TARGET_ROWS_TABLE: &str = "temp.tag_target_rows";
+pub(super) const TARGET_ROWS_TABLE: &str = "temp.tag_target_rows";
 const EXCLUDED_ROWS_TABLE: &str = "temp.tag_excluded_rows";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -244,7 +244,7 @@ pub(super) fn normalize_tags(tags: &[String]) -> Vec<String> {
     normalized
 }
 
-fn create_selection_rows(
+pub(super) fn create_selection_rows(
     transaction: &Transaction<'_>,
     selection: &RowSelection,
 ) -> Result<(), TagMutationError> {
@@ -332,7 +332,9 @@ fn target_row_count(transaction: &Transaction<'_>) -> Result<u64, TagMutationErr
     u64::try_from(count).map_err(|_| TagMutationError::Database(DatabaseError::CountOverflow))
 }
 
-fn drop_selection_tables(transaction: &Transaction<'_>) -> Result<(), rusqlite::Error> {
+pub(super) fn drop_selection_tables(
+    transaction: &Transaction<'_>,
+) -> Result<(), rusqlite::Error> {
     transaction.execute_batch(&format!(
         "DROP TABLE IF EXISTS {TARGET_ROWS_TABLE};
          DROP TABLE IF EXISTS {EXCLUDED_ROWS_TABLE};
@@ -386,8 +388,7 @@ fn remove_tags(transaction: &Transaction<'_>, tags: &[String]) -> Result<usize, 
 
 #[cfg(test)]
 mod tests {
-    use crate::excel::{ImportedRow, ParsedWorkbook};
-
+    use super::super::test_support::database_with_rows;
     use super::*;
 
     #[test]
@@ -586,28 +587,6 @@ mod tests {
         assert_eq!(result.affected_rows, 0);
         assert_eq!(result.associations_changed, 0);
         assert!(stored_tags(&database).is_empty());
-    }
-
-    fn database_with_rows(count: i64) -> Database {
-        let mut database = Database::open_in_memory().unwrap();
-        let workbook = ParsedWorkbook {
-            sheet_name: "NovelAI Metadata".into(),
-            rows: (1..=count)
-                .map(|id| ImportedRow {
-                    source_row: u32::try_from(id + 1).unwrap(),
-                    time: None,
-                    positive_prompt: Some(format!("prompt {id}")),
-                    negative_prompt: None,
-                    artists: None,
-                    image_folder: None,
-                    image_path: None,
-                })
-                .collect(),
-        };
-        database
-            .replace_workbook("test.xlsx", &workbook, &[])
-            .unwrap();
-        database
     }
 
     fn stored_tags(database: &Database) -> Vec<String> {
