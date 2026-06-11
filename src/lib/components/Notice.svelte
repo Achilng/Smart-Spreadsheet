@@ -1,8 +1,43 @@
 <script lang="ts">
-  import { app, setNotice } from "../app-state.svelte";
+  import { app, formatCount, setNotice } from "../app-state.svelte";
+
+  const progressText = $derived.by(() => {
+    const progress = app.importProgress;
+    if (!progress) {
+      return null;
+    }
+    switch (progress.stage) {
+      case "extracting":
+        return "正在解压压缩包…";
+      case "scanning":
+        return progress.total > 0
+          ? `已发现 ${formatCount(progress.total)} 张 PNG`
+          : "正在扫描 PNG…";
+      case "processing":
+        return `正在读取元数据 ${formatCount(progress.processed)} / ${formatCount(progress.total)}`;
+      default:
+        return null;
+    }
+  });
+  const progressPercent = $derived.by(() => {
+    const progress = app.importProgress;
+    if (!progress || progress.stage !== "processing" || progress.total === 0) {
+      return null;
+    }
+    return Math.round((progress.processed / progress.total) * 100);
+  });
 </script>
 
-{#if app.notice}
+{#if progressText}
+  <div class="toast toast-progress" role="status">
+    <span>{progressText}</span>
+    {#if progressPercent != null}
+      <span class="progress-track" aria-hidden="true">
+        <span class="progress-fill" style:width="{progressPercent}%"></span>
+      </span>
+    {/if}
+  </div>
+{:else if app.notice}
   <div class="toast toast-{app.notice.tone}" role="status">
     <span>{app.notice.text}</span>
     <button type="button" aria-label="关闭提示" onclick={() => setNotice(null)}>×</button>
@@ -38,6 +73,29 @@
     border-color: var(--danger);
     color: var(--danger);
     background: var(--danger-soft);
+  }
+
+  .toast-progress {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-soft);
+  }
+
+  .progress-track {
+    width: 120px;
+    height: 6px;
+    border-radius: 999px;
+    background: var(--surface);
+    overflow: hidden;
+    flex: none;
+  }
+
+  .progress-fill {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+    background: var(--accent);
+    transition: width 0.15s ease;
   }
 
   .toast span {

@@ -2,6 +2,8 @@
   import {
     app,
     chooseExport,
+    chooseImageArchive,
+    chooseImageFolder,
     chooseMigration,
     chooseWorkbook,
     formatCount,
@@ -50,6 +52,12 @@
   <div class="actions">
     <button type="button" class="btn btn-ghost" disabled={app.busy} onclick={() => void chooseMigration()}>
       迁移目录
+    </button>
+    <button type="button" class="btn" disabled={app.busy} onclick={() => void chooseImageFolder()}>
+      导入文件夹
+    </button>
+    <button type="button" class="btn" disabled={app.busy} onclick={() => void chooseImageArchive()}>
+      导入压缩包
     </button>
     <button type="button" class="btn" disabled={app.busy} onclick={() => void chooseWorkbook()}>
       导入 xlsx

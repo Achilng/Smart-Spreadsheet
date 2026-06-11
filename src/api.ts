@@ -37,6 +37,24 @@ export interface DeleteResult {
   cleanupFailures: number;
 }
 
+export interface ImageImportResult {
+  snapshot: AppSnapshot;
+  sourceType: SourceType;
+  totalFound: number;
+  added: number;
+  skippedExisting: number;
+  changedExisting: number;
+  metadataFailed: number;
+}
+
+export type ImageImportStage = "extracting" | "scanning" | "processing";
+
+export interface ImageImportProgress {
+  stage: ImageImportStage;
+  processed: number;
+  total: number;
+}
+
 export type TagMatchMode = "and" | "or";
 
 export interface RowQuery {
@@ -113,6 +131,10 @@ export function openDataDirectory(path: string): Promise<AppSnapshot> {
 
 export function importWorkbook(path: string): Promise<ImportResult> {
   return invoke<ImportResult>("import_workbook", { path });
+}
+
+export function importImages(path: string): Promise<ImageImportResult> {
+  return invoke<ImageImportResult>("import_images", { path });
 }
 
 export function deleteRows(selection: RowSelection): Promise<DeleteResult> {

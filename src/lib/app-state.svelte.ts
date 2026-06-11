@@ -1,13 +1,16 @@
+import { listen } from "@tauri-apps/api/event";
 import { confirm as confirmDialog, open, save } from "@tauri-apps/plugin-dialog";
 
 import {
   exportWorkbook,
   getAppSnapshot,
+  importImages,
   importWorkbook,
   initializeDataDirectory,
   migrateDataDirectory,
   openDataDirectory,
   type AppSnapshot,
+  type ImageImportProgress,
 } from "../api";
 
 export type ViewMode = "gallery" | "table";
@@ -26,6 +29,8 @@ export const app = $state({
   detailOpen: true,
   /** 资料库行集合变化（导入/删除）时 +1，数据视图据此整体重载 */
   dataVersion: 0,
+  /** 文件夹/压缩包导入进行中的进度，空闲时为 null */
+  importProgress: null as ImageImportProgress | null,
 });
 
 let noticeTimer = 0;
@@ -97,6 +102,68 @@ export async function chooseWorkbook(): Promise<void> {
       parts.push(`提取 ${formatCount(result.embeddedImagesStored)} 张嵌入图片`);
     }
     setNotice({ tone: "success", text: `导入完成：${parts.join("，")}。` });
+  });
+}
+
+export async function chooseImageFolder(): Promise<void> {
+  const selection = await open({
+    directory: true,
+    multiple: false,
+    title: "选择要导入的图片文件夹（追加进资料库）",
+  });
+  if (typeof selection !== "string") {
+    return;
+  }
+  await runImageImport(selection);
+}
+
+export async function chooseImageArchive(): Promise<void> {
+  const selection = await open({
+    multiple: false,
+    directory: false,
+    title: "选择要导入的压缩包（追加进资料库）",
+    filters: [{ name: "压缩包", extensions: ["zip", "7z", "rar"] }],
+  });
+  if (typeof selection !== "string") {
+    return;
+  }
+  await runImageImport(selection);
+}
+
+async function runImageImport(path: string): Promise<void> {
+  await runAction(async () => {
+    const unlisten = await listen<ImageImportProgress>(
+      "import-images://progress",
+      event => {
+        app.importProgress = event.payload;
+      },
+    );
+    try {
+      const result = await importImages(path);
+      app.snapshot = result.snapshot;
+      if (result.added > 0) {
+        app.dataVersion += 1;
+      }
+      const parts = [`新增 ${formatCount(result.added)} 行`];
+      if (result.skippedExisting > 0) {
+        parts.push(`跳过 ${formatCount(result.skippedExisting)} 张已入库`);
+      }
+      if (result.changedExisting > 0) {
+        parts.push(
+          `其中 ${formatCount(result.changedExisting)} 张源文件有变化（未改动库内数据）`,
+        );
+      }
+      if (result.metadataFailed > 0) {
+        parts.push(`${formatCount(result.metadataFailed)} 张元数据解析失败（已入库并标记）`);
+      }
+      setNotice({
+        tone: "success",
+        text: `导入完成（共发现 ${formatCount(result.totalFound)} 张）：${parts.join("，")}。`,
+      });
+    } finally {
+      unlisten();
+      app.importProgress = null;
+    }
   });
 }
 
