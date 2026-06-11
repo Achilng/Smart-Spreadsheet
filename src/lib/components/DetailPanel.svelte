@@ -8,7 +8,7 @@
 
   const row = $derived(rowStore.activeRow);
   const hasImage = $derived(
-    Boolean(row && (row.imagePath?.trim() || row.embeddedImageRef?.trim())),
+    Boolean(row && (row.imagePath?.trim() || row.storedImagePath?.trim())),
   );
 
   let thumbUrl = $state<string | null>(null);
@@ -166,7 +166,7 @@
 
 <div class="detail-panel">
   <header class="panel-header">
-    <h3>{row ? `Excel 第 ${row.sourceRow} 行` : "详情"}</h3>
+    <h3>{row ? `第 ${row.sourceOrdinal} 行` : "详情"}</h3>
     <button
       type="button"
       class="btn btn-ghost collapse-btn"
@@ -191,7 +191,7 @@
             title="点击放大"
             onclick={() => (lightboxOpen = true)}
           >
-            <img src={displayUrl} alt="Excel 第 {row.sourceRow} 行图片" />
+            <img src={displayUrl} alt="第 {row.sourceOrdinal} 行图片" />
           </button>
         {:else if !hasImage}
           <span class="faint">无图片</span>
@@ -277,7 +277,7 @@
       }
     }}
   >
-    <img src={displayUrl} alt="Excel 第 {row.sourceRow} 行大图" />
+    <img src={displayUrl} alt="第 {row.sourceOrdinal} 行大图" />
   </div>
 {/if}
 

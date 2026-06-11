@@ -4,8 +4,11 @@
 
 <div class="center-screen">
   <div class="flow-card">
-    <h2>导入第一份工作簿</h2>
-    <p class="muted">固定 NovelAI Metadata 结构。应用会复制并校验工作簿，原 Excel 始终只读。</p>
+    <h2>导入第一批数据</h2>
+    <p class="muted">
+      资料库为追加式：可多次导入，已入库的图片自动跳过。当前支持固定 NovelAI Metadata 结构的
+      xlsx，原 Excel 始终只读；文件夹与压缩包导入即将提供。
+    </p>
     <p class="directory" title={app.snapshot?.dataDirectory}>
       数据目录：{app.snapshot?.dataDirectory}
     </p>

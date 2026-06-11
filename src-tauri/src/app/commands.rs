@@ -92,6 +92,7 @@ struct RowRecordDto {
     artists: Option<String>,
     image_folder: Option<String>,
     image_path: Option<String>,
+    stored_image_path: Option<String>,
     metadata_failed: bool,
     tags: Vec<String>,
 }
@@ -411,6 +412,7 @@ impl From<RowRecord> for RowRecordDto {
             artists: row.artists,
             image_folder: row.image_folder,
             image_path: row.image_path,
+            stored_image_path: row.stored_image_path,
             metadata_failed: row.metadata_failed,
             tags: row.tags,
         }

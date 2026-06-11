@@ -9,7 +9,10 @@
   } from "../app-state.svelte";
   import WindowControls from "./WindowControls.svelte";
 
-  const workbook = $derived(app.snapshot?.workbook ?? null);
+  const library = $derived(app.snapshot?.library ?? null);
+  const lastSourceName = $derived(
+    app.snapshot?.library?.lastBatch?.sourcePath.split(/[\\/]/).pop() ?? null,
+  );
 
   const views: { mode: ViewMode; label: string }[] = [
     { mode: "gallery", label: "画廊" },
@@ -19,12 +22,14 @@
 
 <header class="topbar" data-tauri-drag-region>
   <div class="workbook-info" data-tauri-drag-region>
-    {#if workbook}
-      <strong class="name" data-tauri-drag-region title={workbook.importedName}>
-        {workbook.importedName}
+    {#if library}
+      <strong class="name" data-tauri-drag-region title={app.snapshot?.library?.lastBatch?.sourcePath}>
+        图片资料库
       </strong>
       <span class="meta faint" data-tauri-drag-region>
-        {workbook.sheetName} · {formatCount(workbook.rowCount)} 行
+        {formatCount(library.rowCount)} 行 · {formatCount(library.batchCount)} 次导入{lastSourceName
+          ? ` · 最近：${lastSourceName}`
+          : ""}
       </span>
     {/if}
   </div>
@@ -47,7 +52,7 @@
       迁移目录
     </button>
     <button type="button" class="btn" disabled={app.busy} onclick={() => void chooseWorkbook()}>
-      替换工作簿
+      导入 xlsx
     </button>
     <button type="button" class="btn btn-primary" disabled={app.busy} onclick={() => void chooseExport()}>
       导出副本

@@ -21,7 +21,7 @@
   } = $props();
 
   const hasImage = $derived(
-    Boolean(row && (row.imagePath?.trim() || row.embeddedImageRef?.trim())),
+    Boolean(row && (row.imagePath?.trim() || row.storedImagePath?.trim())),
   );
   const isActive = $derived(row != null && rowStore.activeRow?.id === row.id);
   const isChecked = $derived(row != null && isRowSelected(row.id));
@@ -74,7 +74,7 @@
       type="checkbox"
       class="select-box"
       checked={isChecked}
-      aria-label="选择 Excel 第 {row.sourceRow} 行"
+      aria-label="选择第 {row.sourceOrdinal} 行"
       onclick={event => {
         const current = row;
         if (current) {
@@ -86,11 +86,11 @@
       type="button"
       class="thumb"
       style:height="{imageHeight}px"
-      aria-label="查看 Excel 第 {row.sourceRow} 行详情"
+      aria-label="查看第 {row.sourceOrdinal} 行详情"
       onclick={() => (rowStore.activeRow = row ?? null)}
     >
       {#if thumbUrl}
-        <img src={thumbUrl} alt="Excel 第 {row.sourceRow} 行缩略图" loading="lazy" />
+        <img src={thumbUrl} alt="第 {row.sourceOrdinal} 行缩略图" loading="lazy" />
       {:else if !hasImage}
         <span class="thumb-note faint">无图片</span>
       {:else if thumbFailed}
@@ -100,7 +100,7 @@
       {/if}
     </button>
     <div class="footer">
-      <span class="row-no faint">#{row.sourceRow}</span>
+      <span class="row-no faint">#{row.sourceOrdinal}</span>
       <span class="tags" title={row.tags.join(", ")}>
         {#each visibleTags as tag (tag)}
           <span class="chip">{tag}</span>

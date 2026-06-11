@@ -17,7 +17,7 @@
   } = $props();
 
   const hasImage = $derived(
-    Boolean(row && (row.imagePath?.trim() || row.embeddedImageRef?.trim())),
+    Boolean(row && (row.imagePath?.trim() || row.storedImagePath?.trim())),
   );
   const isActive = $derived(row != null && rowStore.activeRow?.id === row.id);
   const isChecked = $derived(row != null && isRowSelected(row.id));
@@ -59,7 +59,7 @@
       <input
         type="checkbox"
         checked={isChecked}
-        aria-label="选择 Excel 第 {row.sourceRow} 行"
+        aria-label="选择第 {row.sourceOrdinal} 行"
         onclick={event => {
           event.stopPropagation();
           const current = row;
@@ -70,9 +70,9 @@
       />
     </div>
     <div class="cell cell-thumb">
-      <Thumbnail rowId={row.id} {hasImage} alt="Excel 第 {row.sourceRow} 行缩略图" />
+      <Thumbnail rowId={row.id} {hasImage} alt="第 {row.sourceOrdinal} 行缩略图" />
     </div>
-    <div class="cell cell-rowno faint">#{row.sourceRow}</div>
+    <div class="cell cell-rowno faint">#{row.sourceOrdinal}</div>
     <div class="cell cell-time" title={row.time ?? ""}>{row.time ?? "—"}</div>
     <div class="cell cell-prompt" title={row.positivePrompt ?? ""}>
       {row.positivePrompt ?? "—"}

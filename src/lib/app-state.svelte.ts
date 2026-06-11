@@ -24,7 +24,7 @@ export const app = $state({
   notice: null as Notice | null,
   viewMode: "gallery" as ViewMode,
   detailOpen: true,
-  /** 工作簿被导入/替换时 +1，数据视图据此整体重载 */
+  /** 资料库行集合变化（导入/删除）时 +1，数据视图据此整体重载 */
   dataVersion: 0,
 });
 
@@ -71,19 +71,10 @@ export async function chooseDirectory(mode: "initialize" | "open"): Promise<void
 }
 
 export async function chooseWorkbook(): Promise<void> {
-  if (app.snapshot?.workbook) {
-    const confirmed = await confirmDialog(
-      "替换当前工作簿会清除现有行与 Tag 数据。原 Excel 不会被修改。是否继续？",
-      { title: "替换工作簿", kind: "warning", okLabel: "继续", cancelLabel: "取消" },
-    );
-    if (!confirmed) {
-      return;
-    }
-  }
   const selection = await open({
     multiple: false,
     directory: false,
-    title: "选择 NovelAI Metadata 工作簿",
+    title: "导入 NovelAI Metadata 工作簿（追加进资料库）",
     filters: [{ name: "Excel 工作簿", extensions: ["xlsx"] }],
   });
   if (typeof selection !== "string") {
@@ -92,20 +83,34 @@ export async function chooseWorkbook(): Promise<void> {
   await runAction(async () => {
     const result = await importWorkbook(selection);
     app.snapshot = result.snapshot;
-    app.dataVersion += 1;
-    setNotice({
-      tone: "success",
-      text: `已导入 ${formatCount(result.importedRows)} 行，识别 ${formatCount(result.embeddedImages)} 张嵌入图片。`,
-    });
+    if (result.added > 0) {
+      app.dataVersion += 1;
+    }
+    const parts = [`新增 ${formatCount(result.added)} 行`];
+    if (result.skippedExisting > 0) {
+      parts.push(`跳过 ${formatCount(result.skippedExisting)} 行已存在`);
+    }
+    if (result.changedExisting > 0) {
+      parts.push(`其中 ${formatCount(result.changedExisting)} 行源文件有变化（未改动库内数据）`);
+    }
+    if (result.embeddedImagesStored > 0) {
+      parts.push(`提取 ${formatCount(result.embeddedImagesStored)} 张嵌入图片`);
+    }
+    setNotice({ tone: "success", text: `导入完成：${parts.join("，")}。` });
   });
 }
 
 export async function chooseExport(): Promise<void> {
-  const workbook = app.snapshot?.workbook;
-  if (!workbook) {
+  const library = app.snapshot?.library;
+  if (!library || library.rowCount === 0) {
     return;
   }
-  const baseName = workbook.importedName.replace(/\.xlsx$/i, "") || "smart-spreadsheet";
+  const lastSource = library.lastBatch?.sourcePath ?? "";
+  const baseName =
+    lastSource
+      .split(/[\\/]/)
+      .pop()
+      ?.replace(/\.xlsx$/i, "") || "smart-spreadsheet";
   const selection = await save({
     title: "导出新的 Excel 副本（不覆盖已有文件）",
     defaultPath: `${baseName}-tagged.xlsx`,

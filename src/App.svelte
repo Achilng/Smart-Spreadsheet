@@ -14,7 +14,7 @@
         app.snapshot &&
         !app.snapshot.startupError &&
         app.snapshot.dataDirectory &&
-        app.snapshot.workbook,
+        (app.snapshot.library?.rowCount ?? 0) > 0,
     ),
   );
 </script>

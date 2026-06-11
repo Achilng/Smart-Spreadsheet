@@ -1,23 +1,40 @@
 import { invoke } from "@tauri-apps/api/core";
 
-export interface WorkbookSummary {
-  importedName: string;
+export type SourceType = "xlsx" | "folder" | "archive";
+
+export interface BatchSummary {
+  id: number;
+  sourceType: SourceType;
+  sourcePath: string;
   importedAt: string;
-  sheetName: string;
+  addedCount: number;
+  skippedCount: number;
+}
+
+export interface LibrarySummary {
   rowCount: number;
+  batchCount: number;
+  lastBatch: BatchSummary | null;
 }
 
 export interface AppSnapshot {
   dataDirectory: string | null;
-  workbook: WorkbookSummary | null;
+  library: LibrarySummary | null;
   startupError: string | null;
 }
 
 export interface ImportResult {
   snapshot: AppSnapshot;
-  importedRows: number;
-  embeddedImages: number;
-  previousCopyCleanup: string | null;
+  added: number;
+  skippedExisting: number;
+  changedExisting: number;
+  embeddedImagesStored: number;
+}
+
+export interface DeleteResult {
+  snapshot: AppSnapshot;
+  deletedRows: number;
+  cleanupFailures: number;
 }
 
 export type TagMatchMode = "and" | "or";
@@ -31,14 +48,16 @@ export interface RowQuery {
 
 export interface RowRecord {
   id: number;
-  sourceRow: number;
+  batchId: number;
+  sourceOrdinal: number;
   time: string | null;
   positivePrompt: string | null;
   negativePrompt: string | null;
   artists: string | null;
   imageFolder: string | null;
   imagePath: string | null;
-  embeddedImageRef: string | null;
+  storedImagePath: string | null;
+  metadataFailed: boolean;
   tags: string[];
 }
 
@@ -94,6 +113,14 @@ export function openDataDirectory(path: string): Promise<AppSnapshot> {
 
 export function importWorkbook(path: string): Promise<ImportResult> {
   return invoke<ImportResult>("import_workbook", { path });
+}
+
+export function deleteRows(selection: RowSelection): Promise<DeleteResult> {
+  return invoke<DeleteResult>("delete_rows", { selection });
+}
+
+export function listImportBatches(): Promise<BatchSummary[]> {
+  return invoke<BatchSummary[]>("list_import_batches");
 }
 
 export function queryRows(query: RowQuery): Promise<RowPage> {
