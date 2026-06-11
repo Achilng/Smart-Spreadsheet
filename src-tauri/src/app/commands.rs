@@ -1,9 +1,10 @@
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
-use tauri::{State, ipc::Response};
+use tauri::{Emitter, Manager, State, ipc::Response};
 
 use super::runtime::{AppRuntime, RuntimeSnapshot};
+use crate::storage::ImageImportProgress;
 use crate::db::{
     BatchSummary, LibrarySummary, RowPage, RowQuery, RowRecord, RowSelection, TagMatchMode,
     TagMutationResult, TagSummary,
@@ -52,6 +53,36 @@ pub(crate) struct DeleteResultDto {
     snapshot: AppSnapshotDto,
     deleted_rows: u64,
     cleanup_failures: usize,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ImageImportResultDto {
+    snapshot: AppSnapshotDto,
+    source_type: &'static str,
+    total_found: usize,
+    added: u64,
+    skipped_existing: u64,
+    changed_existing: u64,
+    metadata_failed: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ImageImportProgressDto {
+    stage: &'static str,
+    processed: usize,
+    total: usize,
+}
+
+impl From<ImageImportProgress> for ImageImportProgressDto {
+    fn from(progress: ImageImportProgress) -> Self {
+        Self {
+            stage: progress.stage.as_str(),
+            processed: progress.processed,
+            total: progress.total,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -188,6 +219,37 @@ pub(crate) fn import_workbook(
             embedded_images_stored: outcome.embedded_images_stored,
         })
         .map_err(error_text)
+}
+
+/// 文件夹/压缩包导入：在阻塞线程上执行避免卡住 UI，进度经
+/// `import-images://progress` 事件推送给前端。
+#[tauri::command]
+pub(crate) async fn import_images(
+    path: String,
+    app: tauri::AppHandle,
+) -> Result<ImageImportResultDto, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let runtime = app.state::<AppRuntime>();
+        runtime
+            .import_images(PathBuf::from(path), |progress| {
+                let _ = app.emit(
+                    "import-images://progress",
+                    ImageImportProgressDto::from(progress),
+                );
+            })
+            .map(|(snapshot, outcome)| ImageImportResultDto {
+                snapshot: snapshot.into(),
+                source_type: outcome.source_type.as_str(),
+                total_found: outcome.total_found,
+                added: outcome.added,
+                skipped_existing: outcome.skipped_existing,
+                changed_existing: outcome.changed_existing,
+                metadata_failed: outcome.metadata_failed,
+            })
+            .map_err(error_text)
+    })
+    .await
+    .map_err(|error| format!("导入任务异常中止: {error}"))?
 }
 
 #[tauri::command]

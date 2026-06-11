@@ -1,6 +1,7 @@
 mod delete;
 mod export;
 mod import;
+mod import_images;
 mod migration;
 
 use std::fs::{self, File, OpenOptions};
@@ -16,6 +17,9 @@ use crate::excel::EmbeddedImageRef;
 pub use delete::{RowDeletionError, RowDeletionReport};
 pub use export::{ExportOutcome, WorkbookExportError};
 pub use import::{ImportOutcome, WorkbookImportError};
+pub use import_images::{
+    ImageImportError, ImageImportOutcome, ImageImportProgress, ImageImportStage,
+};
 pub use migration::{MigrationOutcome, PreparedMigration};
 
 pub(super) const FORMAT_VERSION: u32 = 1;
@@ -210,6 +214,41 @@ impl DataDirectory {
 
         database.resolve_pending_embedded_extractions(&results)?;
         Ok(())
+    }
+}
+
+/// 规范化展示路径：尽量使用绝对路径并去掉 Windows `\\?\` 前缀。
+pub(super) fn canonical_display_path(path: &Path) -> String {
+    let canonical = path.canonicalize().unwrap_or_else(|_| path.to_owned());
+    let text = canonical.to_string_lossy();
+    text.strip_prefix(r"\\?\").unwrap_or(&text).to_owned()
+}
+
+/// 受管 `files/` 下的暂存目录守卫：导入失败或回滚时清理残留；
+/// 成功后随批次 ID 改名归位，守卫析构时残留的空目录无害。
+pub(super) struct StagingDir {
+    path: PathBuf,
+}
+
+impl StagingDir {
+    pub(super) fn create(files_root: &Path) -> Result<Self, std::io::Error> {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let path = files_root.join(format!(".staging-{}-{nonce}", std::process::id()));
+        fs::create_dir_all(&path)?;
+        Ok(Self { path })
+    }
+
+    pub(super) fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl Drop for StagingDir {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.path);
     }
 }
 

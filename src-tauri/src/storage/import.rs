@@ -1,11 +1,10 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use thiserror::Error;
 
-use super::{DataDirectory, StorageError, media_extension};
+use super::{DataDirectory, StagingDir, StorageError, canonical_display_path, media_extension};
 use crate::db::identity::{file_identity, xlsx_row_identity};
 use crate::db::{DatabaseError, NewRow, SourceType};
 use crate::excel::{
@@ -64,7 +63,7 @@ impl DataDirectory {
             .map(|image| (image.source_row, image))
             .collect();
 
-        let display_path = display_path(source);
+        let display_path = canonical_display_path(source);
         let file_name = source
             .file_name()
             .map(|name| name.to_string_lossy().into_owned())
@@ -168,40 +167,6 @@ fn nonempty(value: &Option<String>) -> Option<&str> {
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty())
-}
-
-/// 规范化展示路径：尽量使用绝对路径并去掉 Windows `\\?\` 前缀。
-fn display_path(path: &Path) -> String {
-    let canonical = path.canonicalize().unwrap_or_else(|_| path.to_owned());
-    let text = canonical.to_string_lossy();
-    text.strip_prefix(r"\\?\").unwrap_or(&text).to_owned()
-}
-
-/// 暂存目录守卫：导入失败或回滚时清理残留；成功改名归位后留下的空目录无害。
-struct StagingDir {
-    path: PathBuf,
-}
-
-impl StagingDir {
-    fn create(files_root: &Path) -> Result<Self, std::io::Error> {
-        let nonce = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos();
-        let path = files_root.join(format!(".staging-{}-{nonce}", std::process::id()));
-        fs::create_dir_all(&path)?;
-        Ok(Self { path })
-    }
-
-    fn path(&self) -> &Path {
-        &self.path
-    }
-}
-
-impl Drop for StagingDir {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.path);
-    }
 }
 
 #[cfg(test)]

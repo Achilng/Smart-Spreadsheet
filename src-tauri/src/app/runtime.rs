@@ -12,8 +12,9 @@ use crate::db::{
 };
 use crate::images::{ImageVariant, RowImageError};
 use crate::storage::{
-    DataDirectory, ExportOutcome, ImportOutcome, RowDeletionError, RowDeletionReport,
-    StorageError, WorkbookExportError, WorkbookImportError,
+    DataDirectory, ExportOutcome, ImageImportError, ImageImportOutcome, ImageImportProgress,
+    ImportOutcome, RowDeletionError, RowDeletionReport, StorageError, WorkbookExportError,
+    WorkbookImportError,
 };
 
 const LOCATOR_VERSION: u32 = 1;
@@ -49,6 +50,8 @@ pub(crate) enum AppRuntimeError {
     Storage(#[from] StorageError),
     #[error("工作簿导入失败: {0}")]
     Import(#[from] WorkbookImportError),
+    #[error("图片导入失败: {0}")]
+    ImageImport(#[from] ImageImportError),
     #[error("数据库操作失败: {0}")]
     Database(#[from] crate::db::DatabaseError),
     #[error("Tag 操作失败: {0}")]
@@ -141,6 +144,24 @@ impl AppRuntime {
             .ok_or(AppRuntimeError::NotConfigured)?;
         let outcome = directory.import_workbook(path)?;
         drop(state);
+        Ok((self.snapshot()?, outcome))
+    }
+
+    pub(crate) fn import_images(
+        &self,
+        path: impl AsRef<Path>,
+        progress: impl Fn(ImageImportProgress) + Sync,
+    ) -> Result<(RuntimeSnapshot, ImageImportOutcome), AppRuntimeError> {
+        let state = self.lock_state()?;
+        ensure_startup_valid(&state)?;
+        let directory = state
+            .active
+            .as_ref()
+            .ok_or(AppRuntimeError::NotConfigured)?
+            .clone();
+        // 导入可能持续较久，提前释放状态锁，避免阻塞查询等其他操作。
+        drop(state);
+        let outcome = directory.import_images(path.as_ref(), progress)?;
         Ok((self.snapshot()?, outcome))
     }
 

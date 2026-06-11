@@ -3,6 +3,7 @@ mod images;
 
 pub mod db;
 pub mod excel;
+pub mod pipeline;
 pub mod storage;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -21,6 +22,7 @@ pub fn run() {
             app::commands::initialize_data_directory,
             app::commands::open_data_directory,
             app::commands::import_workbook,
+            app::commands::import_images,
             app::commands::delete_rows,
             app::commands::list_import_batches,
             app::commands::query_rows,
