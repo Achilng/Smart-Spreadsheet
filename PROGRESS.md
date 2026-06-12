@@ -4,7 +4,7 @@
 
 ## 当前阶段
 
-第三轮迭代（v0.5）功能开发已完成。M19–M21 全部通过验收，尚未发布 Release。
+第三轮迭代（v0.5）功能开发已完成。M19–M21 全部通过验收，正在准备版本 0.5.0 与 GitHub Release v_5。
 
 ## 第三轮迭代
 
@@ -30,6 +30,7 @@
 - Windows x64 release 编译与 NSIS 打包成功，安装器输出为 `target/release/bundle/nsis/智能表格_0.4.0_x64-setup.exe`；版本号留待正式发布 v0.5 时统一提升。
 - 发布版使用隔离的 `APPDATA` / `LOCALAPPDATA` 启动，进程 4 秒保持运行，启动冒烟测试通过；临时目录已清理。
 - 当前 `main` 已包含 M19 显式全选、异常目录持久化和 M20 空 metadata 图片隔离的分步提交，均已推送 GitHub。
+- 发布准备：`package.json`、`package-lock.json`、`Cargo.toml`、`Cargo.lock` 与 `tauri.conf.json` 已统一提升至 0.5.0。
 
 ### v0.5 需求对齐（2026-06-12）
 
