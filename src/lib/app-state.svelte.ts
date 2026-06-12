@@ -9,6 +9,7 @@ import {
   migrateDataDirectory,
   openDataDirectory,
   type AppSnapshot,
+  type ContentHashProgress,
   type ExportProgress,
   type ImageImportProgress,
 } from "../api";
@@ -31,6 +32,8 @@ export const app = $state({
   dataVersion: 0,
   /** 文件夹/压缩包导入进行中的进度，空闲时为 null */
   importProgress: null as ImageImportProgress | null,
+  /** 打开旧目录时历史图片内容哈希补算进度，空闲时为 null */
+  hashProgress: null as ContentHashProgress | null,
   /** 导出（xlsx / JSON / 图片文件）进行中的进度，空闲时为 null */
   exportProgress: null as ExportProgress | null,
   /** 库内查重视图是否打开 */
@@ -73,10 +76,19 @@ export async function chooseDirectory(mode: "initialize" | "open"): Promise<void
     return;
   }
   await runAction(async () => {
-    app.snapshot =
-      mode === "initialize"
-        ? await initializeDataDirectory(selection)
-        : await openDataDirectory(selection);
+    if (mode === "initialize") {
+      app.snapshot = await initializeDataDirectory(selection);
+    } else {
+      const unlisten = await listen<ContentHashProgress>("content-hash://progress", event => {
+        app.hashProgress = event.payload;
+      });
+      try {
+        app.snapshot = await openDataDirectory(selection);
+      } finally {
+        unlisten();
+        app.hashProgress = null;
+      }
+    }
     setNotice({ tone: "success", text: "数据目录已连接。" });
   });
 }

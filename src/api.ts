@@ -57,6 +57,13 @@ export interface ImageImportProgress {
   total: number;
 }
 
+export interface ContentHashProgress {
+  processed: number;
+  total: number;
+  updated: number;
+  unreadable: number;
+}
+
 export type DuplicateKeyKind = "positivePrompt" | "artists";
 
 export interface DuplicateRow {

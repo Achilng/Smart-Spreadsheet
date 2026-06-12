@@ -8,7 +8,7 @@ use crate::db::{
     BatchSummary, DuplicateGroup, DuplicateKey, DuplicateReport, DuplicateRow, LibrarySummary,
     RowPage, RowQuery, RowRecord, RowSelection, TagMatchMode, TagMutationResult, TagSummary,
 };
-use crate::storage::ImageImportProgress;
+use crate::storage::{ContentHashProgress, ImageImportProgress};
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -151,6 +151,26 @@ pub(crate) struct ImageImportProgressDto {
     stage: &'static str,
     processed: usize,
     total: usize,
+}
+
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ContentHashProgressDto {
+    processed: usize,
+    total: usize,
+    updated: usize,
+    unreadable: usize,
+}
+
+impl From<ContentHashProgress> for ContentHashProgressDto {
+    fn from(progress: ContentHashProgress) -> Self {
+        Self {
+            processed: progress.processed,
+            total: progress.total,
+            updated: progress.updated,
+            unreadable: progress.unreadable,
+        }
+    }
 }
 
 impl From<ImageImportProgress> for ImageImportProgressDto {
@@ -297,15 +317,26 @@ pub(crate) fn initialize_data_directory(
         .map_err(error_text)
 }
 
+/// 打开已有受管目录可能需要为历史行补算内容哈希，在阻塞线程执行并上报进度。
 #[tauri::command]
-pub(crate) fn open_data_directory(
+pub(crate) async fn open_data_directory(
     path: String,
-    runtime: State<'_, AppRuntime>,
+    app: tauri::AppHandle,
 ) -> Result<AppSnapshotDto, String> {
-    runtime
-        .open_directory(PathBuf::from(path))
-        .map(AppSnapshotDto::from)
-        .map_err(error_text)
+    tauri::async_runtime::spawn_blocking(move || {
+        let runtime = app.state::<AppRuntime>();
+        runtime
+            .open_directory(PathBuf::from(path), |progress| {
+                let _ = app.emit(
+                    "content-hash://progress",
+                    ContentHashProgressDto::from(progress),
+                );
+            })
+            .map(AppSnapshotDto::from)
+            .map_err(error_text)
+    })
+    .await
+    .map_err(|error| format!("打开数据目录任务异常中止: {error}"))?
 }
 
 #[tauri::command]

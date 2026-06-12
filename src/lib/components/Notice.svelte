@@ -2,6 +2,13 @@
   import { app, formatCount, setNotice } from "../app-state.svelte";
 
   const progressText = $derived.by(() => {
+    const hashing = app.hashProgress;
+    if (hashing) {
+      const unreadable = hashing.unreadable > 0
+        ? `，${formatCount(hashing.unreadable)} 行图片不可读`
+        : "";
+      return `正在升级图片指纹 ${formatCount(hashing.processed)} / ${formatCount(hashing.total)}${unreadable}`;
+    }
     const progress = app.importProgress;
     if (progress) {
       switch (progress.stage) {
@@ -26,6 +33,10 @@
     return null;
   });
   const progressPercent = $derived.by(() => {
+    const hashing = app.hashProgress;
+    if (hashing && hashing.total > 0) {
+      return Math.round((hashing.processed / hashing.total) * 100);
+    }
     const importing = app.importProgress;
     if (importing) {
       if (

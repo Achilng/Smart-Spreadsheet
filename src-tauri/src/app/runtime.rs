@@ -16,7 +16,7 @@ use crate::storage::{
     ImageFilesExportOutcome, ImageFilesProgress, ImageImportError, ImageImportOutcome,
     ImageImportProgress, ImportOutcome, JsonExportError, JsonExportOutcome, JsonExportProgress,
     RowDeletionError, RowDeletionReport, StorageError, WorkbookImportError, XlsxExportError,
-    XlsxExportOutcome,
+    XlsxExportOutcome, ContentHashProgress,
 };
 
 const LOCATOR_VERSION: u32 = 1;
@@ -134,8 +134,11 @@ impl AppRuntime {
     pub(crate) fn open_directory(
         &self,
         path: impl AsRef<Path>,
+        progress: impl Fn(ContentHashProgress),
     ) -> Result<RuntimeSnapshot, AppRuntimeError> {
-        self.configure_directory(path, |path| DataDirectory::open(path))
+        self.configure_directory(path, |path| {
+            DataDirectory::open_with_hash_progress(path, progress)
+        })
     }
 
     pub(crate) fn import_workbook(
@@ -524,6 +527,57 @@ mod tests {
 
         assert!(matches!(error, AppRuntimeError::AlreadyConfigured));
         assert!(!temporary.root.join("other-data").exists());
+    }
+
+    #[test]
+    fn opening_existing_directory_reports_content_hash_backfill_progress() {
+        let temporary = TemporaryRuntime::new();
+        let directory = DataDirectory::initialize(&temporary.data).unwrap();
+        fs::create_dir_all(&temporary.root).unwrap();
+        let image = temporary.root.join("legacy.png");
+        fs::write(&image, b"legacy image bytes").unwrap();
+        directory
+            .open_database()
+            .unwrap()
+            .append_batch(
+                crate::db::SourceType::Folder,
+                &temporary.root.to_string_lossy(),
+                &[crate::db::NewRow {
+                    source_ordinal: 1,
+                    identity: "file:legacy".into(),
+                    image_path: Some(image.to_string_lossy().into_owned()),
+                    ..crate::db::NewRow::default()
+                }],
+                |_| Ok(()),
+            )
+            .unwrap();
+        let runtime = AppRuntime::load(temporary.locator.clone());
+        let events = Mutex::new(Vec::new());
+
+        let snapshot = runtime
+            .open_directory(&temporary.data, |progress| {
+                events.lock().unwrap().push(progress);
+            })
+            .unwrap();
+
+        assert_eq!(snapshot.library.unwrap().row_count, 1);
+        assert_eq!(
+            events.lock().unwrap().last().copied(),
+            Some(ContentHashProgress {
+                processed: 1,
+                total: 1,
+                updated: 1,
+                unreadable: 0,
+            })
+        );
+        assert!(
+            directory
+                .open_database()
+                .unwrap()
+                .content_hash_for_row(1)
+                .unwrap()
+                .is_some()
+        );
     }
 
     #[test]
