@@ -14,6 +14,7 @@ use crate::storage::{ContentHashProgress, ImageImportProgress};
 #[serde(rename_all = "camelCase")]
 pub(crate) struct AppSnapshotDto {
     data_directory: Option<String>,
+    rejected_images_directory: Option<String>,
     library: Option<LibrarySummaryDto>,
     startup_error: Option<String>,
 }
@@ -266,6 +267,17 @@ pub(crate) async fn open_data_directory(
     })
     .await
     .map_err(|error| format!("打开数据目录任务异常中止: {error}"))?
+}
+
+#[tauri::command]
+pub(crate) fn set_rejected_images_directory(
+    path: String,
+    runtime: State<'_, AppRuntime>,
+) -> Result<AppSnapshotDto, String> {
+    runtime
+        .set_rejected_images_directory(PathBuf::from(path))
+        .map(AppSnapshotDto::from)
+        .map_err(error_text)
 }
 
 #[derive(Debug, Serialize)]
@@ -627,6 +639,9 @@ impl From<RuntimeSnapshot> for AppSnapshotDto {
         Self {
             data_directory: snapshot
                 .data_directory
+                .map(|path| path.to_string_lossy().into_owned()),
+            rejected_images_directory: snapshot
+                .rejected_images_directory
                 .map(|path| path.to_string_lossy().into_owned()),
             library: snapshot.library.map(LibrarySummaryDto::from),
             startup_error: snapshot.startup_error,

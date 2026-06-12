@@ -22,6 +22,7 @@ pub fn run() {
             app::commands::get_app_snapshot,
             app::commands::initialize_data_directory,
             app::commands::open_data_directory,
+            app::commands::set_rejected_images_directory,
             app::commands::import_workbook,
             app::commands::import_images,
             app::commands::delete_rows,

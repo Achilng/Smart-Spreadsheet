@@ -4,6 +4,7 @@
     chooseImageArchive,
     chooseImageFolder,
     chooseMigration,
+    chooseRejectedImagesDirectory,
     chooseWorkbook,
     formatCount,
     type ViewMode,
@@ -27,10 +28,18 @@
     { mode: "table", label: "表格" },
   ];
 
-  const toolItems: DropdownItem[] = [
+  const rejectedDirectoryHint = $derived(
+    app.snapshot?.rejectedImagesDirectory?.split(/[\\/]/).pop() ?? "未设置",
+  );
+  const toolItems = $derived<DropdownItem[]>([
     { label: "智绘姬 JSON 去重", action: () => (app.jsonDedupeOpen = true) },
+    {
+      label: "异常图片目录",
+      hint: rejectedDirectoryHint,
+      action: () => void chooseRejectedImagesDirectory(),
+    },
     { label: "迁移数据目录", action: () => void chooseMigration() },
-  ];
+  ]);
 
   const importItems: DropdownItem[] = [
     { label: "导入文件夹", action: () => void chooseImageFolder() },

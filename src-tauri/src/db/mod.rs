@@ -6,6 +6,7 @@ pub mod identity;
 mod images;
 mod migrations;
 mod query;
+mod settings;
 mod tags;
 
 pub use batches::{AppendOutcome, BatchSummary, LibrarySummary, NewRow, SourceType};

@@ -24,6 +24,7 @@ const LOCATOR_VERSION: u32 = 1;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct RuntimeSnapshot {
     pub data_directory: Option<PathBuf>,
+    pub rejected_images_directory: Option<PathBuf>,
     pub library: Option<LibrarySummary>,
     pub startup_error: Option<String>,
 }
@@ -109,16 +110,20 @@ impl AppRuntime {
 
     pub(crate) fn snapshot(&self) -> Result<RuntimeSnapshot, AppRuntimeError> {
         let state = self.lock_state()?;
-        let library = if let Some(directory) = state.active.as_ref() {
-            Some(directory.open_database()?.library_summary()?)
+        let (library, rejected_images_directory) = if let Some(directory) = state.active.as_ref() {
+            (
+                Some(directory.open_database()?.library_summary()?),
+                directory.rejected_images_directory()?,
+            )
         } else {
-            None
+            (None, None)
         };
         Ok(RuntimeSnapshot {
             data_directory: state
                 .active
                 .as_ref()
                 .map(|directory| directory.root().to_owned()),
+            rejected_images_directory,
             library,
             startup_error: state.startup_error.clone(),
         })
@@ -172,6 +177,15 @@ impl AppRuntime {
         drop(state);
         let outcome = directory.import_images(path.as_ref(), progress)?;
         Ok((self.snapshot()?, outcome))
+    }
+
+    pub(crate) fn set_rejected_images_directory(
+        &self,
+        path: impl AsRef<Path>,
+    ) -> Result<RuntimeSnapshot, AppRuntimeError> {
+        self.active_directory()?
+            .set_rejected_images_directory(path)?;
+        self.snapshot()
     }
 
     pub(crate) fn query_rows(&self, query: &RowQuery) -> Result<RowPage, AppRuntimeError> {

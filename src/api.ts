@@ -19,6 +19,7 @@ export interface LibrarySummary {
 
 export interface AppSnapshot {
   dataDirectory: string | null;
+  rejectedImagesDirectory: string | null;
   library: LibrarySummary | null;
   startupError: string | null;
 }
@@ -196,6 +197,10 @@ export function initializeDataDirectory(path: string): Promise<AppSnapshot> {
 
 export function openDataDirectory(path: string): Promise<AppSnapshot> {
   return invoke<AppSnapshot>("open_data_directory", { path });
+}
+
+export function setRejectedImagesDirectory(path: string): Promise<AppSnapshot> {
+  return invoke<AppSnapshot>("set_rejected_images_directory", { path });
 }
 
 export function importWorkbook(path: string): Promise<ImportResult> {

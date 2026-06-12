@@ -33,6 +33,7 @@ pub use migration::{MigrationOutcome, PreparedMigration};
 pub(super) const FORMAT_VERSION: u32 = 1;
 pub(super) const MARKER_FILE: &str = ".smart-spreadsheet-data.json";
 pub(super) const DATABASE_FILE: &str = "smart-spreadsheet.sqlite3";
+const REJECTED_IMAGES_DIRECTORY_SETTING: &str = "rejected_images_directory";
 
 #[derive(Debug, Error)]
 pub enum StorageError {
@@ -60,6 +61,10 @@ pub enum StorageError {
     NonEmptyDestination(PathBuf),
     #[error("数据目录包含不支持迁移的符号链接或特殊文件: {0}")]
     UnsupportedEntry(PathBuf),
+    #[error("异常图片输出路径不是文件夹: {0}")]
+    RejectedImagesPathNotDirectory(PathBuf),
+    #[error("异常图片输出目录不能位于受管数据目录内: {0}")]
+    RejectedImagesInsideDataDirectory(PathBuf),
     #[error("迁移文件校验失败: {0}")]
     MigrationVerificationFailed(PathBuf),
     #[error("无法恢复迁移失败前的数据目录标记: {0}")]
@@ -179,6 +184,33 @@ impl DataDirectory {
 
     pub fn open_database(&self) -> Result<Database, StorageError> {
         Ok(Database::open(self.database_path())?)
+    }
+
+    pub fn rejected_images_directory(&self) -> Result<Option<PathBuf>, StorageError> {
+        Ok(self
+            .open_database()?
+            .setting(REJECTED_IMAGES_DIRECTORY_SETTING)?
+            .map(PathBuf::from))
+    }
+
+    pub fn set_rejected_images_directory(
+        &self,
+        path: impl AsRef<Path>,
+    ) -> Result<PathBuf, StorageError> {
+        let path = path.as_ref();
+        if path.exists() && !path.is_dir() {
+            return Err(StorageError::RejectedImagesPathNotDirectory(path.to_owned()));
+        }
+        fs::create_dir_all(path)?;
+        let path = path.canonicalize()?;
+        let data_root = self.root.canonicalize()?;
+        if path.starts_with(&data_root) {
+            return Err(StorageError::RejectedImagesInsideDataDirectory(path));
+        }
+        let display = canonical_display_path(&path);
+        self.open_database()?
+            .set_setting(REJECTED_IMAGES_DIRECTORY_SETTING, &display)?;
+        Ok(PathBuf::from(display))
     }
 
     /// 处理 v1→v2 迁移遗留的嵌入图提取：从旧工作簿副本批量读出嵌入图，
