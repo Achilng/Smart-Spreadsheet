@@ -1,4 +1,4 @@
-pub const CURRENT_SCHEMA_VERSION: u32 = 2;
+pub const CURRENT_SCHEMA_VERSION: u32 = 3;
 
 pub(super) const MIGRATION_1: &str = r#"
 CREATE TABLE workbook (
@@ -121,4 +121,13 @@ ALTER TABLE rows_v2 RENAME TO rows;
 DROP TABLE workbook;
 
 CREATE INDEX idx_rows_batch ON rows(batch_id);
+"#;
+
+// v3：为按图片文件内容全库去重增加 SHA-256 哈希列。
+// 历史行在存储层打开数据目录后按可读图片来源补算；无法读取的行保持 NULL。
+// 索引必须允许重复值，迁移期间和补算完成前都可能暂时存在相同内容的历史行。
+pub(super) const MIGRATION_3: &str = r#"
+ALTER TABLE rows ADD COLUMN content_hash TEXT;
+CREATE INDEX idx_rows_content_hash ON rows(content_hash)
+WHERE content_hash IS NOT NULL;
 "#;
