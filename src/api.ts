@@ -88,12 +88,14 @@ export interface DuplicateReport {
 }
 
 export type TagMatchMode = "and" | "or";
+export type DedupeMode = "none" | "positivePrompt" | "artists";
 
 export interface RowQuery {
   offset: number;
   limit: number;
   tags: string[];
   tagMode: TagMatchMode;
+  dedupe: DedupeMode;
 }
 
 export interface RowRecord {
@@ -130,6 +132,7 @@ export type RowSelection =
       kind: "filtered";
       tags: string[];
       tagMode: TagMatchMode;
+      dedupe: DedupeMode;
       excludedRowIds: number[];
     };
 

@@ -5,8 +5,9 @@ use tauri::{Emitter, Manager, State, ipc::Response};
 
 use super::runtime::{AppRuntime, RuntimeSnapshot};
 use crate::db::{
-    BatchSummary, DuplicateGroup, DuplicateKey, DuplicateReport, DuplicateRow, LibrarySummary,
-    RowPage, RowQuery, RowRecord, RowSelection, TagMatchMode, TagMutationResult, TagSummary,
+    BatchSummary, DedupeMode, DuplicateGroup, DuplicateKey, DuplicateReport, DuplicateRow,
+    LibrarySummary, RowPage, RowQuery, RowRecord, RowSelection, TagMatchMode, TagMutationResult,
+    TagSummary,
 };
 use crate::storage::{ContentHashProgress, ImageImportProgress};
 
@@ -190,6 +191,7 @@ pub(crate) struct RowQueryDto {
     limit: u32,
     tags: Vec<String>,
     tag_mode: TagMatchModeDto,
+    dedupe: DedupeModeDto,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize)]
@@ -246,6 +248,7 @@ pub(crate) enum RowSelectionDto {
     Filtered {
         tags: Vec<String>,
         tag_mode: TagMatchModeDto,
+        dedupe: DedupeModeDto,
         excluded_row_ids: Vec<i64>,
     },
 }
@@ -337,6 +340,24 @@ pub(crate) async fn open_data_directory(
     })
     .await
     .map_err(|error| format!("打开数据目录任务异常中止: {error}"))?
+}
+
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum DedupeModeDto {
+    None,
+    PositivePrompt,
+    Artists,
+}
+
+impl From<DedupeModeDto> for DedupeMode {
+    fn from(mode: DedupeModeDto) -> Self {
+        match mode {
+            DedupeModeDto::None => Self::None,
+            DedupeModeDto::PositivePrompt => Self::PositivePrompt,
+            DedupeModeDto::Artists => Self::Artists,
+        }
+    }
 }
 
 #[tauri::command]
@@ -436,6 +457,7 @@ pub(crate) fn query_rows(
         limit: query.limit,
         tags: query.tags,
         tag_mode: query.tag_mode.into(),
+        dedupe: query.dedupe.into(),
     };
     runtime
         .query_rows(&query)
@@ -744,10 +766,12 @@ impl From<RowSelectionDto> for RowSelection {
             RowSelectionDto::Filtered {
                 tags,
                 tag_mode,
+                dedupe,
                 excluded_row_ids,
             } => Self::Filtered {
                 tags,
                 tag_mode: tag_mode.into(),
+                dedupe: dedupe.into(),
                 excluded_row_ids,
             },
         }
@@ -777,6 +801,7 @@ mod tests {
         let selection = RowSelection::from(RowSelectionDto::Filtered {
             tags: vec!["Landscape".into(), "landscape".into()],
             tag_mode: TagMatchModeDto::Or,
+            dedupe: DedupeModeDto::Artists,
             excluded_row_ids: vec![2, 9],
         });
 
@@ -785,6 +810,7 @@ mod tests {
             RowSelection::Filtered {
                 tags: vec!["Landscape".into(), "landscape".into()],
                 tag_mode: TagMatchMode::Or,
+                dedupe: DedupeMode::Artists,
                 excluded_row_ids: vec![2, 9],
             }
         );

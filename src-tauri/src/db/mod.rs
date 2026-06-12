@@ -12,7 +12,7 @@ mod tags;
 pub use batches::{AppendOutcome, BatchSummary, LibrarySummary, NewRow, SourceType};
 pub use delete::DeleteOutcome;
 pub use duplicates::{DuplicateGroup, DuplicateKey, DuplicateReport, DuplicateRow};
-pub use query::{MAX_PAGE_SIZE, RowPage, RowQuery, RowRecord, TagMatchMode, TagSummary};
+pub use query::{DedupeMode, MAX_PAGE_SIZE, RowPage, RowQuery, RowRecord, TagMatchMode, TagSummary};
 pub use tags::{RowSelection, TagMutationError, TagMutationResult};
 
 use std::path::Path;

@@ -1,4 +1,4 @@
-import { queryRows, type RowRecord, type TagMatchMode } from "../api";
+import { queryRows, type DedupeMode, type RowRecord, type TagMatchMode } from "../api";
 import { errorText } from "./app-state.svelte";
 
 export const PAGE_SIZE = 200;
@@ -10,6 +10,7 @@ export const PAGE_SIZE = 200;
 export const rowStore = $state({
   tags: [] as string[],
   tagMode: "and" as TagMatchMode,
+  dedupe: "none" as DedupeMode,
   totalCount: 0,
   initialLoading: true,
   error: null as string | null,
@@ -38,6 +39,7 @@ export function ensurePage(pageIndex: number): void {
         limit: PAGE_SIZE,
         tags: [...rowStore.tags],
         tagMode: rowStore.tagMode,
+        dedupe: rowStore.dedupe,
       });
       if (requestGeneration !== generation) {
         return;

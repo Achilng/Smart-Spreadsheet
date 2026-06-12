@@ -25,6 +25,7 @@ export function exportScope(): RowSelection {
     kind: "filtered",
     tags: [...rowStore.tags],
     tagMode: rowStore.tagMode,
+    dedupe: rowStore.dedupe,
     excludedRowIds: [],
   };
 }

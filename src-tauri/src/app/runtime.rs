@@ -642,6 +642,7 @@ mod tests {
         let filtered = RowSelection::Filtered {
             tags: vec!["Keep".into()],
             tag_mode: crate::db::TagMatchMode::And,
+            dedupe: crate::db::DedupeMode::None,
             excluded_row_ids: vec![2],
         };
         assert_eq!(runtime.count_selected_rows(&filtered).unwrap(), 2);

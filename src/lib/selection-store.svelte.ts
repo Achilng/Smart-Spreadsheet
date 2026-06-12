@@ -1,6 +1,11 @@
 import { SvelteSet } from "svelte/reactivity";
 
-import { countSelectedRows, type RowSelection, type TagMatchMode } from "../api";
+import {
+  countSelectedRows,
+  type DedupeMode,
+  type RowSelection,
+  type TagMatchMode,
+} from "../api";
 import { getRow, rowStore } from "./row-store.svelte";
 
 /**
@@ -12,6 +17,7 @@ export const selection = $state({
   kind: "explicit" as "explicit" | "filtered",
   filteredTags: [] as string[],
   filteredMode: "and" as TagMatchMode,
+  filteredDedupe: "none" as DedupeMode,
   filteredTotal: 0,
 });
 
@@ -64,6 +70,7 @@ export function toggleRow(rowId: number, index: number, shiftKey: boolean): void
 export function clearSelection(): void {
   selection.kind = "explicit";
   selection.filteredTags = [];
+  selection.filteredDedupe = "none";
   selection.filteredTotal = 0;
   selectionIds.clear();
   anchorIndex = null;
@@ -75,12 +82,14 @@ export async function selectAllFiltered(): Promise<number> {
     kind: "filtered",
     tags: [...rowStore.tags],
     tagMode: rowStore.tagMode,
+    dedupe: rowStore.dedupe,
     excludedRowIds: [],
   };
   const totalCount = await countSelectedRows(dto);
   selection.kind = "filtered";
   selection.filteredTags = [...rowStore.tags];
   selection.filteredMode = rowStore.tagMode;
+  selection.filteredDedupe = rowStore.dedupe;
   selection.filteredTotal = totalCount;
   selectionIds.clear();
   anchorIndex = null;
@@ -98,6 +107,7 @@ export function selectionDto(): RowSelection {
     kind: "filtered",
     tags: [...selection.filteredTags],
     tagMode: selection.filteredMode,
+    dedupe: selection.filteredDedupe,
     excludedRowIds: [...selectionIds].sort((left, right) => left - right),
   };
 }

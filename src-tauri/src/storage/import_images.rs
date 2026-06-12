@@ -472,6 +472,7 @@ mod tests {
                 limit: 10,
                 tags: Vec::new(),
                 tag_mode: crate::db::TagMatchMode::And,
+                dedupe: crate::db::DedupeMode::None,
             })
             .unwrap();
         assert_eq!(page.total_count, 3);

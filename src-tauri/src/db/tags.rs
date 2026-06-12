@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use rusqlite::{OptionalExtension, Transaction, TransactionBehavior, params};
 use thiserror::Error;
 
-use super::query::{FILTER_TAGS_TABLE, TagMatchMode, create_filter_tags, filter_predicate};
+use super::query::{DedupeMode, FILTER_TAGS_TABLE, TagMatchMode, create_filter_tags, populate_filtered_rows};
 use super::{Database, DatabaseError};
 
 pub(super) const TARGET_ROWS_TABLE: &str = "temp.tag_target_rows";
@@ -17,6 +17,7 @@ pub enum RowSelection {
     Filtered {
         tags: Vec<String>,
         tag_mode: TagMatchMode,
+        dedupe: DedupeMode,
         excluded_row_ids: Vec<i64>,
     },
 }
@@ -267,6 +268,7 @@ pub(super) fn create_selection_rows(
         RowSelection::Filtered {
             tags,
             tag_mode,
+            dedupe,
             excluded_row_ids,
         } => {
             let tags = normalize_tags(tags);
@@ -279,17 +281,14 @@ pub(super) fn create_selection_rows(
                  ) STRICT, WITHOUT ROWID;"
             ))?;
             insert_row_ids(transaction, EXCLUDED_ROWS_TABLE, &excluded_row_ids)?;
-            let predicate = filter_predicate(*tag_mode);
+            populate_filtered_rows(transaction, TARGET_ROWS_TABLE, *tag_mode, *dedupe)?;
             transaction.execute(
                 &format!(
-                    "INSERT INTO {TARGET_ROWS_TABLE}(id)
-                     SELECT rows.id
-                     FROM rows
-                     WHERE ({predicate})
-                       AND NOT EXISTS (
-                           SELECT 1 FROM {EXCLUDED_ROWS_TABLE}
-                           WHERE {EXCLUDED_ROWS_TABLE}.id = rows.id
-                       )"
+                    "DELETE FROM {TARGET_ROWS_TABLE}
+                     WHERE EXISTS (
+                         SELECT 1 FROM {EXCLUDED_ROWS_TABLE}
+                         WHERE {EXCLUDED_ROWS_TABLE}.id = {TARGET_ROWS_TABLE}.id
+                     )"
                 ),
                 [],
             )?;
@@ -524,6 +523,7 @@ mod tests {
         let selection = RowSelection::Filtered {
             tags: Vec::new(),
             tag_mode: TagMatchMode::And,
+            dedupe: DedupeMode::None,
             excluded_row_ids: vec![2, 9_999],
         };
 
@@ -551,6 +551,7 @@ mod tests {
         let selection = RowSelection::Filtered {
             tags: vec![" A ".into(), "B".into()],
             tag_mode: TagMatchMode::And,
+            dedupe: DedupeMode::None,
             excluded_row_ids: vec![3],
         };
 
@@ -572,11 +573,55 @@ mod tests {
     }
 
     #[test]
+    fn filtered_selection_uses_only_deduped_representatives() {
+        let mut database = database_with_rows(4);
+        database
+            .connection
+            .execute_batch(
+                "UPDATE rows SET positive_prompt = CASE id
+                     WHEN 1 THEN 'same'
+                     WHEN 2 THEN ' same '
+                     WHEN 3 THEN ''
+                     ELSE 'other'
+                 END;",
+            )
+            .unwrap();
+        let selection = RowSelection::Filtered {
+            tags: Vec::new(),
+            tag_mode: TagMatchMode::And,
+            dedupe: DedupeMode::PositivePrompt,
+            excluded_row_ids: vec![1],
+        };
+
+        assert_eq!(database.count_selected_rows(&selection).unwrap(), 2);
+        let result = database
+            .add_tags_to_selection(&selection, &["visible".into()])
+            .unwrap();
+        assert_eq!(result.affected_rows, 2);
+
+        let tagged_rows: Vec<i64> = database
+            .connection
+            .prepare(
+                "SELECT row_tags.row_id FROM row_tags
+                 JOIN tags ON tags.id = row_tags.tag_id
+                 WHERE tags.name = 'visible'
+                 ORDER BY row_tags.row_id",
+            )
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert_eq!(tagged_rows, vec![3, 4]);
+    }
+
+    #[test]
     fn empty_filtered_selection_does_not_create_orphan_tag() {
         let mut database = database_with_rows(2);
         let selection = RowSelection::Filtered {
             tags: vec!["missing".into()],
             tag_mode: TagMatchMode::And,
+            dedupe: DedupeMode::None,
             excluded_row_ids: Vec::new(),
         };
 

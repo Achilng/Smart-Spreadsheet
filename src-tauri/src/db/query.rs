@@ -7,6 +7,7 @@ use super::{Database, DatabaseError};
 
 pub const MAX_PAGE_SIZE: u32 = 500;
 pub(super) const FILTER_TAGS_TABLE: &str = "temp.query_filter_tags";
+const FILTERED_ROWS_TABLE: &str = "temp.query_filtered_rows";
 const PAGE_ROWS_TABLE: &str = "temp.query_page_rows";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -15,12 +16,21 @@ pub enum TagMatchMode {
     Or,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum DedupeMode {
+    #[default]
+    None,
+    PositivePrompt,
+    Artists,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RowQuery {
     pub offset: u64,
     pub limit: u32,
     pub tags: Vec<String>,
     pub tag_mode: TagMatchMode,
+    pub dedupe: DedupeMode,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -71,15 +81,23 @@ impl Database {
         let tags = normalize_tags(&query.tags);
         let transaction = self.connection.transaction()?;
         create_filter_tags(&transaction, &tags)?;
+        create_filtered_rows_table(&transaction)?;
+        populate_filtered_rows(
+            &transaction,
+            FILTERED_ROWS_TABLE,
+            query.tag_mode,
+            query.dedupe,
+        )?;
         create_page_rows_table(&transaction)?;
-        create_page_rows(&transaction, query.tag_mode, query.limit, offset)?;
+        create_page_rows(&transaction, query.limit, offset)?;
 
-        let total_count = query_total_count(&transaction, query.tag_mode)?;
+        let total_count = query_total_count(&transaction)?;
         let mut rows = query_page_metadata(&transaction)?;
         attach_page_tags(&transaction, &mut rows)?;
 
         transaction.execute_batch(&format!(
             "DROP TABLE {PAGE_ROWS_TABLE};
+             DROP TABLE {FILTERED_ROWS_TABLE};
              DROP TABLE {FILTER_TAGS_TABLE};"
         ))?;
         transaction.commit()?;
@@ -148,21 +166,71 @@ fn create_page_rows_table(transaction: &Transaction<'_>) -> Result<(), rusqlite:
     ))
 }
 
+fn create_filtered_rows_table(transaction: &Transaction<'_>) -> Result<(), rusqlite::Error> {
+    transaction.execute_batch(&format!(
+        "DROP TABLE IF EXISTS {FILTERED_ROWS_TABLE};
+         CREATE TEMP TABLE {FILTERED_ROWS_TABLE} (
+             id INTEGER PRIMARY KEY
+         ) STRICT, WITHOUT ROWID;"
+    ))
+}
+
+pub(super) fn populate_filtered_rows(
+    transaction: &Transaction<'_>,
+    target_table: &str,
+    mode: TagMatchMode,
+    dedupe: DedupeMode,
+) -> Result<(), rusqlite::Error> {
+    let predicate = filter_predicate(mode);
+    match dedupe {
+        DedupeMode::None => transaction.execute(
+            &format!(
+                "INSERT INTO {target_table}(id)
+                 SELECT rows.id FROM rows WHERE {predicate}"
+            ),
+            [],
+        )?,
+        DedupeMode::PositivePrompt | DedupeMode::Artists => {
+            let column = match dedupe {
+                DedupeMode::PositivePrompt => "positive_prompt",
+                DedupeMode::Artists => "artists",
+                DedupeMode::None => unreachable!(),
+            };
+            transaction.execute(
+                &format!(
+                    "INSERT INTO {target_table}(id)
+                     WITH filtered_rows AS (
+                         SELECT rows.id,
+                                NULLIF(TRIM(COALESCE(rows.{column}, '')), '') AS dedupe_key
+                         FROM rows
+                         WHERE {predicate}
+                     )
+                     SELECT id FROM filtered_rows WHERE dedupe_key IS NULL
+                     UNION ALL
+                     SELECT MIN(id)
+                     FROM filtered_rows
+                     WHERE dedupe_key IS NOT NULL
+                     GROUP BY dedupe_key"
+                ),
+                [],
+            )?
+        }
+    };
+    Ok(())
+}
+
 fn create_page_rows(
     transaction: &Transaction<'_>,
-    mode: TagMatchMode,
     limit: u32,
     offset: i64,
 ) -> Result<(), rusqlite::Error> {
-    let predicate = filter_predicate(mode);
     // 行的展示顺序即入库顺序（rows.id 单调递增）。
     transaction.execute(
         &format!(
             "INSERT INTO {PAGE_ROWS_TABLE}(ordinal, id)
-             SELECT ROW_NUMBER() OVER (ORDER BY rows.id), rows.id
-             FROM rows
-             WHERE {predicate}
-             ORDER BY rows.id
+             SELECT ROW_NUMBER() OVER (ORDER BY filtered.id), filtered.id
+             FROM {FILTERED_ROWS_TABLE} AS filtered
+             ORDER BY filtered.id
              LIMIT ?1 OFFSET ?2"
         ),
         params![limit, offset],
@@ -170,13 +238,9 @@ fn create_page_rows(
     Ok(())
 }
 
-fn query_total_count(
-    transaction: &Transaction<'_>,
-    mode: TagMatchMode,
-) -> Result<u64, DatabaseError> {
-    let predicate = filter_predicate(mode);
+fn query_total_count(transaction: &Transaction<'_>) -> Result<u64, DatabaseError> {
     let count: i64 = transaction.query_row(
-        &format!("SELECT COUNT(*) FROM rows WHERE {predicate}"),
+        &format!("SELECT COUNT(*) FROM {FILTERED_ROWS_TABLE}"),
         [],
         |row| row.get(0),
     )?;
@@ -280,6 +344,7 @@ mod tests {
                 limit: 2,
                 tags: Vec::new(),
                 tag_mode: TagMatchMode::And,
+                dedupe: DedupeMode::None,
             })
             .unwrap();
 
@@ -321,6 +386,85 @@ mod tests {
             lowercase.rows.iter().map(|row| row.id).collect::<Vec<_>>(),
             vec![2]
         );
+    }
+
+    #[test]
+    fn dedupes_nonempty_keys_and_keeps_empty_rows_visible() {
+        let mut database = tagged_database();
+        database
+            .connection
+            .execute_batch(
+                "UPDATE rows SET positive_prompt = CASE id
+                     WHEN 1 THEN ' same '
+                     WHEN 2 THEN 'same'
+                     WHEN 3 THEN ''
+                     WHEN 4 THEN NULL
+                     ELSE 'Same'
+                 END;
+                 UPDATE rows SET artists = CASE id
+                     WHEN 1 THEN 'artist A'
+                     WHEN 2 THEN 'artist A'
+                     WHEN 3 THEN ' artist B '
+                     WHEN 4 THEN 'artist B'
+                     ELSE ''
+                 END;",
+            )
+            .unwrap();
+
+        let prompts = database
+            .query_rows(&RowQuery {
+                offset: 0,
+                limit: 100,
+                tags: Vec::new(),
+                tag_mode: TagMatchMode::And,
+                dedupe: DedupeMode::PositivePrompt,
+            })
+            .unwrap();
+        assert_eq!(prompts.total_count, 4);
+        assert_eq!(
+            prompts.rows.iter().map(|row| row.id).collect::<Vec<_>>(),
+            vec![1, 3, 4, 5]
+        );
+
+        let artists = database
+            .query_rows(&RowQuery {
+                offset: 0,
+                limit: 100,
+                tags: Vec::new(),
+                tag_mode: TagMatchMode::And,
+                dedupe: DedupeMode::Artists,
+            })
+            .unwrap();
+        assert_eq!(artists.total_count, 3);
+        assert_eq!(
+            artists.rows.iter().map(|row| row.id).collect::<Vec<_>>(),
+            vec![1, 3, 5]
+        );
+    }
+
+    #[test]
+    fn applies_tag_filter_before_deduplication() {
+        let mut database = tagged_database();
+        database
+            .connection
+            .execute(
+                "UPDATE rows SET positive_prompt = 'shared' WHERE id IN (1, 2, 3)",
+                [],
+            )
+            .unwrap();
+
+        let page = database
+            .query_rows(&RowQuery {
+                offset: 0,
+                limit: 100,
+                tags: vec!["Red".into()],
+                tag_mode: TagMatchMode::And,
+                dedupe: DedupeMode::PositivePrompt,
+            })
+            .unwrap();
+
+        assert_eq!(page.total_count, 1);
+        assert_eq!(page.rows[0].id, 1);
     }
 
     #[test]
@@ -367,6 +511,7 @@ mod tests {
                     limit,
                     tags: Vec::new(),
                     tag_mode: TagMatchMode::And,
+                    dedupe: DedupeMode::None,
                 })
                 .unwrap_err();
             assert!(matches!(error, DatabaseError::InvalidPageSize { .. }));
@@ -383,6 +528,7 @@ mod tests {
                 limit: 100,
                 tags: Vec::new(),
                 tag_mode: TagMatchMode::Or,
+                dedupe: DedupeMode::None,
             })
             .unwrap();
 
@@ -400,6 +546,7 @@ mod tests {
                 limit: 100,
                 tags: tags.iter().map(|tag| (*tag).to_owned()).collect(),
                 tag_mode: mode,
+                dedupe: DedupeMode::None,
             })
             .unwrap()
     }

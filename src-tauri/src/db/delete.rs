@@ -118,6 +118,7 @@ mod tests {
             .delete_rows(&RowSelection::Filtered {
                 tags: vec!["Red".into()],
                 tag_mode: TagMatchMode::And,
+                dedupe: crate::db::DedupeMode::None,
                 excluded_row_ids: vec![2],
             })
             .unwrap();

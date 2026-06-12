@@ -229,6 +229,7 @@ mod tests {
                 &RowSelection::Filtered {
                     tags: Vec::new(),
                     tag_mode: TagMatchMode::And,
+                    dedupe: crate::db::DedupeMode::None,
                     excluded_row_ids: Vec::new(),
                 },
                 &temporary.root,
