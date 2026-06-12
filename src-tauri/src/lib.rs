@@ -31,6 +31,7 @@ pub fn run() {
             app::commands::create_tag,
             app::commands::count_selected_rows,
             app::commands::list_selection_tags,
+            app::commands::selected_row_ids,
             app::commands::add_tags_to_selection,
             app::commands::remove_tags_from_selection,
             app::commands::set_tags_for_row,

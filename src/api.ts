@@ -234,6 +234,10 @@ export function listSelectionTags(selection: RowSelection): Promise<TagSelection
   return invoke<TagSelectionSummary[]>("list_selection_tags", { selection });
 }
 
+export function selectedRowIds(selection: RowSelection): Promise<number[]> {
+  return invoke<number[]>("selected_row_ids", { selection });
+}
+
 export function addTagsToSelection(
   selection: RowSelection,
   tags: string[],

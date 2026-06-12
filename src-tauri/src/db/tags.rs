@@ -190,6 +190,25 @@ impl Database {
         Ok(count)
     }
 
+    pub fn selected_row_ids(
+        &mut self,
+        selection: &RowSelection,
+    ) -> Result<Vec<i64>, TagMutationError> {
+        let transaction = self.connection.transaction()?;
+        create_selection_rows(&transaction, selection)?;
+        let row_ids = {
+            let mut statement = transaction.prepare(&format!(
+                "SELECT id FROM {TARGET_ROWS_TABLE} ORDER BY id"
+            ))?;
+            statement
+                .query_map([], |row| row.get::<_, i64>(0))?
+                .collect::<Result<Vec<_>, _>>()?
+        };
+        drop_selection_tables(&transaction)?;
+        transaction.commit()?;
+        Ok(row_ids)
+    }
+
     pub fn list_selection_tags(
         &mut self,
         selection: &RowSelection,
@@ -702,6 +721,25 @@ mod tests {
         assert_eq!(filtered[0].selected_rows, 1);
         assert_eq!(filtered[1].selected_rows, 0);
         assert_eq!(filtered[2].selected_rows, 0);
+    }
+
+    #[test]
+    fn resolves_filtered_selection_to_stable_row_ids() {
+        let mut database = database_with_rows(5);
+        database
+            .add_tags_to_rows(&[1, 2, 3], &["A".into()])
+            .unwrap();
+
+        let row_ids = database
+            .selected_row_ids(&RowSelection::Filtered {
+                tags: vec!["A".into()],
+                tag_mode: TagMatchMode::And,
+                dedupe: DedupeMode::None,
+                excluded_row_ids: vec![2],
+            })
+            .unwrap();
+
+        assert_eq!(row_ids, vec![1, 3]);
     }
 
     #[test]

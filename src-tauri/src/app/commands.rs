@@ -429,6 +429,14 @@ pub(crate) fn list_selection_tags(
 }
 
 #[tauri::command]
+pub(crate) fn selected_row_ids(
+    selection: RowSelectionDto,
+    runtime: State<'_, AppRuntime>,
+) -> Result<Vec<i64>, String> {
+    runtime.selected_row_ids(&selection.into()).map_err(error_text)
+}
+
+#[tauri::command]
 pub(crate) fn add_tags_to_selection(
     selection: RowSelectionDto,
     tags: Vec<String>,

@@ -231,6 +231,19 @@ impl AppRuntime {
         Ok(directory.open_database()?.list_selection_tags(selection)?)
     }
 
+    pub(crate) fn selected_row_ids(
+        &self,
+        selection: &RowSelection,
+    ) -> Result<Vec<i64>, AppRuntimeError> {
+        let state = self.lock_state()?;
+        ensure_startup_valid(&state)?;
+        let directory = state
+            .active
+            .as_ref()
+            .ok_or(AppRuntimeError::NotConfigured)?;
+        Ok(directory.open_database()?.selected_row_ids(selection)?)
+    }
+
     pub(crate) fn add_tags_to_selection(
         &self,
         selection: &RowSelection,
