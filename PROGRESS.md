@@ -4,9 +4,18 @@
 
 ## 当前阶段
 
-M14 - 验收与发布
+合并完成（M10–M14 全部交付）；候选后续迭代见 `PLAN.md` 第 10 节末尾。
 
 ## 已完成
+
+### M14 - 验收与发布（2026-06-12）
+
+- 万行级增量导入自动化验收：10,000 行库追加导入 5 张 PNG 文件夹 → 10,005 行；重复导入同一文件夹全部跳过、行数不变（测试 `appends_five_images_to_ten_thousand_row_library`，0.07s 完成）。
+- v1 旧数据目录真实应用升级验收：用 v0.3.0 release 应用打开 v_2 时代的真实 v1 受管目录（`D:\AAA中转站\智能表格test`，升级前已备份到 `D:\Agent\Agent_temp\智能表格test-v1-backup`）。验证 schema 升至 v2、旧工作簿转为批次 1（xlsx，5 行）、行 ID 与源行号保持、Tag「原神」「爱意」各 3 行关联完整、5 张嵌入图全部提取到 `files/1/embedded/row-N.png` 且行记录回填、`pending_embedded_extractions` 清空；应用窗口正常显示，关闭后以 v2 目录再次启动正常。
+- 版本提升至 0.3.0（package.json / Cargo.toml / tauri.conf.json）；Windows x64 release + NSIS 构建通过（bundler 临时目录定向 `D:\Agent\Agent_temp`，NSIS 工具复用已有缓存）。
+- 安装器 `智能表格_0.3.0_x64-setup.exe` 大小 4,185,002 字节，SHA-256 `06B0B9625EA64633C61AB75F4187DFF167552D53D7BADCD88CE5E5272DAD5F94`。
+- Novelai工具 仓库已新增 README 标注「已并入 Smart-Spreadsheet」并推送（仅新增 README，未触碰该仓库其他文件）。
+- 测试总计 100 项通过；Clippy 无警告；`svelte-check` 0 错误。
 
 ### M13 - 导出体系 + JSON 去重页（2026-06-12）
 
@@ -233,15 +242,11 @@ M14 - 验收与发布
 - 应用版本提升到 0.2.0；`tauri.conf.json` 补充 bundle 图标配置并将打包目标固定为 NSIS。
 - 安装器 `智能表格_0.2.0_x64-setup.exe` 大小为 3,774,303 字节，SHA-256 为 `F305CBFC7FF7090D17D7C785B2A1FBAA897FFA13B1D41386DD894B2FDA9833B4`；以 ASCII 文件名上传至 GitHub Release `v_2`。
 
-## 进行中
+## 建议用户实机抽查（自动化无法覆盖的 native 对话框链路）
 
-- M14 验收与发布（详见 `PLAN.md` 第 10 节）：万行级增量导入验收、实机冒烟、Windows 构建与 GitHub Release。
-
-## 待实机验收（M14）
-
-- 文件夹/压缩包导入的桌面实机冒烟（异步命令 + 进度事件链路目前仅编译与单测覆盖）。
-- v1 旧数据目录在真实应用中的升级（含嵌入图提取到 `files/1/embedded/`）。
-- 三种导出与 JSON 去重的桌面实机冒烟（对话框 → 进度事件 → 结果提示链路）。
+- 文件夹/压缩包导入：选择对话框 → 进度横幅 → 完成提示（导入逻辑与进度事件已有单测覆盖）。
+- 三种导出与智绘姬 JSON 去重：保存/选目录对话框 → 进度 → 结果提示；导出的 JSON 在智绘姬中实际加载一次。
+- 元数据失败行目前在详情中带标记展示，但暂无专门筛选入口（候选后续迭代）。
 
 ## 风险与约束
 
