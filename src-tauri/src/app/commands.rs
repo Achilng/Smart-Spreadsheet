@@ -70,7 +70,9 @@ pub(crate) struct ImageImportResultDto {
     skipped_existing: u64,
     skipped_content: u64,
     changed_existing: u64,
-    metadata_failed: u64,
+    metadata_rejected: u64,
+    rejected_moved: u64,
+    rejected_move_failures: u64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -347,7 +349,9 @@ pub(crate) async fn import_images(
                 skipped_existing: outcome.skipped_existing,
                 skipped_content: outcome.skipped_content,
                 changed_existing: outcome.changed_existing,
-                metadata_failed: outcome.metadata_failed,
+                metadata_rejected: outcome.metadata_rejected,
+                rejected_moved: outcome.rejected_moved,
+                rejected_move_failures: outcome.rejected_move_failures,
             })
             .map_err(error_text)
     })

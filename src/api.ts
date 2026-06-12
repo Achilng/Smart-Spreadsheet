@@ -50,7 +50,9 @@ export interface ImageImportResult {
   skippedExisting: number;
   skippedContent: number;
   changedExisting: number;
-  metadataFailed: number;
+  metadataRejected: number;
+  rejectedMoved: number;
+  rejectedMoveFailures: number;
 }
 
 export type ImageImportStage = "extracting" | "scanning" | "hashing" | "processing";

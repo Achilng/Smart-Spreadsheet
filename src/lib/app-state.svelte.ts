@@ -209,8 +209,14 @@ async function runImageImport(path: string): Promise<void> {
           `其中 ${formatCount(result.changedExisting)} 张源文件有变化（未改动库内数据）`,
         );
       }
-      if (result.metadataFailed > 0) {
-        parts.push(`${formatCount(result.metadataFailed)} 张元数据解析失败（已入库并标记）`);
+      if (result.metadataRejected > 0) {
+        parts.push(`${formatCount(result.metadataRejected)} 张无 metadata、不入库`);
+      }
+      if (result.rejectedMoved > 0) {
+        parts.push(`${formatCount(result.rejectedMoved)} 张已移至异常图片目录`);
+      }
+      if (result.rejectedMoveFailures > 0) {
+        parts.push(`${formatCount(result.rejectedMoveFailures)} 张移动失败（仍未入库）`);
       }
       setNotice({
         tone: "success",

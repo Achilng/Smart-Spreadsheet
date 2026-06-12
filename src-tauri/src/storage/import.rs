@@ -305,6 +305,9 @@ mod tests {
     fn skips_workbook_image_already_imported_from_another_path() {
         let temporary = TemporaryImport::new();
         let directory = DataDirectory::initialize(&temporary.data).unwrap();
+        directory
+            .set_rejected_images_directory(temporary.root.join("rejected"))
+            .unwrap();
         let source = sample_workbook();
         let parsed = read_fixed_workbook(&source).unwrap();
         let original_image = PathBuf::from(

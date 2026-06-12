@@ -56,8 +56,12 @@ pub struct ImageImportOutcome {
     pub skipped_existing: u64,
     pub skipped_content: u64,
     pub changed_existing: u64,
-    /// 新增行中元数据解析失败的数量（行仍然入库并带失败标记）。
-    pub metadata_failed: u64,
+    /// 因读取失败或正负提示词均为空而拒绝入库的图片数。
+    pub metadata_rejected: u64,
+    /// 成功移动到用户配置目录的异常图片数。
+    pub rejected_moved: u64,
+    /// 未能移动到用户配置目录的异常图片数；这些图片仍不入库。
+    pub rejected_move_failures: u64,
 }
 
 #[derive(Debug, Error)]
@@ -74,14 +78,18 @@ pub enum ImageImportError {
     Database(#[from] DatabaseError),
     #[error("输入中没有找到 PNG 图片: {0}")]
     NoImagesFound(PathBuf),
+    #[error("尚未设置异常图片输出目录")]
+    RejectedDirectoryNotConfigured,
+    #[error("异常图片输出目录不能等于或位于导入文件夹内部: {0}")]
+    RejectedDirectoryInsideInput(PathBuf),
 }
 
 impl DataDirectory {
     /// 从 PNG 文件夹、单个 PNG 或 zip/7z/rar 压缩包追加导入图片元数据。
     ///
-    /// 已入库（身份键相同）的图片跳过；压缩包图片提取副本到 `files/<批次ID>/`，
-    /// 文件夹图片直接引用原路径。元数据解析失败的图片仍然入库并带失败标记。
-    /// 原始输入全程只读。
+    /// 已入库（身份键相同）的图片跳过；压缩包正常图片提取副本到
+    /// `files/<批次ID>/`，文件夹正常图片直接引用原路径。读取失败或正负提示词
+    /// 均为空的图片不入库，并移动到用户配置的异常图片目录。
     pub fn import_images(
         &self,
         input: &Path,
@@ -89,6 +97,15 @@ impl DataDirectory {
     ) -> Result<ImageImportOutcome, ImageImportError> {
         let reporter = ProgressReporter::new(progress);
         let input_display = canonical_display_path(input);
+        let rejected_root = self
+            .rejected_images_directory()?
+            .ok_or(ImageImportError::RejectedDirectoryNotConfigured)?;
+        if rejected_root.exists() && !rejected_root.is_dir() {
+            return Err(ImageImportError::Storage(
+                StorageError::RejectedImagesPathNotDirectory(rejected_root),
+            ));
+        }
+        fs::create_dir_all(&rejected_root)?;
 
         // 压缩包先解压到运行临时目录；文件夹与单 PNG 直接扫描。
         let is_archive = input.is_file() && archive_extension(input).is_some();
@@ -103,6 +120,7 @@ impl DataDirectory {
         } else {
             (input.to_owned(), SourceType::Folder)
         };
+        validate_rejected_directory(input, source_type, &rejected_root)?;
 
         reporter.emit(ImageImportStage::Scanning, 0, 0, true);
         let images = collect_png_files(&scan_root)?;
@@ -142,12 +160,12 @@ impl DataDirectory {
         let existing = database.existing_identities(&identities)?;
 
         // 拆分已存在与新增：已存在的行只带身份键与变化检测字段，不读元数据。
-        let mut rows: Vec<Option<NewRow>> = Vec::with_capacity(images.len());
-        let mut hash_jobs: Vec<(usize, SourceImage)> = Vec::new();
+        let mut indexed_rows: Vec<(usize, NewRow)> = Vec::with_capacity(images.len());
+        let mut metadata_jobs: Vec<(usize, SourceImage)> = Vec::new();
         for (index, (image, identity)) in images.iter().zip(&identities).enumerate() {
             let ordinal = u32::try_from(index + 1).map_err(|_| DatabaseError::RowCountOverflow)?;
             if existing.contains(identity) {
-                rows.push(Some(NewRow {
+                indexed_rows.push((index, NewRow {
                     source_ordinal: ordinal,
                     identity: identity.clone(),
                     source_size: i64::try_from(image.size).ok(),
@@ -155,20 +173,44 @@ impl DataDirectory {
                     ..NewRow::default()
                 }));
             } else {
-                rows.push(None);
-                hash_jobs.push((index, image.clone()));
+                metadata_jobs.push((index, image.clone()));
             }
         }
 
-        // 身份键全新的图片先并行计算内容哈希。按扫描顺序保留首次出现的内容，
-        // 库内或本批次重复项只构造最小候选供追加事务计数，不读取元数据或复制副本。
+        // 身份键全新的图片先读取 metadata；异常图片不进入数据库候选，也不参与内容去重。
+        let metadata_total = metadata_jobs.len();
+        reporter.emit(ImageImportStage::Processing, 0, metadata_total, true);
+        let inspected = parallel::parallel_map(
+            metadata_jobs,
+            parallel::worker_count(metadata_total),
+            |_, (index, image)| (index, inspect_metadata(image)),
+            |completed| {
+                reporter.emit(
+                    ImageImportStage::Processing,
+                    completed,
+                    metadata_total,
+                    completed == metadata_total,
+                );
+            },
+        );
+        let mut rejected = Vec::new();
+        let mut hash_jobs = Vec::new();
+        for (index, inspection) in inspected {
+            match inspection {
+                MetadataInspection::Valid(image) => hash_jobs.push((index, image)),
+                MetadataInspection::Rejected(image) => rejected.push(image),
+            }
+        }
+
+        // 仅正常图片并行计算内容哈希。按扫描顺序保留首次出现的内容；
+        // 库内或本批次重复项只构造最小候选供追加事务计数，不复制副本。
         let hash_total = hash_jobs.len();
         reporter.emit(ImageImportStage::Hashing, 0, hash_total, true);
         let hashed = parallel::parallel_map(
             hash_jobs,
             parallel::worker_count(hash_total),
             |_, (index, image)| {
-                let content_hash = sha256_file(&image.absolute_path).ok();
+                let content_hash = sha256_file(&image.source.absolute_path).ok();
                 (index, image, content_hash)
             },
             |completed| {
@@ -186,75 +228,53 @@ impl DataDirectory {
             .collect::<Vec<_>>();
         let mut seen_content: HashSet<String> =
             database.existing_content_hashes(&candidate_hashes)?;
-        let mut new_jobs: Vec<(usize, SourceImage, Option<String>)> = Vec::new();
+        let mut new_jobs: Vec<(usize, ParsedImage, Option<String>)> = Vec::new();
         for (index, image, content_hash) in hashed {
             let duplicate = content_hash
                 .as_ref()
                 .is_some_and(|hash| !seen_content.insert(hash.clone()));
             if duplicate {
-                rows[index] = Some(NewRow {
+                indexed_rows.push((index, NewRow {
                     source_ordinal: u32::try_from(index + 1)
                         .map_err(|_| DatabaseError::RowCountOverflow)?,
                     identity: identities[index].clone(),
-                    source_size: i64::try_from(image.size).ok(),
-                    source_mtime: image.modified_nanos,
+                    source_size: i64::try_from(image.source.size).ok(),
+                    source_mtime: image.source.modified_nanos,
                     content_hash,
                     ..NewRow::default()
-                });
+                }));
             } else {
                 new_jobs.push((index, image, content_hash));
             }
         }
 
-        // 内容唯一的新图再读取文本 chunk、解析元数据；压缩包图移动副本到暂存目录。
+        // 内容唯一的正常图片构造数据库行；压缩包图移动副本到暂存目录。
         let staging = StagingDir::create(&self.files_path())?;
-        let new_total = new_jobs.len();
         let process_context = ProcessImageContext {
             source_type,
             input_display: &input_display,
             scan_root_display: &scan_root_display,
             staging_root: staging.path(),
         };
-        reporter.emit(ImageImportStage::Processing, 0, new_total, true);
-        let worker_count = parallel::worker_count(new_total);
-        let processed: Vec<Result<(usize, NewRow), std::io::Error>> = parallel::parallel_map(
-            new_jobs,
-            worker_count,
-            |_, (index, image, content_hash)| {
-                let row = process_new_image(
-                    &image,
-                    &identities[index],
-                    index,
-                    &process_context,
-                    content_hash,
-                )?;
-                Ok((index, row))
-            },
-            |completed| {
-                reporter.emit(
-                    ImageImportStage::Processing,
-                    completed,
-                    new_total,
-                    completed == new_total,
-                );
-            },
-        );
-
-        let mut metadata_failed: u64 = 0;
-        for result in processed {
-            let (index, row) = result?;
-            if row.metadata_failed {
-                metadata_failed += 1;
-            }
-            rows[index] = Some(row);
+        for (index, image, content_hash) in new_jobs {
+            let row = build_new_row(
+                image,
+                &identities[index],
+                index,
+                &process_context,
+                content_hash,
+            )?;
+            indexed_rows.push((index, row));
         }
-        let rows: Vec<NewRow> = rows
+        indexed_rows.sort_by_key(|(index, _)| *index);
+        let rows = indexed_rows
             .into_iter()
-            .map(|row| row.expect("every scanned image produces a candidate row"))
-            .collect();
+            .map(|(_, row)| row)
+            .collect::<Vec<_>>();
 
         let files_root = self.files_path();
-        let has_staged_files = source_type == SourceType::Archive;
+        let has_staged_files = source_type == SourceType::Archive
+            && fs::read_dir(staging.path())?.next().is_some();
         let outcome = database.append_batch(source_type, &input_display, &rows, |batch_id| {
             if !has_staged_files {
                 return Ok(());
@@ -263,6 +283,17 @@ impl DataDirectory {
             fs::rename(staging.path(), &target)
                 .map_err(|error| format!("无法落位批次文件目录 {}: {error}", target.display()))
         })?;
+
+        let metadata_rejected = u64::try_from(rejected.len()).unwrap_or(u64::MAX);
+        let mut rejected_moved = 0_u64;
+        let mut rejected_move_failures = 0_u64;
+        for image in rejected {
+            if move_rejected_image(&image, &rejected_root).is_ok() {
+                rejected_moved += 1;
+            } else {
+                rejected_move_failures += 1;
+            }
+        }
 
         drop(run_temp);
         Ok(ImageImportOutcome {
@@ -273,7 +304,9 @@ impl DataDirectory {
             skipped_existing: outcome.skipped_existing,
             skipped_content: outcome.skipped_content,
             changed_existing: outcome.changed_existing,
-            metadata_failed,
+            metadata_rejected,
+            rejected_moved,
+            rejected_move_failures,
         })
     }
 }
@@ -285,44 +318,67 @@ struct ProcessImageContext<'a> {
     staging_root: &'a Path,
 }
 
-fn process_new_image(
-    image: &SourceImage,
+#[derive(Debug)]
+struct ParsedImage {
+    source: SourceImage,
+    positive_prompt: Option<String>,
+    negative_prompt: Option<String>,
+    artists: Option<String>,
+}
+
+enum MetadataInspection {
+    Valid(ParsedImage),
+    Rejected(SourceImage),
+}
+
+fn inspect_metadata(image: SourceImage) -> MetadataInspection {
+    let Ok(chunks) = png_text::read_png_text_chunks(&image.absolute_path) else {
+        return MetadataInspection::Rejected(image);
+    };
+    let metadata = parse_novelai_metadata(&chunks);
+    let positive_prompt = nonempty_string(metadata.positive_prompt);
+    let negative_prompt = nonempty_string(metadata.negative_prompt);
+    if positive_prompt.is_none() && negative_prompt.is_none() {
+        return MetadataInspection::Rejected(image);
+    }
+    MetadataInspection::Valid(ParsedImage {
+        source: image,
+        positive_prompt,
+        negative_prompt,
+        artists: nonempty_string(metadata.artist_tags.join("\n")),
+    })
+}
+
+fn build_new_row(
+    image: ParsedImage,
     identity: &str,
     scan_index: usize,
     context: &ProcessImageContext<'_>,
     content_hash: Option<String>,
 ) -> Result<NewRow, std::io::Error> {
-    let (positive, negative, artists, metadata_failed) =
-        match png_text::read_png_text_chunks(&image.absolute_path) {
-            Ok(chunks) => {
-                let metadata = parse_novelai_metadata(&chunks);
-                (
-                    nonempty_string(metadata.positive_prompt),
-                    nonempty_string(metadata.negative_prompt),
-                    nonempty_string(metadata.artist_tags.join("\n")),
-                    false,
-                )
-            }
-            Err(_) => (None, None, None, true),
-        };
-
     let (image_path, stored_image_rel) = match context.source_type {
         SourceType::Archive => {
             // 副本移动到暂存目录（同盘瞬间完成，跨盘回退复制），保持包内目录结构。
-            let staged = context.staging_root.join(&image.relative_path);
+            let staged = context.staging_root.join(&image.source.relative_path);
             if let Some(parent) = staged.parent() {
                 fs::create_dir_all(parent)?;
             }
-            if fs::rename(&image.absolute_path, &staged).is_err() {
-                fs::copy(&image.absolute_path, &staged)?;
+            if fs::rename(&image.source.absolute_path, &staged).is_err() {
+                fs::copy(&image.source.absolute_path, &staged)?;
             }
             (
-                format!("{} > {}", context.input_display, image.relative_path),
-                Some(image.relative_path.replace('\\', "/")),
+                format!(
+                    "{} > {}",
+                    context.input_display, image.source.relative_path
+                ),
+                Some(image.source.relative_path.replace('\\', "/")),
             )
         }
         _ => (
-            format!("{}\\{}", context.scan_root_display, image.relative_path),
+            format!(
+                "{}\\{}",
+                context.scan_root_display, image.source.relative_path
+            ),
             None,
         ),
     };
@@ -330,18 +386,87 @@ fn process_new_image(
     Ok(NewRow {
         source_ordinal: u32::try_from(scan_index + 1).unwrap_or(u32::MAX),
         identity: identity.to_owned(),
-        source_size: i64::try_from(image.size).ok(),
-        source_mtime: image.modified_nanos,
+        source_size: i64::try_from(image.source.size).ok(),
+        source_mtime: image.source.modified_nanos,
         content_hash,
-        time: image.created.map(format_local_time),
-        positive_prompt: positive,
-        negative_prompt: negative,
-        artists,
+        time: image.source.created.map(format_local_time),
+        positive_prompt: image.positive_prompt,
+        negative_prompt: image.negative_prompt,
+        artists: image.artists,
         image_folder: None,
         image_path: Some(image_path),
         stored_image_rel,
-        metadata_failed,
+        metadata_failed: false,
     })
+}
+
+fn validate_rejected_directory(
+    input: &Path,
+    source_type: SourceType,
+    rejected_root: &Path,
+) -> Result<(), ImageImportError> {
+    if source_type == SourceType::Archive {
+        return Ok(());
+    }
+    let single_file = input.is_file();
+    let input_root = if single_file {
+        input.parent().unwrap_or(input)
+    } else {
+        input
+    };
+    let input_root = input_root.canonicalize().unwrap_or_else(|_| input_root.to_owned());
+    let rejected_root = rejected_root
+        .canonicalize()
+        .unwrap_or_else(|_| rejected_root.to_owned());
+    let overlaps_input = if single_file {
+        rejected_root == input_root
+    } else {
+        rejected_root == input_root || rejected_root.starts_with(&input_root)
+    };
+    if overlaps_input {
+        return Err(ImageImportError::RejectedDirectoryInsideInput(rejected_root));
+    }
+    Ok(())
+}
+
+fn move_rejected_image(image: &SourceImage, rejected_root: &Path) -> Result<PathBuf, std::io::Error> {
+    let desired = rejected_root.join(&image.relative_path);
+    if let Some(parent) = desired.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let destination = unique_destination(&desired);
+    if fs::rename(&image.absolute_path, &destination).is_err() {
+        fs::copy(&image.absolute_path, &destination)?;
+        if let Err(error) = fs::remove_file(&image.absolute_path) {
+            let _ = fs::remove_file(&destination);
+            return Err(error);
+        }
+    }
+    Ok(destination)
+}
+
+fn unique_destination(desired: &Path) -> PathBuf {
+    if !desired.exists() {
+        return desired.to_owned();
+    }
+    let parent = desired.parent().unwrap_or_else(|| Path::new(""));
+    let stem = desired
+        .file_stem()
+        .map(|value| value.to_string_lossy())
+        .unwrap_or_default();
+    let extension = desired.extension().map(|value| value.to_string_lossy());
+    for suffix in 2_u64.. {
+        let file_name = if let Some(extension) = &extension {
+            format!("{stem}_{suffix}.{extension}")
+        } else {
+            format!("{stem}_{suffix}")
+        };
+        let candidate = parent.join(file_name);
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+    unreachable!("u64 suffix space is exhaustive")
 }
 
 fn nonempty_string(value: String) -> Option<String> {
@@ -435,8 +560,13 @@ mod tests {
     /// 仅含文本元数据的最小 PNG（签名 + tEXt + IEND，CRC 占位即可，
     /// 文本读取器跳过 CRC 校验）。
     fn create_metadata_png(path: &Path, description: &str) {
-        let mut data = b"Description\0".to_vec();
-        data.extend(description.as_bytes());
+        create_text_png(path, "Description", description);
+    }
+
+    fn create_text_png(path: &Path, keyword: &str, text: &str) {
+        let mut data = keyword.as_bytes().to_vec();
+        data.push(0);
+        data.extend(text.as_bytes());
         let mut png = b"\x89PNG\r\n\x1a\n".to_vec();
         for (chunk_type, payload) in [(b"tEXt", data.as_slice()), (b"IEND", &[][..])] {
             png.extend((payload.len() as u32).to_be_bytes());
@@ -455,14 +585,16 @@ mod tests {
         create_metadata_png(&input.join("a.png"), "best quality, artist:alpha");
         create_metadata_png(&input.join("nested").join("b.png"), "scenery");
         fs::write(input.join("broken.png"), b"not a png").unwrap();
-        let directory = DataDirectory::initialize(&temporary.data).unwrap();
+        let directory = temporary.initialize_directory();
 
         let outcome = directory.import_images(&input, |_| {}).unwrap();
 
         assert_eq!(outcome.total_found, 3);
-        assert_eq!(outcome.added, 3);
+        assert_eq!(outcome.added, 2);
         assert_eq!(outcome.skipped_existing, 0);
-        assert_eq!(outcome.metadata_failed, 1);
+        assert_eq!(outcome.metadata_rejected, 1);
+        assert_eq!(outcome.rejected_moved, 1);
+        assert_eq!(outcome.rejected_move_failures, 0);
         assert_eq!(outcome.source_type, SourceType::Folder);
 
         let mut database = directory.open_database().unwrap();
@@ -475,7 +607,7 @@ mod tests {
                 dedupe: crate::db::DedupeMode::None,
             })
             .unwrap();
-        assert_eq!(page.total_count, 3);
+        assert_eq!(page.total_count, 2);
         let first = &page.rows[0];
         assert_eq!(
             first.positive_prompt.as_deref(),
@@ -485,19 +617,18 @@ mod tests {
         assert!(!first.metadata_failed);
         assert!(first.image_path.as_deref().unwrap().ends_with("a.png"));
         assert!(first.time.is_some());
-        let failed = page
-            .rows
-            .iter()
-            .find(|row| row.metadata_failed)
-            .expect("broken png should be imported with failure flag");
-        assert!(failed.positive_prompt.is_none());
+        assert!(!input.join("broken.png").exists());
+        assert_eq!(
+            fs::read(temporary.rejected.join("broken.png")).unwrap(),
+            b"not a png"
+        );
 
-        // 追加 2 张新图后重新导入：只新增 2，已有 3 张跳过。
+        // 追加 2 张新图后重新导入：只新增 2，已有 2 张跳过。
         create_metadata_png(&input.join("c.png"), "new one");
         create_metadata_png(&input.join("d.png"), "new two");
         let second = directory.import_images(&input, |_| {}).unwrap();
         assert_eq!(second.added, 2);
-        assert_eq!(second.skipped_existing, 3);
+        assert_eq!(second.skipped_existing, 2);
         assert_eq!(
             directory
                 .open_database()
@@ -505,7 +636,7 @@ mod tests {
                 .library_summary()
                 .unwrap()
                 .row_count,
-            5
+            4
         );
     }
 
@@ -526,7 +657,7 @@ mod tests {
             writer.write_all(&fs::read(&png_path).unwrap()).unwrap();
             writer.finish().unwrap();
         }
-        let directory = DataDirectory::initialize(&temporary.data).unwrap();
+        let directory = temporary.initialize_directory();
 
         let outcome = directory.import_images(&archive_path, |_| {}).unwrap();
 
@@ -573,7 +704,7 @@ mod tests {
         let input = temporary.root.join("input");
         fs::create_dir_all(&input).unwrap();
         create_metadata_png(&input.join("only.png"), "solo");
-        let directory = DataDirectory::initialize(&temporary.data).unwrap();
+        let directory = temporary.initialize_directory();
 
         let events = Mutex::new(Vec::new());
         directory
@@ -614,7 +745,7 @@ mod tests {
                 &format!("appended {index}"),
             );
         }
-        let directory = DataDirectory::initialize(&temporary.data).unwrap();
+        let directory = temporary.initialize_directory();
         {
             let mut database = directory.open_database().unwrap();
             crate::db::test_support::append_rows(
@@ -645,6 +776,154 @@ mod tests {
     }
 
     #[test]
+    fn moves_rejected_archive_member_and_keeps_valid_member_managed() {
+        let temporary = TemporaryImageImport::new();
+        fs::create_dir_all(&temporary.root).unwrap();
+        let valid_png = temporary.root.join("valid.png");
+        create_metadata_png(&valid_png, "archive prompt");
+        let archive_path = temporary.root.join("mixed.zip");
+        {
+            let file = fs::File::create(&archive_path).unwrap();
+            let mut writer = zip::ZipWriter::new(file);
+            let options = zip::write::SimpleFileOptions::default();
+            writer.start_file("set/valid.png", options).unwrap();
+            writer.write_all(&fs::read(&valid_png).unwrap()).unwrap();
+            writer.start_file("set/broken.png", options).unwrap();
+            writer.write_all(b"not a png").unwrap();
+            writer.finish().unwrap();
+        }
+        let directory = temporary.initialize_directory();
+
+        let outcome = directory.import_images(&archive_path, |_| {}).unwrap();
+
+        assert_eq!(outcome.added, 1);
+        assert_eq!(outcome.metadata_rejected, 1);
+        assert_eq!(outcome.rejected_moved, 1);
+        assert_eq!(outcome.rejected_move_failures, 0);
+        assert_eq!(
+            fs::read(temporary.rejected.join("set").join("broken.png")).unwrap(),
+            b"not a png"
+        );
+        let stored = directory
+            .open_database()
+            .unwrap()
+            .row_image_locator(1)
+            .unwrap()
+            .stored_image_path
+            .unwrap();
+        assert!(directory.root().join(stored).is_file());
+    }
+
+    #[test]
+    fn rejects_empty_metadata_moves_without_overwriting_and_keeps_rows_out_of_database() {
+        let temporary = TemporaryImageImport::new();
+        let input = temporary.root.join("input");
+        fs::create_dir_all(input.join("nested")).unwrap();
+        create_metadata_png(&input.join("empty.png"), "   ");
+        create_text_png(
+            &input.join("nested").join("comment.png"),
+            "Comment",
+            r#"{"seed": 1}"#,
+        );
+        let directory = temporary.initialize_directory();
+        fs::write(temporary.rejected.join("empty.png"), b"keep existing").unwrap();
+
+        let outcome = directory.import_images(&input, |_| {}).unwrap();
+
+        assert_eq!(outcome.total_found, 2);
+        assert_eq!(outcome.added, 0);
+        assert_eq!(outcome.metadata_rejected, 2);
+        assert_eq!(outcome.rejected_moved, 2);
+        assert_eq!(outcome.rejected_move_failures, 0);
+        assert_eq!(
+            directory
+                .open_database()
+                .unwrap()
+                .library_summary()
+                .unwrap()
+                .row_count,
+            0
+        );
+        assert_eq!(
+            fs::read(temporary.rejected.join("empty.png")).unwrap(),
+            b"keep existing"
+        );
+        assert!(temporary.rejected.join("empty_2.png").is_file());
+        assert!(
+            temporary
+                .rejected
+                .join("nested")
+                .join("comment.png")
+                .is_file()
+        );
+    }
+
+    #[test]
+    fn reports_rejected_move_failure_without_importing_the_image() {
+        let temporary = TemporaryImageImport::new();
+        let input = temporary.root.join("input");
+        fs::create_dir_all(input.join("nested")).unwrap();
+        fs::write(input.join("nested").join("broken.png"), b"not a png").unwrap();
+        let directory = temporary.initialize_directory();
+        fs::write(temporary.rejected.join("nested"), b"blocks directory creation").unwrap();
+
+        let outcome = directory.import_images(&input, |_| {}).unwrap();
+
+        assert_eq!(outcome.added, 0);
+        assert_eq!(outcome.metadata_rejected, 1);
+        assert_eq!(outcome.rejected_moved, 0);
+        assert_eq!(outcome.rejected_move_failures, 1);
+        assert!(input.join("nested").join("broken.png").is_file());
+        assert_eq!(
+            directory
+                .open_database()
+                .unwrap()
+                .library_summary()
+                .unwrap()
+                .row_count,
+            0
+        );
+    }
+
+    #[test]
+    fn rejects_output_directory_inside_import_folder() {
+        let temporary = TemporaryImageImport::new();
+        let input = temporary.root.join("input");
+        fs::create_dir_all(&input).unwrap();
+        create_metadata_png(&input.join("valid.png"), "valid prompt");
+        let directory = temporary.initialize_directory();
+        let inside = input.join("rejected");
+        directory.set_rejected_images_directory(&inside).unwrap();
+
+        assert!(matches!(
+            directory.import_images(&input, |_| {}),
+            Err(ImageImportError::RejectedDirectoryInsideInput(path)) if path == inside.canonicalize().unwrap()
+        ));
+    }
+
+    #[test]
+    fn single_png_can_move_to_sibling_output_directory() {
+        let temporary = TemporaryImageImport::new();
+        let input = temporary.root.join("input");
+        fs::create_dir_all(&input).unwrap();
+        let broken = input.join("broken.png");
+        fs::write(&broken, b"not a png").unwrap();
+        let directory = temporary.initialize_directory();
+        let sibling_output = input.join("rejected");
+        directory
+            .set_rejected_images_directory(&sibling_output)
+            .unwrap();
+
+        let outcome = directory.import_images(&broken, |_| {}).unwrap();
+
+        assert_eq!(outcome.metadata_rejected, 1);
+        assert_eq!(outcome.rejected_moved, 1);
+        assert_eq!(outcome.added, 0);
+        assert!(!broken.exists());
+        assert!(sibling_output.join("broken.png").is_file());
+    }
+
+    #[test]
     fn imports_only_one_of_five_hundred_identical_files_and_dedupes_across_folders() {
         let temporary = TemporaryImageImport::new();
         let first = temporary.root.join("first");
@@ -658,7 +937,7 @@ mod tests {
             fs::write(first.join(format!("image-{index:03}.png")), &bytes).unwrap();
         }
         fs::write(second.join("copy.png"), &bytes).unwrap();
-        let directory = DataDirectory::initialize(&temporary.data).unwrap();
+        let directory = temporary.initialize_directory();
 
         let first_outcome = directory.import_images(&first, |_| {}).unwrap();
         assert_eq!(first_outcome.total_found, 500);
@@ -696,7 +975,7 @@ mod tests {
             writer.write_all(&fs::read(&png_path).unwrap()).unwrap();
             writer.finish().unwrap();
         }
-        let directory = DataDirectory::initialize(&temporary.data).unwrap();
+        let directory = temporary.initialize_directory();
         directory.import_images(&archive_path, |_| {}).unwrap();
 
         let report = directory
@@ -712,6 +991,7 @@ mod tests {
     struct TemporaryImageImport {
         root: PathBuf,
         data: PathBuf,
+        rejected: PathBuf,
     }
 
     impl TemporaryImageImport {
@@ -732,8 +1012,17 @@ mod tests {
             ));
             Self {
                 data: root.join("data"),
+                rejected: root.join("rejected"),
                 root,
             }
+        }
+
+        fn initialize_directory(&self) -> DataDirectory {
+            let directory = DataDirectory::initialize(&self.data).unwrap();
+            directory
+                .set_rejected_images_directory(&self.rejected)
+                .unwrap();
+            directory
         }
     }
 
