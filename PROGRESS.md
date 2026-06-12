@@ -4,7 +4,7 @@
 
 ## 当前阶段
 
-第三轮迭代（v0.5）功能开发与发布构建已完成。版本 0.5.0 已通过验收，正在发布 GitHub Release v_5。
+第三轮迭代（v0.5）已完成。M19–M21 全部通过验收，版本 0.5.0 与 GitHub Release v_5 已发布。
 
 ## 第三轮迭代
 
@@ -33,6 +33,7 @@
 - 当前 `main` 已包含 M19 显式全选、异常目录持久化和 M20 空 metadata 图片隔离的分步提交，均已推送 GitHub。
 - 发布准备：`package.json`、`package-lock.json`、`Cargo.toml`、`Cargo.lock` 与 `tauri.conf.json` 已统一提升至 0.5.0。
 - 发布前全量门禁再次通过：Rust 117 项单元测试与 2 项集成测试、Clippy、`svelte-check` 和 Vite 生产构建全部正常。
+- GitHub Release [`v_5`](https://github.com/Achilng/Smart-Spreadsheet/releases/tag/v_5) 已发布，资产为 `Smart-Spreadsheet_0.5.0_x64-setup.exe`，远端大小与 SHA-256 均和本地一致，更新说明按约定使用一句话。
 
 ### v0.5 需求对齐（2026-06-12）
 
