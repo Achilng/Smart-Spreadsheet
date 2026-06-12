@@ -226,6 +226,46 @@ mod tests {
         assert_eq!(directory.open_database().unwrap().library_summary().unwrap().row_count, 0);
     }
 
+    #[test]
+    fn leaves_folder_original_untouched_when_trash_option_is_disabled() {
+        let temporary = TemporaryDelete::new();
+        let directory = DataDirectory::initialize(&temporary.data).unwrap();
+        let original = temporary.root.join("keep-original.png");
+        fs::write(&original, b"original bytes").unwrap();
+        let mut database = directory.open_database().unwrap();
+        database
+            .append_batch(
+                crate::db::SourceType::Folder,
+                temporary.root.to_string_lossy().as_ref(),
+                &[crate::db::NewRow {
+                    source_ordinal: 1,
+                    identity: "file:keep-original".into(),
+                    image_path: Some(original.to_string_lossy().into_owned()),
+                    ..crate::db::NewRow::default()
+                }],
+                |_| Ok(()),
+            )
+            .unwrap();
+        drop(database);
+        let mut trash_calls = 0;
+
+        let report = directory
+            .delete_rows_with(
+                &RowSelection::Explicit { row_ids: vec![1] },
+                false,
+                |_| {
+                    trash_calls += 1;
+                    true
+                },
+            )
+            .unwrap();
+
+        assert_eq!(report.deleted_rows, 1);
+        assert_eq!(trash_calls, 0);
+        assert!(original.is_file());
+        assert_eq!(fs::read(original).unwrap(), b"original bytes");
+    }
+
     fn sample_workbook() -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("..")

@@ -2,11 +2,18 @@
   import { untrack } from "svelte";
 
   import { app } from "../app-state.svelte";
-  import { clearSelection, selectAllFiltered } from "../selection-store.svelte";
+  import { deletion, requestDelete } from "../delete-actions.svelte";
+  import {
+    clearSelection,
+    getSelectedCount,
+    selectAllFiltered,
+    selectionDto,
+  } from "../selection-store.svelte";
   import { resetRows, rowStore } from "../row-store.svelte";
   import { loadTags } from "../tag-store.svelte";
   import { thumbnails } from "../thumbnails";
   import DetailPanel from "./DetailPanel.svelte";
+  import DeleteDialog from "./DeleteDialog.svelte";
   import GalleryView from "./GalleryView.svelte";
   import JsonDedupeView from "./JsonDedupeView.svelte";
   import SelectionBar from "./SelectionBar.svelte";
@@ -27,6 +34,14 @@
   });
 
   function onKeydown(event: KeyboardEvent): void {
+    const target = event.target;
+    const isEditing =
+      target instanceof HTMLInputElement ||
+      target instanceof HTMLTextAreaElement ||
+      target instanceof HTMLSelectElement ||
+      target instanceof HTMLButtonElement ||
+      (target instanceof HTMLElement && target.isContentEditable);
+
     // Ctrl+A 全选筛选结果（输入框内除外）
     if (
       event.key.toLowerCase() === "a" &&
@@ -37,6 +52,18 @@
       event.preventDefault();
       if (rowStore.totalCount > 0) {
         void selectAllFiltered();
+      }
+      return;
+    }
+
+    if (event.key === "Delete" && !isEditing && !deletion.open) {
+      const selectedCount = getSelectedCount();
+      if (selectedCount > 0) {
+        event.preventDefault();
+        requestDelete(selectionDto(), selectedCount);
+      } else if (rowStore.activeRow) {
+        event.preventDefault();
+        requestDelete({ kind: "explicit", rowIds: [rowStore.activeRow.id] }, 1);
       }
     }
   }
@@ -80,6 +107,8 @@
 {#if app.jsonDedupeOpen}
   <JsonDedupeView />
 {/if}
+
+<DeleteDialog />
 
 <style>
   .workspace {

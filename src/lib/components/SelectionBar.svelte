@@ -4,6 +4,7 @@
 
   import { addTagsToSelection, removeTagsFromSelection } from "../../api";
   import { errorText, formatCount, setNotice } from "../app-state.svelte";
+  import { deletion, requestDelete } from "../delete-actions.svelte";
   import { resetRows } from "../row-store.svelte";
   import {
     clearSelection,
@@ -91,7 +92,7 @@
 
 <svelte:window
   onkeydown={event => {
-    if (event.key === "Escape" && count > 0 && !applying) {
+    if (event.key === "Escape" && count > 0 && !applying && !deletion.open) {
       if (popover) {
         popover = null;
       } else {
@@ -169,6 +170,14 @@
         onclick={() => openPopover("remove")}
       >
         − 移除 Tag
+      </button>
+      <button
+        type="button"
+        class="btn btn-danger"
+        disabled={applying}
+        onclick={() => requestDelete(selectionDto(), count)}
+      >
+        删除
       </button>
       <button type="button" class="btn btn-ghost" disabled={applying} onclick={dismiss}>
         清除

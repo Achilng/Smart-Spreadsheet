@@ -2,6 +2,7 @@
   import { getRowPreview, setTagsForRow } from "../../api";
   import { binaryBuffer } from "../../image-loader";
   import { app, errorText } from "../app-state.svelte";
+  import { requestDelete } from "../delete-actions.svelte";
   import { patchRowTags, rowStore } from "../row-store.svelte";
   import { loadTags, tagStore } from "../tag-store.svelte";
   import { thumbnails } from "../thumbnails";
@@ -167,14 +168,25 @@
 <div class="detail-panel">
   <header class="panel-header">
     <h3>{row ? `第 ${row.sourceOrdinal} 行` : "详情"}</h3>
-    <button
-      type="button"
-      class="btn btn-ghost collapse-btn"
-      title="收起详情面板"
-      onclick={() => (app.detailOpen = false)}
-    >
-      »
-    </button>
+    <div class="panel-actions">
+      {#if row}
+        <button
+          type="button"
+          class="btn btn-danger delete-btn"
+          onclick={() => requestDelete({ kind: "explicit", rowIds: [row.id] }, 1)}
+        >
+          删除
+        </button>
+      {/if}
+      <button
+        type="button"
+        class="btn btn-ghost collapse-btn"
+        title="收起详情面板"
+        onclick={() => (app.detailOpen = false)}
+      >
+        »
+      </button>
+    </div>
   </header>
 
   {#if !row}
@@ -306,6 +318,17 @@
   .collapse-btn {
     padding: 2px 8px;
     font-size: 14px;
+  }
+
+  .panel-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .delete-btn {
+    padding: 2px 8px;
+    font-size: 12px;
   }
 
   .panel-empty {
