@@ -36,8 +36,6 @@ export const app = $state({
   hashProgress: null as ContentHashProgress | null,
   /** 导出（xlsx / JSON / 图片文件）进行中的进度，空闲时为 null */
   exportProgress: null as ExportProgress | null,
-  /** 库内查重视图是否打开 */
-  dedupeOpen: false,
   /** 智绘姬 JSON 去重工具是否打开 */
   jsonDedupeOpen: false,
 });

@@ -7,7 +7,6 @@
   import { loadTags } from "../tag-store.svelte";
   import { thumbnails } from "../thumbnails";
   import DetailPanel from "./DetailPanel.svelte";
-  import DuplicatesView from "./DuplicatesView.svelte";
   import GalleryView from "./GalleryView.svelte";
   import JsonDedupeView from "./JsonDedupeView.svelte";
   import SelectionBar from "./SelectionBar.svelte";
@@ -77,10 +76,6 @@
     {/if}
   </div>
 </div>
-
-{#if app.dedupeOpen}
-  <DuplicatesView />
-{/if}
 
 {#if app.jsonDedupeOpen}
   <JsonDedupeView />

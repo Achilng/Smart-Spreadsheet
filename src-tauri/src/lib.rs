@@ -25,7 +25,6 @@ pub fn run() {
             app::commands::import_workbook,
             app::commands::import_images,
             app::commands::delete_rows,
-            app::commands::find_duplicates,
             app::commands::list_import_batches,
             app::commands::query_rows,
             app::commands::list_tags,

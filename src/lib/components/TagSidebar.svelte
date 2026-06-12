@@ -1,7 +1,7 @@
 <script lang="ts">
-  import type { TagMatchMode } from "../../api";
+  import type { DedupeMode, TagMatchMode } from "../../api";
   import { errorText, formatCount } from "../app-state.svelte";
-  import { rowStore, setFilter } from "../row-store.svelte";
+  import { rowStore, setDedupe, setFilter } from "../row-store.svelte";
   import { clearSelection, selectAllFiltered } from "../selection-store.svelte";
   import { createTagAndRefresh, tagStore } from "../tag-store.svelte";
 
@@ -43,6 +43,11 @@
       setFilter([], rowStore.tagMode);
       clearSelection();
     }
+  }
+
+  function toggleDedupe(mode: Exclude<DedupeMode, "none">): void {
+    setDedupe(rowStore.dedupe === mode ? "none" : mode);
+    clearSelection();
   }
 
   async function createNew(event: SubmitEvent): Promise<void> {
@@ -101,6 +106,25 @@
         <button type="button" class="link-btn" onclick={clearFilter}>清除筛选</button>
       {/if}
     </span>
+  </div>
+
+  <div class="dedupe-options" role="group" aria-label="去重显示">
+    <label>
+      <input
+        type="checkbox"
+        checked={rowStore.dedupe === "positivePrompt"}
+        onchange={() => toggleDedupe("positivePrompt")}
+      />
+      按正向提示词去重
+    </label>
+    <label>
+      <input
+        type="checkbox"
+        checked={rowStore.dedupe === "artists"}
+        onchange={() => toggleDedupe("artists")}
+      />
+      按画师串去重
+    </label>
   </div>
 
   <div class="tag-list">
@@ -198,6 +222,28 @@
     gap: 10px;
   }
 
+  .dedupe-options {
+    display: grid;
+    gap: 5px;
+    padding: 0 12px 10px;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--text-2);
+    flex: none;
+  }
+
+  .dedupe-options label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+  }
+
+  .dedupe-options input {
+    margin: 0;
+    accent-color: var(--accent);
+  }
+
   .link-btn {
     border: none;
     background: none;
@@ -214,7 +260,7 @@
     flex: 1;
     min-height: 0;
     overflow-y: auto;
-    padding: 0 8px;
+    padding: 8px 8px 0;
     display: flex;
     flex-direction: column;
     gap: 2px;

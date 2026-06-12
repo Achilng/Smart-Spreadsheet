@@ -82,6 +82,13 @@ export function setFilter(tags: string[], tagMode: TagMatchMode): void {
   resetRows();
 }
 
+export function setDedupe(dedupe: DedupeMode): void {
+  if (rowStore.dedupe !== dedupe) {
+    rowStore.dedupe = dedupe;
+    resetRows();
+  }
+}
+
 /** 单行 Tag 编辑成功后原位更新缓存，避免整表重载丢失滚动位置。 */
 export function patchRowTags(rowId: number, tags: string[]): void {
   for (const pageRows of pages.values()) {

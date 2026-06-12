@@ -28,7 +28,6 @@
   ];
 
   const toolItems: DropdownItem[] = [
-    { label: "库内查重", action: () => (app.dedupeOpen = true) },
     { label: "智绘姬 JSON 去重", action: () => (app.jsonDedupeOpen = true) },
     { label: "迁移数据目录", action: () => void chooseMigration() },
   ];
