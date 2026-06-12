@@ -4,7 +4,7 @@
 
 ## 当前阶段
 
-第二轮迭代（v0.4）开发中。M15–M17 已完成并通过验收，M18 已完成全量验证与 Windows 发布包构建，等待发布 Release v_4。
+第二轮迭代（v0.4）已完成。M15–M18 全部通过验收，版本 0.4.0 与 GitHub Release v_4 已发布。
 
 ## 已完成
 
@@ -44,12 +44,13 @@
 - 选择栏原批量加/减 Tag 弹窗与侧边栏独立新建表单已退役，选择栏仅保留删除与清除。
 - `PLAN.md` 12.6 中 Tag 交互验收项已勾选。自动化覆盖显式选择与筛选全选（含排除行）的覆盖计数、零覆盖 Tag 和 filtered 选择物化；当前 Rust 全量测试 113 项，Clippy 无警告；`svelte-check` 0 错误 0 警告，前端生产构建通过。
 
-### M18 - 验收与发布（进行中，2026-06-12）
+### M18 - 验收与发布（2026-06-12）
 
 - `PLAN.md` 12.6 六项 v0.4 验收标准已全部勾选；最终全量验证为 Rust 113 项测试通过、Clippy 无警告、`svelte-check` 0 错误 0 警告、Vite 生产构建通过。
 - 版本统一提升至 0.4.0：`package.json`、`package-lock.json`、`Cargo.toml`、`Cargo.lock` 与 `tauri.conf.json` 已同步。
 - Windows x64 release + NSIS 构建通过，发布版在隔离的 `APPDATA` / `LOCALAPPDATA` 下启动冒烟测试通过，临时目录已清理。
 - 安装器 `智能表格_0.4.0_x64-setup.exe` 大小 4,304,795 字节，SHA-256 `D035609BA2F65E13D3F0F166E728B521549350287DD96479B36A7577F5E1B1AB`。
+- GitHub Release [`v_4`](https://github.com/Achilng/Smart-Spreadsheet/releases/tag/v_4) 已发布，资产为 `Smart-Spreadsheet_0.4.0_x64-setup.exe`，更新说明按约定使用一句话。
 
 ### 第二轮迭代需求对齐（2026-06-12）
 
