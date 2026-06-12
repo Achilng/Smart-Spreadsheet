@@ -270,6 +270,7 @@ fn process_new_image(
         identity: identity.to_owned(),
         source_size: i64::try_from(image.size).ok(),
         source_mtime: image.modified_nanos,
+        content_hash: None,
         time: image.created.map(format_local_time),
         positive_prompt: positive,
         negative_prompt: negative,

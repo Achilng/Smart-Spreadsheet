@@ -56,6 +56,7 @@ pub struct NewRow {
     pub identity: String,
     pub source_size: Option<i64>,
     pub source_mtime: Option<i64>,
+    pub content_hash: Option<String>,
     pub time: Option<String>,
     pub positive_prompt: Option<String>,
     pub negative_prompt: Option<String>,
@@ -72,12 +73,13 @@ pub struct AppendOutcome {
     pub batch_id: i64,
     pub added: u64,
     pub skipped_existing: u64,
+    pub skipped_content: u64,
     /// 身份键已存在但文件大小/修改时间与库中记录不一致的数量（仅供提示，不改动已入库行）。
     pub changed_existing: u64,
 }
 
 impl Database {
-    /// 追加一个导入批次：身份键已存在的行跳过，其余按给定顺序插入。
+    /// 追加一个导入批次：先按身份键跳过，再按内容哈希跳过，其余按给定顺序插入。
     ///
     /// `finalize` 在批次行写入之后、事务提交之前调用（参数为批次 ID），
     /// 供调用方完成依赖批次 ID 的文件落位（如重命名暂存目录）；
@@ -113,8 +115,13 @@ impl Database {
 
         let mut added: u64 = 0;
         let mut skipped_existing: u64 = 0;
+        let mut skipped_content: u64 = 0;
         let mut changed_existing: u64 = 0;
         {
+            let mut seen_content = transaction
+                .prepare("SELECT content_hash FROM rows WHERE content_hash IS NOT NULL")?
+                .query_map([], |row| row.get::<_, String>(0))?
+                .collect::<Result<HashSet<_>, _>>()?;
             let mut find_existing = transaction.prepare(
                 "SELECT source_size, source_mtime FROM rows WHERE identity = ?1",
             )?;
@@ -122,8 +129,8 @@ impl Database {
                 "INSERT INTO rows (
                     batch_id, source_ordinal, identity, source_size, source_mtime,
                     time, positive_prompt, negative_prompt, artists,
-                    image_folder, image_path, stored_image_path, metadata_failed
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                    image_folder, image_path, stored_image_path, metadata_failed, content_hash
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             )?;
             for row in rows {
                 let existing = find_existing
@@ -145,6 +152,14 @@ impl Database {
                     }
                     continue;
                 }
+                if row
+                    .content_hash
+                    .as_ref()
+                    .is_some_and(|hash| !seen_content.insert(hash.clone()))
+                {
+                    skipped_content += 1;
+                    continue;
+                }
 
                 let stored_image_path = row
                     .stored_image_rel
@@ -164,6 +179,7 @@ impl Database {
                     row.image_path,
                     stored_image_path,
                     row.metadata_failed,
+                    row.content_hash,
                 ])?;
                 added += 1;
             }
@@ -171,8 +187,8 @@ impl Database {
 
         let added_count =
             i64::try_from(added).map_err(|_| DatabaseError::RowCountOverflow)?;
-        let skipped_count =
-            i64::try_from(skipped_existing).map_err(|_| DatabaseError::RowCountOverflow)?;
+        let skipped_count = i64::try_from(skipped_existing + skipped_content)
+            .map_err(|_| DatabaseError::RowCountOverflow)?;
         transaction.execute(
             "UPDATE import_batches SET added_count = ?1, skipped_count = ?2 WHERE id = ?3",
             params![added_count, skipped_count, batch_id],
@@ -185,6 +201,7 @@ impl Database {
             batch_id,
             added,
             skipped_existing,
+            skipped_content,
             changed_existing,
         })
     }
@@ -315,6 +332,13 @@ mod tests {
         }
     }
 
+    fn hashed_row(identity: &str, ordinal: u32, content_hash: &str) -> NewRow {
+        NewRow {
+            content_hash: Some(content_hash.to_owned()),
+            ..row(identity, ordinal)
+        }
+    }
+
     #[test]
     fn appends_rows_and_reports_library_summary() {
         let mut database = Database::open_in_memory().unwrap();
@@ -368,6 +392,44 @@ mod tests {
         assert_eq!(repeat.added, 0);
         assert_eq!(repeat.skipped_existing, 5);
         assert_eq!(database.library_summary().unwrap().row_count, 12);
+    }
+
+    #[test]
+    fn skips_content_duplicates_after_identity_check() {
+        let mut database = Database::open_in_memory().unwrap();
+        database
+            .append_batch(
+                SourceType::Folder,
+                r"D:\first",
+                &[hashed_row("file:first", 1, "same")],
+                |_| Ok(()),
+            )
+            .unwrap();
+
+        let candidates = vec![
+            // 身份键优先：即使哈希也是重复，仍计入 skipped_existing。
+            hashed_row("file:first", 1, "same"),
+            // 与库内内容重复。
+            hashed_row("file:second", 2, "same"),
+            // 本批次首个新内容入库，后一个同哈希候选跳过。
+            hashed_row("file:third", 3, "new"),
+            hashed_row("file:fourth", 4, "new"),
+            // 无哈希候选不参与内容去重。
+            row("file:unknown-a", 5),
+            row("file:unknown-b", 6),
+        ];
+        let outcome = database
+            .append_batch(SourceType::Folder, r"D:\second", &candidates, |_| Ok(()))
+            .unwrap();
+
+        assert_eq!(outcome.added, 3);
+        assert_eq!(outcome.skipped_existing, 1);
+        assert_eq!(outcome.skipped_content, 2);
+        assert_eq!(database.library_summary().unwrap().row_count, 4);
+        assert_eq!(
+            database.library_summary().unwrap().last_batch.unwrap().skipped_count,
+            3
+        );
     }
 
     #[test]
