@@ -523,6 +523,45 @@ mod tests {
         ));
     }
 
+    /// M14 验收：万行库追加导入 5 张图 → 10005 行；重复导入不翻倍。
+    #[test]
+    fn appends_five_images_to_ten_thousand_row_library() {
+        let temporary = TemporaryImageImport::new();
+        let input = temporary.root.join("pack");
+        fs::create_dir_all(&input).unwrap();
+        for index in 1..=5 {
+            create_metadata_png(&input.join(format!("new-{index}.png")), "appended");
+        }
+        let directory = DataDirectory::initialize(&temporary.data).unwrap();
+        {
+            let mut database = directory.open_database().unwrap();
+            crate::db::test_support::append_rows(
+                &mut database,
+                &crate::db::test_support::test_rows(10_000),
+            );
+        }
+
+        let outcome = directory.import_images(&input, |_| {}).unwrap();
+        assert_eq!(outcome.added, 5);
+        assert_eq!(outcome.skipped_existing, 0);
+
+        let summary = directory.open_database().unwrap().library_summary().unwrap();
+        assert_eq!(summary.row_count, 10_005);
+
+        let repeat = directory.import_images(&input, |_| {}).unwrap();
+        assert_eq!(repeat.added, 0);
+        assert_eq!(repeat.skipped_existing, 5);
+        assert_eq!(
+            directory
+                .open_database()
+                .unwrap()
+                .library_summary()
+                .unwrap()
+                .row_count,
+            10_005
+        );
+    }
+
     #[test]
     fn deleted_archive_row_cleans_stored_copy_and_can_reimport() {
         let temporary = TemporaryImageImport::new();
