@@ -8,7 +8,7 @@ use thiserror::Error;
 
 use crate::db::{
     BatchSummary, LibrarySummary, RowPage, RowQuery, RowSelection, TagMutationError,
-    TagMutationResult, TagSummary,
+    TagMutationResult, TagSelectionSummary, TagSummary,
 };
 use crate::images::{ImageVariant, RowImageError};
 use crate::storage::{
@@ -216,6 +216,19 @@ impl AppRuntime {
             .as_ref()
             .ok_or(AppRuntimeError::NotConfigured)?;
         Ok(directory.open_database()?.count_selected_rows(selection)?)
+    }
+
+    pub(crate) fn list_selection_tags(
+        &self,
+        selection: &RowSelection,
+    ) -> Result<Vec<TagSelectionSummary>, AppRuntimeError> {
+        let state = self.lock_state()?;
+        ensure_startup_valid(&state)?;
+        let directory = state
+            .active
+            .as_ref()
+            .ok_or(AppRuntimeError::NotConfigured)?;
+        Ok(directory.open_database()?.list_selection_tags(selection)?)
     }
 
     pub(crate) fn add_tags_to_selection(

@@ -6,7 +6,7 @@ use tauri::{Emitter, Manager, State, ipc::Response};
 use super::runtime::{AppRuntime, RuntimeSnapshot};
 use crate::db::{
     BatchSummary, DedupeMode, LibrarySummary, RowPage, RowQuery, RowRecord, RowSelection,
-    TagMatchMode, TagMutationResult, TagSummary,
+    TagMatchMode, TagMutationResult, TagSelectionSummary, TagSummary,
 };
 use crate::storage::{ContentHashProgress, ImageImportProgress};
 
@@ -268,6 +268,13 @@ pub(crate) async fn open_data_directory(
     .map_err(|error| format!("打开数据目录任务异常中止: {error}"))?
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct TagSelectionSummaryDto {
+    name: String,
+    selected_rows: u64,
+}
+
 #[derive(Debug, Clone, Copy, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) enum DedupeModeDto {
@@ -403,6 +410,21 @@ pub(crate) fn count_selected_rows(
 ) -> Result<u64, String> {
     runtime
         .count_selected_rows(&selection.into())
+        .map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn list_selection_tags(
+    selection: RowSelectionDto,
+    runtime: State<'_, AppRuntime>,
+) -> Result<Vec<TagSelectionSummaryDto>, String> {
+    runtime
+        .list_selection_tags(&selection.into())
+        .map(|tags| {
+            tags.into_iter()
+                .map(TagSelectionSummaryDto::from)
+                .collect()
+        })
         .map_err(error_text)
 }
 
@@ -673,6 +695,15 @@ impl From<TagSummary> for TagSummaryDto {
         Self {
             name: summary.name,
             row_count: summary.row_count,
+        }
+    }
+}
+
+impl From<TagSelectionSummary> for TagSelectionSummaryDto {
+    fn from(summary: TagSelectionSummary) -> Self {
+        Self {
+            name: summary.name,
+            selected_rows: summary.selected_rows,
         }
     }
 }

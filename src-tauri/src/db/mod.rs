@@ -11,7 +11,7 @@ mod tags;
 pub use batches::{AppendOutcome, BatchSummary, LibrarySummary, NewRow, SourceType};
 pub use delete::DeleteOutcome;
 pub use query::{DedupeMode, MAX_PAGE_SIZE, RowPage, RowQuery, RowRecord, TagMatchMode, TagSummary};
-pub use tags::{RowSelection, TagMutationError, TagMutationResult};
+pub use tags::{RowSelection, TagMutationError, TagMutationResult, TagSelectionSummary};
 
 use std::path::Path;
 use std::time::Duration;

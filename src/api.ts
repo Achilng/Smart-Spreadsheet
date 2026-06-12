@@ -106,6 +106,11 @@ export interface TagSummary {
   rowCount: number;
 }
 
+export interface TagSelectionSummary {
+  name: string;
+  selectedRows: number;
+}
+
 export type RowSelection =
   | { kind: "explicit"; rowIds: number[] }
   | {
@@ -223,6 +228,10 @@ export function createTag(name: string): Promise<boolean> {
 
 export function countSelectedRows(selection: RowSelection): Promise<number> {
   return invoke<number>("count_selected_rows", { selection });
+}
+
+export function listSelectionTags(selection: RowSelection): Promise<TagSelectionSummary[]> {
+  return invoke<TagSelectionSummary[]>("list_selection_tags", { selection });
 }
 
 export function addTagsToSelection(

@@ -29,6 +29,12 @@ pub struct TagMutationResult {
     pub associations_changed: usize,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TagSelectionSummary {
+    pub name: String,
+    pub selected_rows: u64,
+}
+
 #[derive(Debug, Error)]
 pub enum TagMutationError {
     #[error("数据库操作失败: {0}")]
@@ -182,6 +188,42 @@ impl Database {
         drop_selection_tables(&transaction)?;
         transaction.commit()?;
         Ok(count)
+    }
+
+    pub fn list_selection_tags(
+        &mut self,
+        selection: &RowSelection,
+    ) -> Result<Vec<TagSelectionSummary>, TagMutationError> {
+        let transaction = self.connection.transaction()?;
+        create_selection_rows(&transaction, selection)?;
+        let summaries = {
+            let mut statement = transaction.prepare(&format!(
+                "SELECT tags.name, COUNT(target.id)
+                 FROM tags
+                 LEFT JOIN row_tags ON row_tags.tag_id = tags.id
+                 LEFT JOIN {TARGET_ROWS_TABLE} AS target ON target.id = row_tags.row_id
+                 GROUP BY tags.id, tags.name
+                 ORDER BY tags.name COLLATE BINARY"
+            ))?;
+            statement
+                .query_map([], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+                })?
+                .collect::<Result<Vec<_>, _>>()?
+        };
+        drop_selection_tables(&transaction)?;
+        transaction.commit()?;
+        summaries
+            .into_iter()
+            .map(|(name, selected_rows)| {
+                Ok(TagSelectionSummary {
+                    name,
+                    selected_rows: u64::try_from(selected_rows).map_err(|_| {
+                        TagMutationError::Database(DatabaseError::CountOverflow)
+                    })?,
+                })
+            })
+            .collect()
     }
 }
 
@@ -613,6 +655,53 @@ mod tests {
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
         assert_eq!(tagged_rows, vec![3, 4]);
+    }
+
+    #[test]
+    fn lists_tag_coverage_for_explicit_and_filtered_selections() {
+        let mut database = database_with_rows(3);
+        database
+            .add_tags_to_rows(&[1, 2], &["A".into()])
+            .unwrap();
+        database
+            .add_tags_to_rows(&[2, 3], &["B".into()])
+            .unwrap();
+        database.create_tag("C").unwrap();
+
+        let explicit = database
+            .list_selection_tags(&RowSelection::Explicit {
+                row_ids: vec![1, 2, 3],
+            })
+            .unwrap();
+        assert_eq!(
+            explicit,
+            vec![
+                TagSelectionSummary {
+                    name: "A".into(),
+                    selected_rows: 2,
+                },
+                TagSelectionSummary {
+                    name: "B".into(),
+                    selected_rows: 2,
+                },
+                TagSelectionSummary {
+                    name: "C".into(),
+                    selected_rows: 0,
+                },
+            ]
+        );
+
+        let filtered = database
+            .list_selection_tags(&RowSelection::Filtered {
+                tags: vec!["A".into()],
+                tag_mode: TagMatchMode::And,
+                dedupe: DedupeMode::None,
+                excluded_row_ids: vec![2],
+            })
+            .unwrap();
+        assert_eq!(filtered[0].selected_rows, 1);
+        assert_eq!(filtered[1].selected_rows, 0);
+        assert_eq!(filtered[2].selected_rows, 0);
     }
 
     #[test]
