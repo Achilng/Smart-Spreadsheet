@@ -12,9 +12,11 @@ use crate::db::{
 };
 use crate::images::{ImageVariant, RowImageError};
 use crate::storage::{
-    DataDirectory, ExportOutcome, ImageImportError, ImageImportOutcome, ImageImportProgress,
-    ImportOutcome, RowDeletionError, RowDeletionReport, StorageError, WorkbookExportError,
-    WorkbookImportError,
+    DataDirectory, ExportProgress, ImageFileExportMode, ImageFilesExportError,
+    ImageFilesExportOutcome, ImageFilesProgress, ImageImportError, ImageImportOutcome,
+    ImageImportProgress, ImportOutcome, JsonExportError, JsonExportOutcome, JsonExportProgress,
+    RowDeletionError, RowDeletionReport, StorageError, WorkbookImportError, XlsxExportError,
+    XlsxExportOutcome,
 };
 
 const LOCATOR_VERSION: u32 = 1;
@@ -60,8 +62,12 @@ pub(crate) enum AppRuntimeError {
     RowDeletion(#[from] RowDeletionError),
     #[error("图片读取失败: {0}")]
     Image(#[from] RowImageError),
-    #[error("工作簿导出失败: {0}")]
-    Export(#[from] WorkbookExportError),
+    #[error("xlsx 导出失败: {0}")]
+    XlsxExport(#[from] XlsxExportError),
+    #[error("JSON 导出失败: {0}")]
+    JsonExport(#[from] JsonExportError),
+    #[error("图片文件导出失败: {0}")]
+    ImageFilesExport(#[from] ImageFilesExportError),
     #[error("定位文件更新失败且迁移回滚失败。定位错误: {locator}; 回滚错误: {rollback}")]
     MigrationRollbackFailed { locator: String, rollback: String },
     #[error("无法恢复此前的数据目录定位文件: {0}")]
@@ -315,19 +321,46 @@ impl AppRuntime {
         Ok(directory.load_row_image(row_id, variant)?.png_bytes)
     }
 
-    pub(crate) fn export_workbook(
+    pub(crate) fn export_xlsx(
         &self,
+        selection: &RowSelection,
         destination: impl AsRef<Path>,
-    ) -> Result<ExportOutcome, AppRuntimeError> {
+        progress: impl Fn(ExportProgress) + Sync,
+    ) -> Result<XlsxExportOutcome, AppRuntimeError> {
+        let directory = self.active_directory()?;
+        Ok(directory.export_xlsx(selection, destination, progress)?)
+    }
+
+    pub(crate) fn export_zhihuiji_json(
+        &self,
+        selection: &RowSelection,
+        destination: impl AsRef<Path>,
+        progress: impl Fn(JsonExportProgress) + Sync,
+    ) -> Result<JsonExportOutcome, AppRuntimeError> {
+        let directory = self.active_directory()?;
+        Ok(directory.export_zhihuiji_json(selection, destination, progress)?)
+    }
+
+    pub(crate) fn export_image_files(
+        &self,
+        selection: &RowSelection,
+        parent_dir: impl AsRef<Path>,
+        mode: ImageFileExportMode,
+        progress: impl Fn(ImageFilesProgress) + Sync,
+    ) -> Result<ImageFilesExportOutcome, AppRuntimeError> {
+        let directory = self.active_directory()?;
+        Ok(directory.export_image_files(selection, parent_dir, mode, progress)?)
+    }
+
+    /// 取出活动数据目录的克隆并立即释放状态锁，供导出等长耗时操作使用。
+    fn active_directory(&self) -> Result<DataDirectory, AppRuntimeError> {
         let state = self.lock_state()?;
         ensure_startup_valid(&state)?;
-        let directory = state
+        Ok(state
             .active
             .as_ref()
             .ok_or(AppRuntimeError::NotConfigured)?
-            .clone();
-        drop(state);
-        Ok(directory.export_workbook(destination)?)
+            .clone())
     }
 
     pub(crate) fn migrate_directory(

@@ -1,8 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
-import { confirm as confirmDialog, open, save } from "@tauri-apps/plugin-dialog";
+import { confirm as confirmDialog, open } from "@tauri-apps/plugin-dialog";
 
 import {
-  exportWorkbook,
   getAppSnapshot,
   importImages,
   importWorkbook,
@@ -10,6 +9,7 @@ import {
   migrateDataDirectory,
   openDataDirectory,
   type AppSnapshot,
+  type ExportProgress,
   type ImageImportProgress,
 } from "../api";
 
@@ -31,8 +31,12 @@ export const app = $state({
   dataVersion: 0,
   /** 文件夹/压缩包导入进行中的进度，空闲时为 null */
   importProgress: null as ImageImportProgress | null,
+  /** 导出（xlsx / JSON / 图片文件）进行中的进度，空闲时为 null */
+  exportProgress: null as ExportProgress | null,
   /** 库内查重视图是否打开 */
   dedupeOpen: false,
+  /** 智绘姬 JSON 去重工具是否打开 */
+  jsonDedupeOpen: false,
 });
 
 let noticeTimer = 0;
@@ -166,34 +170,6 @@ async function runImageImport(path: string): Promise<void> {
       unlisten();
       app.importProgress = null;
     }
-  });
-}
-
-export async function chooseExport(): Promise<void> {
-  const library = app.snapshot?.library;
-  if (!library || library.rowCount === 0) {
-    return;
-  }
-  const lastSource = library.lastBatch?.sourcePath ?? "";
-  const baseName =
-    lastSource
-      .split(/[\\/]/)
-      .pop()
-      ?.replace(/\.xlsx$/i, "") || "smart-spreadsheet";
-  const selection = await save({
-    title: "导出新的 Excel 副本（不覆盖已有文件）",
-    defaultPath: `${baseName}-tagged.xlsx`,
-    filters: [{ name: "Excel 工作簿", extensions: ["xlsx"] }],
-  });
-  if (typeof selection !== "string") {
-    return;
-  }
-  await runAction(async () => {
-    const result = await exportWorkbook(selection);
-    setNotice({
-      tone: "success",
-      text: `已导出 ${formatCount(result.rowCount)} 行到 ${result.path}`,
-    });
   });
 }
 

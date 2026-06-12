@@ -1,7 +1,6 @@
 <script lang="ts">
   import {
     app,
-    chooseExport,
     chooseImageArchive,
     chooseImageFolder,
     chooseMigration,
@@ -9,6 +8,13 @@
     formatCount,
     type ViewMode,
   } from "../app-state.svelte";
+  import {
+    chooseImageFilesExport,
+    chooseJsonExport,
+    chooseXlsxExport,
+    exportScopeLabel,
+  } from "../export-actions";
+  import Dropdown, { type DropdownItem } from "./Dropdown.svelte";
   import WindowControls from "./WindowControls.svelte";
 
   const library = $derived(app.snapshot?.library ?? null);
@@ -20,6 +26,36 @@
     { mode: "gallery", label: "画廊" },
     { mode: "table", label: "表格" },
   ];
+
+  const toolItems: DropdownItem[] = [
+    { label: "库内查重", action: () => (app.dedupeOpen = true) },
+    { label: "智绘姬 JSON 去重", action: () => (app.jsonDedupeOpen = true) },
+    { label: "迁移数据目录", action: () => void chooseMigration() },
+  ];
+
+  const importItems: DropdownItem[] = [
+    { label: "导入文件夹", action: () => void chooseImageFolder() },
+    { label: "导入压缩包", hint: "zip / 7z / rar", action: () => void chooseImageArchive() },
+    { label: "导入 xlsx", action: () => void chooseWorkbook() },
+  ];
+
+  const scopeHint = $derived(`导出${exportScopeLabel()}`);
+  const exportItems = $derived<DropdownItem[]>([
+    { label: "导出 xlsx", hint: scopeHint, action: () => void chooseXlsxExport() },
+    { label: "导出智绘姬 JSON", hint: scopeHint, action: () => void chooseJsonExport() },
+    {
+      label: "导出图片（复制）",
+      hint: scopeHint,
+      action: () => void chooseImageFilesExport("copy"),
+    },
+    {
+      label: "导出图片（硬链接）",
+      hint: `${scopeHint} · 同盘秒出，失败自动复制`,
+      action: () => void chooseImageFilesExport("hardlink"),
+    },
+  ]);
+
+  const exportDisabled = $derived(app.busy || !library || library.rowCount === 0);
 </script>
 
 <header class="topbar" data-tauri-drag-region>
@@ -50,24 +86,9 @@
   </div>
 
   <div class="actions">
-    <button type="button" class="btn btn-ghost" disabled={app.busy} onclick={() => void chooseMigration()}>
-      迁移目录
-    </button>
-    <button type="button" class="btn btn-ghost" disabled={app.busy} onclick={() => (app.dedupeOpen = true)}>
-      查重
-    </button>
-    <button type="button" class="btn" disabled={app.busy} onclick={() => void chooseImageFolder()}>
-      导入文件夹
-    </button>
-    <button type="button" class="btn" disabled={app.busy} onclick={() => void chooseImageArchive()}>
-      导入压缩包
-    </button>
-    <button type="button" class="btn" disabled={app.busy} onclick={() => void chooseWorkbook()}>
-      导入 xlsx
-    </button>
-    <button type="button" class="btn btn-primary" disabled={app.busy} onclick={() => void chooseExport()}>
-      导出副本
-    </button>
+    <Dropdown label="工具" items={toolItems} disabled={app.busy} />
+    <Dropdown label="导入" items={importItems} disabled={app.busy} />
+    <Dropdown label="导出" items={exportItems} disabled={exportDisabled} primary />
   </div>
 
   <WindowControls />

@@ -3,28 +3,39 @@
 
   const progressText = $derived.by(() => {
     const progress = app.importProgress;
-    if (!progress) {
-      return null;
+    if (progress) {
+      switch (progress.stage) {
+        case "extracting":
+          return "正在解压压缩包…";
+        case "scanning":
+          return progress.total > 0
+            ? `已发现 ${formatCount(progress.total)} 张 PNG`
+            : "正在扫描 PNG…";
+        case "processing":
+          return `正在读取元数据 ${formatCount(progress.processed)} / ${formatCount(progress.total)}`;
+        default:
+          return null;
+      }
     }
-    switch (progress.stage) {
-      case "extracting":
-        return "正在解压压缩包…";
-      case "scanning":
-        return progress.total > 0
-          ? `已发现 ${formatCount(progress.total)} 张 PNG`
-          : "正在扫描 PNG…";
-      case "processing":
-        return `正在读取元数据 ${formatCount(progress.processed)} / ${formatCount(progress.total)}`;
-      default:
-        return null;
+    const exporting = app.exportProgress;
+    if (exporting) {
+      return `正在导出 ${formatCount(exporting.processed)} / ${formatCount(exporting.total)}`;
     }
+    return null;
   });
   const progressPercent = $derived.by(() => {
-    const progress = app.importProgress;
-    if (!progress || progress.stage !== "processing" || progress.total === 0) {
-      return null;
+    const importing = app.importProgress;
+    if (importing) {
+      if (importing.stage !== "processing" || importing.total === 0) {
+        return null;
+      }
+      return Math.round((importing.processed / importing.total) * 100);
     }
-    return Math.round((progress.processed / progress.total) * 100);
+    const exporting = app.exportProgress;
+    if (exporting && exporting.total > 0) {
+      return Math.round((exporting.processed / exporting.total) * 100);
+    }
+    return null;
   });
 </script>
 

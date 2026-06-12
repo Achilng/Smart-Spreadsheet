@@ -3,6 +3,7 @@ mod images;
 
 pub mod db;
 pub mod excel;
+pub mod fsx;
 pub mod pipeline;
 pub mod storage;
 
@@ -35,7 +36,11 @@ pub fn run() {
             app::commands::set_tags_for_row,
             app::commands::get_row_thumbnail,
             app::commands::get_row_preview,
-            app::commands::export_workbook,
+            app::commands::export_xlsx,
+            app::commands::export_zhihuiji_json,
+            app::commands::export_image_files,
+            app::commands::inspect_zhihuiji_json,
+            app::commands::dedupe_zhihuiji_json,
             app::commands::migrate_data_directory,
         ])
         .run(tauri::generate_context!())

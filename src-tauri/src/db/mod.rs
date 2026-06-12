@@ -20,7 +20,7 @@ use std::time::Duration;
 use rusqlite::{Connection, MAIN_DB, TransactionBehavior};
 use thiserror::Error;
 
-pub use export::RowTagSnapshot;
+pub use export::ExportRow;
 pub use images::RowImageLocator;
 pub use migrations::CURRENT_SCHEMA_VERSION;
 use migrations::{MIGRATION_1, MIGRATION_2};

@@ -1,5 +1,7 @@
 mod delete;
-mod export;
+mod export_images;
+mod export_json;
+mod export_xlsx;
 mod import;
 mod import_images;
 mod migration;
@@ -15,7 +17,11 @@ use crate::db::{Database, DatabaseError};
 use crate::excel::EmbeddedImageRef;
 
 pub use delete::{RowDeletionError, RowDeletionReport};
-pub use export::{ExportOutcome, WorkbookExportError};
+pub use export_images::{
+    ImageFileExportMode, ImageFilesExportError, ImageFilesExportOutcome, ImageFilesProgress,
+};
+pub use export_json::{JsonExportError, JsonExportOutcome, JsonExportProgress};
+pub use export_xlsx::{ExportProgress, XlsxExportError, XlsxExportOutcome};
 pub use import::{ImportOutcome, WorkbookImportError};
 pub use import_images::{
     ImageImportError, ImageImportOutcome, ImageImportProgress, ImageImportStage,

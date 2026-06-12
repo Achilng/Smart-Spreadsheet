@@ -9,6 +9,7 @@
   import DetailPanel from "./DetailPanel.svelte";
   import DuplicatesView from "./DuplicatesView.svelte";
   import GalleryView from "./GalleryView.svelte";
+  import JsonDedupeView from "./JsonDedupeView.svelte";
   import SelectionBar from "./SelectionBar.svelte";
   import TableView from "./TableView.svelte";
   import TagSidebar from "./TagSidebar.svelte";
@@ -79,6 +80,10 @@
 
 {#if app.dedupeOpen}
   <DuplicatesView />
+{/if}
+
+{#if app.jsonDedupeOpen}
+  <JsonDedupeView />
 {/if}
 
 <style>

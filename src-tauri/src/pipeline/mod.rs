@@ -4,6 +4,7 @@
 
 pub mod archive;
 mod artist;
+pub mod json_dedupe;
 mod metadata;
 pub mod parallel;
 pub mod png_text;

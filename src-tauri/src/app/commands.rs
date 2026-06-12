@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use tauri::{Emitter, Manager, State, ipc::Response};
@@ -236,11 +236,37 @@ pub(crate) struct TagMutationResultDto {
     associations_changed: usize,
 }
 
+/// 三种导出共用的进度事件载荷，经 `export://progress` 推送。
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ExportProgressDto {
+    processed: usize,
+    total: usize,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct ExportResultDto {
+pub(crate) struct XlsxExportResultDto {
     path: String,
     row_count: usize,
+    images_embedded: usize,
+    image_failures: usize,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct JsonExportResultDto {
+    path: String,
+    exported: usize,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ImageFilesExportResultDto {
+    directory: String,
+    exported: usize,
+    hardlink_fallbacks: usize,
+    missing: usize,
 }
 
 #[derive(Debug, Serialize)]
@@ -463,18 +489,116 @@ pub(crate) fn get_row_preview(
         .map_err(error_text)
 }
 
+/// 导出带缩略图的 xlsx；在阻塞线程上执行，进度经 `export://progress` 推送。
 #[tauri::command]
-pub(crate) fn export_workbook(
+pub(crate) async fn export_xlsx(
+    selection: RowSelectionDto,
     path: String,
-    runtime: State<'_, AppRuntime>,
-) -> Result<ExportResultDto, String> {
-    runtime
-        .export_workbook(PathBuf::from(path))
-        .map(|outcome| ExportResultDto {
-            path: outcome.destination.to_string_lossy().into_owned(),
-            row_count: outcome.row_count,
-        })
-        .map_err(error_text)
+    app: tauri::AppHandle,
+) -> Result<XlsxExportResultDto, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let runtime = app.state::<AppRuntime>();
+        runtime
+            .export_xlsx(&selection.into(), PathBuf::from(path), |progress| {
+                emit_export_progress(&app, progress.processed, progress.total);
+            })
+            .map(|outcome| XlsxExportResultDto {
+                path: outcome.destination.to_string_lossy().into_owned(),
+                row_count: outcome.row_count,
+                images_embedded: outcome.images_embedded,
+                image_failures: outcome.image_failures,
+            })
+            .map_err(error_text)
+    })
+    .await
+    .map_err(|error| format!("导出任务异常中止: {error}"))?
+}
+
+#[tauri::command]
+pub(crate) async fn export_zhihuiji_json(
+    selection: RowSelectionDto,
+    path: String,
+    app: tauri::AppHandle,
+) -> Result<JsonExportResultDto, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let runtime = app.state::<AppRuntime>();
+        runtime
+            .export_zhihuiji_json(&selection.into(), PathBuf::from(path), |progress| {
+                emit_export_progress(&app, progress.processed, progress.total);
+            })
+            .map(|outcome| JsonExportResultDto {
+                path: outcome.destination.to_string_lossy().into_owned(),
+                exported: outcome.exported,
+            })
+            .map_err(error_text)
+    })
+    .await
+    .map_err(|error| format!("导出任务异常中止: {error}"))?
+}
+
+#[tauri::command]
+pub(crate) async fn export_image_files(
+    selection: RowSelectionDto,
+    parent_dir: String,
+    mode: String,
+    app: tauri::AppHandle,
+) -> Result<ImageFilesExportResultDto, String> {
+    let mode = crate::storage::ImageFileExportMode::parse(&mode)
+        .ok_or_else(|| format!("未知的图片导出方式: {mode}"))?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let runtime = app.state::<AppRuntime>();
+        runtime
+            .export_image_files(&selection.into(), PathBuf::from(parent_dir), mode, |progress| {
+                emit_export_progress(&app, progress.processed, progress.total);
+            })
+            .map(|outcome| ImageFilesExportResultDto {
+                directory: outcome.directory.to_string_lossy().into_owned(),
+                exported: outcome.exported,
+                hardlink_fallbacks: outcome.hardlink_fallbacks,
+                missing: outcome.missing,
+            })
+            .map_err(error_text)
+    })
+    .await
+    .map_err(|error| format!("导出任务异常中止: {error}"))?
+}
+
+fn emit_export_progress(app: &tauri::AppHandle, processed: usize, total: usize) {
+    let _ = app.emit("export://progress", ExportProgressDto { processed, total });
+}
+
+/// 智绘姬 JSON 工具：检查重复项（只读，不修改文件）。
+#[tauri::command]
+pub(crate) async fn inspect_zhihuiji_json(
+    path: String,
+) -> Result<crate::pipeline::json_dedupe::JsonDedupeInspection, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::pipeline::json_dedupe::inspect_zhihuiji_json_file(Path::new(&path))
+            .map_err(|error| format!("{error:#}"))
+    })
+    .await
+    .map_err(|error| format!("检查任务异常中止: {error}"))?
+}
+
+/// 智绘姬 JSON 工具：去重并写出，进度经 `json-dedupe://progress` 推送。
+#[tauri::command]
+pub(crate) async fn dedupe_zhihuiji_json(
+    input_path: String,
+    output_path: String,
+    app: tauri::AppHandle,
+) -> Result<crate::pipeline::json_dedupe::JsonDedupeSummary, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::pipeline::json_dedupe::dedupe_zhihuiji_json_file(
+            Path::new(&input_path),
+            Path::new(&output_path),
+            |progress| {
+                let _ = app.emit("json-dedupe://progress", progress);
+            },
+        )
+        .map_err(|error| format!("{error:#}"))
+    })
+    .await
+    .map_err(|error| format!("去重任务异常中止: {error}"))?
 }
 
 #[tauri::command]
