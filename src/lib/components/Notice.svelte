@@ -11,6 +11,8 @@
           return progress.total > 0
             ? `已发现 ${formatCount(progress.total)} 张 PNG`
             : "正在扫描 PNG…";
+        case "hashing":
+          return `正在检查图片内容 ${formatCount(progress.processed)} / ${formatCount(progress.total)}`;
         case "processing":
           return `正在读取元数据 ${formatCount(progress.processed)} / ${formatCount(progress.total)}`;
         default:
@@ -26,7 +28,10 @@
   const progressPercent = $derived.by(() => {
     const importing = app.importProgress;
     if (importing) {
-      if (importing.stage !== "processing" || importing.total === 0) {
+      if (
+        (importing.stage !== "hashing" && importing.stage !== "processing") ||
+        importing.total === 0
+      ) {
         return null;
       }
       return Math.round((importing.processed / importing.total) * 100);

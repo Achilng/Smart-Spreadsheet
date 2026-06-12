@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use rusqlite::params;
 
 use super::{Database, DatabaseError};
@@ -10,6 +12,43 @@ pub struct ContentHashCandidate {
 }
 
 impl Database {
+    pub fn existing_content_hashes(
+        &mut self,
+        candidates: &[String],
+    ) -> Result<HashSet<String>, DatabaseError> {
+        const CANDIDATES_TABLE: &str = "temp.content_hash_candidates";
+        let transaction = self.connection.transaction()?;
+        transaction.execute_batch(&format!(
+            "DROP TABLE IF EXISTS {CANDIDATES_TABLE};
+             CREATE TEMP TABLE {CANDIDATES_TABLE} (
+                 content_hash TEXT PRIMARY KEY
+             ) STRICT, WITHOUT ROWID;"
+        ))?;
+        {
+            let mut insert = transaction.prepare(&format!(
+                "INSERT OR IGNORE INTO {CANDIDATES_TABLE}(content_hash) VALUES (?1)"
+            ))?;
+            for candidate in candidates {
+                insert.execute([candidate])?;
+            }
+        }
+        let existing = {
+            let mut statement = transaction.prepare(&format!(
+                "SELECT rows.content_hash
+                 FROM rows
+                 JOIN {CANDIDATES_TABLE} AS candidates
+                   ON candidates.content_hash = rows.content_hash
+                 GROUP BY rows.content_hash"
+            ))?;
+            statement
+                .query_map([], |row| row.get::<_, String>(0))?
+                .collect::<Result<HashSet<_>, _>>()?
+        };
+        transaction.execute_batch(&format!("DROP TABLE {CANDIDATES_TABLE};"))?;
+        transaction.commit()?;
+        Ok(existing)
+    }
+
     pub fn missing_content_hashes(&self) -> Result<Vec<ContentHashCandidate>, DatabaseError> {
         let mut statement = self.connection.prepare(
             "SELECT id, image_path, stored_image_path
@@ -86,5 +125,10 @@ mod tests {
             database.content_hash_for_row(2).unwrap().as_deref(),
             Some("abc")
         );
+
+        let existing = database
+            .existing_content_hashes(&["abc".into(), "missing".into(), "abc".into()])
+            .unwrap();
+        assert_eq!(existing, HashSet::from(["abc".to_owned()]));
     }
 }

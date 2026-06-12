@@ -154,6 +154,9 @@ async function runImageImport(path: string): Promise<void> {
       if (result.skippedExisting > 0) {
         parts.push(`跳过 ${formatCount(result.skippedExisting)} 张已入库`);
       }
+      if (result.skippedContent > 0) {
+        parts.push(`内容重复跳过 ${formatCount(result.skippedContent)} 张`);
+      }
       if (result.changedExisting > 0) {
         parts.push(
           `其中 ${formatCount(result.changedExisting)} 张源文件有变化（未改动库内数据）`,

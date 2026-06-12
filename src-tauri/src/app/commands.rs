@@ -63,6 +63,7 @@ pub(crate) struct ImageImportResultDto {
     total_found: usize,
     added: u64,
     skipped_existing: u64,
+    skipped_content: u64,
     changed_existing: u64,
     metadata_failed: u64,
 }
@@ -345,6 +346,7 @@ pub(crate) async fn import_images(
                 total_found: outcome.total_found,
                 added: outcome.added,
                 skipped_existing: outcome.skipped_existing,
+                skipped_content: outcome.skipped_content,
                 changed_existing: outcome.changed_existing,
                 metadata_failed: outcome.metadata_failed,
             })

@@ -43,11 +43,12 @@ export interface ImageImportResult {
   totalFound: number;
   added: number;
   skippedExisting: number;
+  skippedContent: number;
   changedExisting: number;
   metadataFailed: number;
 }
 
-export type ImageImportStage = "extracting" | "scanning" | "processing";
+export type ImageImportStage = "extracting" | "scanning" | "hashing" | "processing";
 
 export interface ImageImportProgress {
   stage: ImageImportStage;

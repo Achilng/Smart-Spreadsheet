@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -6,6 +7,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use chrono::{DateTime, Local};
 use thiserror::Error;
 
+use super::content_hash::sha256_file;
 use super::{DataDirectory, StagingDir, StorageError, canonical_display_path};
 use crate::db::identity::{archive_member_identity, file_identity};
 use crate::db::{DatabaseError, NewRow, SourceType};
@@ -21,6 +23,8 @@ pub enum ImageImportStage {
     Extracting,
     /// 扫描 PNG 文件。
     Scanning,
+    /// 为身份键全新的图片计算内容哈希。
+    Hashing,
     /// 读取元数据并落位副本。
     Processing,
 }
@@ -30,6 +34,7 @@ impl ImageImportStage {
         match self {
             Self::Extracting => "extracting",
             Self::Scanning => "scanning",
+            Self::Hashing => "hashing",
             Self::Processing => "processing",
         }
     }
@@ -49,6 +54,7 @@ pub struct ImageImportOutcome {
     pub total_found: usize,
     pub added: u64,
     pub skipped_existing: u64,
+    pub skipped_content: u64,
     pub changed_existing: u64,
     /// 新增行中元数据解析失败的数量（行仍然入库并带失败标记）。
     pub metadata_failed: u64,
@@ -137,7 +143,7 @@ impl DataDirectory {
 
         // 拆分已存在与新增：已存在的行只带身份键与变化检测字段，不读元数据。
         let mut rows: Vec<Option<NewRow>> = Vec::with_capacity(images.len());
-        let mut new_jobs: Vec<(usize, SourceImage)> = Vec::new();
+        let mut hash_jobs: Vec<(usize, SourceImage)> = Vec::new();
         for (index, (image, identity)) in images.iter().zip(&identities).enumerate() {
             let ordinal = u32::try_from(index + 1).map_err(|_| DatabaseError::RowCountOverflow)?;
             if existing.contains(identity) {
@@ -150,27 +156,77 @@ impl DataDirectory {
                 }));
             } else {
                 rows.push(None);
-                new_jobs.push((index, image.clone()));
+                hash_jobs.push((index, image.clone()));
             }
         }
 
-        // 新图并行处理：读文本 chunk → 解析元数据；压缩包图移动副本到暂存目录。
+        // 身份键全新的图片先并行计算内容哈希。按扫描顺序保留首次出现的内容，
+        // 库内或本批次重复项只构造最小候选供追加事务计数，不读取元数据或复制副本。
+        let hash_total = hash_jobs.len();
+        reporter.emit(ImageImportStage::Hashing, 0, hash_total, true);
+        let hashed = parallel::parallel_map(
+            hash_jobs,
+            parallel::worker_count(hash_total),
+            |_, (index, image)| {
+                let content_hash = sha256_file(&image.absolute_path).ok();
+                (index, image, content_hash)
+            },
+            |completed| {
+                reporter.emit(
+                    ImageImportStage::Hashing,
+                    completed,
+                    hash_total,
+                    completed == hash_total,
+                );
+            },
+        );
+        let candidate_hashes = hashed
+            .iter()
+            .filter_map(|(_, _, hash)| hash.clone())
+            .collect::<Vec<_>>();
+        let mut seen_content: HashSet<String> =
+            database.existing_content_hashes(&candidate_hashes)?;
+        let mut new_jobs: Vec<(usize, SourceImage, Option<String>)> = Vec::new();
+        for (index, image, content_hash) in hashed {
+            let duplicate = content_hash
+                .as_ref()
+                .is_some_and(|hash| !seen_content.insert(hash.clone()));
+            if duplicate {
+                rows[index] = Some(NewRow {
+                    source_ordinal: u32::try_from(index + 1)
+                        .map_err(|_| DatabaseError::RowCountOverflow)?,
+                    identity: identities[index].clone(),
+                    source_size: i64::try_from(image.size).ok(),
+                    source_mtime: image.modified_nanos,
+                    content_hash,
+                    ..NewRow::default()
+                });
+            } else {
+                new_jobs.push((index, image, content_hash));
+            }
+        }
+
+        // 内容唯一的新图再读取文本 chunk、解析元数据；压缩包图移动副本到暂存目录。
         let staging = StagingDir::create(&self.files_path())?;
         let new_total = new_jobs.len();
+        let process_context = ProcessImageContext {
+            source_type,
+            input_display: &input_display,
+            scan_root_display: &scan_root_display,
+            staging_root: staging.path(),
+        };
         reporter.emit(ImageImportStage::Processing, 0, new_total, true);
         let worker_count = parallel::worker_count(new_total);
         let processed: Vec<Result<(usize, NewRow), std::io::Error>> = parallel::parallel_map(
             new_jobs,
             worker_count,
-            |_, (index, image)| {
+            |_, (index, image, content_hash)| {
                 let row = process_new_image(
                     &image,
                     &identities[index],
                     index,
-                    source_type,
-                    &input_display,
-                    &scan_root_display,
-                    staging.path(),
+                    &process_context,
+                    content_hash,
                 )?;
                 Ok((index, row))
             },
@@ -215,20 +271,26 @@ impl DataDirectory {
             total_found,
             added: outcome.added,
             skipped_existing: outcome.skipped_existing,
+            skipped_content: outcome.skipped_content,
             changed_existing: outcome.changed_existing,
             metadata_failed,
         })
     }
 }
 
+struct ProcessImageContext<'a> {
+    source_type: SourceType,
+    input_display: &'a str,
+    scan_root_display: &'a str,
+    staging_root: &'a Path,
+}
+
 fn process_new_image(
     image: &SourceImage,
     identity: &str,
     scan_index: usize,
-    source_type: SourceType,
-    input_display: &str,
-    scan_root_display: &str,
-    staging_root: &Path,
+    context: &ProcessImageContext<'_>,
+    content_hash: Option<String>,
 ) -> Result<NewRow, std::io::Error> {
     let (positive, negative, artists, metadata_failed) =
         match png_text::read_png_text_chunks(&image.absolute_path) {
@@ -244,10 +306,10 @@ fn process_new_image(
             Err(_) => (None, None, None, true),
         };
 
-    let (image_path, stored_image_rel) = match source_type {
+    let (image_path, stored_image_rel) = match context.source_type {
         SourceType::Archive => {
             // 副本移动到暂存目录（同盘瞬间完成，跨盘回退复制），保持包内目录结构。
-            let staged = staging_root.join(&image.relative_path);
+            let staged = context.staging_root.join(&image.relative_path);
             if let Some(parent) = staged.parent() {
                 fs::create_dir_all(parent)?;
             }
@@ -255,12 +317,12 @@ fn process_new_image(
                 fs::copy(&image.absolute_path, &staged)?;
             }
             (
-                format!("{input_display} > {}", image.relative_path),
+                format!("{} > {}", context.input_display, image.relative_path),
                 Some(image.relative_path.replace('\\', "/")),
             )
         }
         _ => (
-            format!("{scan_root_display}\\{}", image.relative_path),
+            format!("{}\\{}", context.scan_root_display, image.relative_path),
             None,
         ),
     };
@@ -270,7 +332,7 @@ fn process_new_image(
         identity: identity.to_owned(),
         source_size: i64::try_from(image.size).ok(),
         source_mtime: image.modified_nanos,
-        content_hash: None,
+        content_hash,
         time: image.created.map(format_local_time),
         positive_prompt: positive,
         negative_prompt: negative,
@@ -459,6 +521,8 @@ mod tests {
             let options = zip::write::SimpleFileOptions::default();
             writer.start_file("套图/图片 1.png", options).unwrap();
             writer.write_all(&fs::read(&png_path).unwrap()).unwrap();
+            writer.start_file("套图/图片副本.png", options).unwrap();
+            writer.write_all(&fs::read(&png_path).unwrap()).unwrap();
             writer.finish().unwrap();
         }
         let directory = DataDirectory::initialize(&temporary.data).unwrap();
@@ -466,6 +530,7 @@ mod tests {
         let outcome = directory.import_images(&archive_path, |_| {}).unwrap();
 
         assert_eq!(outcome.added, 1);
+        assert_eq!(outcome.skipped_content, 1);
         assert_eq!(outcome.source_type, SourceType::Archive);
         let database = directory.open_database().unwrap();
         let locator = database.row_image_locator(1).unwrap();
@@ -475,12 +540,21 @@ mod tests {
             fs::read(directory.root().join(&stored)).unwrap(),
             fs::read(&png_path).unwrap()
         );
+        assert_eq!(
+            walkdir::WalkDir::new(directory.files_path().join(outcome.batch_id.to_string()))
+                .into_iter()
+                .filter_map(Result::ok)
+                .filter(|entry| entry.file_type().is_file())
+                .count(),
+            1
+        );
         assert!(locator.image_path.unwrap().contains(" > "));
 
         // 同一压缩包重复导入：全部跳过，不留新批次目录。
         let repeat = directory.import_images(&archive_path, |_| {}).unwrap();
         assert_eq!(repeat.added, 0);
         assert_eq!(repeat.skipped_existing, 1);
+        assert_eq!(repeat.skipped_content, 1);
         assert_eq!(
             directory
                 .open_database()
@@ -513,6 +587,9 @@ mod tests {
                 .any(|event| event.stage == ImageImportStage::Scanning)
         );
         assert!(events.iter().any(|event| {
+            event.stage == ImageImportStage::Hashing && event.processed == event.total
+        }));
+        assert!(events.iter().any(|event| {
             event.stage == ImageImportStage::Processing && event.processed == event.total
         }));
 
@@ -531,7 +608,10 @@ mod tests {
         let input = temporary.root.join("pack");
         fs::create_dir_all(&input).unwrap();
         for index in 1..=5 {
-            create_metadata_png(&input.join(format!("new-{index}.png")), "appended");
+            create_metadata_png(
+                &input.join(format!("new-{index}.png")),
+                &format!("appended {index}"),
+            );
         }
         let directory = DataDirectory::initialize(&temporary.data).unwrap();
         {
@@ -560,6 +640,43 @@ mod tests {
                 .unwrap()
                 .row_count,
             10_005
+        );
+    }
+
+    #[test]
+    fn imports_only_one_of_five_hundred_identical_files_and_dedupes_across_folders() {
+        let temporary = TemporaryImageImport::new();
+        let first = temporary.root.join("first");
+        let second = temporary.root.join("second");
+        fs::create_dir_all(&first).unwrap();
+        fs::create_dir_all(&second).unwrap();
+        let template = first.join("image-000.png");
+        create_metadata_png(&template, "identical content");
+        let bytes = fs::read(&template).unwrap();
+        for index in 1..500 {
+            fs::write(first.join(format!("image-{index:03}.png")), &bytes).unwrap();
+        }
+        fs::write(second.join("copy.png"), &bytes).unwrap();
+        let directory = DataDirectory::initialize(&temporary.data).unwrap();
+
+        let first_outcome = directory.import_images(&first, |_| {}).unwrap();
+        assert_eq!(first_outcome.total_found, 500);
+        assert_eq!(first_outcome.added, 1);
+        assert_eq!(first_outcome.skipped_existing, 0);
+        assert_eq!(first_outcome.skipped_content, 499);
+
+        let second_outcome = directory.import_images(&second, |_| {}).unwrap();
+        assert_eq!(second_outcome.added, 0);
+        assert_eq!(second_outcome.skipped_existing, 0);
+        assert_eq!(second_outcome.skipped_content, 1);
+        assert_eq!(
+            directory
+                .open_database()
+                .unwrap()
+                .library_summary()
+                .unwrap()
+                .row_count,
+            1
         );
     }
 
