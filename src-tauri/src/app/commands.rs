@@ -43,6 +43,7 @@ pub(crate) struct ImportResultDto {
     snapshot: AppSnapshotDto,
     added: u64,
     skipped_existing: u64,
+    skipped_content: u64,
     changed_existing: u64,
     embedded_images_stored: usize,
 }
@@ -318,6 +319,7 @@ pub(crate) fn import_workbook(
             snapshot: snapshot.into(),
             added: outcome.added,
             skipped_existing: outcome.skipped_existing,
+            skipped_content: outcome.skipped_content,
             changed_existing: outcome.changed_existing,
             embedded_images_stored: outcome.embedded_images_stored,
         })

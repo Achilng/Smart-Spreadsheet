@@ -27,6 +27,7 @@ export interface ImportResult {
   snapshot: AppSnapshot;
   added: number;
   skippedExisting: number;
+  skippedContent: number;
   changedExisting: number;
   embeddedImagesStored: number;
 }

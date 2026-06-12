@@ -101,6 +101,9 @@ export async function chooseWorkbook(): Promise<void> {
     if (result.skippedExisting > 0) {
       parts.push(`跳过 ${formatCount(result.skippedExisting)} 行已存在`);
     }
+    if (result.skippedContent > 0) {
+      parts.push(`内容重复跳过 ${formatCount(result.skippedContent)} 行`);
+    }
     if (result.changedExisting > 0) {
       parts.push(`其中 ${formatCount(result.changedExisting)} 行源文件有变化（未改动库内数据）`);
     }
