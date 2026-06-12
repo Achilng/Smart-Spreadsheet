@@ -4,12 +4,27 @@
   import {
     clearSelection,
     getSelectedCount,
+    selectAllFiltered,
     selection,
     selectionDto,
     selectionIds,
   } from "../selection-store.svelte";
+  import { rowStore } from "../row-store.svelte";
 
   const count = $derived(getSelectedCount());
+  let selectingAll = $state(false);
+
+  async function selectAll(): Promise<void> {
+    if (selectingAll) {
+      return;
+    }
+    selectingAll = true;
+    try {
+      await selectAllFiltered();
+    } finally {
+      selectingAll = false;
+    }
+  }
 
   function dismiss(): void {
     clearSelection();
@@ -33,6 +48,16 @@
           <small class="faint">（筛选全选{selectionIds.size > 0 ? `，排除 ${formatCount(selectionIds.size)} 行` : ""}）</small>
         {/if}
       </span>
+      {#if selection.kind === "explicit" && count < rowStore.totalCount}
+        <button
+          type="button"
+          class="btn"
+          disabled={selectingAll}
+          onclick={() => void selectAll()}
+        >
+          {selectingAll ? "全选中…" : "全选"}
+        </button>
+      {/if}
       <button
         type="button"
         class="btn btn-danger"
