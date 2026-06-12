@@ -2,6 +2,7 @@ import { SvelteSet } from "svelte/reactivity";
 
 import {
   countSelectedRows,
+  selectedRowIds,
   type DedupeMode,
   type RowSelection,
   type TagMatchMode,
@@ -19,6 +20,7 @@ export const selection = $state({
   filteredMode: "and" as TagMatchMode,
   filteredDedupe: "none" as DedupeMode,
   filteredTotal: 0,
+  version: 0,
 });
 
 export const selectionIds = new SvelteSet<number>();
@@ -65,6 +67,7 @@ export function toggleRow(rowId: number, index: number, shiftKey: boolean): void
     setRowSelected(rowId, !isRowSelected(rowId));
   }
   anchorIndex = index;
+  selection.version += 1;
 }
 
 export function clearSelection(): void {
@@ -74,6 +77,7 @@ export function clearSelection(): void {
   selection.filteredTotal = 0;
   selectionIds.clear();
   anchorIndex = null;
+  selection.version += 1;
 }
 
 /** 全选当前筛选结果；行数在后端按当前筛选统计。 */
@@ -93,7 +97,31 @@ export async function selectAllFiltered(): Promise<number> {
   selection.filteredTotal = totalCount;
   selectionIds.clear();
   anchorIndex = null;
+  selection.version += 1;
   return totalCount;
+}
+
+/** 将 filtered 全选固定为明确行 ID，供连续批量编辑保持同一目标集合。 */
+export async function materializeSelection(): Promise<number> {
+  if (selection.kind === "explicit") {
+    return selectionIds.size;
+  }
+  const requestVersion = selection.version;
+  const rowIds = await selectedRowIds(selectionDto());
+  if (selection.kind !== "filtered" || selection.version !== requestVersion) {
+    return getSelectedCount();
+  }
+  selection.kind = "explicit";
+  selection.filteredTags = [];
+  selection.filteredDedupe = "none";
+  selection.filteredTotal = 0;
+  selectionIds.clear();
+  for (const rowId of rowIds) {
+    selectionIds.add(rowId);
+  }
+  anchorIndex = null;
+  selection.version += 1;
+  return rowIds.length;
 }
 
 export function selectionDto(): RowSelection {

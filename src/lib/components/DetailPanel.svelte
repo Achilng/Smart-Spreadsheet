@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getRowPreview, setTagsForRow } from "../../api";
+  import { createTag, getRowPreview, setTagsForRow } from "../../api";
   import { binaryBuffer } from "../../image-loader";
   import { app, errorText } from "../app-state.svelte";
   import { requestDelete } from "../delete-actions.svelte";
@@ -116,10 +116,27 @@
     }
   }
 
-  function addTag(name: string): void {
+  async function addTag(name: string): Promise<void> {
+    const current = row;
+    const normalized = name.trim();
+    if (!current || !normalized || current.tags.includes(normalized) || saving) {
+      return;
+    }
     tagQuery = "";
-    if (row && !row.tags.includes(name)) {
-      void applyTags([...row.tags, name]);
+    saving = true;
+    saveError = null;
+    try {
+      if (!tagStore.list.some(tag => tag.name === normalized)) {
+        await createTag(normalized);
+      }
+      const next = [...current.tags, normalized];
+      await setTagsForRow(current.id, next);
+      patchRowTags(current.id, next);
+      await loadTags();
+    } catch (error) {
+      saveError = errorText(error);
+    } finally {
+      saving = false;
     }
   }
 
@@ -132,11 +149,7 @@
   function onTagInputKeydown(event: KeyboardEvent): void {
     if (event.key === "Enter") {
       event.preventDefault();
-      const exact = suggestions.find(name => name === tagQuery.trim());
-      const first = exact ?? suggestions[0];
-      if (first) {
-        addTag(first);
-      }
+      void addTag(tagQuery);
     } else if (event.key === "Escape") {
       tagQuery = "";
       (event.target as HTMLInputElement).blur();
@@ -236,9 +249,9 @@
         <div class="tag-input-wrap">
           <input
             type="text"
-            placeholder={tagStore.list.length === 0 ? "请先在左侧 Tag 库新建 Tag" : "添加已有 Tag…"}
+            placeholder="输入 Tag，回车即建即贴…"
             bind:value={tagQuery}
-            disabled={saving || tagStore.list.length === 0}
+            disabled={saving}
             onkeydown={onTagInputKeydown}
             onfocus={() => (tagInputFocused = true)}
             onblur={() => window.setTimeout(() => (tagInputFocused = false), 120)}
@@ -246,7 +259,7 @@
           {#if tagInputFocused && suggestions.length > 0}
             <div class="suggestions">
               {#each suggestions as name (name)}
-                <button type="button" onmousedown={event => event.preventDefault()} onclick={() => addTag(name)}>
+                <button type="button" onmousedown={event => event.preventDefault()} onclick={() => void addTag(name)}>
                   {name}
                 </button>
               {/each}
