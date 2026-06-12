@@ -2,6 +2,7 @@ mod batches;
 mod delete;
 mod duplicates;
 mod export;
+mod hashes;
 pub mod identity;
 mod images;
 mod migrations;
@@ -21,6 +22,7 @@ use rusqlite::{Connection, MAIN_DB, TransactionBehavior};
 use thiserror::Error;
 
 pub use export::ExportRow;
+pub use hashes::ContentHashCandidate;
 pub use images::RowImageLocator;
 pub use migrations::CURRENT_SCHEMA_VERSION;
 use migrations::{MIGRATION_1, MIGRATION_2, MIGRATION_3};

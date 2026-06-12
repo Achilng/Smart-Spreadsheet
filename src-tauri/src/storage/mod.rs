@@ -1,4 +1,5 @@
 mod delete;
+mod content_hash;
 mod export_images;
 mod export_json;
 mod export_xlsx;
@@ -17,6 +18,7 @@ use crate::db::{Database, DatabaseError};
 use crate::excel::EmbeddedImageRef;
 
 pub use delete::{RowDeletionError, RowDeletionReport};
+pub use content_hash::{ContentHashBackfillOutcome, ContentHashProgress};
 pub use export_images::{
     ImageFileExportMode, ImageFilesExportError, ImageFilesExportOutcome, ImageFilesProgress,
 };
@@ -101,6 +103,13 @@ impl DataDirectory {
     }
 
     pub fn open(root: impl AsRef<Path>) -> Result<Self, StorageError> {
+        Self::open_with_hash_progress(root, |_| {})
+    }
+
+    pub fn open_with_hash_progress(
+        root: impl AsRef<Path>,
+        progress: impl Fn(ContentHashProgress),
+    ) -> Result<Self, StorageError> {
         let root = root.as_ref();
         if !root.is_dir() {
             return Err(StorageError::NotDirectory(root.to_owned()));
@@ -140,6 +149,7 @@ impl DataDirectory {
             root: root.to_owned(),
         };
         directory.process_pending_embedded_extractions()?;
+        directory.backfill_content_hashes(progress)?;
         Ok(directory)
     }
 
