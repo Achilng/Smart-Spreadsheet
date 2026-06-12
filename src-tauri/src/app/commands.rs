@@ -54,6 +54,9 @@ pub(crate) struct DeleteResultDto {
     snapshot: AppSnapshotDto,
     deleted_rows: u64,
     cleanup_failures: usize,
+    trashed_original_files: usize,
+    original_file_failures: usize,
+    archive_rows_skipped: usize,
 }
 
 #[derive(Debug, Serialize)]
@@ -336,14 +339,18 @@ pub(crate) async fn import_images(
 #[tauri::command]
 pub(crate) fn delete_rows(
     selection: RowSelectionDto,
+    trash_originals: bool,
     runtime: State<'_, AppRuntime>,
 ) -> Result<DeleteResultDto, String> {
     runtime
-        .delete_rows(&selection.into())
+        .delete_rows(&selection.into(), trash_originals)
         .map(|(snapshot, report)| DeleteResultDto {
             snapshot: snapshot.into(),
             deleted_rows: report.deleted_rows,
             cleanup_failures: report.cleanup_failures,
+            trashed_original_files: report.trashed_original_files,
+            original_file_failures: report.original_file_failures,
+            archive_rows_skipped: report.archive_rows_skipped,
         })
         .map_err(error_text)
 }

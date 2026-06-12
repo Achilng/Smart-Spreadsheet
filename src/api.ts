@@ -36,6 +36,9 @@ export interface DeleteResult {
   snapshot: AppSnapshot;
   deletedRows: number;
   cleanupFailures: number;
+  trashedOriginalFiles: number;
+  originalFileFailures: number;
+  archiveRowsSkipped: number;
 }
 
 export interface ImageImportResult {
@@ -198,8 +201,8 @@ export function importImages(path: string): Promise<ImageImportResult> {
   return invoke<ImageImportResult>("import_images", { path });
 }
 
-export function deleteRows(selection: RowSelection): Promise<DeleteResult> {
-  return invoke<DeleteResult>("delete_rows", { selection });
+export function deleteRows(selection: RowSelection, trashOriginals: boolean): Promise<DeleteResult> {
+  return invoke<DeleteResult>("delete_rows", { selection, trashOriginals });
 }
 
 export function listImportBatches(): Promise<BatchSummary[]> {

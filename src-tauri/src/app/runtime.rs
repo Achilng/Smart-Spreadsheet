@@ -267,6 +267,7 @@ impl AppRuntime {
     pub(crate) fn delete_rows(
         &self,
         selection: &RowSelection,
+        trash_originals: bool,
     ) -> Result<(RuntimeSnapshot, RowDeletionReport), AppRuntimeError> {
         let state = self.lock_state()?;
         ensure_startup_valid(&state)?;
@@ -276,7 +277,7 @@ impl AppRuntime {
             .ok_or(AppRuntimeError::NotConfigured)?
             .clone();
         drop(state);
-        let report = directory.delete_rows(selection)?;
+        let report = directory.delete_rows(selection, trash_originals)?;
         Ok((self.snapshot()?, report))
     }
 
@@ -602,7 +603,7 @@ mod tests {
         assert_eq!(runtime.list_batches().unwrap().len(), 2);
 
         let (after_delete, report) = runtime
-            .delete_rows(&RowSelection::Explicit { row_ids: vec![1, 2] })
+            .delete_rows(&RowSelection::Explicit { row_ids: vec![1, 2] }, false)
             .unwrap();
         assert_eq!(report.deleted_rows, 2);
         assert_eq!(after_delete.library.unwrap().row_count, 3);

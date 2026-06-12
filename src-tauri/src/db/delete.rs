@@ -12,6 +12,10 @@ pub struct DeleteOutcome {
     pub deleted_row_ids: Vec<i64>,
     /// 被删除行引用的受管副本相对路径，供存储层删除文件。
     pub stored_image_paths: Vec<String>,
+    /// 文件夹/单 PNG 来源行引用的原始图片路径，供存储层按需移入回收站。
+    pub original_image_paths: Vec<String>,
+    /// 压缩包来源行没有独立原文件；请求删除原图时用于结果汇总。
+    pub archive_rows: usize,
 }
 
 impl Database {
@@ -27,11 +31,14 @@ impl Database {
 
         let mut deleted_row_ids = Vec::new();
         let mut stored_image_paths = Vec::new();
+        let mut original_image_paths = Vec::new();
+        let mut archive_rows = 0;
         {
             let mut statement = transaction.prepare(&format!(
-                "SELECT rows.id, rows.stored_image_path
+                "SELECT rows.id, rows.stored_image_path, batches.source_type, rows.image_path
                  FROM {TARGET_ROWS_TABLE} AS target
                  JOIN rows ON rows.id = target.id
+                 JOIN import_batches AS batches ON batches.id = rows.batch_id
                  ORDER BY rows.id"
             ))?;
             let mut matched = statement.query([])?;
@@ -39,6 +46,18 @@ impl Database {
                 deleted_row_ids.push(row.get::<_, i64>(0)?);
                 if let Some(stored) = row.get::<_, Option<String>>(1)? {
                     stored_image_paths.push(stored);
+                }
+                match row.get::<_, String>(2)?.as_str() {
+                    "folder" => {
+                        if let Some(path) = row
+                            .get::<_, Option<String>>(3)?
+                            .filter(|path| !path.trim().is_empty())
+                        {
+                            original_image_paths.push(path);
+                        }
+                    }
+                    "archive" => archive_rows += 1,
+                    _ => {}
                 }
             }
         }
@@ -62,6 +81,8 @@ impl Database {
                 .map_err(|_| TagMutationError::Database(DatabaseError::CountOverflow))?,
             deleted_row_ids,
             stored_image_paths,
+            original_image_paths,
+            archive_rows,
         })
     }
 }
@@ -150,6 +171,37 @@ mod tests {
             outcome.stored_image_paths,
             vec![format!("files/{}/a.png", appended.batch_id)]
         );
+    }
+
+    #[test]
+    fn returns_folder_original_paths_and_archive_row_count() {
+        let mut database = Database::open_in_memory().unwrap();
+        let folder_row = NewRow {
+            source_ordinal: 1,
+            identity: r"file:d:\photos\source.png".into(),
+            image_path: Some(r"D:\photos\source.png".into()),
+            ..NewRow::default()
+        };
+        database
+            .append_batch(SourceType::Folder, r"D:\photos", &[folder_row], |_| Ok(()))
+            .unwrap();
+        let archive_row = NewRow {
+            source_ordinal: 1,
+            identity: r"archive:d:\pack.zip!nested.png".into(),
+            image_path: Some(r"D:\Agent\Agent_temp\extracted\nested.png".into()),
+            stored_image_rel: Some("nested.png".into()),
+            ..NewRow::default()
+        };
+        database
+            .append_batch(SourceType::Archive, r"D:\pack.zip", &[archive_row], |_| Ok(()))
+            .unwrap();
+
+        let outcome = database
+            .delete_rows(&RowSelection::Explicit { row_ids: vec![1, 2] })
+            .unwrap();
+
+        assert_eq!(outcome.original_image_paths, vec![r"D:\photos\source.png"]);
+        assert_eq!(outcome.archive_rows, 1);
     }
 
     #[test]

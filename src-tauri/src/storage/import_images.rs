@@ -700,7 +700,7 @@ mod tests {
         directory.import_images(&archive_path, |_| {}).unwrap();
 
         let report = directory
-            .delete_rows(&RowSelection::Explicit { row_ids: vec![1] })
+            .delete_rows(&RowSelection::Explicit { row_ids: vec![1] }, false)
             .unwrap();
         assert_eq!(report.deleted_rows, 1);
         assert_eq!(report.removed_files, 1);
