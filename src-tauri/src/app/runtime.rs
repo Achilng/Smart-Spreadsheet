@@ -15,8 +15,8 @@ use crate::storage::{
     DataDirectory, ExportProgress, ImageFileExportMode, ImageFilesExportError,
     ImageFilesExportOutcome, ImageFilesProgress, ImageImportError, ImageImportOutcome,
     ImageImportProgress, ImportOutcome, JsonExportError, JsonExportOutcome, JsonExportProgress,
-    RowDeletionError, RowDeletionReport, StorageError, WorkbookImportError, XlsxExportError,
-    XlsxExportOutcome, ContentHashProgress,
+    PerceptualHashProgress, RowDeletionError, RowDeletionReport, SimilarImageMatch, StorageError,
+    WorkbookImportError, XlsxExportError, XlsxExportOutcome, ContentHashProgress,
 };
 
 const LOCATOR_VERSION: u32 = 1;
@@ -199,6 +199,17 @@ impl AppRuntime {
         Ok(database.query_rows(query)?)
     }
 
+    pub(crate) fn get_rows_by_ids(&self, ids: &[i64]) -> Result<Vec<crate::db::RowRecord>, AppRuntimeError> {
+        let state = self.lock_state()?;
+        ensure_startup_valid(&state)?;
+        let directory = state
+            .active
+            .as_ref()
+            .ok_or(AppRuntimeError::NotConfigured)?;
+        let mut database = directory.open_database()?;
+        Ok(database.get_rows_by_ids(ids)?)
+    }
+
     pub(crate) fn list_tags(&self) -> Result<Vec<TagSummary>, AppRuntimeError> {
         let state = self.lock_state()?;
         ensure_startup_valid(&state)?;
@@ -371,6 +382,15 @@ impl AppRuntime {
         Ok(directory.export_zhihuiji_json(selection, destination, progress)?)
     }
 
+    pub(crate) fn export_row_image(
+        &self,
+        row_id: i64,
+        destination: impl AsRef<Path>,
+    ) -> Result<(), AppRuntimeError> {
+        let directory = self.active_directory()?;
+        Ok(directory.export_single_image(row_id, destination.as_ref())?)
+    }
+
     pub(crate) fn export_image_files(
         &self,
         selection: &RowSelection,
@@ -380,6 +400,29 @@ impl AppRuntime {
     ) -> Result<ImageFilesExportOutcome, AppRuntimeError> {
         let directory = self.active_directory()?;
         Ok(directory.export_image_files(selection, parent_dir, mode, progress)?)
+    }
+
+    pub(crate) fn backfill_perceptual_hashes(
+        &self,
+        progress: impl Fn(PerceptualHashProgress),
+    ) -> Result<PerceptualHashProgress, AppRuntimeError> {
+        let directory = self.active_directory()?;
+        let outcome = directory.backfill_perceptual_hashes(progress)?;
+        Ok(PerceptualHashProgress {
+            processed: outcome.total,
+            total: outcome.total,
+            updated: outcome.updated,
+            unreadable: outcome.unreadable,
+        })
+    }
+
+    pub(crate) fn search_similar_images(
+        &self,
+        query_path: impl AsRef<Path>,
+        threshold: u32,
+    ) -> Result<Vec<SimilarImageMatch>, AppRuntimeError> {
+        let directory = self.active_directory()?;
+        Ok(directory.search_similar_images(query_path.as_ref(), threshold)?)
     }
 
     /// 取出活动数据目录的克隆并立即释放状态锁，供导出等长耗时操作使用。

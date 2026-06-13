@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { RowRecord } from "../../api";
+  import { showContextMenu } from "../context-menu.svelte";
   import { rowStore } from "../row-store.svelte";
   import { getSelectedCount, isRowSelected, toggleRow } from "../selection-store.svelte";
   import Thumbnail from "./Thumbnail.svelte";
@@ -38,6 +39,13 @@
       onRowClick();
     }
   }
+
+  function onContextMenu(event: MouseEvent): void {
+    if (!row) return;
+    event.preventDefault();
+    rowStore.activeRow = row;
+    showContextMenu(row, event.clientX, event.clientY);
+  }
 </script>
 
 <div
@@ -53,6 +61,7 @@
   aria-selected={isChecked}
   onclick={onRowClick}
   onkeydown={onRowKeydown}
+  oncontextmenu={onContextMenu}
 >
   {#if row}
     <div class="cell cell-check">

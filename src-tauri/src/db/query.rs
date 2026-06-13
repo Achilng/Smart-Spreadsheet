@@ -110,6 +110,31 @@ impl Database {
         })
     }
 
+    pub fn get_rows_by_ids(&mut self, ids: &[i64]) -> Result<Vec<RowRecord>, DatabaseError> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let transaction = self.connection.transaction()?;
+        transaction.execute_batch(&format!(
+            "DROP TABLE IF EXISTS {PAGE_ROWS_TABLE};
+             CREATE TEMP TABLE {PAGE_ROWS_TABLE} (
+                 ordinal INTEGER PRIMARY KEY,
+                 id INTEGER NOT NULL UNIQUE
+             ) STRICT;"
+        ))?;
+        let mut insert =
+            transaction.prepare(&format!("INSERT OR IGNORE INTO {PAGE_ROWS_TABLE}(ordinal, id) VALUES (?1, ?2)"))?;
+        for (index, id) in ids.iter().enumerate() {
+            insert.execute(rusqlite::params![index as i64, *id])?;
+        }
+        drop(insert);
+        let mut rows = query_page_metadata(&transaction)?;
+        attach_page_tags(&transaction, &mut rows)?;
+        transaction.execute_batch(&format!("DROP TABLE {PAGE_ROWS_TABLE};"))?;
+        transaction.commit()?;
+        Ok(rows)
+    }
+
     pub fn list_tags(&self) -> Result<Vec<TagSummary>, DatabaseError> {
         let mut statement = self.connection.prepare(
             "SELECT tags.name, COUNT(row_tags.row_id)

@@ -2,17 +2,20 @@ import { listen } from "@tauri-apps/api/event";
 import { confirm as confirmDialog, open } from "@tauri-apps/plugin-dialog";
 
 import {
+  backfillPerceptualHashes,
   getAppSnapshot,
   importImages,
-  importWorkbook,
   initializeDataDirectory,
   migrateDataDirectory,
   openDataDirectory,
+  searchSimilarImages,
   setRejectedImagesDirectory,
   type AppSnapshot,
   type ContentHashProgress,
   type ExportProgress,
   type ImageImportProgress,
+  type PerceptualHashProgress,
+  type SimilarImageMatch,
 } from "../api";
 
 export type ViewMode = "gallery" | "table";
@@ -39,6 +42,12 @@ export const app = $state({
   exportProgress: null as ExportProgress | null,
   /** 智绘姬 JSON 去重工具是否打开 */
   jsonDedupeOpen: false,
+  /** 感知哈希补算进度，空闲时为 null */
+  phashProgress: null as PerceptualHashProgress | null,
+  /** 以图搜图结果，空闲时为 null */
+  searchResults: null as SimilarImageMatch[] | null,
+  /** 以图搜图的查询图片路径 */
+  searchQueryPath: null as string | null,
 });
 
 let noticeTimer = 0;
@@ -89,39 +98,6 @@ export async function chooseDirectory(mode: "initialize" | "open"): Promise<void
       }
     }
     setNotice({ tone: "success", text: "数据目录已连接。" });
-  });
-}
-
-export async function chooseWorkbook(): Promise<void> {
-  const selection = await open({
-    multiple: false,
-    directory: false,
-    title: "导入 NovelAI Metadata 工作簿（追加进资料库）",
-    filters: [{ name: "Excel 工作簿", extensions: ["xlsx"] }],
-  });
-  if (typeof selection !== "string") {
-    return;
-  }
-  await runAction(async () => {
-    const result = await importWorkbook(selection);
-    app.snapshot = result.snapshot;
-    if (result.added > 0) {
-      app.dataVersion += 1;
-    }
-    const parts = [`新增 ${formatCount(result.added)} 行`];
-    if (result.skippedExisting > 0) {
-      parts.push(`跳过 ${formatCount(result.skippedExisting)} 行已存在`);
-    }
-    if (result.skippedContent > 0) {
-      parts.push(`内容重复跳过 ${formatCount(result.skippedContent)} 行`);
-    }
-    if (result.changedExisting > 0) {
-      parts.push(`其中 ${formatCount(result.changedExisting)} 行源文件有变化（未改动库内数据）`);
-    }
-    if (result.embeddedImagesStored > 0) {
-      parts.push(`提取 ${formatCount(result.embeddedImagesStored)} 张嵌入图片`);
-    }
-    setNotice({ tone: "success", text: `导入完成：${parts.join("，")}。` });
   });
 }
 
@@ -227,6 +203,61 @@ async function runImageImport(path: string): Promise<void> {
       app.importProgress = null;
     }
   });
+}
+
+export async function runPhashBackfill(): Promise<void> {
+  await runAction(async () => {
+    const unlisten = await listen<PerceptualHashProgress>(
+      "perceptual-hash://progress",
+      event => {
+        app.phashProgress = event.payload;
+      },
+    );
+    try {
+      const result = await backfillPerceptualHashes();
+      if (result.total === 0) {
+        setNotice({ tone: "success", text: "所有图片的感知哈希已是最新。" });
+      } else {
+        setNotice({
+          tone: "success",
+          text: `感知哈希更新完成：共 ${formatCount(result.total)} 张，成功 ${formatCount(result.updated)} 张${result.unreadable > 0 ? `，${formatCount(result.unreadable)} 张不可读` : ""}。`,
+        });
+      }
+    } finally {
+      unlisten();
+      app.phashProgress = null;
+    }
+  });
+}
+
+export async function chooseSearchImage(): Promise<void> {
+  const selection = await open({
+    multiple: false,
+    directory: false,
+    title: "选择用于搜索的图片",
+    filters: [{ name: "图片", extensions: ["png", "jpg", "jpeg", "bmp", "gif", "webp", "tiff"] }],
+  });
+  if (typeof selection !== "string") {
+    return;
+  }
+  await runAction(async () => {
+    const matches = await searchSimilarImages(selection, 10);
+    app.searchQueryPath = selection;
+    app.searchResults = matches;
+    if (matches.length === 0) {
+      setNotice({ tone: "success", text: "未找到相似图片。请先刷新感知哈希后再试。" });
+    } else {
+      setNotice({
+        tone: "success",
+        text: `找到 ${formatCount(matches.length)} 张相似图片。`,
+      });
+    }
+  });
+}
+
+export function closeSearchResults(): void {
+  app.searchResults = null;
+  app.searchQueryPath = null;
 }
 
 export async function chooseMigration(): Promise<void> {

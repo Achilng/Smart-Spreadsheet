@@ -6,6 +6,7 @@ mod export_xlsx;
 mod import;
 mod import_images;
 mod migration;
+mod perceptual_hash;
 
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
@@ -29,6 +30,9 @@ pub use import_images::{
     ImageImportError, ImageImportOutcome, ImageImportProgress, ImageImportStage,
 };
 pub use migration::{MigrationOutcome, PreparedMigration};
+pub use perceptual_hash::{
+    PerceptualHashBackfillOutcome, PerceptualHashProgress, SimilarImageMatch,
+};
 
 pub(super) const FORMAT_VERSION: u32 = 1;
 pub(super) const MARKER_FILE: &str = ".smart-spreadsheet-data.json";

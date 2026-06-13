@@ -24,15 +24,6 @@ export interface AppSnapshot {
   startupError: string | null;
 }
 
-export interface ImportResult {
-  snapshot: AppSnapshot;
-  added: number;
-  skippedExisting: number;
-  skippedContent: number;
-  changedExisting: number;
-  embeddedImagesStored: number;
-}
-
 export interface DeleteResult {
   snapshot: AppSnapshot;
   deletedRows: number;
@@ -189,6 +180,18 @@ export interface MigrationResult {
   retiredSource: string | null;
 }
 
+export interface PerceptualHashProgress {
+  processed: number;
+  total: number;
+  updated: number;
+  unreadable: number;
+}
+
+export interface SimilarImageMatch {
+  rowId: number;
+  distance: number;
+}
+
 export function getAppSnapshot(): Promise<AppSnapshot> {
   return invoke<AppSnapshot>("get_app_snapshot");
 }
@@ -205,10 +208,6 @@ export function setRejectedImagesDirectory(path: string): Promise<AppSnapshot> {
   return invoke<AppSnapshot>("set_rejected_images_directory", { path });
 }
 
-export function importWorkbook(path: string): Promise<ImportResult> {
-  return invoke<ImportResult>("import_workbook", { path });
-}
-
 export function importImages(path: string): Promise<ImageImportResult> {
   return invoke<ImageImportResult>("import_images", { path });
 }
@@ -223,6 +222,10 @@ export function listImportBatches(): Promise<BatchSummary[]> {
 
 export function queryRows(query: RowQuery): Promise<RowPage> {
   return invoke<RowPage>("query_rows", { query });
+}
+
+export function getRowsByIds(rowIds: number[]): Promise<RowRecord[]> {
+  return invoke<RowRecord[]>("get_rows_by_ids", { rowIds });
 }
 
 export function listTags(): Promise<TagSummary[]> {
@@ -271,6 +274,10 @@ export function getRowPreview(rowId: number): Promise<ArrayBuffer> {
   return invoke<ArrayBuffer>("get_row_preview", { rowId });
 }
 
+export function exportRowImage(rowId: number, destination: string): Promise<void> {
+  return invoke("export_row_image", { rowId, destination });
+}
+
 export function exportXlsx(
   selection: RowSelection,
   path: string,
@@ -310,4 +317,15 @@ export function dedupeZhihuijiJson(
 
 export function migrateDataDirectory(path: string): Promise<MigrationResult> {
   return invoke<MigrationResult>("migrate_data_directory", { path });
+}
+
+export function backfillPerceptualHashes(): Promise<PerceptualHashProgress> {
+  return invoke<PerceptualHashProgress>("backfill_perceptual_hashes");
+}
+
+export function searchSimilarImages(
+  path: string,
+  threshold: number,
+): Promise<SimilarImageMatch[]> {
+  return invoke<SimilarImageMatch[]>("search_similar_images", { path, threshold });
 }

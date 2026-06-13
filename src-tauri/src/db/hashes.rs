@@ -94,6 +94,55 @@ impl Database {
             )
             .map_err(DatabaseError::from)
     }
+
+    pub fn missing_perceptual_hashes(&self) -> Result<Vec<ContentHashCandidate>, DatabaseError> {
+        let mut statement = self.connection.prepare(
+            "SELECT id, image_path, stored_image_path
+             FROM rows
+             WHERE perceptual_hash IS NULL
+             ORDER BY id",
+        )?;
+        let candidates = statement
+            .query_map([], |row| {
+                Ok(ContentHashCandidate {
+                    row_id: row.get(0)?,
+                    image_path: row.get(1)?,
+                    stored_image_path: row.get(2)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(candidates)
+    }
+
+    pub fn update_perceptual_hashes(
+        &mut self,
+        hashes: &[(i64, String)],
+    ) -> Result<(), DatabaseError> {
+        let transaction = self.connection.transaction()?;
+        {
+            let mut update = transaction.prepare(
+                "UPDATE rows SET perceptual_hash = ?2
+                 WHERE id = ?1 AND perceptual_hash IS NULL",
+            )?;
+            for (row_id, phash) in hashes {
+                if update.execute(params![row_id, phash])? != 1 {
+                    return Err(DatabaseError::RowNotFound(*row_id));
+                }
+            }
+        }
+        transaction.commit()?;
+        Ok(())
+    }
+
+    pub fn all_perceptual_hashes(&self) -> Result<Vec<(i64, String)>, DatabaseError> {
+        let mut statement = self.connection.prepare(
+            "SELECT id, perceptual_hash FROM rows WHERE perceptual_hash IS NOT NULL",
+        )?;
+        let results = statement
+            .query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(results)
+    }
 }
 
 #[cfg(test)]

@@ -154,6 +154,7 @@ impl DataDirectory {
                 source_size: None,
                 source_mtime: None,
                 content_hash,
+                perceptual_hash: None,
                 time: row.time.clone(),
                 positive_prompt: row.positive_prompt.clone(),
                 negative_prompt: row.negative_prompt.clone(),

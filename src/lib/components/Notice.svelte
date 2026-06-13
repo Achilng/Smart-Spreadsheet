@@ -26,6 +26,13 @@
           return null;
       }
     }
+    const phash = app.phashProgress;
+    if (phash) {
+      const unreadable = phash.unreadable > 0
+        ? `，${formatCount(phash.unreadable)} 张不可读`
+        : "";
+      return `正在计算感知哈希 ${formatCount(phash.processed)} / ${formatCount(phash.total)}${unreadable}`;
+    }
     const exporting = app.exportProgress;
     if (exporting) {
       return `正在导出 ${formatCount(exporting.processed)} / ${formatCount(exporting.total)}`;
@@ -46,6 +53,10 @@
         return null;
       }
       return Math.round((importing.processed / importing.total) * 100);
+    }
+    const phash = app.phashProgress;
+    if (phash && phash.total > 0) {
+      return Math.round((phash.processed / phash.total) * 100);
     }
     const exporting = app.exportProgress;
     if (exporting && exporting.total > 0) {

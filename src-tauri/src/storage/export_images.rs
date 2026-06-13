@@ -123,6 +123,53 @@ impl DataDirectory {
     }
 }
 
+impl DataDirectory {
+    pub fn export_single_image(
+        &self,
+        row_id: i64,
+        destination: &Path,
+    ) -> Result<(), ImageFilesExportError> {
+        let locator = self
+            .open_database()?
+            .row_image_locator(row_id)
+            .map_err(|e| ImageFilesExportError::Storage(StorageError::Database(e)))?;
+        let source = resolve_locator_source(self, &locator).ok_or_else(|| {
+            std::io::Error::other(format!("第 {row_id} 行没有可用的原图文件"))
+        })?;
+        fs::copy(&source, destination)?;
+        Ok(())
+    }
+}
+
+fn resolve_locator_source(
+    directory: &DataDirectory,
+    locator: &crate::db::RowImageLocator,
+) -> Option<PathBuf> {
+    if let Some(path) = locator
+        .image_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+    {
+        let path = Path::new(path);
+        if path.is_file() {
+            return Some(path.to_owned());
+        }
+    }
+    if let Some(stored) = locator
+        .stored_image_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+    {
+        let path = directory.root().join(stored);
+        if path.is_file() {
+            return Some(path);
+        }
+    }
+    None
+}
+
 fn resolve_source(directory: &DataDirectory, row: &ExportRow) -> Option<PathBuf> {
     if let Some(path) = row.image_path.as_deref().map(str::trim).filter(|p| !p.is_empty()) {
         let path = Path::new(path);

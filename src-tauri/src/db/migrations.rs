@@ -1,4 +1,4 @@
-pub const CURRENT_SCHEMA_VERSION: u32 = 3;
+pub const CURRENT_SCHEMA_VERSION: u32 = 4;
 
 pub(super) const MIGRATION_1: &str = r#"
 CREATE TABLE workbook (
@@ -130,4 +130,12 @@ pub(super) const MIGRATION_3: &str = r#"
 ALTER TABLE rows ADD COLUMN content_hash TEXT;
 CREATE INDEX idx_rows_content_hash ON rows(content_hash)
 WHERE content_hash IS NOT NULL;
+"#;
+
+// v4：为以图搜图增加感知哈希列（64 位 pHash，存储为 16 字符十六进制字符串）。
+// 历史行在用户手动触发刷新后补算；无法读取的行保持 NULL。
+pub(super) const MIGRATION_4: &str = r#"
+ALTER TABLE rows ADD COLUMN perceptual_hash TEXT;
+CREATE INDEX idx_rows_perceptual_hash ON rows(perceptual_hash)
+WHERE perceptual_hash IS NOT NULL;
 "#;

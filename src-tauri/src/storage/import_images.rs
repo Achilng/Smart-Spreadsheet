@@ -8,6 +8,7 @@ use chrono::{DateTime, Local};
 use thiserror::Error;
 
 use super::content_hash::sha256_file;
+use super::perceptual_hash::compute_phash;
 use super::{DataDirectory, StagingDir, StorageError, canonical_display_path};
 use crate::db::identity::{archive_member_identity, file_identity};
 use crate::db::{DatabaseError, NewRow, SourceType};
@@ -257,12 +258,14 @@ impl DataDirectory {
             staging_root: staging.path(),
         };
         for (index, image, content_hash) in new_jobs {
+            let perceptual_hash = compute_phash(&image.source.absolute_path).ok();
             let row = build_new_row(
                 image,
                 &identities[index],
                 index,
                 &process_context,
                 content_hash,
+                perceptual_hash,
             )?;
             indexed_rows.push((index, row));
         }
@@ -355,6 +358,7 @@ fn build_new_row(
     scan_index: usize,
     context: &ProcessImageContext<'_>,
     content_hash: Option<String>,
+    perceptual_hash: Option<String>,
 ) -> Result<NewRow, std::io::Error> {
     let (image_path, stored_image_rel) = match context.source_type {
         SourceType::Archive => {
@@ -389,6 +393,7 @@ fn build_new_row(
         source_size: i64::try_from(image.source.size).ok(),
         source_mtime: image.source.modified_nanos,
         content_hash,
+        perceptual_hash,
         time: image.source.created.map(format_local_time),
         positive_prompt: image.positive_prompt,
         negative_prompt: image.negative_prompt,

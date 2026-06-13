@@ -12,10 +12,12 @@
   import { resetRows, rowStore } from "../row-store.svelte";
   import { loadTags } from "../tag-store.svelte";
   import { thumbnails } from "../thumbnails";
+  import ContextMenu from "./ContextMenu.svelte";
   import DetailPanel from "./DetailPanel.svelte";
   import DeleteDialog from "./DeleteDialog.svelte";
   import GalleryView from "./GalleryView.svelte";
   import JsonDedupeView from "./JsonDedupeView.svelte";
+  import SearchResultsView from "./SearchResultsView.svelte";
   import SelectionBar from "./SelectionBar.svelte";
   import TableView from "./TableView.svelte";
   import TagSidebar from "./TagSidebar.svelte";
@@ -108,6 +110,8 @@
   <JsonDedupeView />
 {/if}
 
+<SearchResultsView />
+<ContextMenu />
 <DeleteDialog />
 
 <style>

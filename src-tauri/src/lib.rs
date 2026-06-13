@@ -23,11 +23,11 @@ pub fn run() {
             app::commands::initialize_data_directory,
             app::commands::open_data_directory,
             app::commands::set_rejected_images_directory,
-            app::commands::import_workbook,
             app::commands::import_images,
             app::commands::delete_rows,
             app::commands::list_import_batches,
             app::commands::query_rows,
+            app::commands::get_rows_by_ids,
             app::commands::list_tags,
             app::commands::create_tag,
             app::commands::count_selected_rows,
@@ -38,12 +38,15 @@ pub fn run() {
             app::commands::set_tags_for_row,
             app::commands::get_row_thumbnail,
             app::commands::get_row_preview,
+            app::commands::export_row_image,
             app::commands::export_xlsx,
             app::commands::export_zhihuiji_json,
             app::commands::export_image_files,
             app::commands::inspect_zhihuiji_json,
             app::commands::dedupe_zhihuiji_json,
             app::commands::migrate_data_directory,
+            app::commands::backfill_perceptual_hashes,
+            app::commands::search_similar_images,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Smart Spreadsheet");

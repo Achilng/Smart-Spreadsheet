@@ -3,7 +3,6 @@
     app,
     chooseImageArchive,
     chooseImageFolder,
-    chooseWorkbook,
   } from "../app-state.svelte";
 </script>
 
@@ -34,14 +33,6 @@
         onclick={() => void chooseImageArchive()}
       >
         导入压缩包
-      </button>
-      <button
-        type="button"
-        class="btn"
-        disabled={app.busy}
-        onclick={() => void chooseWorkbook()}
-      >
-        导入 xlsx
       </button>
     </div>
   </div>

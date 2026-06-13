@@ -5,7 +5,8 @@
     chooseImageFolder,
     chooseMigration,
     chooseRejectedImagesDirectory,
-    chooseWorkbook,
+    chooseSearchImage,
+    runPhashBackfill,
     formatCount,
     type ViewMode,
   } from "../app-state.svelte";
@@ -32,6 +33,8 @@
     app.snapshot?.rejectedImagesDirectory?.split(/[\\/]/).pop() ?? "未设置",
   );
   const toolItems = $derived<DropdownItem[]>([
+    { label: "以图搜图", action: () => void chooseSearchImage() },
+    { label: "刷新感知哈希", action: () => void runPhashBackfill() },
     { label: "智绘姬 JSON 去重", action: () => (app.jsonDedupeOpen = true) },
     {
       label: "异常图片目录",
@@ -44,7 +47,6 @@
   const importItems: DropdownItem[] = [
     { label: "导入文件夹", action: () => void chooseImageFolder() },
     { label: "导入压缩包", hint: "zip / 7z / rar", action: () => void chooseImageArchive() },
-    { label: "导入 xlsx", action: () => void chooseWorkbook() },
   ];
 
   const scopeHint = $derived(`导出${exportScopeLabel()}`);

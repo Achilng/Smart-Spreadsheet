@@ -57,6 +57,7 @@ pub struct NewRow {
     pub source_size: Option<i64>,
     pub source_mtime: Option<i64>,
     pub content_hash: Option<String>,
+    pub perceptual_hash: Option<String>,
     pub time: Option<String>,
     pub positive_prompt: Option<String>,
     pub negative_prompt: Option<String>,
@@ -129,8 +130,9 @@ impl Database {
                 "INSERT INTO rows (
                     batch_id, source_ordinal, identity, source_size, source_mtime,
                     time, positive_prompt, negative_prompt, artists,
-                    image_folder, image_path, stored_image_path, metadata_failed, content_hash
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                    image_folder, image_path, stored_image_path, metadata_failed,
+                    content_hash, perceptual_hash
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
             )?;
             for row in rows {
                 let existing = find_existing
@@ -180,6 +182,7 @@ impl Database {
                     stored_image_path,
                     row.metadata_failed,
                     row.content_hash,
+                    row.perceptual_hash,
                 ])?;
                 added += 1;
             }

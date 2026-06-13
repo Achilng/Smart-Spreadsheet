@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { RowRecord } from "../../api";
+  import { showContextMenu } from "../context-menu.svelte";
   import { rowStore } from "../row-store.svelte";
   import { getSelectedCount, isRowSelected, toggleRow } from "../selection-store.svelte";
   import { thumbnails } from "../thumbnails";
@@ -57,6 +58,13 @@
 
   const visibleTags = $derived(row?.tags.slice(0, 3) ?? []);
   const extraTagCount = $derived(Math.max(0, (row?.tags.length ?? 0) - 3));
+
+  function onContextMenu(event: MouseEvent): void {
+    if (!row) return;
+    event.preventDefault();
+    rowStore.activeRow = row;
+    showContextMenu(row, event.clientX, event.clientY);
+  }
 </script>
 
 <div
@@ -68,6 +76,8 @@
   style:left="{x}px"
   style:top="{y}px"
   style:width="{width}px"
+  role="listitem"
+  oncontextmenu={onContextMenu}
 >
   {#if row}
     <input

@@ -24,7 +24,7 @@ pub use export::ExportRow;
 pub use hashes::ContentHashCandidate;
 pub use images::RowImageLocator;
 pub use migrations::CURRENT_SCHEMA_VERSION;
-use migrations::{MIGRATION_1, MIGRATION_2, MIGRATION_3};
+use migrations::{MIGRATION_1, MIGRATION_2, MIGRATION_3, MIGRATION_4};
 
 #[derive(Debug, Error)]
 pub enum DatabaseError {
@@ -141,6 +141,10 @@ fn apply_pending_migrations(
         transaction.execute_batch(MIGRATION_3)?;
         version = 3;
     }
+    if version == 3 {
+        transaction.execute_batch(MIGRATION_4)?;
+        version = 4;
+    }
     debug_assert_eq!(version, CURRENT_SCHEMA_VERSION);
     transaction.pragma_update(None, "user_version", version)?;
     transaction.commit()?;
@@ -202,7 +206,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn initializes_v3_schema_and_foreign_keys() {
+    fn initializes_v4_schema_and_foreign_keys() {
         let database = Database::open_in_memory().unwrap();
 
         assert_eq!(database.schema_version().unwrap(), CURRENT_SCHEMA_VERSION);
@@ -255,6 +259,29 @@ mod tests {
             )
             .unwrap();
         assert_eq!(content_hash_index, ("idx_rows_content_hash".into(), 0, 1));
+
+        let phash_column: (String, String, i64) = database
+            .connection
+            .query_row(
+                "SELECT name, type, \"notnull\" FROM pragma_table_info('rows') WHERE name = 'perceptual_hash'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            phash_column,
+            ("perceptual_hash".into(), "TEXT".into(), 0)
+        );
+
+        let phash_index: (String, i64, i64) = database
+            .connection
+            .query_row(
+                "SELECT name, \"unique\", partial FROM pragma_index_list('rows') WHERE name = 'idx_rows_perceptual_hash'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(phash_index, ("idx_rows_perceptual_hash".into(), 0, 1));
     }
 
     #[test]
@@ -335,7 +362,7 @@ mod tests {
 
         let database = Database::open(&temporary.path).unwrap();
 
-        assert_eq!(database.schema_version().unwrap(), 3);
+        assert_eq!(database.schema_version().unwrap(), 4);
         // 批次：旧工作簿转为唯一的 xlsx 批次。
         let batch: (String, String, i64) = database
             .connection
@@ -409,7 +436,7 @@ mod tests {
 
         let database = Database::open(&temporary.path).unwrap();
 
-        assert_eq!(database.schema_version().unwrap(), 3);
+        assert_eq!(database.schema_version().unwrap(), 4);
         let row: (i64, String, Option<String>) = database
             .connection
             .query_row(
@@ -429,6 +456,25 @@ mod tests {
             )
             .unwrap();
         assert_eq!(tag_name, "keep tag");
+    }
+
+    #[test]
+    fn upgrades_v3_database_adding_perceptual_hash_column() {
+        let temporary = TemporaryDatabase::new();
+        create_v3_database(&temporary.path);
+
+        let database = Database::open(&temporary.path).unwrap();
+
+        assert_eq!(database.schema_version().unwrap(), 4);
+        let row: (i64, Option<String>, Option<String>) = database
+            .connection
+            .query_row(
+                "SELECT id, content_hash, perceptual_hash FROM rows",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(row, (1, Some("abc123".into()), None));
     }
 
     /// 手工构造 v1 库：3 行数据。第 2、3 行 image_path 重复（必须退化为
@@ -481,6 +527,26 @@ mod tests {
                 VALUES (7, 1, 1, 'file:d:\legacy\one.png', 'keep prompt', 'D:\legacy\one.png');
                 INSERT INTO tags (id, name) VALUES (3, 'keep tag');
                 INSERT INTO row_tags (row_id, tag_id) VALUES (7, 3);
+                "#,
+            )
+            .unwrap();
+    }
+
+    fn create_v3_database(path: &Path) {
+        let connection = Connection::open(path).unwrap();
+        connection.execute_batch(MIGRATION_1).unwrap();
+        connection.execute_batch(MIGRATION_2).unwrap();
+        connection.execute_batch(MIGRATION_3).unwrap();
+        connection.pragma_update(None, "user_version", 3).unwrap();
+        connection
+            .execute_batch(
+                r#"
+                INSERT INTO import_batches
+                    (id, source_type, source_path, imported_at, added_count, skipped_count)
+                VALUES (1, 'folder', 'D:\test', '2026-06-14T00:00:00Z', 1, 0);
+                INSERT INTO rows
+                    (id, batch_id, source_ordinal, identity, positive_prompt, content_hash)
+                VALUES (1, 1, 1, 'file:d:\test\one.png', 'test prompt', 'abc123');
                 "#,
             )
             .unwrap();

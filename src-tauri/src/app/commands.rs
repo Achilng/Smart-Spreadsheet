@@ -8,7 +8,7 @@ use crate::db::{
     BatchSummary, DedupeMode, LibrarySummary, RowPage, RowQuery, RowRecord, RowSelection,
     TagMatchMode, TagMutationResult, TagSelectionSummary, TagSummary,
 };
-use crate::storage::{ContentHashProgress, ImageImportProgress};
+use crate::storage::{ContentHashProgress, ImageImportProgress, PerceptualHashProgress};
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -36,17 +36,6 @@ pub(crate) struct BatchSummaryDto {
     imported_at: String,
     added_count: u64,
     skipped_count: u64,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct ImportResultDto {
-    snapshot: AppSnapshotDto,
-    added: u64,
-    skipped_existing: u64,
-    skipped_content: u64,
-    changed_existing: u64,
-    embedded_images_stored: usize,
 }
 
 #[derive(Debug, Serialize)]
@@ -142,7 +131,7 @@ pub(crate) struct RowPageDto {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct RowRecordDto {
+pub(crate) struct RowRecordDto {
     id: i64,
     batch_id: i64,
     source_ordinal: u32,
@@ -307,24 +296,6 @@ impl From<DedupeModeDto> for DedupeMode {
     }
 }
 
-#[tauri::command]
-pub(crate) fn import_workbook(
-    path: String,
-    runtime: State<'_, AppRuntime>,
-) -> Result<ImportResultDto, String> {
-    runtime
-        .import_workbook(PathBuf::from(path))
-        .map(|(snapshot, outcome)| ImportResultDto {
-            snapshot: snapshot.into(),
-            added: outcome.added,
-            skipped_existing: outcome.skipped_existing,
-            skipped_content: outcome.skipped_content,
-            changed_existing: outcome.changed_existing,
-            embedded_images_stored: outcome.embedded_images_stored,
-        })
-        .map_err(error_text)
-}
-
 /// 文件夹/压缩包导入：在阻塞线程上执行避免卡住 UI，进度经
 /// `import-images://progress` 事件推送给前端。
 #[tauri::command]
@@ -403,6 +374,17 @@ pub(crate) fn query_rows(
     runtime
         .query_rows(&query)
         .map(RowPageDto::from)
+        .map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn get_rows_by_ids(
+    row_ids: Vec<i64>,
+    runtime: State<'_, AppRuntime>,
+) -> Result<Vec<RowRecordDto>, String> {
+    runtime
+        .get_rows_by_ids(&row_ids)
+        .map(|rows| rows.into_iter().map(RowRecordDto::from).collect())
         .map_err(error_text)
 }
 
@@ -507,6 +489,17 @@ pub(crate) fn get_row_preview(
     runtime
         .row_preview(row_id)
         .map(Response::new)
+        .map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn export_row_image(
+    row_id: i64,
+    destination: String,
+    runtime: State<'_, AppRuntime>,
+) -> Result<(), String> {
+    runtime
+        .export_row_image(row_id, PathBuf::from(destination))
         .map_err(error_text)
 }
 
@@ -620,6 +613,80 @@ pub(crate) async fn dedupe_zhihuiji_json(
     })
     .await
     .map_err(|error| format!("去重任务异常中止: {error}"))?
+}
+
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PerceptualHashProgressDto {
+    processed: usize,
+    total: usize,
+    updated: usize,
+    unreadable: usize,
+}
+
+impl From<PerceptualHashProgress> for PerceptualHashProgressDto {
+    fn from(progress: PerceptualHashProgress) -> Self {
+        Self {
+            processed: progress.processed,
+            total: progress.total,
+            updated: progress.updated,
+            unreadable: progress.unreadable,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SimilarImageMatchDto {
+    row_id: i64,
+    distance: u32,
+}
+
+/// 手动刷新感知哈希：为库中缺少 pHash 的行补算。
+#[tauri::command]
+pub(crate) async fn backfill_perceptual_hashes(
+    app: tauri::AppHandle,
+) -> Result<PerceptualHashProgressDto, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let runtime = app.state::<AppRuntime>();
+        runtime
+            .backfill_perceptual_hashes(|progress| {
+                let _ = app.emit(
+                    "perceptual-hash://progress",
+                    PerceptualHashProgressDto::from(progress),
+                );
+            })
+            .map(PerceptualHashProgressDto::from)
+            .map_err(error_text)
+    })
+    .await
+    .map_err(|error| format!("感知哈希计算任务异常中止: {error}"))?
+}
+
+/// 以图搜图：选择一张图片，返回库中相似的行。
+#[tauri::command]
+pub(crate) async fn search_similar_images(
+    path: String,
+    threshold: u32,
+    app: tauri::AppHandle,
+) -> Result<Vec<SimilarImageMatchDto>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let runtime = app.state::<AppRuntime>();
+        runtime
+            .search_similar_images(PathBuf::from(path), threshold)
+            .map(|matches| {
+                matches
+                    .into_iter()
+                    .map(|m| SimilarImageMatchDto {
+                        row_id: m.row_id,
+                        distance: m.distance,
+                    })
+                    .collect()
+            })
+            .map_err(error_text)
+    })
+    .await
+    .map_err(|error| format!("以图搜图任务异常中止: {error}"))?
 }
 
 #[tauri::command]
