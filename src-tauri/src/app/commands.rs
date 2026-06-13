@@ -476,36 +476,51 @@ pub(crate) fn set_tags_for_row(
 }
 
 #[tauri::command]
-pub(crate) fn get_row_thumbnail(
+pub(crate) async fn get_row_thumbnail(
     row_id: i64,
-    runtime: State<'_, AppRuntime>,
+    app: tauri::AppHandle,
 ) -> Result<Response, String> {
-    runtime
-        .row_thumbnail(row_id)
-        .map(Response::new)
-        .map_err(error_text)
+    tauri::async_runtime::spawn_blocking(move || {
+        let runtime = app.state::<AppRuntime>();
+        runtime
+            .row_thumbnail(row_id)
+            .map(Response::new)
+            .map_err(error_text)
+    })
+    .await
+    .map_err(|e| format!("缩略图加载异常: {e}"))?
 }
 
 #[tauri::command]
-pub(crate) fn get_row_preview(
+pub(crate) async fn get_row_preview(
     row_id: i64,
-    runtime: State<'_, AppRuntime>,
+    app: tauri::AppHandle,
 ) -> Result<Response, String> {
-    runtime
-        .row_preview(row_id)
-        .map(Response::new)
-        .map_err(error_text)
+    tauri::async_runtime::spawn_blocking(move || {
+        let runtime = app.state::<AppRuntime>();
+        runtime
+            .row_preview(row_id)
+            .map(Response::new)
+            .map_err(error_text)
+    })
+    .await
+    .map_err(|e| format!("预览图加载异常: {e}"))?
 }
 
 #[tauri::command]
-pub(crate) fn export_row_image(
+pub(crate) async fn export_row_image(
     row_id: i64,
     destination: String,
-    runtime: State<'_, AppRuntime>,
+    app: tauri::AppHandle,
 ) -> Result<(), String> {
-    runtime
-        .export_row_image(row_id, PathBuf::from(destination))
-        .map_err(error_text)
+    tauri::async_runtime::spawn_blocking(move || {
+        let runtime = app.state::<AppRuntime>();
+        runtime
+            .export_row_image(row_id, PathBuf::from(destination))
+            .map_err(error_text)
+    })
+    .await
+    .map_err(|e| format!("图片导出异常: {e}"))?
 }
 
 /// 导出带缩略图的 xlsx；在阻塞线程上执行，进度经 `export://progress` 推送。
