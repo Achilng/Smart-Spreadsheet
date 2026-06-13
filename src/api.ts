@@ -46,7 +46,7 @@ export interface ImageImportResult {
   rejectedMoveFailures: number;
 }
 
-export type ImageImportStage = "extracting" | "scanning" | "hashing" | "processing";
+export type ImageImportStage = "extracting" | "scanning" | "hashing" | "processing" | "perceptualHashing";
 
 export interface ImageImportProgress {
   stage: ImageImportStage;

@@ -28,6 +28,8 @@ pub enum ImageImportStage {
     Hashing,
     /// 读取元数据并落位副本。
     Processing,
+    /// 计算感知哈希（pHash）。
+    PerceptualHashing,
 }
 
 impl ImageImportStage {
@@ -37,6 +39,7 @@ impl ImageImportStage {
             Self::Scanning => "scanning",
             Self::Hashing => "hashing",
             Self::Processing => "processing",
+            Self::PerceptualHashing => "perceptualHashing",
         }
     }
 }
@@ -250,15 +253,24 @@ impl DataDirectory {
         }
 
         // 并行计算感知哈希，再串行构建行（Archive 需要文件操作）。
+        let phash_total = new_jobs.len();
+        reporter.emit(ImageImportStage::PerceptualHashing, 0, phash_total, true);
         let phash_jobs: Vec<PathBuf> = new_jobs
             .iter()
             .map(|(_, img, _)| img.source.absolute_path.clone())
             .collect();
         let phashes = parallel::parallel_map(
             phash_jobs,
-            parallel::worker_count(new_jobs.len()),
+            parallel::worker_count(phash_total),
             |_, path| compute_phash(&path).ok(),
-            |_| {},
+            |completed| {
+                reporter.emit(
+                    ImageImportStage::PerceptualHashing,
+                    completed,
+                    phash_total,
+                    completed == phash_total,
+                );
+            },
         );
 
         let staging = StagingDir::create(&self.files_path())?;

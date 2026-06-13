@@ -22,6 +22,8 @@
           return `正在检查图片内容 ${formatCount(progress.processed)} / ${formatCount(progress.total)}`;
         case "processing":
           return `正在读取元数据 ${formatCount(progress.processed)} / ${formatCount(progress.total)}`;
+        case "perceptualHashing":
+          return `正在计算感知哈希 ${formatCount(progress.processed)} / ${formatCount(progress.total)}`;
         default:
           return null;
       }
@@ -47,7 +49,7 @@
     const importing = app.importProgress;
     if (importing) {
       if (
-        (importing.stage !== "hashing" && importing.stage !== "processing") ||
+        (importing.stage !== "hashing" && importing.stage !== "processing" && importing.stage !== "perceptualHashing") ||
         importing.total === 0
       ) {
         return null;
