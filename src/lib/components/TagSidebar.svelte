@@ -380,11 +380,13 @@
 </div>
 
 {#if tagMenu.open}
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
     class="tag-context-menu"
     role="menu"
     style:left="{tagMenu.x}px"
     style:top="{tagMenu.y}px"
+    onpointerdown={(e) => e.stopPropagation()}
   >
     <button type="button" role="menuitem" class="danger" onclick={requestDeleteTag}>
       删除 Tag "{tagMenu.name}"
