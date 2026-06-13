@@ -5,6 +5,7 @@ use image::imageops::FilterType;
 
 use super::{DataDirectory, StorageError};
 use crate::db::ContentHashCandidate;
+use crate::pipeline::parallel;
 
 const HASH_SIZE: usize = 8;
 const DCT_SIZE: usize = 32;
@@ -42,25 +43,44 @@ impl DataDirectory {
             return Ok(PerceptualHashBackfillOutcome::default());
         }
 
-        let mut hashes = Vec::with_capacity(total);
-        let mut unreadable = 0;
         progress(PerceptualHashProgress {
             total,
             ..PerceptualHashProgress::default()
         });
 
-        for (index, candidate) in candidates.iter().enumerate() {
-            match resolve_image_path(self, candidate).and_then(|path| compute_phash(&path)) {
-                Ok(hash) => hashes.push((candidate.row_id, hash)),
-                Err(_) => unreadable += 1,
+        let results = parallel::parallel_map(
+            candidates,
+            parallel::worker_count(total),
+            |_, candidate| {
+                let hash = resolve_image_path(self, &candidate)
+                    .and_then(|path| compute_phash(&path))
+                    .ok();
+                (candidate.row_id, hash)
+            },
+            |completed| {
+                progress(PerceptualHashProgress {
+                    processed: completed,
+                    total,
+                    updated: 0,
+                    unreadable: 0,
+                });
+            },
+        );
+
+        let mut hashes = Vec::with_capacity(total);
+        let mut unreadable = 0;
+        for (row_id, hash) in results {
+            match hash {
+                Some(h) => hashes.push((row_id, h)),
+                None => unreadable += 1,
             }
-            progress(PerceptualHashProgress {
-                processed: index + 1,
-                total,
-                updated: hashes.len(),
-                unreadable,
-            });
         }
+        progress(PerceptualHashProgress {
+            processed: total,
+            total,
+            updated: hashes.len(),
+            unreadable,
+        });
 
         database.update_perceptual_hashes(&hashes)?;
         Ok(PerceptualHashBackfillOutcome {
@@ -103,7 +123,7 @@ impl DataDirectory {
 pub(crate) fn compute_phash(path: &Path) -> Result<String, io::Error> {
     let img = image::open(path).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
     let gray = img
-        .resize_exact(DCT_SIZE as u32, DCT_SIZE as u32, FilterType::Lanczos3)
+        .resize_exact(DCT_SIZE as u32, DCT_SIZE as u32, FilterType::Triangle)
         .to_luma8();
 
     let pixels: Vec<f64> = gray.pixels().map(|p| p.0[0] as f64).collect();

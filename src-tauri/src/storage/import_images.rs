@@ -249,7 +249,18 @@ impl DataDirectory {
             }
         }
 
-        // 内容唯一的正常图片构造数据库行；压缩包图移动副本到暂存目录。
+        // 并行计算感知哈希，再串行构建行（Archive 需要文件操作）。
+        let phash_jobs: Vec<PathBuf> = new_jobs
+            .iter()
+            .map(|(_, img, _)| img.source.absolute_path.clone())
+            .collect();
+        let phashes = parallel::parallel_map(
+            phash_jobs,
+            parallel::worker_count(new_jobs.len()),
+            |_, path| compute_phash(&path).ok(),
+            |_| {},
+        );
+
         let staging = StagingDir::create(&self.files_path())?;
         let process_context = ProcessImageContext {
             source_type,
@@ -257,8 +268,9 @@ impl DataDirectory {
             scan_root_display: &scan_root_display,
             staging_root: staging.path(),
         };
-        for (index, image, content_hash) in new_jobs {
-            let perceptual_hash = compute_phash(&image.source.absolute_path).ok();
+        for ((index, image, content_hash), perceptual_hash) in
+            new_jobs.into_iter().zip(phashes)
+        {
             let row = build_new_row(
                 image,
                 &identities[index],
