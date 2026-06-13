@@ -220,6 +220,16 @@ impl AppRuntime {
         Ok(directory.open_database()?.list_tags()?)
     }
 
+    pub(crate) fn delete_tag(&self, name: &str) -> Result<bool, AppRuntimeError> {
+        let state = self.lock_state()?;
+        ensure_startup_valid(&state)?;
+        let directory = state
+            .active
+            .as_ref()
+            .ok_or(AppRuntimeError::NotConfigured)?;
+        Ok(directory.open_database()?.delete_tag(name)?)
+    }
+
     pub(crate) fn create_tag(&self, name: &str) -> Result<bool, AppRuntimeError> {
         let state = self.lock_state()?;
         ensure_startup_valid(&state)?;

@@ -30,6 +30,7 @@ pub fn run() {
             app::commands::get_rows_by_ids,
             app::commands::list_tags,
             app::commands::create_tag,
+            app::commands::delete_tag,
             app::commands::count_selected_rows,
             app::commands::list_selection_tags,
             app::commands::selected_row_ids,

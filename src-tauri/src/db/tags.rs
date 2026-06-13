@@ -56,6 +56,20 @@ impl From<rusqlite::Error> for TagMutationError {
 }
 
 impl Database {
+    pub fn delete_tag(&mut self, name: &str) -> Result<bool, TagMutationError> {
+        let name = name.trim();
+        if name.is_empty() {
+            return Err(TagMutationError::EmptyTagName);
+        }
+        let deleted = self
+            .connection
+            .execute(
+                "DELETE FROM tags WHERE name = ?1 COLLATE BINARY",
+                [name],
+            )?;
+        Ok(deleted > 0)
+    }
+
     pub fn create_tag(&mut self, name: &str) -> Result<bool, TagMutationError> {
         let Some(name) = normalize_tags(&[name.to_owned()]).into_iter().next() else {
             return Err(TagMutationError::EmptyTagName);

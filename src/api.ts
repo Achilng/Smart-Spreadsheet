@@ -236,6 +236,10 @@ export function createTag(name: string): Promise<boolean> {
   return invoke<boolean>("create_tag", { name });
 }
 
+export function deleteTag(name: string): Promise<boolean> {
+  return invoke<boolean>("delete_tag", { name });
+}
+
 export function countSelectedRows(selection: RowSelection): Promise<number> {
   return invoke<number>("count_selected_rows", { selection });
 }

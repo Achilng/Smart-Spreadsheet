@@ -402,6 +402,11 @@ pub(crate) fn create_tag(name: String, runtime: State<'_, AppRuntime>) -> Result
 }
 
 #[tauri::command]
+pub(crate) fn delete_tag(name: String, runtime: State<'_, AppRuntime>) -> Result<bool, String> {
+    runtime.delete_tag(&name).map_err(error_text)
+}
+
+#[tauri::command]
 pub(crate) fn count_selected_rows(
     selection: RowSelectionDto,
     runtime: State<'_, AppRuntime>,

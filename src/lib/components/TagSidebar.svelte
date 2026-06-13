@@ -1,6 +1,7 @@
 <script lang="ts">
   import {
     addTagsToSelection,
+    deleteTag,
     listSelectionTags,
     removeTagsFromSelection,
     type DedupeMode,
@@ -141,7 +142,7 @@
         ? await removeTagsFromSelection(selectionDto(), [name])
         : await addTagsToSelection(selectionDto(), [name]);
       status = {
-        text: `${remove ? "已解除" : "已贴上"} Tag“${name}”：处理 ${formatCount(result.affectedRows)} 行，变更 ${formatCount(result.associationsChanged)} 个关联。`,
+        text: `${remove ? "已解除" : "已贴上"} Tag"${name}"：处理 ${formatCount(result.affectedRows)} 行，变更 ${formatCount(result.associationsChanged)} 个关联。`,
         isError: false,
       };
       resetRows();
@@ -171,7 +172,7 @@
       const result = await addTagsToSelection(selectionDto(), [name]);
       newTagName = "";
       status = {
-        text: `已将 Tag“${name}”贴到 ${formatCount(result.affectedRows)} 行，变更 ${formatCount(result.associationsChanged)} 个关联。`,
+        text: `已将 Tag"${name}"贴到 ${formatCount(result.affectedRows)} 行，变更 ${formatCount(result.associationsChanged)} 个关联。`,
         isError: false,
       };
       resetRows();
@@ -183,7 +184,56 @@
       tagging = false;
     }
   }
+
+  let tagMenu = $state({ open: false, x: 0, y: 0, name: "" });
+  let confirmingDelete = $state<string | null>(null);
+
+  function onTagContextMenu(event: MouseEvent, name: string): void {
+    event.preventDefault();
+    tagMenu = { open: true, x: event.clientX, y: event.clientY, name };
+  }
+
+  function closeTagMenu(): void {
+    tagMenu.open = false;
+  }
+
+  function requestDeleteTag(): void {
+    confirmingDelete = tagMenu.name;
+    closeTagMenu();
+  }
+
+  async function confirmDeleteTag(): Promise<void> {
+    const name = confirmingDelete;
+    if (!name) return;
+    confirmingDelete = null;
+    try {
+      const deleted = await deleteTag(name);
+      if (deleted) {
+        if (activeTags.includes(name)) {
+          setFilter(
+            activeTags.filter((t) => t !== name),
+            rowStore.tagMode,
+          );
+          clearSelection();
+        }
+        resetRows();
+        await loadTags();
+        status = { text: `已删除 Tag"${name}"。`, isError: false };
+      } else {
+        status = { text: `Tag"${name}"不存在。`, isError: true };
+      }
+    } catch (error) {
+      status = { text: `删除 Tag 失败：${errorText(error)}`, isError: true };
+    }
+  }
 </script>
+
+<svelte:window
+  onpointerdown={() => {
+    if (tagMenu.open) closeTagMenu();
+  }}
+/>
+
 
 <div class="tag-sidebar">
   <header class="sidebar-header">
@@ -291,6 +341,7 @@
             sidebarMode === "filter"
               ? toggleFilterTag(entry.name)
               : void toggleAssignment(entry.name)}
+          oncontextmenu={(e) => onTagContextMenu(e, entry.name)}
         >
           <span class="tag-name" title={entry.name}>{entry.name}</span>
           {#if sidebarMode === "filter"}
@@ -327,6 +378,31 @@
     <p class="form-status" class:is-error={status.isError} role="status">{status.text}</p>
   {/if}
 </div>
+
+{#if tagMenu.open}
+  <div
+    class="tag-context-menu"
+    role="menu"
+    style:left="{tagMenu.x}px"
+    style:top="{tagMenu.y}px"
+  >
+    <button type="button" role="menuitem" class="danger" onclick={requestDeleteTag}>
+      删除 Tag "{tagMenu.name}"
+    </button>
+  </div>
+{/if}
+
+{#if confirmingDelete}
+  <div class="confirm-overlay" role="dialog" aria-label="确认删除">
+    <div class="confirm-dialog">
+      <p>确定删除 Tag「{confirmingDelete}」吗？所有行上的该 Tag 关联将被同时移除。</p>
+      <div class="confirm-actions">
+        <button type="button" class="btn" onclick={() => (confirmingDelete = null)}>取消</button>
+        <button type="button" class="btn btn-danger" onclick={() => void confirmDeleteTag()}>删除</button>
+      </div>
+    </div>
+  </div>
+{/if}
 
 <style>
   .tag-sidebar {
@@ -542,5 +618,92 @@
 
   .form-status.is-error {
     color: var(--danger);
+  }
+
+  .tag-context-menu {
+    position: fixed;
+    z-index: 9999;
+    min-width: 160px;
+    padding: 4px;
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-s);
+    box-shadow: var(--shadow-2);
+  }
+
+  .tag-context-menu button {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    border: none;
+    background: transparent;
+    border-radius: 4px;
+    padding: 6px 10px;
+    text-align: left;
+    font-size: 13px;
+    color: var(--text);
+    cursor: default;
+  }
+
+  .tag-context-menu button:hover {
+    background: var(--surface-2);
+  }
+
+  .tag-context-menu button.danger {
+    color: var(--danger);
+  }
+
+  .confirm-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .confirm-dialog {
+    background: var(--surface);
+    border-radius: var(--radius-l, 12px);
+    box-shadow: var(--shadow-3, 0 8px 32px rgba(0, 0, 0, 0.2));
+    padding: 20px 24px;
+    max-width: 400px;
+    width: 90vw;
+  }
+
+  .confirm-dialog p {
+    margin: 0 0 16px;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  .confirm-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .btn {
+    padding: 6px 16px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-s, 6px);
+    background: var(--surface);
+    font-size: 13px;
+    cursor: pointer;
+  }
+
+  .btn:hover {
+    background: var(--surface-2);
+  }
+
+  .btn-danger {
+    background: var(--danger);
+    border-color: var(--danger);
+    color: #fff;
+  }
+
+  .btn-danger:hover {
+    opacity: 0.9;
   }
 </style>
