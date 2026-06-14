@@ -478,6 +478,17 @@ impl AppRuntime {
         })
     }
 
+    pub(crate) fn reset_configuration(&self) -> Result<RuntimeSnapshot, AppRuntimeError> {
+        let mut state = self.lock_state()?;
+        if self.locator_path.exists() {
+            fs::remove_file(&self.locator_path)?;
+        }
+        state.active = None;
+        state.startup_error = None;
+        drop(state);
+        self.snapshot()
+    }
+
     fn configure_directory<F>(
         &self,
         path: impl AsRef<Path>,

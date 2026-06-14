@@ -198,6 +198,10 @@ export function getAppSnapshot(): Promise<AppSnapshot> {
   return invoke<AppSnapshot>("get_app_snapshot");
 }
 
+export function resetConfiguration(): Promise<AppSnapshot> {
+  return invoke<AppSnapshot>("reset_configuration");
+}
+
 export function initializeDataDirectory(path: string): Promise<AppSnapshot> {
   return invoke<AppSnapshot>("initialize_data_directory", { path });
 }

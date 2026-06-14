@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { app, refreshSnapshot } from "./lib/app-state.svelte";
+  import { app, refreshSnapshot, resetAndReconfigure } from "./lib/app-state.svelte";
   import ImportScreen from "./lib/components/ImportScreen.svelte";
   import Notice from "./lib/components/Notice.svelte";
   import SetupScreen from "./lib/components/SetupScreen.svelte";
@@ -37,7 +37,17 @@
         <div class="flow-card">
           <h2>无法打开已配置的数据目录</h2>
           <p class="muted">{app.snapshot.startupError}</p>
-          <p class="flow-hint">定位文件未被自动覆盖，避免误切换到另一份工作区。</p>
+          <div class="flow-actions">
+            <button
+              type="button"
+              class="btn btn-primary"
+              disabled={app.busy}
+              onclick={() => void resetAndReconfigure()}
+            >
+              重新配置
+            </button>
+          </div>
+          <p class="flow-hint">重新配置将清除当前定位信息，回到初始设置页面。</p>
         </div>
       </div>
     {:else if !app.snapshot?.dataDirectory}

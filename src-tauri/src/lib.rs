@@ -20,6 +20,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             app::commands::get_app_snapshot,
+            app::commands::reset_configuration,
             app::commands::initialize_data_directory,
             app::commands::open_data_directory,
             app::commands::set_rejected_images_directory,

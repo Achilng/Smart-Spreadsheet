@@ -3,7 +3,10 @@
     app,
     chooseImageArchive,
     chooseImageFolder,
+    chooseRejectedImagesDirectory,
   } from "../app-state.svelte";
+
+  const rejectedDir = $derived(app.snapshot?.rejectedImagesDirectory);
 </script>
 
 <div class="center-screen">
@@ -17,6 +20,17 @@
     <p class="directory" title={app.snapshot?.dataDirectory}>
       数据目录：{app.snapshot?.dataDirectory}
     </p>
+    {#if rejectedDir}
+      <p class="directory" title={rejectedDir}>
+        异常图片目录：{rejectedDir}
+        <button
+          type="button"
+          class="link-btn"
+          disabled={app.busy}
+          onclick={() => void chooseRejectedImagesDirectory()}
+        >更改</button>
+      </p>
+    {/if}
     <div class="flow-actions">
       <button
         type="button"
@@ -45,5 +59,24 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  .link-btn {
+    background: none;
+    border: none;
+    color: var(--accent);
+    cursor: pointer;
+    font-size: 12px;
+    padding: 0;
+    text-decoration: underline;
+  }
+
+  .link-btn:hover {
+    color: var(--accent-hover, var(--accent));
+  }
+
+  .link-btn:disabled {
+    opacity: 0.5;
+    cursor: default;
   }
 </style>

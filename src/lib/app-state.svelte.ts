@@ -8,6 +8,7 @@ import {
   initializeDataDirectory,
   migrateDataDirectory,
   openDataDirectory,
+  resetConfiguration,
   searchSimilarImages,
   setRejectedImagesDirectory,
   type AppSnapshot,
@@ -72,6 +73,12 @@ export async function refreshSnapshot(): Promise<void> {
     app.busy = false;
     app.loaded = true;
   }
+}
+
+export async function resetAndReconfigure(): Promise<void> {
+  await runAction(async () => {
+    app.snapshot = await resetConfiguration();
+  });
 }
 
 export async function chooseDirectory(mode: "initialize" | "open"): Promise<void> {
