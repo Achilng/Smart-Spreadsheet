@@ -4,7 +4,15 @@
 
 ## 当前阶段
 
-第三轮迭代（v0.5）已完成。M19–M21 全部通过验收，版本 0.5.0 与 GitHub Release v_5 已发布。
+v0.6.0 代码质量重构已完成，GitHub Release v_6 已发布。
+
+### v0.6.0 - 代码质量重构（2026-06-14）
+
+- `runtime.rs`：提取 `with_database` 泛型辅助方法，消除 13 个命令处理器中重复的 lock→validate→get-directory 样板代码。
+- `commands.rs`：为内部查询/存储类型添加 serde 派生，删除 12 个冗余镜像 DTO 及其 `From` 实现（文件从约 900 行缩减至约 480 行）。
+- `TagSidebar.svelte`：移除与全局样式冲突的局部 `.btn` / `.btn-danger` CSS 定义。
+- `app-state.svelte.ts`：导入相关函数（`chooseImageFolder`、`chooseImageArchive`、`chooseRejectedImagesDirectory`、`ensureRejectedImagesDirectory`、`runImageImport`）抽取到独立模块 `import-actions.svelte.ts`。
+- 全量验证：Rust 122 项测试通过、Clippy 无警告、`svelte-check` 0 错误、Vite 生产构建通过。
 
 ## 第三轮迭代
 
