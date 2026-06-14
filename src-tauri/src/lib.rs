@@ -35,6 +35,7 @@ pub fn run() {
             app::commands::assign_rows_to_group,
             app::commands::ungroup_rows,
             app::commands::get_group_members,
+            app::commands::suggest_groups,
             app::commands::update_positive_prompt,
             app::commands::find_replace_prompt,
             app::commands::prepend_artist,

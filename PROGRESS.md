@@ -29,6 +29,16 @@ v0.7.0 开发中：分组系统 + 提示词编辑。
 - 前端 `api.ts` 新增 `PromptEditResult` 接口和 3 个 API 函数。
 - 全量验证：Rust 142 项测试通过（含 8 项提示词编辑新测试）、Clippy 无警告、`svelte-check` 0 错误、Vite 生产构建通过。
 
+### M24 — 相似度引擎（2026-06-15）
+
+- 新增 `pipeline/similarity.rs`：Token Jaccard（提示词）和 Jaro-Winkler（画师串）两种相似度度量，Union-Find 贪心聚类。
+- `suggest_groups(rows, mode, threshold, progress)` 管线：先按精确 lowercase 键分桶减少比较量，再 O(n²) 桶间比较，超阈值建边聚类，输出建议分组列表。
+- `ungrouped_keys(mode)` 数据库方法：按画师串或正向提示词查询所有未分组行。
+- `suggest_groups` 异步 Tauri 命令 + `group-suggest://progress` 进度事件。
+- 前端 `api.ts` 新增 `SimilarityMode`/`SuggestedGroup` 类型和 `suggestGroups` 函数。
+- 添加 `strsim = "0.11"` 依赖。
+- 全量验证：Rust 152 项测试通过（含 10 项相似度新测试）、Clippy 无警告、`svelte-check` 0 错误、Vite 生产构建通过。
+
 ### v0.6.0 - 代码质量重构（2026-06-14）
 
 - `runtime.rs`：提取 `with_database` 泛型辅助方法，消除 13 个命令处理器中重复的 lock→validate→get-directory 样板代码。

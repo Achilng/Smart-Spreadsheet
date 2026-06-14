@@ -339,6 +339,13 @@ impl AppRuntime {
         self.with_database(|db| db.prepend_artist(selection, artist_name))
     }
 
+    pub(crate) fn ungrouped_keys(
+        &self,
+        mode: crate::pipeline::similarity::SimilarityMode,
+    ) -> Result<Vec<(i64, String)>, AppRuntimeError> {
+        self.with_database(|db| db.ungrouped_keys(mode))
+    }
+
     pub(crate) fn get_group_members(
         &self,
         group_id: i64,
