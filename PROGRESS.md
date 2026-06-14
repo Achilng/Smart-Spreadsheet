@@ -18,6 +18,17 @@ v0.7.0 开发中：分组系统 + 提示词编辑。
 - `row-store.svelte.ts` 新增 `groupView`/`hideGrouped` 状态字段和 `setGroupView`/`setHideGrouped` setter（含互斥逻辑）。
 - 全量验证：Rust 134 项测试通过（含 12 项分组新测试）、Clippy 无警告、`svelte-check` 0 错误、Vite 生产构建通过。
 
+### M23 — 提示词编辑后端（2026-06-15）
+
+- `db/prompt_edit.rs` 实现三个方法：
+  - `update_positive_prompt(row_id, new_prompt)`：单行编辑正向提示词，自动重新提取画师串。
+  - `find_replace_prompt(selection, find, replace)`：批量查找替换，逐行重提取画师串；空 find 为 noop。
+  - `prepend_artist(selection, artist_name)`：批量添加 `artist:xxx, ` 前缀，逐行重提取画师串；空名称为 noop。
+- 所有方法在 IMMEDIATE 事务内完成，使用 `extract_artist_tags()` 重算 artists 列（无画师时置 NULL）。
+- 3 个 Tauri 命令注册：`update_positive_prompt`、`find_replace_prompt`、`prepend_artist`。
+- 前端 `api.ts` 新增 `PromptEditResult` 接口和 3 个 API 函数。
+- 全量验证：Rust 142 项测试通过（含 8 项提示词编辑新测试）、Clippy 无警告、`svelte-check` 0 错误、Vite 生产构建通过。
+
 ### v0.6.0 - 代码质量重构（2026-06-14）
 
 - `runtime.rs`：提取 `with_database` 泛型辅助方法，消除 13 个命令处理器中重复的 lock→validate→get-directory 样板代码。

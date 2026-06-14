@@ -5,8 +5,8 @@ use tauri::{Emitter, Manager, State, ipc::Response};
 
 use super::runtime::{AppRuntime, RuntimeSnapshot};
 use crate::db::{
-    BatchSummary, GroupSummary, LibrarySummary, RowPage, RowQuery, RowRecord, RowSelection,
-    TagMutationResult, TagSelectionSummary, TagSummary,
+    BatchSummary, GroupSummary, LibrarySummary, PromptEditResult, RowPage, RowQuery, RowRecord,
+    RowSelection, TagMutationResult, TagSelectionSummary, TagSummary,
 };
 use crate::storage::{PerceptualHashProgress, SimilarImageMatch};
 
@@ -289,6 +289,40 @@ pub(crate) fn ungroup_rows(
     runtime: State<'_, AppRuntime>,
 ) -> Result<u64, String> {
     runtime.ungroup_rows(&selection).map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn update_positive_prompt(
+    row_id: i64,
+    new_prompt: String,
+    runtime: State<'_, AppRuntime>,
+) -> Result<PromptEditResult, String> {
+    runtime
+        .update_positive_prompt(row_id, &new_prompt)
+        .map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn find_replace_prompt(
+    selection: RowSelection,
+    find: String,
+    replace: String,
+    runtime: State<'_, AppRuntime>,
+) -> Result<PromptEditResult, String> {
+    runtime
+        .find_replace_prompt(&selection, &find, &replace)
+        .map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn prepend_artist(
+    selection: RowSelection,
+    artist_name: String,
+    runtime: State<'_, AppRuntime>,
+) -> Result<PromptEditResult, String> {
+    runtime
+        .prepend_artist(&selection, &artist_name)
+        .map_err(error_text)
 }
 
 #[tauri::command]

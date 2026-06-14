@@ -391,3 +391,31 @@ export function getGroupMembers(
 ): Promise<RowPage> {
   return invoke<RowPage>("get_group_members", { groupId, offset, limit });
 }
+
+// ── Prompt Editing ──────────────────────────────────────────────
+
+export interface PromptEditResult {
+  affectedRows: number;
+}
+
+export function updatePositivePrompt(
+  rowId: number,
+  newPrompt: string,
+): Promise<PromptEditResult> {
+  return invoke<PromptEditResult>("update_positive_prompt", { rowId, newPrompt });
+}
+
+export function findReplacePrompt(
+  selection: RowSelection,
+  find: string,
+  replace: string,
+): Promise<PromptEditResult> {
+  return invoke<PromptEditResult>("find_replace_prompt", { selection, find, replace });
+}
+
+export function prependArtist(
+  selection: RowSelection,
+  artistName: string,
+): Promise<PromptEditResult> {
+  return invoke<PromptEditResult>("prepend_artist", { selection, artistName });
+}

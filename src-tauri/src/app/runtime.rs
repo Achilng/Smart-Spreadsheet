@@ -314,6 +314,31 @@ impl AppRuntime {
         self.with_database(|db| db.ungroup_rows(selection))
     }
 
+    pub(crate) fn update_positive_prompt(
+        &self,
+        row_id: i64,
+        new_prompt: &str,
+    ) -> Result<crate::db::PromptEditResult, AppRuntimeError> {
+        self.with_database(|db| db.update_positive_prompt(row_id, new_prompt))
+    }
+
+    pub(crate) fn find_replace_prompt(
+        &self,
+        selection: &RowSelection,
+        find: &str,
+        replace: &str,
+    ) -> Result<crate::db::PromptEditResult, AppRuntimeError> {
+        self.with_database(|db| db.find_replace_prompt(selection, find, replace))
+    }
+
+    pub(crate) fn prepend_artist(
+        &self,
+        selection: &RowSelection,
+        artist_name: &str,
+    ) -> Result<crate::db::PromptEditResult, AppRuntimeError> {
+        self.with_database(|db| db.prepend_artist(selection, artist_name))
+    }
+
     pub(crate) fn get_group_members(
         &self,
         group_id: i64,
