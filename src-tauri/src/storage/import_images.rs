@@ -5,6 +5,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use chrono::{DateTime, Local};
+use serde::Serialize;
 use thiserror::Error;
 
 use super::content_hash::sha256_file;
@@ -18,7 +19,8 @@ use crate::pipeline::{parallel, parse_novelai_metadata, png_text};
 
 const PROGRESS_INTERVAL: Duration = Duration::from_millis(100);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub enum ImageImportStage {
     /// 解压压缩包（仅压缩包输入）。
     Extracting,
@@ -44,7 +46,8 @@ impl ImageImportStage {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ImageImportProgress {
     pub stage: ImageImportStage,
     pub processed: usize,

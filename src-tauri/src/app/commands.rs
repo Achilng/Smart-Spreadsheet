@@ -1,14 +1,14 @@
 use std::path::{Path, PathBuf};
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use tauri::{Emitter, Manager, State, ipc::Response};
 
 use super::runtime::{AppRuntime, RuntimeSnapshot};
 use crate::db::{
-    BatchSummary, DedupeMode, LibrarySummary, RowPage, RowQuery, RowRecord, RowSelection,
-    TagMatchMode, TagMutationResult, TagSelectionSummary, TagSummary,
+    BatchSummary, LibrarySummary, RowPage, RowQuery, RowRecord, RowSelection, TagMutationResult,
+    TagSelectionSummary, TagSummary,
 };
-use crate::storage::{ContentHashProgress, ImageImportProgress, PerceptualHashProgress};
+use crate::storage::{PerceptualHashProgress, SimilarImageMatch};
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -64,123 +64,14 @@ pub(crate) struct ImageImportResultDto {
     rejected_move_failures: u64,
 }
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct ImageImportProgressDto {
-    stage: &'static str,
-    processed: usize,
-    total: usize,
-}
-
-#[derive(Debug, Clone, Copy, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct ContentHashProgressDto {
-    processed: usize,
-    total: usize,
-    updated: usize,
-    unreadable: usize,
-}
-
-impl From<ContentHashProgress> for ContentHashProgressDto {
-    fn from(progress: ContentHashProgress) -> Self {
-        Self {
-            processed: progress.processed,
-            total: progress.total,
-            updated: progress.updated,
-            unreadable: progress.unreadable,
-        }
-    }
-}
-
-impl From<ImageImportProgress> for ImageImportProgressDto {
-    fn from(progress: ImageImportProgress) -> Self {
-        Self {
-            stage: progress.stage.as_str(),
-            processed: progress.processed,
-            total: progress.total,
-        }
-    }
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct RowQueryDto {
-    offset: u64,
-    limit: u32,
-    tags: Vec<String>,
-    tag_mode: TagMatchModeDto,
-    dedupe: DedupeModeDto,
-    #[serde(default)]
-    single_artist_only: bool,
-}
-
-#[derive(Debug, Clone, Copy, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub(crate) enum TagMatchModeDto {
-    And,
-    Or,
-}
-
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct RowPageDto {
-    rows: Vec<RowRecordDto>,
+    rows: Vec<RowRecord>,
     total_count: u64,
     offset: u64,
     limit: u32,
     has_more: bool,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct RowRecordDto {
-    id: i64,
-    batch_id: i64,
-    source_ordinal: u32,
-    time: Option<String>,
-    positive_prompt: Option<String>,
-    negative_prompt: Option<String>,
-    artists: Option<String>,
-    image_folder: Option<String>,
-    image_path: Option<String>,
-    stored_image_path: Option<String>,
-    metadata_failed: bool,
-    tags: Vec<String>,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct TagSummaryDto {
-    name: String,
-    row_count: u64,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(
-    tag = "kind",
-    rename_all = "camelCase",
-    rename_all_fields = "camelCase"
-)]
-pub(crate) enum RowSelectionDto {
-    Explicit {
-        row_ids: Vec<i64>,
-    },
-    Filtered {
-        tags: Vec<String>,
-        tag_mode: TagMatchModeDto,
-        dedupe: DedupeModeDto,
-        #[serde(default)]
-        single_artist_only: bool,
-        excluded_row_ids: Vec<i64>,
-    },
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct TagMutationResultDto {
-    affected_rows: u64,
-    normalized_tags: Vec<String>,
-    associations_changed: usize,
 }
 
 /// 三种导出共用的进度事件载荷，经 `export://progress` 推送。
@@ -262,10 +153,7 @@ pub(crate) async fn open_data_directory(
         let runtime = app.state::<AppRuntime>();
         runtime
             .open_directory(PathBuf::from(path), |progress| {
-                let _ = app.emit(
-                    "content-hash://progress",
-                    ContentHashProgressDto::from(progress),
-                );
+                let _ = app.emit("content-hash://progress", progress);
             })
             .map(AppSnapshotDto::from)
             .map_err(error_text)
@@ -285,31 +173,6 @@ pub(crate) fn set_rejected_images_directory(
         .map_err(error_text)
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct TagSelectionSummaryDto {
-    name: String,
-    selected_rows: u64,
-}
-
-#[derive(Debug, Clone, Copy, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) enum DedupeModeDto {
-    None,
-    PositivePrompt,
-    Artists,
-}
-
-impl From<DedupeModeDto> for DedupeMode {
-    fn from(mode: DedupeModeDto) -> Self {
-        match mode {
-            DedupeModeDto::None => Self::None,
-            DedupeModeDto::PositivePrompt => Self::PositivePrompt,
-            DedupeModeDto::Artists => Self::Artists,
-        }
-    }
-}
-
 /// 文件夹/压缩包导入：在阻塞线程上执行避免卡住 UI，进度经
 /// `import-images://progress` 事件推送给前端。
 #[tauri::command]
@@ -321,10 +184,7 @@ pub(crate) async fn import_images(
         let runtime = app.state::<AppRuntime>();
         runtime
             .import_images(PathBuf::from(path), |progress| {
-                let _ = app.emit(
-                    "import-images://progress",
-                    ImageImportProgressDto::from(progress),
-                );
+                let _ = app.emit("import-images://progress", progress);
             })
             .map(|(snapshot, outcome)| ImageImportResultDto {
                 snapshot: snapshot.into(),
@@ -346,12 +206,12 @@ pub(crate) async fn import_images(
 
 #[tauri::command]
 pub(crate) fn delete_rows(
-    selection: RowSelectionDto,
+    selection: RowSelection,
     trash_originals: bool,
     runtime: State<'_, AppRuntime>,
 ) -> Result<DeleteResultDto, String> {
     runtime
-        .delete_rows(&selection.into(), trash_originals)
+        .delete_rows(&selection, trash_originals)
         .map(|(snapshot, report)| DeleteResultDto {
             snapshot: snapshot.into(),
             deleted_rows: report.deleted_rows,
@@ -375,17 +235,9 @@ pub(crate) fn list_import_batches(
 
 #[tauri::command]
 pub(crate) fn query_rows(
-    query: RowQueryDto,
+    query: RowQuery,
     runtime: State<'_, AppRuntime>,
 ) -> Result<RowPageDto, String> {
-    let query = RowQuery {
-        offset: query.offset,
-        limit: query.limit,
-        tags: query.tags,
-        tag_mode: query.tag_mode.into(),
-        dedupe: query.dedupe.into(),
-        single_artist_only: query.single_artist_only,
-    };
     runtime
         .query_rows(&query)
         .map(RowPageDto::from)
@@ -396,19 +248,13 @@ pub(crate) fn query_rows(
 pub(crate) fn get_rows_by_ids(
     row_ids: Vec<i64>,
     runtime: State<'_, AppRuntime>,
-) -> Result<Vec<RowRecordDto>, String> {
-    runtime
-        .get_rows_by_ids(&row_ids)
-        .map(|rows| rows.into_iter().map(RowRecordDto::from).collect())
-        .map_err(error_text)
+) -> Result<Vec<RowRecord>, String> {
+    runtime.get_rows_by_ids(&row_ids).map_err(error_text)
 }
 
 #[tauri::command]
-pub(crate) fn list_tags(runtime: State<'_, AppRuntime>) -> Result<Vec<TagSummaryDto>, String> {
-    runtime
-        .list_tags()
-        .map(|tags| tags.into_iter().map(TagSummaryDto::from).collect())
-        .map_err(error_text)
+pub(crate) fn list_tags(runtime: State<'_, AppRuntime>) -> Result<Vec<TagSummary>, String> {
+    runtime.list_tags().map_err(error_text)
 }
 
 #[tauri::command]
@@ -423,58 +269,49 @@ pub(crate) fn delete_tag(name: String, runtime: State<'_, AppRuntime>) -> Result
 
 #[tauri::command]
 pub(crate) fn count_selected_rows(
-    selection: RowSelectionDto,
+    selection: RowSelection,
     runtime: State<'_, AppRuntime>,
 ) -> Result<u64, String> {
-    runtime
-        .count_selected_rows(&selection.into())
-        .map_err(error_text)
+    runtime.count_selected_rows(&selection).map_err(error_text)
 }
 
 #[tauri::command]
 pub(crate) fn list_selection_tags(
-    selection: RowSelectionDto,
+    selection: RowSelection,
     runtime: State<'_, AppRuntime>,
-) -> Result<Vec<TagSelectionSummaryDto>, String> {
+) -> Result<Vec<TagSelectionSummary>, String> {
     runtime
-        .list_selection_tags(&selection.into())
-        .map(|tags| {
-            tags.into_iter()
-                .map(TagSelectionSummaryDto::from)
-                .collect()
-        })
+        .list_selection_tags(&selection)
         .map_err(error_text)
 }
 
 #[tauri::command]
 pub(crate) fn selected_row_ids(
-    selection: RowSelectionDto,
+    selection: RowSelection,
     runtime: State<'_, AppRuntime>,
 ) -> Result<Vec<i64>, String> {
-    runtime.selected_row_ids(&selection.into()).map_err(error_text)
+    runtime.selected_row_ids(&selection).map_err(error_text)
 }
 
 #[tauri::command]
 pub(crate) fn add_tags_to_selection(
-    selection: RowSelectionDto,
+    selection: RowSelection,
     tags: Vec<String>,
     runtime: State<'_, AppRuntime>,
-) -> Result<TagMutationResultDto, String> {
+) -> Result<TagMutationResult, String> {
     runtime
-        .add_tags_to_selection(&selection.into(), &tags)
-        .map(TagMutationResultDto::from)
+        .add_tags_to_selection(&selection, &tags)
         .map_err(error_text)
 }
 
 #[tauri::command]
 pub(crate) fn remove_tags_from_selection(
-    selection: RowSelectionDto,
+    selection: RowSelection,
     tags: Vec<String>,
     runtime: State<'_, AppRuntime>,
-) -> Result<TagMutationResultDto, String> {
+) -> Result<TagMutationResult, String> {
     runtime
-        .remove_tags_from_selection(&selection.into(), &tags)
-        .map(TagMutationResultDto::from)
+        .remove_tags_from_selection(&selection, &tags)
         .map_err(error_text)
 }
 
@@ -483,10 +320,9 @@ pub(crate) fn set_tags_for_row(
     row_id: i64,
     tags: Vec<String>,
     runtime: State<'_, AppRuntime>,
-) -> Result<TagMutationResultDto, String> {
+) -> Result<TagMutationResult, String> {
     runtime
         .set_tags_for_row(row_id, &tags)
-        .map(TagMutationResultDto::from)
         .map_err(error_text)
 }
 
@@ -541,14 +377,14 @@ pub(crate) async fn export_row_image(
 /// 导出带缩略图的 xlsx；在阻塞线程上执行，进度经 `export://progress` 推送。
 #[tauri::command]
 pub(crate) async fn export_xlsx(
-    selection: RowSelectionDto,
+    selection: RowSelection,
     path: String,
     app: tauri::AppHandle,
 ) -> Result<XlsxExportResultDto, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let runtime = app.state::<AppRuntime>();
         runtime
-            .export_xlsx(&selection.into(), PathBuf::from(path), |progress| {
+            .export_xlsx(&selection, PathBuf::from(path), |progress| {
                 emit_export_progress(&app, progress.processed, progress.total);
             })
             .map(|outcome| XlsxExportResultDto {
@@ -565,14 +401,14 @@ pub(crate) async fn export_xlsx(
 
 #[tauri::command]
 pub(crate) async fn export_zhihuiji_json(
-    selection: RowSelectionDto,
+    selection: RowSelection,
     path: String,
     app: tauri::AppHandle,
 ) -> Result<JsonExportResultDto, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let runtime = app.state::<AppRuntime>();
         runtime
-            .export_zhihuiji_json(&selection.into(), PathBuf::from(path), |progress| {
+            .export_zhihuiji_json(&selection, PathBuf::from(path), |progress| {
                 emit_export_progress(&app, progress.processed, progress.total);
             })
             .map(|outcome| JsonExportResultDto {
@@ -587,7 +423,7 @@ pub(crate) async fn export_zhihuiji_json(
 
 #[tauri::command]
 pub(crate) async fn export_image_files(
-    selection: RowSelectionDto,
+    selection: RowSelection,
     parent_dir: String,
     mode: String,
     app: tauri::AppHandle,
@@ -597,7 +433,7 @@ pub(crate) async fn export_image_files(
     tauri::async_runtime::spawn_blocking(move || {
         let runtime = app.state::<AppRuntime>();
         runtime
-            .export_image_files(&selection.into(), PathBuf::from(parent_dir), mode, |progress| {
+            .export_image_files(&selection, PathBuf::from(parent_dir), mode, |progress| {
                 emit_export_progress(&app, progress.processed, progress.total);
             })
             .map(|outcome| ImageFilesExportResultDto {
@@ -650,48 +486,17 @@ pub(crate) async fn dedupe_zhihuiji_json(
     .map_err(|error| format!("去重任务异常中止: {error}"))?
 }
 
-#[derive(Debug, Clone, Copy, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct PerceptualHashProgressDto {
-    processed: usize,
-    total: usize,
-    updated: usize,
-    unreadable: usize,
-}
-
-impl From<PerceptualHashProgress> for PerceptualHashProgressDto {
-    fn from(progress: PerceptualHashProgress) -> Self {
-        Self {
-            processed: progress.processed,
-            total: progress.total,
-            updated: progress.updated,
-            unreadable: progress.unreadable,
-        }
-    }
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct SimilarImageMatchDto {
-    row_id: i64,
-    distance: u32,
-}
-
 /// 手动刷新感知哈希：为库中缺少 pHash 的行补算。
 #[tauri::command]
 pub(crate) async fn backfill_perceptual_hashes(
     app: tauri::AppHandle,
-) -> Result<PerceptualHashProgressDto, String> {
+) -> Result<PerceptualHashProgress, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let runtime = app.state::<AppRuntime>();
         runtime
             .backfill_perceptual_hashes(|progress| {
-                let _ = app.emit(
-                    "perceptual-hash://progress",
-                    PerceptualHashProgressDto::from(progress),
-                );
+                let _ = app.emit("perceptual-hash://progress", progress);
             })
-            .map(PerceptualHashProgressDto::from)
             .map_err(error_text)
     })
     .await
@@ -704,20 +509,11 @@ pub(crate) async fn search_similar_images(
     path: String,
     threshold: u32,
     app: tauri::AppHandle,
-) -> Result<Vec<SimilarImageMatchDto>, String> {
+) -> Result<Vec<SimilarImageMatch>, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let runtime = app.state::<AppRuntime>();
         runtime
             .search_similar_images(PathBuf::from(path), threshold)
-            .map(|matches| {
-                matches
-                    .into_iter()
-                    .map(|m| SimilarImageMatchDto {
-                        row_id: m.row_id,
-                        distance: m.distance,
-                    })
-                    .collect()
-            })
             .map_err(error_text)
     })
     .await
@@ -778,92 +574,15 @@ impl From<BatchSummary> for BatchSummaryDto {
     }
 }
 
-impl From<TagMatchModeDto> for TagMatchMode {
-    fn from(mode: TagMatchModeDto) -> Self {
-        match mode {
-            TagMatchModeDto::And => Self::And,
-            TagMatchModeDto::Or => Self::Or,
-        }
-    }
-}
-
 impl From<RowPage> for RowPageDto {
     fn from(page: RowPage) -> Self {
         let has_more = page.has_more();
         Self {
-            rows: page.rows.into_iter().map(RowRecordDto::from).collect(),
+            rows: page.rows,
             total_count: page.total_count,
             offset: page.offset,
             limit: page.limit,
             has_more,
-        }
-    }
-}
-
-impl From<RowRecord> for RowRecordDto {
-    fn from(row: RowRecord) -> Self {
-        Self {
-            id: row.id,
-            batch_id: row.batch_id,
-            source_ordinal: row.source_ordinal,
-            time: row.time,
-            positive_prompt: row.positive_prompt,
-            negative_prompt: row.negative_prompt,
-            artists: row.artists,
-            image_folder: row.image_folder,
-            image_path: row.image_path,
-            stored_image_path: row.stored_image_path,
-            metadata_failed: row.metadata_failed,
-            tags: row.tags,
-        }
-    }
-}
-
-impl From<TagSummary> for TagSummaryDto {
-    fn from(summary: TagSummary) -> Self {
-        Self {
-            name: summary.name,
-            row_count: summary.row_count,
-        }
-    }
-}
-
-impl From<TagSelectionSummary> for TagSelectionSummaryDto {
-    fn from(summary: TagSelectionSummary) -> Self {
-        Self {
-            name: summary.name,
-            selected_rows: summary.selected_rows,
-        }
-    }
-}
-
-impl From<RowSelectionDto> for RowSelection {
-    fn from(selection: RowSelectionDto) -> Self {
-        match selection {
-            RowSelectionDto::Explicit { row_ids } => Self::Explicit { row_ids },
-            RowSelectionDto::Filtered {
-                tags,
-                tag_mode,
-                dedupe,
-                single_artist_only,
-                excluded_row_ids,
-            } => Self::Filtered {
-                tags,
-                tag_mode: tag_mode.into(),
-                dedupe: dedupe.into(),
-                single_artist_only,
-                excluded_row_ids,
-            },
-        }
-    }
-}
-
-impl From<TagMutationResult> for TagMutationResultDto {
-    fn from(result: TagMutationResult) -> Self {
-        Self {
-            affected_rows: result.affected_rows,
-            normalized_tags: result.normalized_tags,
-            associations_changed: result.associations_changed,
         }
     }
 }
@@ -874,17 +593,19 @@ fn error_text(error: impl std::fmt::Display) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::db::{DedupeMode, RowSelection, TagMatchMode};
 
     #[test]
-    fn converts_filtered_selection_without_losing_case_or_exclusions() {
-        let selection = RowSelection::from(RowSelectionDto::Filtered {
-            tags: vec!["Landscape".into(), "landscape".into()],
-            tag_mode: TagMatchModeDto::Or,
-            dedupe: DedupeModeDto::Artists,
-            single_artist_only: false,
-            excluded_row_ids: vec![2, 9],
+    fn deserializes_filtered_selection_preserving_case_and_exclusions() {
+        let json = serde_json::json!({
+            "kind": "filtered",
+            "tags": ["Landscape", "landscape"],
+            "tagMode": "or",
+            "dedupe": "artists",
+            "singleArtistOnly": false,
+            "excludedRowIds": [2, 9]
         });
+        let selection: RowSelection = serde_json::from_value(json).unwrap();
 
         assert_eq!(
             selection,

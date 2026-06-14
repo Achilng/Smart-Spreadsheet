@@ -2,6 +2,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use image::imageops::FilterType;
+use serde::Serialize;
 
 use super::{DataDirectory, StorageError};
 use crate::db::ContentHashCandidate;
@@ -10,7 +11,8 @@ use crate::pipeline::parallel;
 const HASH_SIZE: usize = 8;
 const DCT_SIZE: usize = 32;
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PerceptualHashProgress {
     pub processed: usize,
     pub total: usize,
@@ -25,7 +27,8 @@ pub struct PerceptualHashBackfillOutcome {
     pub unreadable: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SimilarImageMatch {
     pub row_id: i64,
     pub distance: u32,

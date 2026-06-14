@@ -1,10 +1,10 @@
 <script lang="ts">
+  import { app } from "../app-state.svelte";
   import {
-    app,
     chooseImageArchive,
     chooseImageFolder,
     chooseRejectedImagesDirectory,
-  } from "../app-state.svelte";
+  } from "../import-actions.svelte";
 
   const rejectedDir = $derived(app.snapshot?.rejectedImagesDirectory);
 </script>

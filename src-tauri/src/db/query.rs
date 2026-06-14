@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use rusqlite::{Transaction, params};
+use serde::{Deserialize, Serialize};
 
 use super::tags::normalize_tags;
 use super::{Database, DatabaseError};
@@ -10,13 +11,15 @@ pub(super) const FILTER_TAGS_TABLE: &str = "temp.query_filter_tags";
 const FILTERED_ROWS_TABLE: &str = "temp.query_filtered_rows";
 const PAGE_ROWS_TABLE: &str = "temp.query_page_rows";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum TagMatchMode {
     And,
     Or,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum DedupeMode {
     #[default]
     None,
@@ -24,17 +27,20 @@ pub enum DedupeMode {
     Artists,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RowQuery {
     pub offset: u64,
     pub limit: u32,
     pub tags: Vec<String>,
     pub tag_mode: TagMatchMode,
     pub dedupe: DedupeMode,
+    #[serde(default)]
     pub single_artist_only: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RowRecord {
     pub id: i64,
     pub batch_id: i64,
@@ -64,7 +70,8 @@ impl RowPage {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TagSummary {
     pub name: String,
     pub row_count: u64,

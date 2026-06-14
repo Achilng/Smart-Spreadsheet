@@ -2,12 +2,14 @@ use std::fs::File;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 
+use serde::Serialize;
 use sha2::{Digest, Sha256};
 
 use super::{DataDirectory, StorageError};
 use crate::db::ContentHashCandidate;
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ContentHashProgress {
     pub processed: usize,
     pub total: usize,

@@ -1,15 +1,17 @@
 <script lang="ts">
   import {
     app,
-    chooseImageArchive,
-    chooseImageFolder,
     chooseMigration,
-    chooseRejectedImagesDirectory,
     chooseSearchImage,
     runPhashBackfill,
     formatCount,
     type ViewMode,
   } from "../app-state.svelte";
+  import {
+    chooseImageArchive,
+    chooseImageFolder,
+    chooseRejectedImagesDirectory,
+  } from "../import-actions.svelte";
   import {
     chooseImageFilesExport,
     chooseJsonExport,

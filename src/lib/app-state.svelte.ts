@@ -4,13 +4,11 @@ import { confirm as confirmDialog, open } from "@tauri-apps/plugin-dialog";
 import {
   backfillPerceptualHashes,
   getAppSnapshot,
-  importImages,
   initializeDataDirectory,
   migrateDataDirectory,
   openDataDirectory,
   resetConfiguration,
   searchSimilarImages,
-  setRejectedImagesDirectory,
   type AppSnapshot,
   type ContentHashProgress,
   type ExportProgress,
@@ -105,110 +103,6 @@ export async function chooseDirectory(mode: "initialize" | "open"): Promise<void
       }
     }
     setNotice({ tone: "success", text: "数据目录已连接。" });
-  });
-}
-
-export async function chooseImageFolder(): Promise<void> {
-  const selection = await open({
-    directory: true,
-    multiple: false,
-    title: "选择要导入的图片文件夹（追加进资料库）",
-  });
-  if (typeof selection !== "string") {
-    return;
-  }
-  if (!(await ensureRejectedImagesDirectory())) {
-    return;
-  }
-  await runImageImport(selection);
-}
-
-export async function chooseImageArchive(): Promise<void> {
-  const selection = await open({
-    multiple: false,
-    directory: false,
-    title: "选择要导入的压缩包（追加进资料库）",
-    filters: [{ name: "压缩包", extensions: ["zip", "7z", "rar"] }],
-  });
-  if (typeof selection !== "string") {
-    return;
-  }
-  if (!(await ensureRejectedImagesDirectory())) {
-    return;
-  }
-  await runImageImport(selection);
-}
-
-export async function chooseRejectedImagesDirectory(): Promise<boolean> {
-  const selection = await open({
-    directory: true,
-    multiple: false,
-    title: "选择无 metadata 图片的存放目录",
-  });
-  if (typeof selection !== "string") {
-    return false;
-  }
-  app.busy = true;
-  setNotice(null);
-  try {
-    app.snapshot = await setRejectedImagesDirectory(selection);
-    setNotice({ tone: "success", text: `异常图片将移动到 ${selection}` });
-    return true;
-  } catch (error) {
-    setNotice({ tone: "error", text: errorText(error) });
-    return false;
-  } finally {
-    app.busy = false;
-  }
-}
-
-async function ensureRejectedImagesDirectory(): Promise<boolean> {
-  return Boolean(app.snapshot?.rejectedImagesDirectory) || chooseRejectedImagesDirectory();
-}
-
-async function runImageImport(path: string): Promise<void> {
-  await runAction(async () => {
-    const unlisten = await listen<ImageImportProgress>(
-      "import-images://progress",
-      event => {
-        app.importProgress = event.payload;
-      },
-    );
-    try {
-      const result = await importImages(path);
-      app.snapshot = result.snapshot;
-      if (result.added > 0) {
-        app.dataVersion += 1;
-      }
-      const parts = [`新增 ${formatCount(result.added)} 行`];
-      if (result.skippedExisting > 0) {
-        parts.push(`跳过 ${formatCount(result.skippedExisting)} 张已入库`);
-      }
-      if (result.skippedContent > 0) {
-        parts.push(`内容重复跳过 ${formatCount(result.skippedContent)} 张`);
-      }
-      if (result.changedExisting > 0) {
-        parts.push(
-          `其中 ${formatCount(result.changedExisting)} 张源文件有变化（未改动库内数据）`,
-        );
-      }
-      if (result.metadataRejected > 0) {
-        parts.push(`${formatCount(result.metadataRejected)} 张无 metadata、不入库`);
-      }
-      if (result.rejectedMoved > 0) {
-        parts.push(`${formatCount(result.rejectedMoved)} 张已移至异常图片目录`);
-      }
-      if (result.rejectedMoveFailures > 0) {
-        parts.push(`${formatCount(result.rejectedMoveFailures)} 张移动失败（仍未入库）`);
-      }
-      setNotice({
-        tone: "success",
-        text: `导入完成（共发现 ${formatCount(result.totalFound)} 张）：${parts.join("，")}。`,
-      });
-    } finally {
-      unlisten();
-      app.importProgress = null;
-    }
   });
 }
 

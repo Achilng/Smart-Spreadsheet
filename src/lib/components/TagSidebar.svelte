@@ -694,26 +694,13 @@
     gap: 8px;
   }
 
-  .btn {
-    padding: 6px 16px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-s, 6px);
-    background: var(--surface);
-    font-size: 13px;
-    cursor: pointer;
-  }
-
-  .btn:hover {
-    background: var(--surface-2);
-  }
-
-  .btn-danger {
+  .confirm-actions .btn-danger {
     background: var(--danger);
     border-color: var(--danger);
     color: #fff;
   }
 
-  .btn-danger:hover {
+  .confirm-actions .btn-danger:hover {
     opacity: 0.9;
   }
 </style>

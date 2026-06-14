@@ -14,7 +14,7 @@ use crate::images::{ImageVariant, RowImageError};
 use crate::storage::{
     DataDirectory, ExportProgress, ImageFileExportMode, ImageFilesExportError,
     ImageFilesExportOutcome, ImageFilesProgress, ImageImportError, ImageImportOutcome,
-    ImageImportProgress, ImportOutcome, JsonExportError, JsonExportOutcome, JsonExportProgress,
+    ImageImportProgress, JsonExportError, JsonExportOutcome, JsonExportProgress,
     PerceptualHashProgress, RowDeletionError, RowDeletionReport, SimilarImageMatch, StorageError,
     WorkbookImportError, XlsxExportError, XlsxExportOutcome, ContentHashProgress,
 };
@@ -146,10 +146,11 @@ impl AppRuntime {
         })
     }
 
+    #[cfg(test)]
     pub(crate) fn import_workbook(
         &self,
         path: impl AsRef<Path>,
-    ) -> Result<(RuntimeSnapshot, ImportOutcome), AppRuntimeError> {
+    ) -> Result<(RuntimeSnapshot, crate::storage::ImportOutcome), AppRuntimeError> {
         let state = self.lock_state()?;
         ensure_startup_valid(&state)?;
         let directory = state
@@ -189,94 +190,44 @@ impl AppRuntime {
     }
 
     pub(crate) fn query_rows(&self, query: &RowQuery) -> Result<RowPage, AppRuntimeError> {
-        let state = self.lock_state()?;
-        ensure_startup_valid(&state)?;
-        let directory = state
-            .active
-            .as_ref()
-            .ok_or(AppRuntimeError::NotConfigured)?;
-        let mut database = directory.open_database()?;
-        Ok(database.query_rows(query)?)
+        self.with_database(|db| db.query_rows(query))
     }
 
     pub(crate) fn get_rows_by_ids(&self, ids: &[i64]) -> Result<Vec<crate::db::RowRecord>, AppRuntimeError> {
-        let state = self.lock_state()?;
-        ensure_startup_valid(&state)?;
-        let directory = state
-            .active
-            .as_ref()
-            .ok_or(AppRuntimeError::NotConfigured)?;
-        let mut database = directory.open_database()?;
-        Ok(database.get_rows_by_ids(ids)?)
+        self.with_database(|db| db.get_rows_by_ids(ids))
     }
 
     pub(crate) fn list_tags(&self) -> Result<Vec<TagSummary>, AppRuntimeError> {
-        let state = self.lock_state()?;
-        ensure_startup_valid(&state)?;
-        let directory = state
-            .active
-            .as_ref()
-            .ok_or(AppRuntimeError::NotConfigured)?;
-        Ok(directory.open_database()?.list_tags()?)
+        self.with_database(|db| db.list_tags())
     }
 
     pub(crate) fn delete_tag(&self, name: &str) -> Result<bool, AppRuntimeError> {
-        let state = self.lock_state()?;
-        ensure_startup_valid(&state)?;
-        let directory = state
-            .active
-            .as_ref()
-            .ok_or(AppRuntimeError::NotConfigured)?;
-        Ok(directory.open_database()?.delete_tag(name)?)
+        self.with_database(|db| db.delete_tag(name))
     }
 
     pub(crate) fn create_tag(&self, name: &str) -> Result<bool, AppRuntimeError> {
-        let state = self.lock_state()?;
-        ensure_startup_valid(&state)?;
-        let directory = state
-            .active
-            .as_ref()
-            .ok_or(AppRuntimeError::NotConfigured)?;
-        Ok(directory.open_database()?.create_tag(name)?)
+        self.with_database(|db| db.create_tag(name))
     }
 
     pub(crate) fn count_selected_rows(
         &self,
         selection: &RowSelection,
     ) -> Result<u64, AppRuntimeError> {
-        let state = self.lock_state()?;
-        ensure_startup_valid(&state)?;
-        let directory = state
-            .active
-            .as_ref()
-            .ok_or(AppRuntimeError::NotConfigured)?;
-        Ok(directory.open_database()?.count_selected_rows(selection)?)
+        self.with_database(|db| db.count_selected_rows(selection))
     }
 
     pub(crate) fn list_selection_tags(
         &self,
         selection: &RowSelection,
     ) -> Result<Vec<TagSelectionSummary>, AppRuntimeError> {
-        let state = self.lock_state()?;
-        ensure_startup_valid(&state)?;
-        let directory = state
-            .active
-            .as_ref()
-            .ok_or(AppRuntimeError::NotConfigured)?;
-        Ok(directory.open_database()?.list_selection_tags(selection)?)
+        self.with_database(|db| db.list_selection_tags(selection))
     }
 
     pub(crate) fn selected_row_ids(
         &self,
         selection: &RowSelection,
     ) -> Result<Vec<i64>, AppRuntimeError> {
-        let state = self.lock_state()?;
-        ensure_startup_valid(&state)?;
-        let directory = state
-            .active
-            .as_ref()
-            .ok_or(AppRuntimeError::NotConfigured)?;
-        Ok(directory.open_database()?.selected_row_ids(selection)?)
+        self.with_database(|db| db.selected_row_ids(selection))
     }
 
     pub(crate) fn add_tags_to_selection(
@@ -284,15 +235,7 @@ impl AppRuntime {
         selection: &RowSelection,
         tags: &[String],
     ) -> Result<TagMutationResult, AppRuntimeError> {
-        let state = self.lock_state()?;
-        ensure_startup_valid(&state)?;
-        let directory = state
-            .active
-            .as_ref()
-            .ok_or(AppRuntimeError::NotConfigured)?;
-        Ok(directory
-            .open_database()?
-            .add_tags_to_selection(selection, tags)?)
+        self.with_database(|db| db.add_tags_to_selection(selection, tags))
     }
 
     pub(crate) fn remove_tags_from_selection(
@@ -300,15 +243,7 @@ impl AppRuntime {
         selection: &RowSelection,
         tags: &[String],
     ) -> Result<TagMutationResult, AppRuntimeError> {
-        let state = self.lock_state()?;
-        ensure_startup_valid(&state)?;
-        let directory = state
-            .active
-            .as_ref()
-            .ok_or(AppRuntimeError::NotConfigured)?;
-        Ok(directory
-            .open_database()?
-            .remove_tags_from_selection(selection, tags)?)
+        self.with_database(|db| db.remove_tags_from_selection(selection, tags))
     }
 
     pub(crate) fn set_tags_for_row(
@@ -316,13 +251,7 @@ impl AppRuntime {
         row_id: i64,
         tags: &[String],
     ) -> Result<TagMutationResult, AppRuntimeError> {
-        let state = self.lock_state()?;
-        ensure_startup_valid(&state)?;
-        let directory = state
-            .active
-            .as_ref()
-            .ok_or(AppRuntimeError::NotConfigured)?;
-        Ok(directory.open_database()?.set_tags_for_row(row_id, tags)?)
+        self.with_database(|db| db.set_tags_for_row(row_id, tags))
     }
 
     pub(crate) fn delete_rows(
@@ -343,13 +272,7 @@ impl AppRuntime {
     }
 
     pub(crate) fn list_batches(&self) -> Result<Vec<BatchSummary>, AppRuntimeError> {
-        let state = self.lock_state()?;
-        ensure_startup_valid(&state)?;
-        let directory = state
-            .active
-            .as_ref()
-            .ok_or(AppRuntimeError::NotConfigured)?;
-        Ok(directory.open_database()?.list_batches()?)
+        self.with_database(|db| db.list_batches())
     }
 
     pub(crate) fn row_thumbnail(&self, row_id: i64) -> Result<Vec<u8>, AppRuntimeError> {
@@ -433,6 +356,23 @@ impl AppRuntime {
     ) -> Result<Vec<SimilarImageMatch>, AppRuntimeError> {
         let directory = self.active_directory()?;
         Ok(directory.search_similar_images(query_path.as_ref(), threshold)?)
+    }
+
+    fn with_database<T, E>(
+        &self,
+        f: impl FnOnce(&mut crate::db::Database) -> Result<T, E>,
+    ) -> Result<T, AppRuntimeError>
+    where
+        AppRuntimeError: From<E>,
+    {
+        let state = self.lock_state()?;
+        ensure_startup_valid(&state)?;
+        let directory = state
+            .active
+            .as_ref()
+            .ok_or(AppRuntimeError::NotConfigured)?;
+        let mut db = directory.open_database()?;
+        Ok(f(&mut db)?)
     }
 
     /// 取出活动数据目录的克隆并立即释放状态锁，供导出等长耗时操作使用。

@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
 use rusqlite::{OptionalExtension, Transaction, TransactionBehavior, params};
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use super::query::{DedupeMode, FILTER_TAGS_TABLE, TagMatchMode, create_filter_tags, populate_filtered_rows};
@@ -9,7 +10,8 @@ use super::{Database, DatabaseError};
 pub(super) const TARGET_ROWS_TABLE: &str = "temp.tag_target_rows";
 const EXCLUDED_ROWS_TABLE: &str = "temp.tag_excluded_rows";
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum RowSelection {
     Explicit {
         row_ids: Vec<i64>,
@@ -18,19 +20,22 @@ pub enum RowSelection {
         tags: Vec<String>,
         tag_mode: TagMatchMode,
         dedupe: DedupeMode,
+        #[serde(default)]
         single_artist_only: bool,
         excluded_row_ids: Vec<i64>,
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TagMutationResult {
     pub affected_rows: u64,
     pub normalized_tags: Vec<String>,
     pub associations_changed: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TagSelectionSummary {
     pub name: String,
     pub selected_rows: u64,
