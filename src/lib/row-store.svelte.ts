@@ -11,6 +11,7 @@ export const rowStore = $state({
   tags: [] as string[],
   tagMode: "and" as TagMatchMode,
   dedupe: "none" as DedupeMode,
+  singleArtistOnly: false,
   totalCount: 0,
   initialLoading: true,
   error: null as string | null,
@@ -40,6 +41,7 @@ export function ensurePage(pageIndex: number): void {
         tags: [...rowStore.tags],
         tagMode: rowStore.tagMode,
         dedupe: rowStore.dedupe,
+        singleArtistOnly: rowStore.singleArtistOnly,
       });
       if (requestGeneration !== generation) {
         return;
@@ -85,6 +87,13 @@ export function setFilter(tags: string[], tagMode: TagMatchMode): void {
 export function setDedupe(dedupe: DedupeMode): void {
   if (rowStore.dedupe !== dedupe) {
     rowStore.dedupe = dedupe;
+    resetRows();
+  }
+}
+
+export function setSingleArtistOnly(value: boolean): void {
+  if (rowStore.singleArtistOnly !== value) {
+    rowStore.singleArtistOnly = value;
     resetRows();
   }
 }

@@ -9,7 +9,7 @@
     type TagSelectionSummary,
   } from "../../api";
   import { errorText, formatCount } from "../app-state.svelte";
-  import { resetRows, rowStore, setDedupe, setFilter } from "../row-store.svelte";
+  import { resetRows, rowStore, setDedupe, setFilter, setSingleArtistOnly } from "../row-store.svelte";
   import {
     clearSelection,
     getSelectedCount,
@@ -300,6 +300,14 @@
           onchange={() => toggleDedupe("artists")}
         />
         按画师串去重
+      </label>
+      <label>
+        <input
+          type="checkbox"
+          checked={rowStore.singleArtistOnly}
+          onchange={() => { setSingleArtistOnly(!rowStore.singleArtistOnly); clearSelection(); }}
+        />
+        筛选单画师串图片
       </label>
     </div>
   {:else}

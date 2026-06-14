@@ -18,6 +18,7 @@ pub enum RowSelection {
         tags: Vec<String>,
         tag_mode: TagMatchMode,
         dedupe: DedupeMode,
+        single_artist_only: bool,
         excluded_row_ids: Vec<i64>,
     },
 }
@@ -344,6 +345,7 @@ pub(super) fn create_selection_rows(
             tags,
             tag_mode,
             dedupe,
+            single_artist_only,
             excluded_row_ids,
         } => {
             let tags = normalize_tags(tags);
@@ -356,7 +358,7 @@ pub(super) fn create_selection_rows(
                  ) STRICT, WITHOUT ROWID;"
             ))?;
             insert_row_ids(transaction, EXCLUDED_ROWS_TABLE, &excluded_row_ids)?;
-            populate_filtered_rows(transaction, TARGET_ROWS_TABLE, *tag_mode, *dedupe)?;
+            populate_filtered_rows(transaction, TARGET_ROWS_TABLE, *tag_mode, *dedupe, *single_artist_only)?;
             transaction.execute(
                 &format!(
                     "DELETE FROM {TARGET_ROWS_TABLE}
@@ -599,6 +601,7 @@ mod tests {
             tags: Vec::new(),
             tag_mode: TagMatchMode::And,
             dedupe: DedupeMode::None,
+            single_artist_only: false,
             excluded_row_ids: vec![2, 9_999],
         };
 
@@ -627,6 +630,7 @@ mod tests {
             tags: vec![" A ".into(), "B".into()],
             tag_mode: TagMatchMode::And,
             dedupe: DedupeMode::None,
+            single_artist_only: false,
             excluded_row_ids: vec![3],
         };
 
@@ -665,6 +669,7 @@ mod tests {
             tags: Vec::new(),
             tag_mode: TagMatchMode::And,
             dedupe: DedupeMode::PositivePrompt,
+            single_artist_only: false,
             excluded_row_ids: vec![1],
         };
 
@@ -729,6 +734,7 @@ mod tests {
                 tags: vec!["A".into()],
                 tag_mode: TagMatchMode::And,
                 dedupe: DedupeMode::None,
+                single_artist_only: false,
                 excluded_row_ids: vec![2],
             })
             .unwrap();
@@ -749,6 +755,7 @@ mod tests {
                 tags: vec!["A".into()],
                 tag_mode: TagMatchMode::And,
                 dedupe: DedupeMode::None,
+                single_artist_only: false,
                 excluded_row_ids: vec![2],
             })
             .unwrap();
@@ -763,6 +770,7 @@ mod tests {
             tags: vec!["missing".into()],
             tag_mode: TagMatchMode::And,
             dedupe: DedupeMode::None,
+            single_artist_only: false,
             excluded_row_ids: Vec::new(),
         };
 

@@ -723,6 +723,7 @@ mod tests {
             tags: vec!["Keep".into()],
             tag_mode: crate::db::TagMatchMode::And,
             dedupe: crate::db::DedupeMode::None,
+            single_artist_only: false,
             excluded_row_ids: vec![2],
         };
         assert_eq!(runtime.count_selected_rows(&filtered).unwrap(), 2);

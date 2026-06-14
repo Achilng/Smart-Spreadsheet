@@ -277,6 +277,7 @@ mod tests {
                     tags: Vec::new(),
                     tag_mode: TagMatchMode::And,
                     dedupe: crate::db::DedupeMode::None,
+                    single_artist_only: false,
                     excluded_row_ids: Vec::new(),
                 },
                 &temporary.root,

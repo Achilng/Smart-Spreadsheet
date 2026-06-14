@@ -110,6 +110,8 @@ pub(crate) struct RowQueryDto {
     tags: Vec<String>,
     tag_mode: TagMatchModeDto,
     dedupe: DedupeModeDto,
+    #[serde(default)]
+    single_artist_only: bool,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize)]
@@ -167,6 +169,8 @@ pub(crate) enum RowSelectionDto {
         tags: Vec<String>,
         tag_mode: TagMatchModeDto,
         dedupe: DedupeModeDto,
+        #[serde(default)]
+        single_artist_only: bool,
         excluded_row_ids: Vec<i64>,
     },
 }
@@ -370,6 +374,7 @@ pub(crate) fn query_rows(
         tags: query.tags,
         tag_mode: query.tag_mode.into(),
         dedupe: query.dedupe.into(),
+        single_artist_only: query.single_artist_only,
     };
     runtime
         .query_rows(&query)
@@ -830,11 +835,13 @@ impl From<RowSelectionDto> for RowSelection {
                 tags,
                 tag_mode,
                 dedupe,
+                single_artist_only,
                 excluded_row_ids,
             } => Self::Filtered {
                 tags,
                 tag_mode: tag_mode.into(),
                 dedupe: dedupe.into(),
+                single_artist_only,
                 excluded_row_ids,
             },
         }
@@ -865,6 +872,7 @@ mod tests {
             tags: vec!["Landscape".into(), "landscape".into()],
             tag_mode: TagMatchModeDto::Or,
             dedupe: DedupeModeDto::Artists,
+            single_artist_only: false,
             excluded_row_ids: vec![2, 9],
         });
 
@@ -874,6 +882,7 @@ mod tests {
                 tags: vec!["Landscape".into(), "landscape".into()],
                 tag_mode: TagMatchMode::Or,
                 dedupe: DedupeMode::Artists,
+                single_artist_only: false,
                 excluded_row_ids: vec![2, 9],
             }
         );

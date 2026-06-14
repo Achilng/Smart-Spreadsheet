@@ -31,6 +31,7 @@ pub struct RowQuery {
     pub tags: Vec<String>,
     pub tag_mode: TagMatchMode,
     pub dedupe: DedupeMode,
+    pub single_artist_only: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -87,6 +88,7 @@ impl Database {
             FILTERED_ROWS_TABLE,
             query.tag_mode,
             query.dedupe,
+            query.single_artist_only,
         )?;
         create_page_rows_table(&transaction)?;
         create_page_rows(&transaction, query.limit, offset)?;
@@ -205,8 +207,19 @@ pub(super) fn populate_filtered_rows(
     target_table: &str,
     mode: TagMatchMode,
     dedupe: DedupeMode,
+    single_artist_only: bool,
 ) -> Result<(), rusqlite::Error> {
-    let predicate = filter_predicate(mode);
+    let tag_predicate = filter_predicate(mode);
+    let predicate = if single_artist_only {
+        format!(
+            "({tag_predicate})
+             AND rows.artists IS NOT NULL
+             AND TRIM(rows.artists) != ''
+             AND INSTR(rows.artists, CHAR(10)) = 0"
+        )
+    } else {
+        tag_predicate.to_owned()
+    };
     match dedupe {
         DedupeMode::None => transaction.execute(
             &format!(
@@ -370,6 +383,7 @@ mod tests {
                 tags: Vec::new(),
                 tag_mode: TagMatchMode::And,
                 dedupe: DedupeMode::None,
+                single_artist_only: false,
             })
             .unwrap();
 
@@ -443,6 +457,7 @@ mod tests {
                 tags: Vec::new(),
                 tag_mode: TagMatchMode::And,
                 dedupe: DedupeMode::PositivePrompt,
+                single_artist_only: false,
             })
             .unwrap();
         assert_eq!(prompts.total_count, 4);
@@ -458,6 +473,7 @@ mod tests {
                 tags: Vec::new(),
                 tag_mode: TagMatchMode::And,
                 dedupe: DedupeMode::Artists,
+                single_artist_only: false,
             })
             .unwrap();
         assert_eq!(artists.total_count, 3);
@@ -485,6 +501,7 @@ mod tests {
                 tags: vec!["Red".into()],
                 tag_mode: TagMatchMode::And,
                 dedupe: DedupeMode::PositivePrompt,
+                single_artist_only: false,
             })
             .unwrap();
 
@@ -537,6 +554,7 @@ mod tests {
                     tags: Vec::new(),
                     tag_mode: TagMatchMode::And,
                     dedupe: DedupeMode::None,
+                    single_artist_only: false,
                 })
                 .unwrap_err();
             assert!(matches!(error, DatabaseError::InvalidPageSize { .. }));
@@ -554,6 +572,7 @@ mod tests {
                 tags: Vec::new(),
                 tag_mode: TagMatchMode::Or,
                 dedupe: DedupeMode::None,
+                single_artist_only: false,
             })
             .unwrap();
 
@@ -572,6 +591,7 @@ mod tests {
                 tags: tags.iter().map(|tag| (*tag).to_owned()).collect(),
                 tag_mode: mode,
                 dedupe: DedupeMode::None,
+                single_artist_only: false,
             })
             .unwrap()
     }

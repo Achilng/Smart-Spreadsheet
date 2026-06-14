@@ -70,6 +70,7 @@ export interface RowQuery {
   tags: string[];
   tagMode: TagMatchMode;
   dedupe: DedupeMode;
+  singleArtistOnly: boolean;
 }
 
 export interface RowRecord {
@@ -112,6 +113,7 @@ export type RowSelection =
       tags: string[];
       tagMode: TagMatchMode;
       dedupe: DedupeMode;
+      singleArtistOnly: boolean;
       excludedRowIds: number[];
     };
 

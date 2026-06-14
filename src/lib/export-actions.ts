@@ -26,6 +26,7 @@ export function exportScope(): RowSelection {
     tags: [...rowStore.tags],
     tagMode: rowStore.tagMode,
     dedupe: rowStore.dedupe,
+    singleArtistOnly: rowStore.singleArtistOnly,
     excludedRowIds: [],
   };
 }

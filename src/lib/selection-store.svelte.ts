@@ -19,6 +19,7 @@ export const selection = $state({
   filteredTags: [] as string[],
   filteredMode: "and" as TagMatchMode,
   filteredDedupe: "none" as DedupeMode,
+  filteredSingleArtistOnly: false,
   filteredTotal: 0,
   version: 0,
 });
@@ -74,6 +75,7 @@ export function clearSelection(): void {
   selection.kind = "explicit";
   selection.filteredTags = [];
   selection.filteredDedupe = "none";
+  selection.filteredSingleArtistOnly = false;
   selection.filteredTotal = 0;
   selectionIds.clear();
   anchorIndex = null;
@@ -87,6 +89,7 @@ export async function selectAllFiltered(): Promise<number> {
     tags: [...rowStore.tags],
     tagMode: rowStore.tagMode,
     dedupe: rowStore.dedupe,
+    singleArtistOnly: rowStore.singleArtistOnly,
     excludedRowIds: [],
   };
   const totalCount = await countSelectedRows(dto);
@@ -94,6 +97,7 @@ export async function selectAllFiltered(): Promise<number> {
   selection.filteredTags = [...rowStore.tags];
   selection.filteredMode = rowStore.tagMode;
   selection.filteredDedupe = rowStore.dedupe;
+  selection.filteredSingleArtistOnly = rowStore.singleArtistOnly;
   selection.filteredTotal = totalCount;
   selectionIds.clear();
   anchorIndex = null;
@@ -114,6 +118,7 @@ export async function materializeSelection(): Promise<number> {
   selection.kind = "explicit";
   selection.filteredTags = [];
   selection.filteredDedupe = "none";
+  selection.filteredSingleArtistOnly = false;
   selection.filteredTotal = 0;
   selectionIds.clear();
   for (const rowId of rowIds) {
@@ -136,6 +141,7 @@ export function selectionDto(): RowSelection {
     tags: [...selection.filteredTags],
     tagMode: selection.filteredMode,
     dedupe: selection.filteredDedupe,
+    singleArtistOnly: selection.filteredSingleArtistOnly,
     excludedRowIds: [...selectionIds].sort((left, right) => left - right),
   };
 }

@@ -634,6 +634,7 @@ mod tests {
                 tags: Vec::new(),
                 tag_mode: crate::db::TagMatchMode::And,
                 dedupe: crate::db::DedupeMode::None,
+                single_artist_only: false,
             })
             .unwrap();
         assert_eq!(page.total_count, 2);
