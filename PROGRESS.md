@@ -39,6 +39,13 @@ v0.7.0 开发中：分组系统 + 提示词编辑。
 - 添加 `strsim = "0.11"` 依赖。
 - 全量验证：Rust 152 项测试通过（含 10 项相似度新测试）、Clippy 无警告、`svelte-check` 0 错误、Vite 生产构建通过。
 
+### M25 — 提示词编辑前端（2026-06-15）
+
+- `DetailPanel.svelte`：正向提示词字段新增「编辑」按钮，点击切换为 `<textarea>` + 保存/取消按钮，保存调用 `updatePositivePrompt` 后自动刷新画廊。
+- 新增 `PromptEditDialog.svelte`：模态对话框含「查找替换」和「添加画师前缀」两个 tab 页，操作完成后刷新画廊并显示影响行数。
+- `SelectionBar.svelte`：新增「编辑提示词」按钮，打开 PromptEditDialog。
+- `svelte-check` 0 错误、Vite 生产构建通过。
+
 ### v0.6.0 - 代码质量重构（2026-06-14）
 
 - `runtime.rs`：提取 `with_database` 泛型辅助方法，消除 13 个命令处理器中重复的 lock→validate→get-directory 样板代码。

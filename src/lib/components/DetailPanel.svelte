@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { createTag, getRowPreview, setTagsForRow } from "../../api";
+  import { createTag, getRowPreview, setTagsForRow, updatePositivePrompt } from "../../api";
   import { binaryBuffer } from "../../image-loader";
   import { app, errorText } from "../app-state.svelte";
   import { requestDelete } from "../delete-actions.svelte";
-  import { patchRowTags, rowStore } from "../row-store.svelte";
+  import { patchRowTags, resetRows, rowStore } from "../row-store.svelte";
   import { loadTags, tagStore } from "../tag-store.svelte";
   import { thumbnails } from "../thumbnails";
 
@@ -22,6 +22,10 @@
   let tagInputFocused = $state(false);
   let copiedField = $state<string | null>(null);
   let copyTimer = 0;
+  let editingPrompt = $state(false);
+  let editPromptValue = $state("");
+  let promptSaving = $state(false);
+  let promptError = $state<string | null>(null);
 
   // 切换行时重置并加载图片：先用缓存缩略图占位，大图就绪后替换
   $effect(() => {
@@ -31,6 +35,8 @@
     lightboxOpen = false;
     tagQuery = "";
     saveError = null;
+    editingPrompt = false;
+    promptError = null;
     const current = row;
     if (!current || !hasImage) {
       return;
@@ -71,19 +77,6 @@
   });
 
   const displayUrl = $derived(previewUrl ?? thumbUrl);
-
-  const fields = $derived(
-    row
-      ? [
-          { label: "时间", value: row.time },
-          { label: "正向提示词", value: row.positivePrompt },
-          { label: "负向提示词", value: row.negativePrompt },
-          { label: "画师串", value: row.artists },
-          { label: "图片文件夹", value: row.imageFolder },
-          { label: "图片路径", value: row.imagePath },
-        ]
-      : [],
-  );
 
   const suggestions = $derived.by(() => {
     if (!row) {
@@ -153,6 +146,34 @@
     } else if (event.key === "Escape") {
       tagQuery = "";
       (event.target as HTMLInputElement).blur();
+    }
+  }
+
+  function startEditPrompt(): void {
+    if (!row) return;
+    editPromptValue = row.positivePrompt ?? "";
+    editingPrompt = true;
+    promptError = null;
+  }
+
+  function cancelEditPrompt(): void {
+    editingPrompt = false;
+    promptError = null;
+  }
+
+  async function savePrompt(): Promise<void> {
+    const current = row;
+    if (!current || promptSaving) return;
+    promptSaving = true;
+    promptError = null;
+    try {
+      await updatePositivePrompt(current.id, editPromptValue);
+      editingPrompt = false;
+      resetRows();
+    } catch (error) {
+      promptError = errorText(error);
+    } finally {
+      promptSaving = false;
     }
   }
 
@@ -271,7 +292,56 @@
         {/if}
       </section>
 
-      {#each fields as field (field.label)}
+      <section class="field">
+        <div class="field-head">
+          <h4>时间</h4>
+          {#if row.time}
+            <button type="button" class="copy-btn" onclick={() => void copyField("时间", row.time ?? "")}>
+              {copiedField === "时间" ? "已复制" : "复制"}
+            </button>
+          {/if}
+        </div>
+        <pre class:is-empty={!row.time}>{row.time ?? "—"}</pre>
+      </section>
+
+      <section class="field">
+        <div class="field-head">
+          <h4>正向提示词</h4>
+          <div class="field-head-actions">
+            {#if !editingPrompt}
+              <button type="button" class="copy-btn" onclick={startEditPrompt}>编辑</button>
+            {/if}
+            {#if row.positivePrompt && !editingPrompt}
+              <button type="button" class="copy-btn" onclick={() => void copyField("正向提示词", row.positivePrompt ?? "")}>
+                {copiedField === "正向提示词" ? "已复制" : "复制"}
+              </button>
+            {/if}
+          </div>
+        </div>
+        {#if editingPrompt}
+          <textarea
+            class="prompt-textarea"
+            bind:value={editPromptValue}
+            disabled={promptSaving}
+            onkeydown={event => {
+              if (event.key === "Escape") cancelEditPrompt();
+            }}
+          ></textarea>
+          <div class="prompt-edit-actions">
+            <button type="button" class="btn btn-sm" disabled={promptSaving} onclick={cancelEditPrompt}>取消</button>
+            <button type="button" class="btn btn-sm btn-primary" disabled={promptSaving} onclick={() => void savePrompt()}>
+              {promptSaving ? "保存中…" : "保存"}
+            </button>
+          </div>
+          {#if promptError}
+            <p class="save-error">{promptError}</p>
+          {/if}
+        {:else}
+          <pre class:is-empty={!row.positivePrompt}>{row.positivePrompt ?? "—"}</pre>
+        {/if}
+      </section>
+
+      {#each [{ label: "负向提示词", value: row.negativePrompt }, { label: "画师串", value: row.artists }, { label: "图片文件夹", value: row.imageFolder }, { label: "图片路径", value: row.imagePath }] as field (field.label)}
         <section class="field">
           <div class="field-head">
             <h4>{field.label}</h4>
@@ -483,6 +553,52 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+  }
+
+  .field-head-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .prompt-textarea {
+    width: 100%;
+    min-height: 120px;
+    padding: 8px 10px;
+    font-family: inherit;
+    font-size: 12.5px;
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-s);
+    background: var(--surface);
+    resize: vertical;
+  }
+
+  .prompt-textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-soft);
+  }
+
+  .prompt-edit-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+    margin-top: 6px;
+  }
+
+  .btn-sm {
+    padding: 3px 10px;
+    font-size: 12px;
+  }
+
+  .btn-primary {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+  }
+
+  .btn-primary:hover:not(:disabled) {
+    filter: brightness(1.1);
   }
 
   .copy-btn {

@@ -10,6 +10,9 @@
     selectionIds,
   } from "../selection-store.svelte";
   import { rowStore } from "../row-store.svelte";
+  import PromptEditDialog from "./PromptEditDialog.svelte";
+
+  let promptEditOpen = $state(false);
 
   const count = $derived(getSelectedCount());
   let selectingAll = $state(false);
@@ -60,6 +63,13 @@
       {/if}
       <button
         type="button"
+        class="btn"
+        onclick={() => (promptEditOpen = true)}
+      >
+        编辑提示词
+      </button>
+      <button
+        type="button"
         class="btn btn-danger"
         onclick={() => requestDelete(selectionDto(), count)}
       >
@@ -70,6 +80,14 @@
       </button>
     </div>
   </div>
+{/if}
+
+{#if promptEditOpen && count > 0}
+  <PromptEditDialog
+    selection={selectionDto()}
+    {count}
+    onclose={() => (promptEditOpen = false)}
+  />
 {/if}
 
 <style>
