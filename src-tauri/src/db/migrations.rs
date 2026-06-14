@@ -1,4 +1,4 @@
-pub const CURRENT_SCHEMA_VERSION: u32 = 4;
+pub const CURRENT_SCHEMA_VERSION: u32 = 5;
 
 pub(super) const MIGRATION_1: &str = r#"
 CREATE TABLE workbook (
@@ -138,4 +138,16 @@ pub(super) const MIGRATION_4: &str = r#"
 ALTER TABLE rows ADD COLUMN perceptual_hash TEXT;
 CREATE INDEX idx_rows_perceptual_hash ON rows(perceptual_hash)
 WHERE perceptual_hash IS NOT NULL;
+"#;
+
+// v5：持久化分组系统。每行可属于至多一个用户自定义分组，删除分组时成员变为未分组。
+pub(super) const MIGRATION_5: &str = r#"
+CREATE TABLE groups (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+) STRICT;
+
+ALTER TABLE rows ADD COLUMN group_id INTEGER REFERENCES groups(id) ON DELETE SET NULL;
+CREATE INDEX idx_rows_group_id ON rows(group_id) WHERE group_id IS NOT NULL;
 "#;

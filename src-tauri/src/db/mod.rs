@@ -1,16 +1,20 @@
 mod batches;
 mod delete;
 mod export;
+mod groups;
 mod hashes;
 pub mod identity;
 mod images;
 mod migrations;
+mod prompt_edit;
 mod query;
 mod settings;
 mod tags;
 
 pub use batches::{AppendOutcome, BatchSummary, LibrarySummary, NewRow, SourceType};
 pub use delete::DeleteOutcome;
+pub use groups::GroupSummary;
+pub use prompt_edit::PromptEditResult;
 pub use query::{DedupeMode, MAX_PAGE_SIZE, RowPage, RowQuery, RowRecord, TagMatchMode, TagSummary};
 pub use tags::{RowSelection, TagMutationError, TagMutationResult, TagSelectionSummary};
 
@@ -24,7 +28,7 @@ pub use export::ExportRow;
 pub use hashes::ContentHashCandidate;
 pub use images::RowImageLocator;
 pub use migrations::CURRENT_SCHEMA_VERSION;
-use migrations::{MIGRATION_1, MIGRATION_2, MIGRATION_3, MIGRATION_4};
+use migrations::{MIGRATION_1, MIGRATION_2, MIGRATION_3, MIGRATION_4, MIGRATION_5};
 
 #[derive(Debug, Error)]
 pub enum DatabaseError {
@@ -50,6 +54,10 @@ pub enum DatabaseError {
     EmptyIdentity,
     #[error("导入收尾失败: {0}")]
     BatchFinalizeFailed(String),
+    #[error("分组名称不能为空")]
+    EmptyGroupName,
+    #[error("不存在的分组 ID: {0}")]
+    GroupNotFound(i64),
 }
 
 pub struct Database {
@@ -145,6 +153,10 @@ fn apply_pending_migrations(
         transaction.execute_batch(MIGRATION_4)?;
         version = 4;
     }
+    if version == 4 {
+        transaction.execute_batch(MIGRATION_5)?;
+        version = 5;
+    }
     debug_assert_eq!(version, CURRENT_SCHEMA_VERSION);
     transaction.pragma_update(None, "user_version", version)?;
     transaction.commit()?;
@@ -206,7 +218,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn initializes_v4_schema_and_foreign_keys() {
+    fn initializes_v5_schema_and_foreign_keys() {
         let database = Database::open_in_memory().unwrap();
 
         assert_eq!(database.schema_version().unwrap(), CURRENT_SCHEMA_VERSION);
@@ -228,6 +240,7 @@ mod tests {
         assert_eq!(
             tables,
             vec![
+                "groups",
                 "import_batches",
                 "pending_embedded_extractions",
                 "row_tags",
@@ -362,7 +375,7 @@ mod tests {
 
         let database = Database::open(&temporary.path).unwrap();
 
-        assert_eq!(database.schema_version().unwrap(), 4);
+        assert_eq!(database.schema_version().unwrap(), 5);
         // 批次：旧工作簿转为唯一的 xlsx 批次。
         let batch: (String, String, i64) = database
             .connection
@@ -436,16 +449,16 @@ mod tests {
 
         let database = Database::open(&temporary.path).unwrap();
 
-        assert_eq!(database.schema_version().unwrap(), 4);
-        let row: (i64, String, Option<String>) = database
+        assert_eq!(database.schema_version().unwrap(), 5);
+        let row: (i64, String, Option<String>, Option<i64>) = database
             .connection
             .query_row(
-                "SELECT id, positive_prompt, content_hash FROM rows",
+                "SELECT id, positive_prompt, content_hash, group_id FROM rows",
                 [],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
             )
             .unwrap();
-        assert_eq!(row, (7, "keep prompt".into(), None));
+        assert_eq!(row, (7, "keep prompt".into(), None, None));
 
         let tag_name: String = database
             .connection
@@ -465,7 +478,7 @@ mod tests {
 
         let database = Database::open(&temporary.path).unwrap();
 
-        assert_eq!(database.schema_version().unwrap(), 4);
+        assert_eq!(database.schema_version().unwrap(), 5);
         let row: (i64, Option<String>, Option<String>) = database
             .connection
             .query_row(
@@ -475,6 +488,46 @@ mod tests {
             )
             .unwrap();
         assert_eq!(row, (1, Some("abc123".into()), None));
+    }
+
+    #[test]
+    fn upgrades_v4_database_adding_groups_table_and_group_id_column() {
+        let temporary = TemporaryDatabase::new();
+        create_v4_database(&temporary.path);
+
+        let database = Database::open(&temporary.path).unwrap();
+
+        assert_eq!(database.schema_version().unwrap(), 5);
+
+        let tables: Vec<String> = database
+            .connection
+            .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert!(tables.contains(&"groups".to_owned()));
+
+        let row: (i64, String, Option<i64>) = database
+            .connection
+            .query_row(
+                "SELECT id, positive_prompt, group_id FROM rows",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(row, (1, "test prompt".into(), None));
+
+        let tag_name: String = database
+            .connection
+            .query_row(
+                "SELECT tags.name FROM row_tags JOIN tags ON tags.id = row_tags.tag_id WHERE row_tags.row_id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(tag_name, "v4 tag");
     }
 
     /// 手工构造 v1 库：3 行数据。第 2、3 行 image_path 重复（必须退化为
@@ -547,6 +600,29 @@ mod tests {
                 INSERT INTO rows
                     (id, batch_id, source_ordinal, identity, positive_prompt, content_hash)
                 VALUES (1, 1, 1, 'file:d:\test\one.png', 'test prompt', 'abc123');
+                "#,
+            )
+            .unwrap();
+    }
+
+    fn create_v4_database(path: &Path) {
+        let connection = Connection::open(path).unwrap();
+        connection.execute_batch(MIGRATION_1).unwrap();
+        connection.execute_batch(MIGRATION_2).unwrap();
+        connection.execute_batch(MIGRATION_3).unwrap();
+        connection.execute_batch(MIGRATION_4).unwrap();
+        connection.pragma_update(None, "user_version", 4).unwrap();
+        connection
+            .execute_batch(
+                r#"
+                INSERT INTO import_batches
+                    (id, source_type, source_path, imported_at, added_count, skipped_count)
+                VALUES (1, 'folder', 'D:\test', '2026-06-15T00:00:00Z', 1, 0);
+                INSERT INTO rows
+                    (id, batch_id, source_ordinal, identity, positive_prompt)
+                VALUES (1, 1, 1, 'file:d:\test\one.png', 'test prompt');
+                INSERT INTO tags (id, name) VALUES (1, 'v4 tag');
+                INSERT INTO row_tags (row_id, tag_id) VALUES (1, 1);
                 "#,
             )
             .unwrap();

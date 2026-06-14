@@ -363,7 +363,7 @@ pub(super) fn create_selection_rows(
                  ) STRICT, WITHOUT ROWID;"
             ))?;
             insert_row_ids(transaction, EXCLUDED_ROWS_TABLE, &excluded_row_ids)?;
-            populate_filtered_rows(transaction, TARGET_ROWS_TABLE, *tag_mode, *dedupe, *single_artist_only)?;
+            populate_filtered_rows(transaction, TARGET_ROWS_TABLE, *tag_mode, *dedupe, *single_artist_only, false, false)?;
             transaction.execute(
                 &format!(
                     "DELETE FROM {TARGET_ROWS_TABLE}

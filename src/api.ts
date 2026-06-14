@@ -71,6 +71,8 @@ export interface RowQuery {
   tagMode: TagMatchMode;
   dedupe: DedupeMode;
   singleArtistOnly: boolean;
+  groupView: boolean;
+  hideGrouped: boolean;
 }
 
 export interface RowRecord {
@@ -86,6 +88,8 @@ export interface RowRecord {
   storedImagePath: string | null;
   metadataFailed: boolean;
   tags: string[];
+  groupId: number | null;
+  groupName: string | null;
 }
 
 export interface RowPage {
@@ -338,4 +342,52 @@ export function searchSimilarImages(
   threshold: number,
 ): Promise<SimilarImageMatch[]> {
   return invoke<SimilarImageMatch[]>("search_similar_images", { path, threshold });
+}
+
+// ── Groups ──────────────────────────────────────────────────────
+
+export interface GroupSummary {
+  id: number;
+  name: string;
+  memberCount: number;
+  createdAt: string;
+}
+
+export function createGroup(name: string): Promise<GroupSummary> {
+  return invoke<GroupSummary>("create_group", { name });
+}
+
+export function renameGroup(groupId: number, newName: string): Promise<GroupSummary> {
+  return invoke<GroupSummary>("rename_group", { groupId, newName });
+}
+
+export function deleteGroup(groupId: number): Promise<boolean> {
+  return invoke<boolean>("delete_group", { groupId });
+}
+
+export function deleteEmptyGroups(): Promise<number> {
+  return invoke<number>("delete_empty_groups");
+}
+
+export function listGroups(): Promise<GroupSummary[]> {
+  return invoke<GroupSummary[]>("list_groups");
+}
+
+export function assignRowsToGroup(
+  selection: RowSelection,
+  groupId: number,
+): Promise<number> {
+  return invoke<number>("assign_rows_to_group", { selection, groupId });
+}
+
+export function ungroupRows(selection: RowSelection): Promise<number> {
+  return invoke<number>("ungroup_rows", { selection });
+}
+
+export function getGroupMembers(
+  groupId: number,
+  offset: number,
+  limit: number,
+): Promise<RowPage> {
+  return invoke<RowPage>("get_group_members", { groupId, offset, limit });
 }

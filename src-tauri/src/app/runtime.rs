@@ -7,8 +7,8 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::db::{
-    BatchSummary, LibrarySummary, RowPage, RowQuery, RowSelection, TagMutationError,
-    TagMutationResult, TagSelectionSummary, TagSummary,
+    BatchSummary, GroupSummary, LibrarySummary, RowPage, RowQuery, RowSelection,
+    TagMutationError, TagMutationResult, TagSelectionSummary, TagSummary,
 };
 use crate::images::{ImageVariant, RowImageError};
 use crate::storage::{
@@ -273,6 +273,54 @@ impl AppRuntime {
 
     pub(crate) fn list_batches(&self) -> Result<Vec<BatchSummary>, AppRuntimeError> {
         self.with_database(|db| db.list_batches())
+    }
+
+    pub(crate) fn create_group(&self, name: &str) -> Result<GroupSummary, AppRuntimeError> {
+        self.with_database(|db| db.create_group(name))
+    }
+
+    pub(crate) fn rename_group(
+        &self,
+        group_id: i64,
+        new_name: &str,
+    ) -> Result<GroupSummary, AppRuntimeError> {
+        self.with_database(|db| db.rename_group(group_id, new_name))
+    }
+
+    pub(crate) fn delete_group(&self, group_id: i64) -> Result<bool, AppRuntimeError> {
+        self.with_database(|db| db.delete_group(group_id))
+    }
+
+    pub(crate) fn delete_empty_groups(&self) -> Result<u64, AppRuntimeError> {
+        self.with_database(|db| db.delete_empty_groups())
+    }
+
+    pub(crate) fn list_groups(&self) -> Result<Vec<GroupSummary>, AppRuntimeError> {
+        self.with_database(|db| db.list_groups())
+    }
+
+    pub(crate) fn assign_rows_to_group(
+        &self,
+        selection: &RowSelection,
+        group_id: i64,
+    ) -> Result<u64, AppRuntimeError> {
+        self.with_database(|db| db.assign_rows_to_group(selection, group_id))
+    }
+
+    pub(crate) fn ungroup_rows(
+        &self,
+        selection: &RowSelection,
+    ) -> Result<u64, AppRuntimeError> {
+        self.with_database(|db| db.ungroup_rows(selection))
+    }
+
+    pub(crate) fn get_group_members(
+        &self,
+        group_id: i64,
+        offset: u64,
+        limit: u32,
+    ) -> Result<RowPage, AppRuntimeError> {
+        self.with_database(|db| db.get_group_members(group_id, offset, limit))
     }
 
     pub(crate) fn row_thumbnail(&self, row_id: i64) -> Result<Vec<u8>, AppRuntimeError> {

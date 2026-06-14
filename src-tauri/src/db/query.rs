@@ -37,6 +37,10 @@ pub struct RowQuery {
     pub dedupe: DedupeMode,
     #[serde(default)]
     pub single_artist_only: bool,
+    #[serde(default)]
+    pub group_view: bool,
+    #[serde(default)]
+    pub hide_grouped: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -53,6 +57,8 @@ pub struct RowRecord {
     pub image_path: Option<String>,
     pub stored_image_path: Option<String>,
     pub metadata_failed: bool,
+    pub group_id: Option<i64>,
+    pub group_name: Option<String>,
     pub tags: Vec<String>,
 }
 
@@ -96,6 +102,8 @@ impl Database {
             query.tag_mode,
             query.dedupe,
             query.single_artist_only,
+            query.group_view,
+            query.hide_grouped,
         )?;
         create_page_rows_table(&transaction)?;
         create_page_rows(&transaction, query.limit, offset)?;
@@ -142,6 +150,49 @@ impl Database {
         transaction.execute_batch(&format!("DROP TABLE {PAGE_ROWS_TABLE};"))?;
         transaction.commit()?;
         Ok(rows)
+    }
+
+    pub fn get_group_members(
+        &mut self,
+        group_id: i64,
+        offset: u64,
+        limit: u32,
+    ) -> Result<RowPage, DatabaseError> {
+        if limit == 0 || limit > MAX_PAGE_SIZE {
+            return Err(DatabaseError::InvalidPageSize {
+                requested: limit,
+                maximum: MAX_PAGE_SIZE,
+            });
+        }
+        let offset_i64 = i64::try_from(offset).map_err(|_| DatabaseError::OffsetOverflow)?;
+        let transaction = self.connection.transaction()?;
+        create_filtered_rows_table(&transaction)?;
+        transaction.execute(
+            &format!(
+                "INSERT INTO {FILTERED_ROWS_TABLE}(id)
+                 SELECT id FROM rows WHERE group_id = ?1"
+            ),
+            [group_id],
+        )?;
+        create_page_rows_table(&transaction)?;
+        create_page_rows(&transaction, limit, offset_i64)?;
+
+        let total_count = query_total_count(&transaction)?;
+        let mut rows = query_page_metadata(&transaction)?;
+        attach_page_tags(&transaction, &mut rows)?;
+
+        transaction.execute_batch(&format!(
+            "DROP TABLE {PAGE_ROWS_TABLE};
+             DROP TABLE {FILTERED_ROWS_TABLE};"
+        ))?;
+        transaction.commit()?;
+
+        Ok(RowPage {
+            rows,
+            total_count,
+            offset,
+            limit,
+        })
     }
 
     pub fn list_tags(&self) -> Result<Vec<TagSummary>, DatabaseError> {
@@ -215,52 +266,72 @@ pub(super) fn populate_filtered_rows(
     mode: TagMatchMode,
     dedupe: DedupeMode,
     single_artist_only: bool,
+    group_view: bool,
+    hide_grouped: bool,
 ) -> Result<(), rusqlite::Error> {
     let tag_predicate = filter_predicate(mode);
-    let predicate = if single_artist_only {
-        format!(
-            "({tag_predicate})
+    let mut predicate = tag_predicate.to_owned();
+    if single_artist_only {
+        predicate = format!(
+            "({predicate})
              AND rows.artists IS NOT NULL
              AND TRIM(rows.artists) != ''
              AND INSTR(rows.artists, CHAR(10)) = 0"
-        )
-    } else {
-        tag_predicate.to_owned()
-    };
-    match dedupe {
-        DedupeMode::None => transaction.execute(
+        );
+    }
+    if !group_view && hide_grouped {
+        predicate = format!("({predicate}) AND rows.group_id IS NULL");
+    }
+
+    if group_view {
+        transaction.execute(
             &format!(
                 "INSERT INTO {target_table}(id)
-                 SELECT rows.id FROM rows WHERE {predicate}"
+                 SELECT MIN(rows.id) FROM rows
+                 WHERE ({predicate}) AND rows.group_id IS NOT NULL
+                 GROUP BY rows.group_id
+                 UNION ALL
+                 SELECT rows.id FROM rows
+                 WHERE ({predicate}) AND rows.group_id IS NULL"
             ),
             [],
-        )?,
-        DedupeMode::PositivePrompt | DedupeMode::Artists => {
-            let column = match dedupe {
-                DedupeMode::PositivePrompt => "positive_prompt",
-                DedupeMode::Artists => "artists",
-                DedupeMode::None => unreachable!(),
-            };
-            transaction.execute(
+        )?;
+    } else {
+        match dedupe {
+            DedupeMode::None => transaction.execute(
                 &format!(
                     "INSERT INTO {target_table}(id)
-                     WITH filtered_rows AS (
-                         SELECT rows.id,
-                                NULLIF(TRIM(COALESCE(rows.{column}, '')), '') AS dedupe_key
-                         FROM rows
-                         WHERE {predicate}
-                     )
-                     SELECT id FROM filtered_rows WHERE dedupe_key IS NULL
-                     UNION ALL
-                     SELECT MIN(id)
-                     FROM filtered_rows
-                     WHERE dedupe_key IS NOT NULL
-                     GROUP BY dedupe_key"
+                     SELECT rows.id FROM rows WHERE {predicate}"
                 ),
                 [],
-            )?
-        }
-    };
+            )?,
+            DedupeMode::PositivePrompt | DedupeMode::Artists => {
+                let column = match dedupe {
+                    DedupeMode::PositivePrompt => "positive_prompt",
+                    DedupeMode::Artists => "artists",
+                    DedupeMode::None => unreachable!(),
+                };
+                transaction.execute(
+                    &format!(
+                        "INSERT INTO {target_table}(id)
+                         WITH filtered_rows AS (
+                             SELECT rows.id,
+                                    NULLIF(TRIM(COALESCE(rows.{column}, '')), '') AS dedupe_key
+                             FROM rows
+                             WHERE {predicate}
+                         )
+                         SELECT id FROM filtered_rows WHERE dedupe_key IS NULL
+                         UNION ALL
+                         SELECT MIN(id)
+                         FROM filtered_rows
+                         WHERE dedupe_key IS NOT NULL
+                         GROUP BY dedupe_key"
+                    ),
+                    [],
+                )?
+            }
+        };
+    }
     Ok(())
 }
 
@@ -297,9 +368,10 @@ fn query_page_metadata(transaction: &Transaction<'_>) -> Result<Vec<RowRecord>, 
         "SELECT rows.id, rows.batch_id, rows.source_ordinal, rows.time,
                 rows.positive_prompt, rows.negative_prompt, rows.artists,
                 rows.image_folder, rows.image_path, rows.stored_image_path,
-                rows.metadata_failed
+                rows.metadata_failed, rows.group_id, groups.name
          FROM {PAGE_ROWS_TABLE} AS page
          JOIN rows ON rows.id = page.id
+         LEFT JOIN groups ON groups.id = rows.group_id
          ORDER BY page.ordinal"
     ))?;
     let rows = statement
@@ -316,6 +388,8 @@ fn query_page_metadata(transaction: &Transaction<'_>) -> Result<Vec<RowRecord>, 
                 image_path: row.get(8)?,
                 stored_image_path: row.get(9)?,
                 metadata_failed: row.get(10)?,
+                group_id: row.get(11)?,
+                group_name: row.get(12)?,
                 tags: Vec::new(),
             })
         })?
@@ -391,6 +465,8 @@ mod tests {
                 tag_mode: TagMatchMode::And,
                 dedupe: DedupeMode::None,
                 single_artist_only: false,
+                group_view: false,
+                hide_grouped: false,
             })
             .unwrap();
 
@@ -465,6 +541,8 @@ mod tests {
                 tag_mode: TagMatchMode::And,
                 dedupe: DedupeMode::PositivePrompt,
                 single_artist_only: false,
+                group_view: false,
+                hide_grouped: false,
             })
             .unwrap();
         assert_eq!(prompts.total_count, 4);
@@ -481,6 +559,8 @@ mod tests {
                 tag_mode: TagMatchMode::And,
                 dedupe: DedupeMode::Artists,
                 single_artist_only: false,
+                group_view: false,
+                hide_grouped: false,
             })
             .unwrap();
         assert_eq!(artists.total_count, 3);
@@ -509,6 +589,8 @@ mod tests {
                 tag_mode: TagMatchMode::And,
                 dedupe: DedupeMode::PositivePrompt,
                 single_artist_only: false,
+                group_view: false,
+                hide_grouped: false,
             })
             .unwrap();
 
@@ -562,6 +644,8 @@ mod tests {
                     tag_mode: TagMatchMode::And,
                     dedupe: DedupeMode::None,
                     single_artist_only: false,
+                    group_view: false,
+                    hide_grouped: false,
                 })
                 .unwrap_err();
             assert!(matches!(error, DatabaseError::InvalidPageSize { .. }));
@@ -580,6 +664,8 @@ mod tests {
                 tag_mode: TagMatchMode::Or,
                 dedupe: DedupeMode::None,
                 single_artist_only: false,
+                group_view: false,
+                hide_grouped: false,
             })
             .unwrap();
 
@@ -599,6 +685,8 @@ mod tests {
                 tag_mode: mode,
                 dedupe: DedupeMode::None,
                 single_artist_only: false,
+                group_view: false,
+                hide_grouped: false,
             })
             .unwrap()
     }

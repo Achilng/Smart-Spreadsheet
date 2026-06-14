@@ -12,6 +12,8 @@ export const rowStore = $state({
   tagMode: "and" as TagMatchMode,
   dedupe: "none" as DedupeMode,
   singleArtistOnly: false,
+  groupView: false,
+  hideGrouped: false,
   totalCount: 0,
   initialLoading: true,
   error: null as string | null,
@@ -42,6 +44,8 @@ export function ensurePage(pageIndex: number): void {
         tagMode: rowStore.tagMode,
         dedupe: rowStore.dedupe,
         singleArtistOnly: rowStore.singleArtistOnly,
+        groupView: rowStore.groupView,
+        hideGrouped: rowStore.hideGrouped,
       });
       if (requestGeneration !== generation) {
         return;
@@ -94,6 +98,24 @@ export function setDedupe(dedupe: DedupeMode): void {
 export function setSingleArtistOnly(value: boolean): void {
   if (rowStore.singleArtistOnly !== value) {
     rowStore.singleArtistOnly = value;
+    resetRows();
+  }
+}
+
+export function setGroupView(value: boolean): void {
+  if (rowStore.groupView !== value) {
+    rowStore.groupView = value;
+    if (value) {
+      rowStore.dedupe = "none";
+      rowStore.hideGrouped = false;
+    }
+    resetRows();
+  }
+}
+
+export function setHideGrouped(value: boolean): void {
+  if (rowStore.hideGrouped !== value) {
+    rowStore.hideGrouped = value;
     resetRows();
   }
 }

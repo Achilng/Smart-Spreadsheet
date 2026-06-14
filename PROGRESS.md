@@ -1,10 +1,22 @@
 # 开发进度
 
-最后更新：2026-06-12
+最后更新：2026-06-15
 
 ## 当前阶段
 
-v0.6.0 代码质量重构已完成，GitHub Release v_6 已发布。
+v0.7.0 开发中：分组系统 + 提示词编辑。
+
+### M22 — Schema v5 + 分组 CRUD 后端（2026-06-15）
+
+- Schema v5 迁移：新增 `groups` 表（id, name UNIQUE, created_at）和 `rows.group_id` 可空外键（`ON DELETE SET NULL`），部分索引 `idx_rows_group_id`。
+- 新增 `db/groups.rs`：`create_group`、`rename_group`、`delete_group`、`delete_empty_groups`、`list_groups`、`assign_rows_to_group`、`ungroup_rows`，复用 `create_selection_rows` 临时表模式。
+- 查询层扩展：`RowQuery` 新增 `group_view` 和 `hide_grouped` 布尔字段（serde 默认 false）；`RowRecord` 新增 `group_id` 和 `group_name`（LEFT JOIN groups）。
+- `populate_filtered_rows` 新增两个分支：`hide_grouped=true` 时追加 `AND rows.group_id IS NULL`；`group_view=true` 时按 group_id 聚合已分组行 + UNION ALL 未分组行。
+- 新增 `get_group_members(group_id, offset, limit)` 分页查询命令。
+- 8 个 Tauri 命令注册：create/rename/delete/delete_empty/list groups、assign/ungroup rows、get_group_members。
+- 前端 TypeScript 类型同步：`RowRecord` 增加 `groupId`/`groupName`，`RowQuery` 增加 `groupView`/`hideGrouped`，`api.ts` 新增 `GroupSummary` 接口和 8 个分组 API 函数。
+- `row-store.svelte.ts` 新增 `groupView`/`hideGrouped` 状态字段和 `setGroupView`/`setHideGrouped` setter（含互斥逻辑）。
+- 全量验证：Rust 134 项测试通过（含 12 项分组新测试）、Clippy 无警告、`svelte-check` 0 错误、Vite 生产构建通过。
 
 ### v0.6.0 - 代码质量重构（2026-06-14）
 

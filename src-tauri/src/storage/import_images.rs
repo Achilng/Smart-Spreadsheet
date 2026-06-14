@@ -638,6 +638,8 @@ mod tests {
                 tag_mode: crate::db::TagMatchMode::And,
                 dedupe: crate::db::DedupeMode::None,
                 single_artist_only: false,
+                group_view: false,
+                hide_grouped: false,
             })
             .unwrap();
         assert_eq!(page.total_count, 2);
