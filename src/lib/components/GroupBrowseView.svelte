@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { untrack } from "svelte";
   import { getGroupMembers, queryRows, type RowRecord } from "../../api";
   import { errorText, formatCount } from "../app-state.svelte";
   import { groupStore, loadGroups } from "../group-store.svelte";
@@ -8,15 +7,16 @@
 
   const MEMBERS_PAGE = 200;
 
-  interface GroupState {
-    expanded: boolean;
-    members: RowRecord[];
+  interface MemberData {
+    rows: RowRecord[];
     totalCount: number;
     loading: boolean;
     error: string | null;
   }
 
-  let groups = $state<Map<number, GroupState>>(new Map());
+  let expandedIds = $state<number[]>([]);
+  let memberCache = $state<{ [key: string]: MemberData }>({});
+
   let ungroupedRows = $state<RowRecord[]>([]);
   let ungroupedTotal = $state(0);
   let ungroupedExpanded = $state(false);
@@ -27,66 +27,67 @@
     void loadGroups();
   });
 
-  $effect(() => {
-    const list = groupStore.list;
-    const current = untrack(() => groups);
-    groups = new Map(
-      list.map(g => [
-        g.id,
-        current.get(g.id) ?? {
-          expanded: false,
-          members: [],
-          totalCount: g.memberCount,
-          loading: false,
-          error: null,
-        },
-      ]),
-    );
-  });
+  function isExpanded(groupId: number): boolean {
+    return expandedIds.includes(groupId);
+  }
+
+  function getMemberData(groupId: number): MemberData | undefined {
+    return memberCache[groupId];
+  }
 
   async function toggleGroup(groupId: number): Promise<void> {
-    const state = groups.get(groupId);
-    if (!state) return;
-    const wasExpanded = state.expanded;
-    state.expanded = !wasExpanded;
-    groups = new Map(groups);
-    if (!wasExpanded && state.members.length === 0) {
-      await loadGroupMembers(groupId);
+    if (isExpanded(groupId)) {
+      expandedIds = expandedIds.filter(id => id !== groupId);
+    } else {
+      expandedIds = [...expandedIds, groupId];
+      if (!memberCache[groupId]) {
+        await loadGroupMembers(groupId);
+      }
     }
   }
 
   async function loadGroupMembers(groupId: number): Promise<void> {
-    const state = groups.get(groupId);
-    if (!state) return;
-    state.loading = true;
-    state.error = null;
-    groups = new Map(groups);
+    memberCache = {
+      ...memberCache,
+      [groupId]: { rows: [], totalCount: 0, loading: true, error: null },
+    };
     try {
       const page = await getGroupMembers(groupId, 0, MEMBERS_PAGE);
-      state.members = page.rows;
-      state.totalCount = page.totalCount;
+      memberCache = {
+        ...memberCache,
+        [groupId]: { rows: page.rows, totalCount: page.totalCount, loading: false, error: null },
+      };
     } catch (e) {
-      state.error = errorText(e);
-    } finally {
-      state.loading = false;
-      groups = new Map(groups);
+      memberCache = {
+        ...memberCache,
+        [groupId]: { rows: [], totalCount: 0, loading: false, error: errorText(e) },
+      };
     }
   }
 
   async function loadMoreMembers(groupId: number): Promise<void> {
-    const state = groups.get(groupId);
-    if (!state || state.loading) return;
-    state.loading = true;
-    groups = new Map(groups);
+    const data = memberCache[groupId];
+    if (!data || data.loading) return;
+    memberCache = {
+      ...memberCache,
+      [groupId]: { ...data, loading: true },
+    };
     try {
-      const page = await getGroupMembers(groupId, state.members.length, MEMBERS_PAGE);
-      state.members = [...state.members, ...page.rows];
-      state.totalCount = page.totalCount;
+      const page = await getGroupMembers(groupId, data.rows.length, MEMBERS_PAGE);
+      memberCache = {
+        ...memberCache,
+        [groupId]: {
+          rows: [...data.rows, ...page.rows],
+          totalCount: page.totalCount,
+          loading: false,
+          error: null,
+        },
+      };
     } catch (e) {
-      state.error = errorText(e);
-    } finally {
-      state.loading = false;
-      groups = new Map(groups);
+      memberCache = {
+        ...memberCache,
+        [groupId]: { ...data, loading: false, error: errorText(e) },
+      };
     }
   }
 
@@ -153,43 +154,42 @@
     <div class="status"><p class="muted">正在加载分组…</p></div>
   {:else if groupStore.error}
     <div class="status"><p class="muted">加载失败：{groupStore.error}</p></div>
-  {:else if groupStore.list.length === 0 && ungroupedTotal === 0 && !ungroupedExpanded}
+  {:else if groupStore.list.length === 0 && !ungroupedExpanded}
     <div class="status"><p class="muted">暂无分组。可通过工具菜单「建议分组」创建。</p></div>
   {:else}
     {#each groupStore.list as group (group.id)}
-      {@const state = groups.get(group.id)}
-      {#if state}
-        <section class="group-section">
-          <button type="button" class="section-header" onclick={() => void toggleGroup(group.id)}>
-            <span class="expand-icon" class:is-expanded={state.expanded}>&#9654;</span>
-            <span class="section-name">{group.name}</span>
-            <span class="section-count">{formatCount(group.memberCount)} 张</span>
-          </button>
-          {#if state.expanded}
-            <div class="member-grid">
-              {#if state.loading && state.members.length === 0}
-                <p class="muted grid-status">加载中…</p>
-              {:else if state.error}
-                <p class="muted grid-status">加载失败：{state.error}</p>
-              {:else}
-                {#each state.members as member (member.id)}
-                  <GroupSectionCard row={member} onactivate={() => setActive(member)} />
-                {/each}
-                {#if state.members.length < state.totalCount}
-                  <button
-                    type="button"
-                    class="load-more-btn"
-                    disabled={state.loading}
-                    onclick={() => void loadMoreMembers(group.id)}
-                  >
-                    {state.loading ? "加载中…" : `加载更多（还有 ${formatCount(state.totalCount - state.members.length)} 张）`}
-                  </button>
-                {/if}
+      {@const expanded = isExpanded(group.id)}
+      {@const data = getMemberData(group.id)}
+      <section class="group-section">
+        <button type="button" class="section-header" onclick={() => void toggleGroup(group.id)}>
+          <span class="expand-icon" class:is-expanded={expanded}>&#9654;</span>
+          <span class="section-name">{group.name}</span>
+          <span class="section-count">{formatCount(group.memberCount)} 张</span>
+        </button>
+        {#if expanded}
+          <div class="member-grid">
+            {#if data?.loading && data.rows.length === 0}
+              <p class="muted grid-status">加载中…</p>
+            {:else if data?.error}
+              <p class="muted grid-status">加载失败：{data.error}</p>
+            {:else if data}
+              {#each data.rows as member (member.id)}
+                <GroupSectionCard row={member} onactivate={() => setActive(member)} />
+              {/each}
+              {#if data.rows.length < data.totalCount}
+                <button
+                  type="button"
+                  class="load-more-btn"
+                  disabled={data.loading}
+                  onclick={() => void loadMoreMembers(group.id)}
+                >
+                  {data.loading ? "加载中…" : `加载更多（还有 ${formatCount(data.totalCount - data.rows.length)} 张）`}
+                </button>
               {/if}
-            </div>
-          {/if}
-        </section>
-      {/if}
+            {/if}
+          </div>
+        {/if}
+      </section>
     {/each}
 
     <section class="group-section ungrouped-section">
