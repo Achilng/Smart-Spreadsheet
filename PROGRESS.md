@@ -4,7 +4,17 @@
 
 ## 当前阶段
 
-v0.7.0 已发布：分组系统 + 提示词编辑。
+v0.8.0 已发布：搜索功能。
+
+### M31 — 搜索功能（2026-06-15）
+
+- 顶栏新增搜索框，300ms 防抖输入即搜，带清除按钮。
+- 后端 `RowQuery` 和 `RowSelection::Filtered` 新增 `search` 字段，`populate_filtered_rows` 对 `image_path`、`positive_prompt`、`negative_prompt`、`artists` 四个字段做大小写不敏感子串匹配（`INSTR(LOWER(...))`），空搜索无额外 SQL 开销。
+- 搜索与 Tag 筛选叠加（AND 关系），影响画廊、表格、分组、重复所有视图及选择/导出范围。
+- 全量验证：Rust 152 项测试通过，Clippy 无警告，`svelte-check` 0 错误，Vite 生产构建通过。
+- 版本提升至 0.8.0，安装器 `Smart-Spreadsheet_0.8.0_x64-setup.exe` 大小 4,197,845 字节，SHA-256 `23E651A805B81CA40C945801018071B1C2C6CCC1A05114583A5713D23B9B9F18`。
+- GitHub Release [`v_10`](https://github.com/Achilng/Smart-Spreadsheet/releases/tag/v_10) 已发布。
+- 涉及文件：`query.rs`、`tags.rs`、`commands.rs`、`runtime.rs` 及 6 个测试文件（后端）；`api.ts`、`row-store.svelte.ts`、`selection-store.svelte.ts`、`export-actions.ts`、`TopBar.svelte`、`GroupBrowseView.svelte`（前端）。
 
 ### M30 — 分组/重复视图右键菜单（2026-06-15）
 
