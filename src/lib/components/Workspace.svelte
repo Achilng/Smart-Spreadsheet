@@ -16,6 +16,7 @@
   import DetailPanel from "./DetailPanel.svelte";
   import DeleteDialog from "./DeleteDialog.svelte";
   import GalleryView from "./GalleryView.svelte";
+  import GroupBrowseView from "./GroupBrowseView.svelte";
   import GroupManageView from "./GroupManageView.svelte";
   import GroupSuggestionView from "./GroupSuggestionView.svelte";
   import JsonDedupeView from "./JsonDedupeView.svelte";
@@ -83,7 +84,9 @@
     </aside>
 
     <main class="main-area">
-      {#if app.viewMode === "gallery"}
+      {#if rowStore.groupView}
+        <GroupBrowseView />
+      {:else if app.viewMode === "gallery"}
         <GalleryView />
       {:else}
         <TableView />

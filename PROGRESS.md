@@ -46,6 +46,14 @@ v0.7.0 开发中：分组系统 + 提示词编辑。
 - `SelectionBar.svelte`：新增「编辑提示词」按钮，打开 PromptEditDialog。
 - `svelte-check` 0 错误、Vite 生产构建通过。
 
+### M27 — 分组浏览视图（2026-06-15）
+
+- `TagSidebar.svelte`：筛选面板新增「分组视图」和「隐藏已分组」两个勾选项。分组视图开启时，去重选项和隐藏已分组均禁用（互斥逻辑由 `setGroupView` 处理）。
+- 新增 `GroupBrowseView.svelte`：分组视图主界面，取代画廊/表格。按 `groupStore.list` 渲染折叠式分组 section，展开时通过 `getGroupMembers` 按需加载成员缩略图网格，支持分页加载更多。底部「未分组」section 通过 `queryRows(hideGrouped=true)` 加载未分组行。
+- 新增 `GroupSectionCard.svelte`：分组 section 内的成员卡片，120px 缩略图 + 画师标签，点击设为当前活动行。
+- `Workspace.svelte`：`rowStore.groupView` 为 true 时渲染 GroupBrowseView，替代 GalleryView/TableView。
+- `svelte-check` 0 错误、Vite 生产构建通过。
+
 ### M26 — 分组管理前端（2026-06-15）
 
 - 新增 `group-store.svelte.ts`：分组列表响应式 store（`groupStore`），包含 `loadGroups`、`createNewGroup`、`renameExistingGroup`、`removeGroup`、`cleanEmptyGroups`、`assignToGroup`、`removeFromGroup` 七个 action 函数。
