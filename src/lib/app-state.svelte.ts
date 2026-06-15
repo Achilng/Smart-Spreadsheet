@@ -32,6 +32,8 @@ export const app = $state({
   notice: null as Notice | null,
   viewMode: "gallery" as ViewMode,
   detailOpen: true,
+  galleryCardSize: 190,
+  tableRowHeight: 64,
   /** 资料库行集合变化（导入/删除）时 +1，数据视图据此整体重载 */
   dataVersion: 0,
   /** 文件夹/压缩包导入进行中的进度，空闲时为 null */

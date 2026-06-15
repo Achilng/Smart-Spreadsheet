@@ -21,6 +21,7 @@
   import { clearSelection } from "../selection-store.svelte";
   import { setGroupView } from "../row-store.svelte";
   import Dropdown, { type DropdownItem } from "./Dropdown.svelte";
+  import SizeSlider from "./SizeSlider.svelte";
   import WindowControls from "./WindowControls.svelte";
 
   const library = $derived(app.snapshot?.library ?? null);
@@ -104,6 +105,8 @@
       </button>
     {/each}
   </div>
+
+  <SizeSlider />
 
   <div class="actions">
     <Dropdown label="工具" items={toolItems} disabled={app.busy} />

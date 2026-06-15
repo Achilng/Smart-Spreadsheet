@@ -1,14 +1,16 @@
 <script lang="ts">
   import type { RowRecord } from "../../api";
+  import { app } from "../app-state.svelte";
   import { PAGE_SIZE, ensurePage, getRow, resetRows, rowStore } from "../row-store.svelte";
   import { thumbnails } from "../thumbnails";
   import GalleryCard from "./GalleryCard.svelte";
 
   const GAP = 12;
   const PADDING = 16;
-  const MIN_CARD_WIDTH = 190;
   const FOOTER_HEIGHT = 34;
   const OVERSCAN_ROWS = 2;
+
+  const minCardWidth = $derived(app.galleryCardSize);
 
   let viewport = $state<HTMLDivElement | null>(null);
   let scrollTop = $state(0);
@@ -16,7 +18,7 @@
   let viewportHeight = $state(0);
 
   const columns = $derived(
-    Math.max(1, Math.floor((viewportWidth - PADDING * 2 + GAP) / (MIN_CARD_WIDTH + GAP))),
+    Math.max(1, Math.floor((viewportWidth - PADDING * 2 + GAP) / (minCardWidth + GAP))),
   );
   const cardWidth = $derived(
     Math.max(1, Math.floor((viewportWidth - PADDING * 2 - GAP * (columns - 1)) / columns)),

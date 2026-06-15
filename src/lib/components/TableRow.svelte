@@ -10,12 +10,18 @@
     index,
     y,
     height,
+    gridCols,
+    thumbColWidth,
   }: {
     row: RowRecord | undefined;
     index: number;
     y: number;
     height: number;
+    gridCols: string;
+    thumbColWidth: number;
   } = $props();
+
+  const thumbHeight = $derived(Math.max(24, height - 16));
 
   const hasImage = $derived(
     Boolean(row && (row.imagePath?.trim() || row.storedImagePath?.trim())),
@@ -56,6 +62,7 @@
   class:is-skeleton={!row}
   style:transform="translateY({y}px)"
   style:height="{height}px"
+  style:grid-template-columns={gridCols}
   role="row"
   tabindex={row ? 0 : -1}
   aria-selected={isChecked}
@@ -78,7 +85,7 @@
         }}
       />
     </div>
-    <div class="cell cell-thumb">
+    <div class="cell cell-thumb" style:height="{thumbHeight}px" style:width="{thumbColWidth - 12}px">
       <Thumbnail rowId={row.id} {hasImage} alt="第 {row.sourceOrdinal} 行缩略图" />
     </div>
     <div class="cell cell-rowno faint">#{row.sourceOrdinal}</div>
@@ -115,7 +122,6 @@
     left: 0;
     right: 0;
     display: grid;
-    grid-template-columns: 36px 76px 64px 150px minmax(0, 2.2fr) minmax(0, 1.2fr) minmax(0, 1.4fr);
     align-items: center;
     background: var(--surface);
     border-bottom: 1px solid var(--border);
@@ -171,8 +177,6 @@
   }
 
   .cell-thumb {
-    height: 48px;
-    width: 64px;
     padding: 0;
     display: flex;
     align-items: center;
@@ -180,6 +184,7 @@
     background: var(--surface-2);
     border-radius: 4px;
     margin: 0 6px;
+    overflow: hidden;
   }
 
   .cell-rowno {
