@@ -6,6 +6,13 @@
 
 v0.7.0 已发布：分组系统 + 提示词编辑。
 
+### 后续修复（2026-06-15）
+
+- 负向提示词编辑：DetailPanel 新增负向提示词的编辑/保存/取消交互，后端新增 `update_negative_prompt` 命令（不触发画师重提取）。
+- 编辑后原位更新：正向/负向提示词保存后使用 `patchRowFields` 原位更新缓存行，不再调用 `resetRows` 导致活动行丢失和画廊跳转。
+- 后端 `update_positive_prompt` 返回值改为 `SinglePromptEditResult`（含 `new_artists`），前端同步更新画师串字段。
+- 涉及文件：`db/prompt_edit.rs`、`db/mod.rs`、`app/runtime.rs`、`app/commands.rs`、`lib.rs`、`api.ts`、`row-store.svelte.ts`、`DetailPanel.svelte`。
+
 ### M22 — Schema v5 + 分组 CRUD 后端（2026-06-15）
 
 - Schema v5 迁移：新增 `groups` 表（id, name UNIQUE, created_at）和 `rows.group_id` 可空外键（`ON DELETE SET NULL`），部分索引 `idx_rows_group_id`。
