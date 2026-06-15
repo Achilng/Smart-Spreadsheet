@@ -73,6 +73,7 @@ export interface RowQuery {
   singleArtistOnly: boolean;
   groupView: boolean;
   hideGrouped: boolean;
+  search: string;
 }
 
 export interface RowRecord {
@@ -118,6 +119,7 @@ export type RowSelection =
       tagMode: TagMatchMode;
       dedupe: DedupeMode;
       singleArtistOnly: boolean;
+      search: string;
       excludedRowIds: number[];
     };
 

@@ -41,6 +41,8 @@ pub struct RowQuery {
     pub group_view: bool,
     #[serde(default)]
     pub hide_grouped: bool,
+    #[serde(default)]
+    pub search: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -112,6 +114,7 @@ impl Database {
             query.single_artist_only,
             query.group_view,
             query.hide_grouped,
+            &query.search,
         )?;
         create_page_rows_table(&transaction)?;
         create_page_rows(&transaction, query.limit, offset)?;
@@ -293,6 +296,7 @@ impl Database {
         Ok(clusters)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn get_dedupe_cluster_members(
         &mut self,
         dedupe: DedupeMode,
@@ -439,6 +443,7 @@ fn create_filtered_rows_table(transaction: &Transaction<'_>) -> Result<(), rusql
     ))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn populate_filtered_rows(
     transaction: &Transaction<'_>,
     target_table: &str,
@@ -447,6 +452,7 @@ pub(super) fn populate_filtered_rows(
     single_artist_only: bool,
     group_view: bool,
     hide_grouped: bool,
+    search: &str,
 ) -> Result<(), rusqlite::Error> {
     let tag_predicate = filter_predicate(mode);
     let mut predicate = tag_predicate.to_owned();
@@ -462,6 +468,24 @@ pub(super) fn populate_filtered_rows(
         predicate = format!("({predicate}) AND rows.group_id IS NULL");
     }
 
+    let search_lower = search.trim().to_lowercase();
+    let has_search = !search_lower.is_empty();
+    if has_search {
+        predicate = format!(
+            "({predicate}) AND (
+                INSTR(LOWER(COALESCE(rows.image_path, '')), ?1) > 0
+                OR INSTR(LOWER(COALESCE(rows.positive_prompt, '')), ?1) > 0
+                OR INSTR(LOWER(COALESCE(rows.negative_prompt, '')), ?1) > 0
+                OR INSTR(LOWER(COALESCE(rows.artists, '')), ?1) > 0
+            )"
+        );
+    }
+    let search_params: &[&dyn rusqlite::types::ToSql] = if has_search {
+        &[&search_lower]
+    } else {
+        &[]
+    };
+
     if group_view {
         transaction.execute(
             &format!(
@@ -473,7 +497,7 @@ pub(super) fn populate_filtered_rows(
                  SELECT rows.id FROM rows
                  WHERE ({predicate}) AND rows.group_id IS NULL"
             ),
-            [],
+            search_params,
         )?;
     } else {
         match dedupe {
@@ -482,7 +506,7 @@ pub(super) fn populate_filtered_rows(
                     "INSERT INTO {target_table}(id)
                      SELECT rows.id FROM rows WHERE {predicate}"
                 ),
-                [],
+                search_params,
             )?,
             DedupeMode::PositivePrompt | DedupeMode::Artists => {
                 let column = match dedupe {
@@ -506,7 +530,7 @@ pub(super) fn populate_filtered_rows(
                          WHERE dedupe_key IS NOT NULL
                          GROUP BY dedupe_key"
                     ),
-                    [],
+                    search_params,
                 )?
             }
         };
@@ -646,6 +670,7 @@ mod tests {
                 single_artist_only: false,
                 group_view: false,
                 hide_grouped: false,
+                search: String::new(),
             })
             .unwrap();
 
@@ -722,6 +747,7 @@ mod tests {
                 single_artist_only: false,
                 group_view: false,
                 hide_grouped: false,
+                search: String::new(),
             })
             .unwrap();
         assert_eq!(prompts.total_count, 4);
@@ -740,6 +766,7 @@ mod tests {
                 single_artist_only: false,
                 group_view: false,
                 hide_grouped: false,
+                search: String::new(),
             })
             .unwrap();
         assert_eq!(artists.total_count, 3);
@@ -770,6 +797,7 @@ mod tests {
                 single_artist_only: false,
                 group_view: false,
                 hide_grouped: false,
+                search: String::new(),
             })
             .unwrap();
 
@@ -825,6 +853,7 @@ mod tests {
                     single_artist_only: false,
                     group_view: false,
                     hide_grouped: false,
+                    search: String::new(),
                 })
                 .unwrap_err();
             assert!(matches!(error, DatabaseError::InvalidPageSize { .. }));
@@ -845,6 +874,7 @@ mod tests {
                 single_artist_only: false,
                 group_view: false,
                 hide_grouped: false,
+                search: String::new(),
             })
             .unwrap();
 
@@ -866,6 +896,7 @@ mod tests {
                 single_artist_only: false,
                 group_view: false,
                 hide_grouped: false,
+                search: String::new(),
             })
             .unwrap()
     }

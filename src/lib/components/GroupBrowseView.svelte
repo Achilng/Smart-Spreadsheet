@@ -112,6 +112,7 @@
         singleArtistOnly: rowStore.singleArtistOnly,
         groupView: false,
         hideGrouped: true,
+        search: rowStore.search,
       });
       ungroupedRows = page.rows;
       ungroupedTotal = page.totalCount;
@@ -135,6 +136,7 @@
         singleArtistOnly: rowStore.singleArtistOnly,
         groupView: false,
         hideGrouped: true,
+        search: rowStore.search,
       });
       ungroupedRows = [...ungroupedRows, ...page.rows];
       ungroupedTotal = page.totalCount;

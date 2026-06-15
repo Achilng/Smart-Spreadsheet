@@ -14,6 +14,7 @@ export const rowStore = $state({
   singleArtistOnly: false,
   groupView: false,
   hideGrouped: false,
+  search: "",
   totalCount: 0,
   initialLoading: true,
   error: null as string | null,
@@ -46,6 +47,7 @@ export function ensurePage(pageIndex: number): void {
         singleArtistOnly: rowStore.singleArtistOnly,
         groupView: rowStore.groupView,
         hideGrouped: rowStore.hideGrouped,
+        search: rowStore.search,
       });
       if (requestGeneration !== generation) {
         return;
@@ -116,6 +118,13 @@ export function setGroupView(value: boolean): void {
 export function setHideGrouped(value: boolean): void {
   if (rowStore.hideGrouped !== value) {
     rowStore.hideGrouped = value;
+    resetRows();
+  }
+}
+
+export function setSearch(value: string): void {
+  if (rowStore.search !== value) {
+    rowStore.search = value;
     resetRows();
   }
 }

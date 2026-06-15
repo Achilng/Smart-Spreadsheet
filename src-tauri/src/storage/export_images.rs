@@ -278,6 +278,7 @@ mod tests {
                     tag_mode: TagMatchMode::And,
                     dedupe: crate::db::DedupeMode::None,
                     single_artist_only: false,
+                    search: String::new(),
                     excluded_row_ids: Vec::new(),
                 },
                 &temporary.root,

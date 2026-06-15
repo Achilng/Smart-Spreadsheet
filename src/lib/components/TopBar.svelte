@@ -19,10 +19,30 @@
     exportScopeLabel,
   } from "../export-actions";
   import { clearSelection } from "../selection-store.svelte";
-  import { setGroupView } from "../row-store.svelte";
+  import { setGroupView, setSearch } from "../row-store.svelte";
   import Dropdown, { type DropdownItem } from "./Dropdown.svelte";
   import SizeSlider from "./SizeSlider.svelte";
   import WindowControls from "./WindowControls.svelte";
+
+  let searchInput = $state("");
+  let debounceTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function onSearchInput(event: Event): void {
+    const value = (event.target as HTMLInputElement).value;
+    searchInput = value;
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      setSearch(value);
+      clearSelection();
+    }, 300);
+  }
+
+  function clearSearch(): void {
+    searchInput = "";
+    clearTimeout(debounceTimer);
+    setSearch("");
+    clearSelection();
+  }
 
   const library = $derived(app.snapshot?.library ?? null);
   const lastSourceName = $derived(
@@ -109,6 +129,19 @@
 
   <SizeSlider />
 
+  <div class="search-box">
+    <input
+      type="text"
+      placeholder="搜索文件名 / 提示词 / 画师…"
+      value={searchInput}
+      oninput={onSearchInput}
+      class:has-value={searchInput.length > 0}
+    />
+    {#if searchInput.length > 0}
+      <button type="button" class="search-clear" onclick={clearSearch} title="清除搜索">&times;</button>
+    {/if}
+  </div>
+
   <div class="actions">
     <Dropdown label="工具" items={toolItems} disabled={app.busy} />
     <Dropdown label="导入" items={importItems} disabled={app.busy} />
@@ -172,6 +205,52 @@
     background: var(--surface);
     color: var(--text);
     box-shadow: var(--shadow-1);
+  }
+
+  .search-box {
+    position: relative;
+    flex: none;
+    width: 220px;
+  }
+
+  .search-box input {
+    width: 100%;
+    height: 28px;
+    padding: 0 26px 0 8px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-s);
+    background: var(--bg);
+    font-size: 12px;
+    color: var(--text);
+    outline: none;
+    box-sizing: border-box;
+  }
+
+  .search-box input:focus {
+    border-color: var(--primary, #4a90d9);
+  }
+
+  .search-box input::placeholder {
+    color: var(--text-3, #999);
+  }
+
+  .search-clear {
+    position: absolute;
+    right: 2px;
+    top: 50%;
+    transform: translateY(-50%);
+    border: none;
+    background: transparent;
+    color: var(--text-3, #999);
+    font-size: 16px;
+    line-height: 1;
+    padding: 2px 4px;
+    cursor: pointer;
+    border-radius: 2px;
+  }
+
+  .search-clear:hover {
+    color: var(--text);
   }
 
   .actions {

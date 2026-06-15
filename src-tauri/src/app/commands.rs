@@ -411,6 +411,7 @@ pub(crate) fn list_dedupe_clusters(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn get_dedupe_cluster_members(
     dedupe: DedupeMode,
     key: String,
@@ -830,6 +831,7 @@ mod tests {
                 tag_mode: TagMatchMode::Or,
                 dedupe: DedupeMode::Artists,
                 single_artist_only: false,
+                search: String::new(),
                 excluded_row_ids: vec![2, 9],
             }
         );

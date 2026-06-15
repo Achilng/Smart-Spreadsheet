@@ -649,6 +649,7 @@ mod tests {
                 single_artist_only: false,
                 group_view: false,
                 hide_grouped: false,
+                search: String::new(),
             })
             .unwrap();
         assert_eq!(page.total_count, 2);
