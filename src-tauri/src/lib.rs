@@ -37,6 +37,7 @@ pub fn run() {
             app::commands::get_group_members,
             app::commands::suggest_groups,
             app::commands::update_positive_prompt,
+            app::commands::update_negative_prompt,
             app::commands::find_replace_prompt,
             app::commands::prepend_artist,
             app::commands::query_rows,

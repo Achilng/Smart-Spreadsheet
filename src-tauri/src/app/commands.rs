@@ -6,7 +6,7 @@ use tauri::{Emitter, Manager, State, ipc::Response};
 use super::runtime::{AppRuntime, RuntimeSnapshot};
 use crate::db::{
     BatchSummary, GroupSummary, LibrarySummary, PromptEditResult, RowPage, RowQuery, RowRecord,
-    RowSelection, TagMutationResult, TagSelectionSummary, TagSummary,
+    RowSelection, SinglePromptEditResult, TagMutationResult, TagSelectionSummary, TagSummary,
 };
 use crate::storage::{PerceptualHashProgress, SimilarImageMatch};
 
@@ -296,9 +296,20 @@ pub(crate) fn update_positive_prompt(
     row_id: i64,
     new_prompt: String,
     runtime: State<'_, AppRuntime>,
-) -> Result<PromptEditResult, String> {
+) -> Result<SinglePromptEditResult, String> {
     runtime
         .update_positive_prompt(row_id, &new_prompt)
+        .map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn update_negative_prompt(
+    row_id: i64,
+    new_prompt: String,
+    runtime: State<'_, AppRuntime>,
+) -> Result<u64, String> {
+    runtime
+        .update_negative_prompt(row_id, &new_prompt)
         .map_err(error_text)
 }
 

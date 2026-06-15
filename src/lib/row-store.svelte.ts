@@ -120,6 +120,21 @@ export function setHideGrouped(value: boolean): void {
   }
 }
 
+/** 单行字段编辑后原位更新缓存，避免整表重载丢失滚动位置和活动行。 */
+export function patchRowFields(rowId: number, fields: Partial<RowRecord>): void {
+  for (const pageRows of pages.values()) {
+    const row = pageRows.find(candidate => candidate.id === rowId);
+    if (row) {
+      Object.assign(row, fields);
+      break;
+    }
+  }
+  if (rowStore.activeRow?.id === rowId) {
+    Object.assign(rowStore.activeRow, fields);
+  }
+  rowStore.pagesVersion += 1;
+}
+
 /** 单行 Tag 编辑成功后原位更新缓存，避免整表重载丢失滚动位置。 */
 export function patchRowTags(rowId: number, tags: string[]): void {
   for (const pageRows of pages.values()) {

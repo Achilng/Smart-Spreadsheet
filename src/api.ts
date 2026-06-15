@@ -412,11 +412,23 @@ export interface PromptEditResult {
   affectedRows: number;
 }
 
+export interface SinglePromptEditResult {
+  affectedRows: number;
+  newArtists: string | null;
+}
+
 export function updatePositivePrompt(
   rowId: number,
   newPrompt: string,
-): Promise<PromptEditResult> {
-  return invoke<PromptEditResult>("update_positive_prompt", { rowId, newPrompt });
+): Promise<SinglePromptEditResult> {
+  return invoke<SinglePromptEditResult>("update_positive_prompt", { rowId, newPrompt });
+}
+
+export function updateNegativePrompt(
+  rowId: number,
+  newPrompt: string,
+): Promise<number> {
+  return invoke<number>("update_negative_prompt", { rowId, newPrompt });
 }
 
 export function findReplacePrompt(

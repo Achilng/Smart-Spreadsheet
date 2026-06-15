@@ -318,8 +318,16 @@ impl AppRuntime {
         &self,
         row_id: i64,
         new_prompt: &str,
-    ) -> Result<crate::db::PromptEditResult, AppRuntimeError> {
+    ) -> Result<crate::db::SinglePromptEditResult, AppRuntimeError> {
         self.with_database(|db| db.update_positive_prompt(row_id, new_prompt))
+    }
+
+    pub(crate) fn update_negative_prompt(
+        &self,
+        row_id: i64,
+        new_prompt: &str,
+    ) -> Result<u64, AppRuntimeError> {
+        self.with_database(|db| db.update_negative_prompt(row_id, new_prompt))
     }
 
     pub(crate) fn find_replace_prompt(

@@ -11,12 +11,19 @@ pub struct PromptEditResult {
     pub affected_rows: u64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SinglePromptEditResult {
+    pub affected_rows: u64,
+    pub new_artists: Option<String>,
+}
+
 impl Database {
     pub fn update_positive_prompt(
         &mut self,
         row_id: i64,
         new_prompt: &str,
-    ) -> Result<PromptEditResult, TagMutationError> {
+    ) -> Result<SinglePromptEditResult, TagMutationError> {
         let artists = extract_artist_tags(new_prompt);
         let artists_str = if artists.is_empty() {
             None
@@ -28,12 +35,29 @@ impl Database {
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         let updated = transaction.execute(
             "UPDATE rows SET positive_prompt = ?2, artists = ?3 WHERE id = ?1",
-            rusqlite::params![row_id, new_prompt, artists_str],
+            rusqlite::params![row_id, new_prompt, &artists_str],
         )?;
         transaction.commit()?;
-        Ok(PromptEditResult {
+        Ok(SinglePromptEditResult {
             affected_rows: updated as u64,
+            new_artists: artists_str,
         })
+    }
+
+    pub fn update_negative_prompt(
+        &mut self,
+        row_id: i64,
+        new_prompt: &str,
+    ) -> Result<u64, TagMutationError> {
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let updated = transaction.execute(
+            "UPDATE rows SET negative_prompt = ?2 WHERE id = ?1",
+            rusqlite::params![row_id, new_prompt],
+        )?;
+        transaction.commit()?;
+        Ok(updated as u64)
     }
 
     pub fn find_replace_prompt(

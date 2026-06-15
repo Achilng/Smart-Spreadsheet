@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { createTag, getRowPreview, setTagsForRow, updatePositivePrompt } from "../../api";
+  import { createTag, getRowPreview, setTagsForRow, updateNegativePrompt, updatePositivePrompt } from "../../api";
   import { binaryBuffer } from "../../image-loader";
   import { app, errorText } from "../app-state.svelte";
   import { requestDelete } from "../delete-actions.svelte";
   import { removeFromGroup } from "../group-store.svelte";
-  import { patchRowTags, resetRows, rowStore } from "../row-store.svelte";
+  import { patchRowFields, patchRowTags, resetRows, rowStore } from "../row-store.svelte";
   import { loadTags, tagStore } from "../tag-store.svelte";
   import { thumbnails } from "../thumbnails";
 
@@ -27,6 +27,10 @@
   let editPromptValue = $state("");
   let promptSaving = $state(false);
   let promptError = $state<string | null>(null);
+  let editingNegPrompt = $state(false);
+  let editNegPromptValue = $state("");
+  let negPromptSaving = $state(false);
+  let negPromptError = $state<string | null>(null);
 
   // 切换行时重置并加载图片：先用缓存缩略图占位，大图就绪后替换
   $effect(() => {
@@ -38,6 +42,8 @@
     saveError = null;
     editingPrompt = false;
     promptError = null;
+    editingNegPrompt = false;
+    negPromptError = null;
     const current = row;
     if (!current || !hasImage) {
       return;
@@ -168,13 +174,44 @@
     promptSaving = true;
     promptError = null;
     try {
-      await updatePositivePrompt(current.id, editPromptValue);
+      const result = await updatePositivePrompt(current.id, editPromptValue);
       editingPrompt = false;
-      resetRows();
+      patchRowFields(current.id, {
+        positivePrompt: editPromptValue,
+        artists: result.newArtists,
+      });
     } catch (error) {
       promptError = errorText(error);
     } finally {
       promptSaving = false;
+    }
+  }
+
+  function startEditNegPrompt(): void {
+    if (!row) return;
+    editNegPromptValue = row.negativePrompt ?? "";
+    editingNegPrompt = true;
+    negPromptError = null;
+  }
+
+  function cancelEditNegPrompt(): void {
+    editingNegPrompt = false;
+    negPromptError = null;
+  }
+
+  async function saveNegPrompt(): Promise<void> {
+    const current = row;
+    if (!current || negPromptSaving) return;
+    negPromptSaving = true;
+    negPromptError = null;
+    try {
+      await updateNegativePrompt(current.id, editNegPromptValue);
+      editingNegPrompt = false;
+      patchRowFields(current.id, { negativePrompt: editNegPromptValue });
+    } catch (error) {
+      negPromptError = errorText(error);
+    } finally {
+      negPromptSaving = false;
     }
   }
 
@@ -359,7 +396,44 @@
         {/if}
       </section>
 
-      {#each [{ label: "负向提示词", value: row.negativePrompt }, { label: "画师串", value: row.artists }, { label: "图片文件夹", value: row.imageFolder }, { label: "图片路径", value: row.imagePath }] as field (field.label)}
+      <section class="field">
+        <div class="field-head">
+          <h4>负向提示词</h4>
+          <div class="field-head-actions">
+            {#if !editingNegPrompt}
+              <button type="button" class="copy-btn" onclick={startEditNegPrompt}>编辑</button>
+            {/if}
+            {#if row.negativePrompt && !editingNegPrompt}
+              <button type="button" class="copy-btn" onclick={() => void copyField("负向提示词", row.negativePrompt ?? "")}>
+                {copiedField === "负向提示词" ? "已复制" : "复制"}
+              </button>
+            {/if}
+          </div>
+        </div>
+        {#if editingNegPrompt}
+          <textarea
+            class="prompt-textarea"
+            bind:value={editNegPromptValue}
+            disabled={negPromptSaving}
+            onkeydown={event => {
+              if (event.key === "Escape") cancelEditNegPrompt();
+            }}
+          ></textarea>
+          <div class="prompt-edit-actions">
+            <button type="button" class="btn btn-sm" disabled={negPromptSaving} onclick={cancelEditNegPrompt}>取消</button>
+            <button type="button" class="btn btn-sm btn-primary" disabled={negPromptSaving} onclick={() => void saveNegPrompt()}>
+              {negPromptSaving ? "保存中…" : "保存"}
+            </button>
+          </div>
+          {#if negPromptError}
+            <p class="save-error">{negPromptError}</p>
+          {/if}
+        {:else}
+          <pre class:is-empty={!row.negativePrompt}>{row.negativePrompt ?? "—"}</pre>
+        {/if}
+      </section>
+
+      {#each [{ label: "画师串", value: row.artists }, { label: "图片文件夹", value: row.imageFolder }, { label: "图片路径", value: row.imagePath }] as field (field.label)}
         <section class="field">
           <div class="field-head">
             <h4>{field.label}</h4>

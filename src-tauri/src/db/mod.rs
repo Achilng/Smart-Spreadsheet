@@ -14,7 +14,7 @@ mod tags;
 pub use batches::{AppendOutcome, BatchSummary, LibrarySummary, NewRow, SourceType};
 pub use delete::DeleteOutcome;
 pub use groups::GroupSummary;
-pub use prompt_edit::PromptEditResult;
+pub use prompt_edit::{PromptEditResult, SinglePromptEditResult};
 pub use query::{DedupeMode, MAX_PAGE_SIZE, RowPage, RowQuery, RowRecord, TagMatchMode, TagSummary};
 pub use tags::{RowSelection, TagMutationError, TagMutationResult, TagSelectionSummary};
 
