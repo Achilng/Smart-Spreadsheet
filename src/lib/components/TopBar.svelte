@@ -35,6 +35,8 @@
     app.snapshot?.rejectedImagesDirectory?.split(/[\\/]/).pop() ?? "未设置",
   );
   const toolItems = $derived<DropdownItem[]>([
+    { label: "建议分组", hint: "按相似度聚类未分组行", action: () => (app.groupSuggestOpen = true) },
+    { label: "管理分组", action: () => (app.groupManageOpen = true) },
     { label: "以图搜图", action: () => void chooseSearchImage() },
     { label: "刷新感知哈希", action: () => void runPhashBackfill() },
     { label: "智绘姬 JSON 去重", action: () => (app.jsonDedupeOpen = true) },

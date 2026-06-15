@@ -3,6 +3,7 @@
   import { binaryBuffer } from "../../image-loader";
   import { app, errorText } from "../app-state.svelte";
   import { requestDelete } from "../delete-actions.svelte";
+  import { removeFromGroup } from "../group-store.svelte";
   import { patchRowTags, resetRows, rowStore } from "../row-store.svelte";
   import { loadTags, tagStore } from "../tag-store.svelte";
   import { thumbnails } from "../thumbnails";
@@ -294,6 +295,23 @@
 
       <section class="field">
         <div class="field-head">
+          <h4>分组</h4>
+        </div>
+        <div class="group-info">
+          {#if row.groupName}
+            <span class="group-badge">{row.groupName}</span>
+            <button type="button" class="copy-btn" onclick={async () => {
+              await removeFromGroup({ kind: "explicit", rowIds: [row.id] });
+              resetRows();
+            }}>取消分组</button>
+          {:else}
+            <span class="faint-text">未分组</span>
+          {/if}
+        </div>
+      </section>
+
+      <section class="field">
+        <div class="field-head">
           <h4>时间</h4>
           {#if row.time}
             <button type="button" class="copy-btn" onclick={() => void copyField("时间", row.time ?? "")}>
@@ -547,6 +565,26 @@
     margin-top: 6px;
     font-size: 12px;
     color: var(--danger);
+  }
+
+  .group-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12.5px;
+  }
+
+  .group-badge {
+    background: var(--accent-soft);
+    color: var(--accent);
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 12px;
+  }
+
+  .faint-text {
+    color: var(--text-3);
+    font-size: 12.5px;
   }
 
   .field-head {

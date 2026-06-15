@@ -46,6 +46,19 @@ v0.7.0 开发中：分组系统 + 提示词编辑。
 - `SelectionBar.svelte`：新增「编辑提示词」按钮，打开 PromptEditDialog。
 - `svelte-check` 0 错误、Vite 生产构建通过。
 
+### M26 — 分组管理前端（2026-06-15）
+
+- 新增 `group-store.svelte.ts`：分组列表响应式 store（`groupStore`），包含 `loadGroups`、`createNewGroup`、`renameExistingGroup`、`removeGroup`、`cleanEmptyGroups`、`assignToGroup`、`removeFromGroup` 七个 action 函数。
+- 新增 `GroupSuggestionView.svelte`：全屏浮层，配置相似度模式（画师串 Jaro-Winkler / 正向提示词 Token Jaccard）和阈值，运行分析后展示建议分组列表，支持全选/单选后批量创建分组并分配行。
+- 新增 `GroupManageView.svelte`：全屏浮层，展示所有分组及成员数，支持内联重命名、删除和清理空分组。
+- 新增 `GroupAssignDialog.svelte`：模态对话框，从已有分组列表中选择分配，或输入新组名即建即分配，支持取消分组。
+- `SelectionBar.svelte`：新增「分组」按钮，打开 GroupAssignDialog。
+- `TopBar.svelte`：工具菜单新增「建议分组」和「管理分组」两个入口。
+- `DetailPanel.svelte`：正向提示词编辑（M25）+ 分组信息显示与「取消分组」按钮；清理未使用的 group-store 导入。
+- `Workspace.svelte`：条件渲染 GroupSuggestionView 和 GroupManageView。
+- `app-state.svelte.ts`：新增 `groupSuggestOpen` 和 `groupManageOpen` 布尔状态。
+- `svelte-check` 0 错误、Vite 生产构建通过。
+
 ### v0.6.0 - 代码质量重构（2026-06-14）
 
 - `runtime.rs`：提取 `with_database` 泛型辅助方法，消除 13 个命令处理器中重复的 lock→validate→get-directory 样板代码。

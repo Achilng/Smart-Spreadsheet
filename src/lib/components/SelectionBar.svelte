@@ -10,9 +10,11 @@
     selectionIds,
   } from "../selection-store.svelte";
   import { rowStore } from "../row-store.svelte";
+  import GroupAssignDialog from "./GroupAssignDialog.svelte";
   import PromptEditDialog from "./PromptEditDialog.svelte";
 
   let promptEditOpen = $state(false);
+  let groupDialogOpen = $state(false);
 
   const count = $derived(getSelectedCount());
   let selectingAll = $state(false);
@@ -64,6 +66,13 @@
       <button
         type="button"
         class="btn"
+        onclick={() => (groupDialogOpen = true)}
+      >
+        分组
+      </button>
+      <button
+        type="button"
+        class="btn"
         onclick={() => (promptEditOpen = true)}
       >
         编辑提示词
@@ -80,6 +89,14 @@
       </button>
     </div>
   </div>
+{/if}
+
+{#if groupDialogOpen && count > 0}
+  <GroupAssignDialog
+    selection={selectionDto()}
+    {count}
+    onclose={() => (groupDialogOpen = false)}
+  />
 {/if}
 
 {#if promptEditOpen && count > 0}

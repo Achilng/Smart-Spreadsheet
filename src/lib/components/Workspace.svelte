@@ -16,6 +16,8 @@
   import DetailPanel from "./DetailPanel.svelte";
   import DeleteDialog from "./DeleteDialog.svelte";
   import GalleryView from "./GalleryView.svelte";
+  import GroupManageView from "./GroupManageView.svelte";
+  import GroupSuggestionView from "./GroupSuggestionView.svelte";
   import JsonDedupeView from "./JsonDedupeView.svelte";
   import SearchResultsView from "./SearchResultsView.svelte";
   import SelectionBar from "./SelectionBar.svelte";
@@ -108,6 +110,14 @@
 
 {#if app.jsonDedupeOpen}
   <JsonDedupeView />
+{/if}
+
+{#if app.groupSuggestOpen}
+  <GroupSuggestionView />
+{/if}
+
+{#if app.groupManageOpen}
+  <GroupManageView />
 {/if}
 
 <SearchResultsView />
