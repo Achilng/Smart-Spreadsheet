@@ -5,8 +5,9 @@ use tauri::{Emitter, Manager, State, ipc::Response};
 
 use super::runtime::{AppRuntime, RuntimeSnapshot};
 use crate::db::{
-    BatchSummary, GroupSummary, LibrarySummary, PromptEditResult, RowPage, RowQuery, RowRecord,
-    RowSelection, SinglePromptEditResult, TagMutationResult, TagSelectionSummary, TagSummary,
+    BatchSummary, DedupeCluster, DedupeMode, GroupSummary, LibrarySummary, PromptEditResult,
+    RowPage, RowQuery, RowRecord, RowSelection, SinglePromptEditResult, TagMatchMode,
+    TagMutationResult, TagSelectionSummary, TagSummary,
 };
 use crate::storage::{PerceptualHashProgress, SimilarImageMatch};
 
@@ -80,6 +81,22 @@ pub(crate) struct RowPageDto {
 pub(crate) struct ExportProgressDto {
     processed: usize,
     total: usize,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct DedupeClusterDto {
+    key: String,
+    member_count: u64,
+}
+
+impl From<DedupeCluster> for DedupeClusterDto {
+    fn from(cluster: DedupeCluster) -> Self {
+        Self {
+            key: cluster.key,
+            member_count: cluster.member_count,
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -372,6 +389,48 @@ pub(crate) fn get_group_members(
 ) -> Result<RowPageDto, String> {
     runtime
         .get_group_members(group_id, offset, limit)
+        .map(RowPageDto::from)
+        .map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn list_dedupe_clusters(
+    dedupe: DedupeMode,
+    tags: Vec<String>,
+    tag_mode: TagMatchMode,
+    single_artist_only: bool,
+    hide_grouped: bool,
+    runtime: State<'_, AppRuntime>,
+) -> Result<Vec<DedupeClusterDto>, String> {
+    runtime
+        .list_dedupe_clusters(dedupe, &tags, tag_mode, single_artist_only, hide_grouped)
+        .map(|clusters| clusters.into_iter().map(DedupeClusterDto::from).collect())
+        .map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn get_dedupe_cluster_members(
+    dedupe: DedupeMode,
+    key: String,
+    tags: Vec<String>,
+    tag_mode: TagMatchMode,
+    single_artist_only: bool,
+    hide_grouped: bool,
+    offset: u64,
+    limit: u32,
+    runtime: State<'_, AppRuntime>,
+) -> Result<RowPageDto, String> {
+    runtime
+        .get_dedupe_cluster_members(
+            dedupe,
+            &key,
+            &tags,
+            tag_mode,
+            single_artist_only,
+            hide_grouped,
+            offset,
+            limit,
+        )
         .map(RowPageDto::from)
         .map_err(error_text)
 }

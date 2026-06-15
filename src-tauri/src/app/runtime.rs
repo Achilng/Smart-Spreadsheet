@@ -7,8 +7,9 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::db::{
-    BatchSummary, GroupSummary, LibrarySummary, RowPage, RowQuery, RowSelection,
-    TagMutationError, TagMutationResult, TagSelectionSummary, TagSummary,
+    BatchSummary, DedupeCluster, DedupeMode, GroupSummary, LibrarySummary, RowPage, RowQuery,
+    RowSelection, TagMatchMode, TagMutationError, TagMutationResult, TagSelectionSummary,
+    TagSummary,
 };
 use crate::images::{ImageVariant, RowImageError};
 use crate::storage::{
@@ -370,6 +371,44 @@ impl AppRuntime {
         limit: u32,
     ) -> Result<RowPage, AppRuntimeError> {
         self.with_database(|db| db.get_group_members(group_id, offset, limit))
+    }
+
+    pub(crate) fn list_dedupe_clusters(
+        &self,
+        dedupe: DedupeMode,
+        tags: &[String],
+        tag_mode: TagMatchMode,
+        single_artist_only: bool,
+        hide_grouped: bool,
+    ) -> Result<Vec<DedupeCluster>, AppRuntimeError> {
+        self.with_database(|db| {
+            db.list_dedupe_clusters(dedupe, tags, tag_mode, single_artist_only, hide_grouped)
+        })
+    }
+
+    pub(crate) fn get_dedupe_cluster_members(
+        &self,
+        dedupe: DedupeMode,
+        key: &str,
+        tags: &[String],
+        tag_mode: TagMatchMode,
+        single_artist_only: bool,
+        hide_grouped: bool,
+        offset: u64,
+        limit: u32,
+    ) -> Result<RowPage, AppRuntimeError> {
+        self.with_database(|db| {
+            db.get_dedupe_cluster_members(
+                dedupe,
+                key,
+                tags,
+                tag_mode,
+                single_artist_only,
+                hide_grouped,
+                offset,
+                limit,
+            )
+        })
     }
 
     pub(crate) fn row_thumbnail(&self, row_id: i64) -> Result<Vec<u8>, AppRuntimeError> {

@@ -83,6 +83,13 @@ pub struct TagSummary {
     pub row_count: u64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DedupeCluster {
+    pub key: String,
+    pub member_count: u64,
+}
+
 impl Database {
     pub fn query_rows(&mut self, query: &RowQuery) -> Result<RowPage, DatabaseError> {
         if query.limit == 0 || query.limit > MAX_PAGE_SIZE {
@@ -219,6 +226,145 @@ impl Database {
             })
             .collect::<Result<Vec<_>, DatabaseError>>()?;
         Ok(summaries)
+    }
+
+    pub fn list_dedupe_clusters(
+        &mut self,
+        dedupe: DedupeMode,
+        tags: &[String],
+        tag_mode: TagMatchMode,
+        single_artist_only: bool,
+        hide_grouped: bool,
+    ) -> Result<Vec<DedupeCluster>, DatabaseError> {
+        let column = match dedupe {
+            DedupeMode::PositivePrompt => "positive_prompt",
+            DedupeMode::Artists => "artists",
+            DedupeMode::None => return Ok(Vec::new()),
+        };
+        let normalized = normalize_tags(tags);
+        let transaction = self.connection.transaction()?;
+        create_filter_tags(&transaction, &normalized)?;
+
+        let tag_predicate = filter_predicate(tag_mode);
+        let mut predicate = tag_predicate.to_owned();
+        if single_artist_only {
+            predicate = format!(
+                "({predicate})
+                 AND rows.artists IS NOT NULL
+                 AND TRIM(rows.artists) != ''
+                 AND INSTR(rows.artists, CHAR(10)) = 0"
+            );
+        }
+        if hide_grouped {
+            predicate = format!("({predicate}) AND rows.group_id IS NULL");
+        }
+
+        let clusters = {
+            let mut statement = transaction.prepare(&format!(
+                "SELECT dedupe_key, COUNT(*) AS cnt
+                 FROM (
+                     SELECT NULLIF(TRIM(COALESCE(rows.{column}, '')), '') AS dedupe_key
+                     FROM rows
+                     WHERE {predicate}
+                 )
+                 WHERE dedupe_key IS NOT NULL
+                 GROUP BY dedupe_key
+                 HAVING cnt >= 2
+                 ORDER BY cnt DESC, dedupe_key"
+            ))?;
+            statement
+                .query_map([], |row| {
+                    Ok(DedupeCluster {
+                        key: row.get(0)?,
+                        member_count: row.get::<_, i64>(1)? as u64,
+                    })
+                })?
+                .collect::<Result<Vec<_>, _>>()?
+        };
+
+        transaction.execute_batch(&format!("DROP TABLE {FILTER_TAGS_TABLE};"))?;
+        transaction.commit()?;
+        Ok(clusters)
+    }
+
+    pub fn get_dedupe_cluster_members(
+        &mut self,
+        dedupe: DedupeMode,
+        key: &str,
+        tags: &[String],
+        tag_mode: TagMatchMode,
+        single_artist_only: bool,
+        hide_grouped: bool,
+        offset: u64,
+        limit: u32,
+    ) -> Result<RowPage, DatabaseError> {
+        if limit == 0 || limit > MAX_PAGE_SIZE {
+            return Err(DatabaseError::InvalidPageSize {
+                requested: limit,
+                maximum: MAX_PAGE_SIZE,
+            });
+        }
+        let column = match dedupe {
+            DedupeMode::PositivePrompt => "positive_prompt",
+            DedupeMode::Artists => "artists",
+            DedupeMode::None => {
+                return Ok(RowPage {
+                    rows: Vec::new(),
+                    total_count: 0,
+                    offset,
+                    limit,
+                })
+            }
+        };
+        let offset_i64 = i64::try_from(offset).map_err(|_| DatabaseError::OffsetOverflow)?;
+        let normalized = normalize_tags(tags);
+        let transaction = self.connection.transaction()?;
+        create_filter_tags(&transaction, &normalized)?;
+
+        let tag_predicate = filter_predicate(tag_mode);
+        let mut predicate = tag_predicate.to_owned();
+        if single_artist_only {
+            predicate = format!(
+                "({predicate})
+                 AND rows.artists IS NOT NULL
+                 AND TRIM(rows.artists) != ''
+                 AND INSTR(rows.artists, CHAR(10)) = 0"
+            );
+        }
+        if hide_grouped {
+            predicate = format!("({predicate}) AND rows.group_id IS NULL");
+        }
+
+        create_filtered_rows_table(&transaction)?;
+        transaction.execute(
+            &format!(
+                "INSERT INTO {FILTERED_ROWS_TABLE}(id)
+                 SELECT rows.id FROM rows
+                 WHERE NULLIF(TRIM(COALESCE(rows.{column}, '')), '') = ?1
+                   AND ({predicate})"
+            ),
+            params![key],
+        )?;
+        create_page_rows_table(&transaction)?;
+        create_page_rows(&transaction, limit, offset_i64)?;
+
+        let total_count = query_total_count(&transaction)?;
+        let mut rows = query_page_metadata(&transaction)?;
+        attach_page_tags(&transaction, &mut rows)?;
+
+        transaction.execute_batch(&format!(
+            "DROP TABLE {PAGE_ROWS_TABLE};
+             DROP TABLE {FILTERED_ROWS_TABLE};
+             DROP TABLE {FILTER_TAGS_TABLE};"
+        ))?;
+        transaction.commit()?;
+
+        Ok(RowPage {
+            rows,
+            total_count,
+            offset,
+            limit,
+        })
     }
 }
 

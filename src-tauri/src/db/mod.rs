@@ -15,7 +15,7 @@ pub use batches::{AppendOutcome, BatchSummary, LibrarySummary, NewRow, SourceTyp
 pub use delete::DeleteOutcome;
 pub use groups::GroupSummary;
 pub use prompt_edit::{PromptEditResult, SinglePromptEditResult};
-pub use query::{DedupeMode, MAX_PAGE_SIZE, RowPage, RowQuery, RowRecord, TagMatchMode, TagSummary};
+pub use query::{DedupeCluster, DedupeMode, MAX_PAGE_SIZE, RowPage, RowQuery, RowRecord, TagMatchMode, TagSummary};
 pub use tags::{RowSelection, TagMutationError, TagMutationResult, TagSelectionSummary};
 
 use std::path::Path;

@@ -6,6 +6,14 @@
 
 v0.7.0 已发布：分组系统 + 提示词编辑。
 
+### M29 — 重复浏览视图（2026-06-15）
+
+- 后端新增 `list_dedupe_clusters` 和 `get_dedupe_cluster_members` 两个数据库方法及对应 Tauri 命令，按画师串或正向提示词聚合重复项（count >= 2），支持 Tag 筛选、分页。
+- 新增 `DuplicateBrowseView.svelte`：顶部模式切换（按画师串/按正向提示词），折叠式分组列表，展开后懒加载成员缩略图网格，复用 `GroupSectionCard` 组件。
+- `ViewMode` 新增 `"duplicates"`，TopBar 新增"重复"视图按钮，Workspace 新增条件渲染分支。
+- `api.ts` 新增 `DedupeCluster` 接口和两个 invoke 函数。
+- 涉及文件：`db/query.rs`、`db/mod.rs`、`app/runtime.rs`、`app/commands.rs`、`lib.rs`、`api.ts`、`app-state.svelte.ts`、`TopBar.svelte`、`Workspace.svelte`、`DuplicateBrowseView.svelte`（新建）。
+
 ### 后续修复（2026-06-15）
 
 - 负向提示词编辑：DetailPanel 新增负向提示词的编辑/保存/取消交互，后端新增 `update_negative_prompt` 命令（不触发画师重提取）。

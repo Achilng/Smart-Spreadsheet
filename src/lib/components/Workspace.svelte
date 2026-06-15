@@ -17,6 +17,7 @@
   import DetailPanel from "./DetailPanel.svelte";
   import DeleteDialog from "./DeleteDialog.svelte";
   import DropConfirmDialog from "./DropConfirmDialog.svelte";
+  import DuplicateBrowseView from "./DuplicateBrowseView.svelte";
   import GalleryView from "./GalleryView.svelte";
   import GroupBrowseView from "./GroupBrowseView.svelte";
   import GroupManageView from "./GroupManageView.svelte";
@@ -90,6 +91,8 @@
     <main class="main-area">
       {#if app.viewMode === "group"}
         <GroupBrowseView />
+      {:else if app.viewMode === "duplicates"}
+        <DuplicateBrowseView />
       {:else if app.viewMode === "gallery"}
         <GalleryView />
       {:else}

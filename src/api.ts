@@ -410,6 +410,51 @@ export function getGroupMembers(
   return invoke<RowPage>("get_group_members", { groupId, offset, limit });
 }
 
+// ── Dedupe Clusters ────────────────────────────────────────────
+
+export interface DedupeCluster {
+  key: string;
+  memberCount: number;
+}
+
+export function listDedupeClusters(
+  dedupe: DedupeMode,
+  tags: string[],
+  tagMode: TagMatchMode,
+  singleArtistOnly: boolean,
+  hideGrouped: boolean,
+): Promise<DedupeCluster[]> {
+  return invoke<DedupeCluster[]>("list_dedupe_clusters", {
+    dedupe,
+    tags,
+    tagMode,
+    singleArtistOnly,
+    hideGrouped,
+  });
+}
+
+export function getDedupeClusterMembers(
+  dedupe: DedupeMode,
+  key: string,
+  tags: string[],
+  tagMode: TagMatchMode,
+  singleArtistOnly: boolean,
+  hideGrouped: boolean,
+  offset: number,
+  limit: number,
+): Promise<RowPage> {
+  return invoke<RowPage>("get_dedupe_cluster_members", {
+    dedupe,
+    key,
+    tags,
+    tagMode,
+    singleArtistOnly,
+    hideGrouped,
+    offset,
+    limit,
+  });
+}
+
 // ── Prompt Editing ──────────────────────────────────────────────
 
 export interface PromptEditResult {

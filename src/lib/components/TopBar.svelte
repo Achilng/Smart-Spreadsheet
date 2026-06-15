@@ -31,6 +31,7 @@
 
   const views: { mode: ViewMode; label: string }[] = [
     { mode: "group", label: "分组" },
+    { mode: "duplicates", label: "重复" },
     { mode: "gallery", label: "画廊" },
     { mode: "table", label: "表格" },
   ];
