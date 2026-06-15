@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   import { getGroupMembers, queryRows, type RowRecord } from "../../api";
   import { errorText, formatCount } from "../app-state.svelte";
   import { groupStore, loadGroups } from "../group-store.svelte";
@@ -28,10 +29,11 @@
 
   $effect(() => {
     const list = groupStore.list;
+    const current = untrack(() => groups);
     groups = new Map(
       list.map(g => [
         g.id,
-        groups.get(g.id) ?? {
+        current.get(g.id) ?? {
           expanded: false,
           members: [],
           totalCount: g.memberCount,
