@@ -218,6 +218,10 @@ export function setRejectedImagesDirectory(path: string): Promise<AppSnapshot> {
   return invoke<AppSnapshot>("set_rejected_images_directory", { path });
 }
 
+export function resetData(): Promise<AppSnapshot> {
+  return invoke<AppSnapshot>("reset_data");
+}
+
 export function importImages(path: string): Promise<ImageImportResult> {
   return invoke<ImageImportResult>("import_images", { path });
 }

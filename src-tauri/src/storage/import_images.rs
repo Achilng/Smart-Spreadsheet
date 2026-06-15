@@ -85,8 +85,6 @@ pub enum ImageImportError {
     Database(#[from] DatabaseError),
     #[error("输入中没有找到 PNG 图片: {0}")]
     NoImagesFound(PathBuf),
-    #[error("尚未设置异常图片输出目录")]
-    RejectedDirectoryNotConfigured,
     #[error("异常图片输出目录不能等于或位于导入文件夹内部: {0}")]
     RejectedDirectoryInsideInput(PathBuf),
 }
@@ -104,9 +102,14 @@ impl DataDirectory {
     ) -> Result<ImageImportOutcome, ImageImportError> {
         let reporter = ProgressReporter::new(progress);
         let input_display = canonical_display_path(input);
-        let rejected_root = self
-            .rejected_images_directory()?
-            .ok_or(ImageImportError::RejectedDirectoryNotConfigured)?;
+        let rejected_root = match self.rejected_images_directory()? {
+            Some(dir) => dir,
+            None => {
+                let default = self.default_rejected_images_directory();
+                self.set_rejected_images_directory(&default)?;
+                default
+            }
+        };
         if rejected_root.exists() && !rejected_root.is_dir() {
             return Err(ImageImportError::Storage(
                 StorageError::RejectedImagesPathNotDirectory(rejected_root),
@@ -303,8 +306,7 @@ impl DataDirectory {
             .collect::<Vec<_>>();
 
         let files_root = self.files_path();
-        let has_staged_files = source_type == SourceType::Archive
-            && fs::read_dir(staging.path())?.next().is_some();
+        let has_staged_files = fs::read_dir(staging.path())?.next().is_some();
         let outcome = database.append_batch(source_type, &input_display, &rows, |batch_id| {
             if !has_staged_files {
                 return Ok(());
@@ -405,13 +407,20 @@ fn build_new_row(
                 Some(image.source.relative_path.replace('\\', "/")),
             )
         }
-        _ => (
-            format!(
-                "{}\\{}",
-                context.scan_root_display, image.source.relative_path
-            ),
-            None,
-        ),
+        _ => {
+            let staged = context.staging_root.join(&image.source.relative_path);
+            if let Some(parent) = staged.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            fs::copy(&image.source.absolute_path, &staged)?;
+            (
+                format!(
+                    "{}\\{}",
+                    context.scan_root_display, image.source.relative_path
+                ),
+                Some(image.source.relative_path.replace('\\', "/")),
+            )
+        }
     };
 
     Ok(NewRow {

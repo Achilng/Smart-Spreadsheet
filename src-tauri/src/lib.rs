@@ -15,12 +15,14 @@ pub fn run() {
             use tauri::Manager;
 
             let locator_path = app.path().app_config_dir()?.join("state.json");
-            app.manage(app::AppRuntime::load(locator_path));
+            let default_data_dir = app.path().app_local_data_dir()?.join("data");
+            app.manage(app::AppRuntime::load(locator_path, default_data_dir));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             app::commands::get_app_snapshot,
             app::commands::reset_configuration,
+            app::commands::reset_data,
             app::commands::initialize_data_directory,
             app::commands::open_data_directory,
             app::commands::set_rejected_images_directory,

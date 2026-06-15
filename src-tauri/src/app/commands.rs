@@ -133,6 +133,16 @@ pub(crate) fn reset_configuration(
 }
 
 #[tauri::command]
+pub(crate) fn reset_data(
+    runtime: State<'_, AppRuntime>,
+) -> Result<AppSnapshotDto, String> {
+    runtime
+        .reset_data()
+        .map(AppSnapshotDto::from)
+        .map_err(error_text)
+}
+
+#[tauri::command]
 pub(crate) fn initialize_data_directory(
     path: String,
     runtime: State<'_, AppRuntime>,

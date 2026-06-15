@@ -94,9 +94,18 @@ pub(crate) struct AppRuntime {
 }
 
 impl AppRuntime {
-    pub(crate) fn load(locator_path: PathBuf) -> Self {
+    pub(crate) fn load(locator_path: PathBuf, default_data_dir: PathBuf) -> Self {
         let (active, startup_error) = match load_directory(&locator_path) {
-            Ok(active) => (active, None),
+            Ok(Some(directory)) => (Some(directory), None),
+            Ok(None) => {
+                match DataDirectory::initialize(&default_data_dir) {
+                    Ok(dir) => match write_locator(&locator_path, dir.root()) {
+                        Ok(()) => (Some(dir), None),
+                        Err(error) => (None, Some(error.to_string())),
+                    },
+                    Err(error) => (None, Some(error.to_string())),
+                }
+            }
             Err(error) => (None, Some(error.to_string())),
         };
         Self {
@@ -517,6 +526,18 @@ impl AppRuntime {
         self.snapshot()
     }
 
+    pub(crate) fn reset_data(&self) -> Result<RuntimeSnapshot, AppRuntimeError> {
+        let state = self.lock_state()?;
+        ensure_startup_valid(&state)?;
+        let directory = state
+            .active
+            .as_ref()
+            .ok_or(AppRuntimeError::NotConfigured)?;
+        directory.reset_data()?;
+        drop(state);
+        self.snapshot()
+    }
+
     fn configure_directory<F>(
         &self,
         path: impl AsRef<Path>,
@@ -617,16 +638,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn persists_and_reloads_configured_directory() {
+    fn auto_initializes_and_reloads_configured_directory() {
         let temporary = TemporaryRuntime::new();
-        let runtime = AppRuntime::load(temporary.locator.clone());
+        let runtime = AppRuntime::load(temporary.locator.clone(), temporary.data.clone());
 
-        let configured = runtime.initialize_directory(&temporary.data).unwrap();
-        let reloaded = AppRuntime::load(temporary.locator.clone())
+        let snapshot = runtime.snapshot().unwrap();
+        let reloaded = AppRuntime::load(temporary.locator.clone(), temporary.data.clone())
             .snapshot()
             .unwrap();
 
-        assert_eq!(configured.data_directory, reloaded.data_directory);
+        assert_eq!(snapshot.data_directory, reloaded.data_directory);
         assert_eq!(reloaded.data_directory, Some(temporary.data.clone()));
         let library = reloaded.library.unwrap();
         assert_eq!(library.row_count, 0);
@@ -635,10 +656,9 @@ mod tests {
     }
 
     #[test]
-    fn refuses_pointer_switch_after_configuration() {
+    fn refuses_pointer_switch_after_auto_init() {
         let temporary = TemporaryRuntime::new();
-        let runtime = AppRuntime::load(temporary.locator.clone());
-        runtime.initialize_directory(&temporary.data).unwrap();
+        let runtime = AppRuntime::load(temporary.locator.clone(), temporary.data.clone());
 
         let error = runtime
             .initialize_directory(temporary.root.join("other-data"))
@@ -649,7 +669,7 @@ mod tests {
     }
 
     #[test]
-    fn opening_existing_directory_reports_content_hash_backfill_progress() {
+    fn auto_init_backfills_content_hashes_for_legacy_rows() {
         let temporary = TemporaryRuntime::new();
         let directory = DataDirectory::initialize(&temporary.data).unwrap();
         fs::create_dir_all(&temporary.root).unwrap();
@@ -670,25 +690,11 @@ mod tests {
                 |_| Ok(()),
             )
             .unwrap();
-        let runtime = AppRuntime::load(temporary.locator.clone());
-        let events = Mutex::new(Vec::new());
 
-        let snapshot = runtime
-            .open_directory(&temporary.data, |progress| {
-                events.lock().unwrap().push(progress);
-            })
-            .unwrap();
+        let runtime = AppRuntime::load(temporary.locator.clone(), temporary.data.clone());
+        let snapshot = runtime.snapshot().unwrap();
 
         assert_eq!(snapshot.library.unwrap().row_count, 1);
-        assert_eq!(
-            events.lock().unwrap().last().copied(),
-            Some(ContentHashProgress {
-                processed: 1,
-                total: 1,
-                updated: 1,
-                unreadable: 0,
-            })
-        );
         assert!(
             directory
                 .open_database()
@@ -702,11 +708,10 @@ mod tests {
     #[test]
     fn imports_workbook_and_restores_summary_after_reload() {
         let temporary = TemporaryRuntime::new();
-        let runtime = AppRuntime::load(temporary.locator.clone());
-        runtime.initialize_directory(&temporary.data).unwrap();
+        let runtime = AppRuntime::load(temporary.locator.clone(), temporary.data.clone());
 
         let (_, outcome) = runtime.import_workbook(sample_workbook()).unwrap();
-        let reloaded = AppRuntime::load(temporary.locator.clone())
+        let reloaded = AppRuntime::load(temporary.locator.clone(), temporary.data.clone())
             .snapshot()
             .unwrap();
 
@@ -722,8 +727,7 @@ mod tests {
     #[test]
     fn appends_second_import_and_deletes_rows() {
         let temporary = TemporaryRuntime::new();
-        let runtime = AppRuntime::load(temporary.locator.clone());
-        runtime.initialize_directory(&temporary.data).unwrap();
+        let runtime = AppRuntime::load(temporary.locator.clone(), temporary.data.clone());
         runtime.import_workbook(sample_workbook()).unwrap();
 
         // 重复导入：全部跳过，行数不变。
@@ -744,8 +748,7 @@ mod tests {
     #[test]
     fn exposes_tag_queries_and_filtered_mutations() {
         let temporary = TemporaryRuntime::new();
-        let runtime = AppRuntime::load(temporary.locator.clone());
-        runtime.initialize_directory(&temporary.data).unwrap();
+        let runtime = AppRuntime::load(temporary.locator.clone(), temporary.data.clone());
         runtime.import_workbook(sample_workbook()).unwrap();
 
         let explicit = RowSelection::Explicit {
@@ -776,8 +779,7 @@ mod tests {
     #[test]
     fn loads_thumbnail_and_preview_for_imported_row() {
         let temporary = TemporaryRuntime::new();
-        let runtime = AppRuntime::load(temporary.locator.clone());
-        runtime.initialize_directory(&temporary.data).unwrap();
+        let runtime = AppRuntime::load(temporary.locator.clone(), temporary.data.clone());
         runtime.import_workbook(sample_workbook()).unwrap();
 
         let thumbnail = runtime.row_thumbnail(1).unwrap();
@@ -791,8 +793,7 @@ mod tests {
     #[test]
     fn migrates_directory_then_reloads_from_new_locator() {
         let temporary = TemporaryRuntime::new();
-        let runtime = AppRuntime::load(temporary.locator.clone());
-        runtime.initialize_directory(&temporary.data).unwrap();
+        let runtime = AppRuntime::load(temporary.locator.clone(), temporary.data.clone());
         runtime.import_workbook(sample_workbook()).unwrap();
         runtime
             .add_tags_to_selection(
@@ -803,7 +804,7 @@ mod tests {
         let destination = temporary.root.join("migrated-data");
 
         let outcome = runtime.migrate_directory(&destination).unwrap();
-        let reloaded = AppRuntime::load(temporary.locator.clone());
+        let reloaded = AppRuntime::load(temporary.locator.clone(), temporary.data.clone());
 
         assert_eq!(outcome.snapshot.data_directory, Some(destination.clone()));
         assert!(outcome.retired_source.is_none());
@@ -818,8 +819,7 @@ mod tests {
     #[test]
     fn locator_write_failure_restores_source_and_disables_destination() {
         let temporary = TemporaryRuntime::new();
-        let runtime = AppRuntime::load(temporary.locator.clone());
-        runtime.initialize_directory(&temporary.data).unwrap();
+        let runtime = AppRuntime::load(temporary.locator.clone(), temporary.data.clone());
         runtime.import_workbook(sample_workbook()).unwrap();
         let destination = temporary.root.join("failed-migration");
         let blocked_temporary = temporary.locator.parent().unwrap().join(format!(
@@ -833,7 +833,7 @@ mod tests {
         assert!(DataDirectory::open(&temporary.data).is_ok());
         assert!(DataDirectory::open(&destination).is_err());
         assert_eq!(
-            AppRuntime::load(temporary.locator.clone())
+            AppRuntime::load(temporary.locator.clone(), temporary.data.clone())
                 .snapshot()
                 .unwrap()
                 .data_directory,

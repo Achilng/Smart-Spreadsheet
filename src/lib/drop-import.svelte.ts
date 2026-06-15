@@ -1,7 +1,7 @@
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 
 import { app } from "./app-state.svelte";
-import { chooseRejectedImagesDirectory, runImageImport } from "./import-actions.svelte";
+import { runImageImport } from "./import-actions.svelte";
 
 const ACCEPTED_EXTENSIONS = new Set([
   "zip", "7z", "rar",
@@ -43,12 +43,6 @@ export function cancelDropImport(): void {
 
 export async function confirmDropImport(): Promise<void> {
   if (dropState.busy || dropState.paths.length === 0) return;
-
-  const hasRejectedDir = Boolean(app.snapshot?.rejectedImagesDirectory);
-  if (!hasRejectedDir) {
-    const ok = await chooseRejectedImagesDirectory();
-    if (!ok) return;
-  }
 
   dropState.busy = true;
   try {

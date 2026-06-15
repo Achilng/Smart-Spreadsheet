@@ -8,8 +8,8 @@
     type TagMatchMode,
     type TagSelectionSummary,
   } from "../../api";
-  import { errorText, formatCount } from "../app-state.svelte";
-  import { resetRows, rowStore, setDedupe, setFilter, setGroupView, setHideGrouped, setSingleArtistOnly } from "../row-store.svelte";
+  import { app, errorText, formatCount } from "../app-state.svelte";
+  import { resetRows, rowStore, setDedupe, setFilter, setHideGrouped, setSingleArtistOnly } from "../row-store.svelte";
   import {
     clearSelection,
     getSelectedCount,
@@ -284,12 +284,12 @@
       {/if}
     </div>
 
-    <div class="dedupe-options" role="group" aria-label="去重与分组">
+    <div class="dedupe-options" role="group" aria-label="去重与筛选">
       <label>
         <input
           type="checkbox"
           checked={rowStore.dedupe === "positivePrompt"}
-          disabled={rowStore.groupView}
+          disabled={app.viewMode === "group"}
           onchange={() => toggleDedupe("positivePrompt")}
         />
         按正向提示词去重
@@ -298,7 +298,7 @@
         <input
           type="checkbox"
           checked={rowStore.dedupe === "artists"}
-          disabled={rowStore.groupView}
+          disabled={app.viewMode === "group"}
           onchange={() => toggleDedupe("artists")}
         />
         按画师串去重
@@ -314,16 +314,8 @@
       <label>
         <input
           type="checkbox"
-          checked={rowStore.groupView}
-          onchange={() => { setGroupView(!rowStore.groupView); clearSelection(); }}
-        />
-        分组视图
-      </label>
-      <label>
-        <input
-          type="checkbox"
           checked={rowStore.hideGrouped}
-          disabled={rowStore.groupView}
+          disabled={app.viewMode === "group"}
           onchange={() => { setHideGrouped(!rowStore.hideGrouped); clearSelection(); }}
         />
         隐藏已分组

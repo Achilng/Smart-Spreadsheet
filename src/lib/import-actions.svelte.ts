@@ -3,10 +3,9 @@ import { open } from "@tauri-apps/plugin-dialog";
 
 import {
   importImages,
-  setRejectedImagesDirectory,
   type ImageImportProgress,
 } from "../api";
-import { app, errorText, formatCount, runAction, setNotice } from "./app-state.svelte";
+import { app, formatCount, runAction, setNotice } from "./app-state.svelte";
 
 export async function chooseImageFolder(): Promise<void> {
   const selection = await open({
@@ -15,9 +14,6 @@ export async function chooseImageFolder(): Promise<void> {
     title: "选择要导入的图片文件夹（追加进资料库）",
   });
   if (typeof selection !== "string") {
-    return;
-  }
-  if (!(await ensureRejectedImagesDirectory())) {
     return;
   }
   await runImageImport(selection);
@@ -33,37 +29,7 @@ export async function chooseImageArchive(): Promise<void> {
   if (typeof selection !== "string") {
     return;
   }
-  if (!(await ensureRejectedImagesDirectory())) {
-    return;
-  }
   await runImageImport(selection);
-}
-
-export async function chooseRejectedImagesDirectory(): Promise<boolean> {
-  const selection = await open({
-    directory: true,
-    multiple: false,
-    title: "选择无 metadata 图片的存放目录",
-  });
-  if (typeof selection !== "string") {
-    return false;
-  }
-  app.busy = true;
-  setNotice(null);
-  try {
-    app.snapshot = await setRejectedImagesDirectory(selection);
-    setNotice({ tone: "success", text: `异常图片将移动到 ${selection}` });
-    return true;
-  } catch (error) {
-    setNotice({ tone: "error", text: errorText(error) });
-    return false;
-  } finally {
-    app.busy = false;
-  }
-}
-
-async function ensureRejectedImagesDirectory(): Promise<boolean> {
-  return Boolean(app.snapshot?.rejectedImagesDirectory) || chooseRejectedImagesDirectory();
 }
 
 export async function runImageImport(path: string): Promise<void> {

@@ -8,6 +8,7 @@ import {
   migrateDataDirectory,
   openDataDirectory,
   resetConfiguration,
+  resetData as apiResetData,
   searchSimilarImages,
   type AppSnapshot,
   type ContentHashProgress,
@@ -17,7 +18,7 @@ import {
   type SimilarImageMatch,
 } from "../api";
 
-export type ViewMode = "gallery" | "table";
+export type ViewMode = "group" | "gallery" | "table";
 
 export interface Notice {
   tone: "error" | "success";
@@ -80,6 +81,19 @@ export async function refreshSnapshot(): Promise<void> {
 export async function resetAndReconfigure(): Promise<void> {
   await runAction(async () => {
     app.snapshot = await resetConfiguration();
+  });
+}
+
+export async function resetDataWithConfirmation(): Promise<void> {
+  const confirmed = await confirmDialog(
+    "将清空所有已导入的数据（图片副本、缩略图、数据库），回到初始导入页面。原始图片文件不受影响。此操作不可撤销，是否继续？",
+    { title: "重置表格", kind: "warning", okLabel: "确认重置", cancelLabel: "取消" },
+  );
+  if (!confirmed) return;
+  await runAction(async () => {
+    app.snapshot = await apiResetData();
+    app.dataVersion += 1;
+    setNotice({ tone: "success", text: "表格已重置，请重新导入数据。" });
   });
 }
 

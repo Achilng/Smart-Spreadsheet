@@ -3,6 +3,7 @@
     app,
     chooseMigration,
     chooseSearchImage,
+    resetDataWithConfirmation,
     runPhashBackfill,
     formatCount,
     type ViewMode,
@@ -10,7 +11,6 @@
   import {
     chooseImageArchive,
     chooseImageFolder,
-    chooseRejectedImagesDirectory,
   } from "../import-actions.svelte";
   import {
     chooseImageFilesExport,
@@ -18,6 +18,8 @@
     chooseXlsxExport,
     exportScopeLabel,
   } from "../export-actions";
+  import { clearSelection } from "../selection-store.svelte";
+  import { setGroupView } from "../row-store.svelte";
   import Dropdown, { type DropdownItem } from "./Dropdown.svelte";
   import WindowControls from "./WindowControls.svelte";
 
@@ -27,25 +29,29 @@
   );
 
   const views: { mode: ViewMode; label: string }[] = [
+    { mode: "group", label: "分组" },
     { mode: "gallery", label: "画廊" },
     { mode: "table", label: "表格" },
   ];
 
-  const rejectedDirectoryHint = $derived(
-    app.snapshot?.rejectedImagesDirectory?.split(/[\\/]/).pop() ?? "未设置",
-  );
+  function switchView(mode: ViewMode): void {
+    const wasGroup = app.viewMode === "group";
+    const isGroup = mode === "group";
+    app.viewMode = mode;
+    if (wasGroup !== isGroup) {
+      setGroupView(isGroup);
+      clearSelection();
+    }
+  }
+
   const toolItems = $derived<DropdownItem[]>([
     { label: "建议分组", hint: "按相似度聚类未分组行", action: () => (app.groupSuggestOpen = true) },
     { label: "管理分组", action: () => (app.groupManageOpen = true) },
     { label: "以图搜图", action: () => void chooseSearchImage() },
     { label: "刷新感知哈希", action: () => void runPhashBackfill() },
     { label: "智绘姬 JSON 去重", action: () => (app.jsonDedupeOpen = true) },
-    {
-      label: "异常图片目录",
-      hint: rejectedDirectoryHint,
-      action: () => void chooseRejectedImagesDirectory(),
-    },
     { label: "迁移数据目录", action: () => void chooseMigration() },
+    { label: "重置表格", hint: "清空数据重新开始", action: () => void resetDataWithConfirmation() },
   ]);
 
   const importItems: DropdownItem[] = [
@@ -92,7 +98,7 @@
         type="button"
         class:is-active={app.viewMode === view.mode}
         aria-pressed={app.viewMode === view.mode}
-        onclick={() => (app.viewMode = view.mode)}
+        onclick={() => switchView(view.mode)}
       >
         {view.label}
       </button>

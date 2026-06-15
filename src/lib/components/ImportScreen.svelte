@@ -1,12 +1,9 @@
 <script lang="ts">
-  import { app } from "../app-state.svelte";
+  import { app, chooseDirectory } from "../app-state.svelte";
   import {
     chooseImageArchive,
     chooseImageFolder,
-    chooseRejectedImagesDirectory,
   } from "../import-actions.svelte";
-
-  const rejectedDir = $derived(app.snapshot?.rejectedImagesDirectory);
 </script>
 
 <div class="center-screen">
@@ -15,22 +12,11 @@
     <p class="muted">
       资料库为追加式：可多次导入，已入库的图片自动跳过。支持 NovelAI PNG
       文件夹、zip/7z/rar 压缩包，以及固定 NovelAI Metadata 结构的 xlsx。无 metadata
-      图片不会入库，并会移动到你选择的异常图片目录。
+      图片不会入库，会自动移到异常图片目录。
     </p>
     <p class="directory" title={app.snapshot?.dataDirectory}>
       数据目录：{app.snapshot?.dataDirectory}
     </p>
-    {#if rejectedDir}
-      <p class="directory" title={rejectedDir}>
-        异常图片目录：{rejectedDir}
-        <button
-          type="button"
-          class="link-btn"
-          disabled={app.busy}
-          onclick={() => void chooseRejectedImagesDirectory()}
-        >更改</button>
-      </p>
-    {/if}
     <div class="flow-actions">
       <button
         type="button"
@@ -49,6 +35,15 @@
         导入压缩包
       </button>
     </div>
+    <p class="flow-hint">
+      从旧版升级？
+      <button
+        type="button"
+        class="link-btn"
+        disabled={app.busy}
+        onclick={() => void chooseDirectory("open")}
+      >打开已有数据目录</button>
+    </p>
   </div>
 </div>
 

@@ -67,8 +67,6 @@ pub enum StorageError {
     UnsupportedEntry(PathBuf),
     #[error("异常图片输出路径不是文件夹: {0}")]
     RejectedImagesPathNotDirectory(PathBuf),
-    #[error("异常图片输出目录不能位于受管数据目录内: {0}")]
-    RejectedImagesInsideDataDirectory(PathBuf),
     #[error("迁移文件校验失败: {0}")]
     MigrationVerificationFailed(PathBuf),
     #[error("无法恢复迁移失败前的数据目录标记: {0}")]
@@ -197,6 +195,10 @@ impl DataDirectory {
             .map(PathBuf::from))
     }
 
+    pub fn default_rejected_images_directory(&self) -> PathBuf {
+        self.root.join("rejected")
+    }
+
     pub fn set_rejected_images_directory(
         &self,
         path: impl AsRef<Path>,
@@ -207,14 +209,42 @@ impl DataDirectory {
         }
         fs::create_dir_all(path)?;
         let path = path.canonicalize()?;
-        let data_root = self.root.canonicalize()?;
-        if path.starts_with(&data_root) {
-            return Err(StorageError::RejectedImagesInsideDataDirectory(path));
-        }
         let display = canonical_display_path(&path);
         self.open_database()?
             .set_setting(REJECTED_IMAGES_DIRECTORY_SETTING, &display)?;
         Ok(PathBuf::from(display))
+    }
+
+    pub fn reset_data(&self) -> Result<(), StorageError> {
+        let files_dir = self.files_path();
+        if files_dir.is_dir() {
+            fs::remove_dir_all(&files_dir)?;
+            fs::create_dir_all(&files_dir)?;
+        }
+
+        let cache_dir = self.thumbnail_cache_path();
+        if cache_dir.is_dir() {
+            fs::remove_dir_all(&cache_dir)?;
+            fs::create_dir_all(&cache_dir)?;
+        }
+
+        let workbook_dir = self.root.join("workbook");
+        if workbook_dir.is_dir() {
+            fs::remove_dir_all(&workbook_dir)?;
+            fs::create_dir_all(&workbook_dir)?;
+        }
+
+        let db_path = self.database_path();
+        let wal = db_path.with_extension("sqlite3-wal");
+        let shm = db_path.with_extension("sqlite3-shm");
+        let _ = fs::remove_file(&wal);
+        let _ = fs::remove_file(&shm);
+        fs::remove_file(&db_path)?;
+        drop(Database::open(&db_path)?);
+
+        self.set_rejected_images_directory(self.default_rejected_images_directory())?;
+
+        Ok(())
     }
 
     /// 处理 v1→v2 迁移遗留的嵌入图提取：从旧工作簿副本批量读出嵌入图，

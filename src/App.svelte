@@ -2,7 +2,6 @@
   import { app, refreshSnapshot, resetAndReconfigure } from "./lib/app-state.svelte";
   import ImportScreen from "./lib/components/ImportScreen.svelte";
   import Notice from "./lib/components/Notice.svelte";
-  import SetupScreen from "./lib/components/SetupScreen.svelte";
   import WindowControls from "./lib/components/WindowControls.svelte";
   import Workspace from "./lib/components/Workspace.svelte";
 
@@ -50,8 +49,6 @@
           <p class="flow-hint">重新配置将清除当前定位信息，回到初始设置页面。</p>
         </div>
       </div>
-    {:else if !app.snapshot?.dataDirectory}
-      <SetupScreen />
     {:else}
       <ImportScreen />
     {/if}
