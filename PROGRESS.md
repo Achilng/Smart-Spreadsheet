@@ -4,7 +4,7 @@
 
 ## 当前阶段
 
-v0.7.0 开发中：分组系统 + 提示词编辑。
+v0.7.0 已发布：分组系统 + 提示词编辑。
 
 ### M22 — Schema v5 + 分组 CRUD 后端（2026-06-15）
 
@@ -45,6 +45,14 @@ v0.7.0 开发中：分组系统 + 提示词编辑。
 - 新增 `PromptEditDialog.svelte`：模态对话框含「查找替换」和「添加画师前缀」两个 tab 页，操作完成后刷新画廊并显示影响行数。
 - `SelectionBar.svelte`：新增「编辑提示词」按钮，打开 PromptEditDialog。
 - `svelte-check` 0 错误、Vite 生产构建通过。
+
+### M28 — 验收与发布（2026-06-15）
+
+- 全量门禁通过：Rust 152 项测试 + 2 项集成测试全部通过，Clippy 无警告，`svelte-check` 0 错误，Vite 生产构建通过。
+- 版本统一提升至 0.7.0：`package.json`、`package-lock.json`、`Cargo.toml`、`Cargo.lock` 与 `tauri.conf.json` 已同步。
+- Windows x64 release + NSIS 打包成功。
+- 安装器 `Smart-Spreadsheet_0.7.0_x64-setup.exe` 大小 4,176,294 字节，SHA-256 `8E8D5ADCC5A5B5FCE92A0B3AC888289D326D97A02A05ABD58465D064D4512EBF`。
+- GitHub Release [`v_9`](https://github.com/Achilng/Smart-Spreadsheet/releases/tag/v_9) 已发布，资产为 `Smart-Spreadsheet_0.7.0_x64-setup.exe`。
 
 ### M27 — 分组浏览视图（2026-06-15）
 
