@@ -28,7 +28,7 @@ pub use export::ExportRow;
 pub use hashes::ContentHashCandidate;
 pub use images::RowImageLocator;
 pub use migrations::CURRENT_SCHEMA_VERSION;
-use migrations::{MIGRATION_1, MIGRATION_2, MIGRATION_3, MIGRATION_4, MIGRATION_5};
+use migrations::{MIGRATION_1, MIGRATION_2, MIGRATION_3, MIGRATION_4, MIGRATION_5, MIGRATION_6};
 
 #[derive(Debug, Error)]
 pub enum DatabaseError {
@@ -157,6 +157,10 @@ fn apply_pending_migrations(
         transaction.execute_batch(MIGRATION_5)?;
         version = 5;
     }
+    if version == 5 {
+        transaction.execute_batch(MIGRATION_6)?;
+        version = 6;
+    }
     debug_assert_eq!(version, CURRENT_SCHEMA_VERSION);
     transaction.pragma_update(None, "user_version", version)?;
     transaction.commit()?;
@@ -240,6 +244,7 @@ mod tests {
         assert_eq!(
             tables,
             vec![
+                "dedupe_aliases",
                 "groups",
                 "import_batches",
                 "pending_embedded_extractions",
@@ -375,7 +380,7 @@ mod tests {
 
         let database = Database::open(&temporary.path).unwrap();
 
-        assert_eq!(database.schema_version().unwrap(), 5);
+        assert_eq!(database.schema_version().unwrap(), 6);
         // 批次：旧工作簿转为唯一的 xlsx 批次。
         let batch: (String, String, i64) = database
             .connection
@@ -449,7 +454,7 @@ mod tests {
 
         let database = Database::open(&temporary.path).unwrap();
 
-        assert_eq!(database.schema_version().unwrap(), 5);
+        assert_eq!(database.schema_version().unwrap(), 6);
         let row: (i64, String, Option<String>, Option<i64>) = database
             .connection
             .query_row(
@@ -478,7 +483,7 @@ mod tests {
 
         let database = Database::open(&temporary.path).unwrap();
 
-        assert_eq!(database.schema_version().unwrap(), 5);
+        assert_eq!(database.schema_version().unwrap(), 6);
         let row: (i64, Option<String>, Option<String>) = database
             .connection
             .query_row(
@@ -497,7 +502,7 @@ mod tests {
 
         let database = Database::open(&temporary.path).unwrap();
 
-        assert_eq!(database.schema_version().unwrap(), 5);
+        assert_eq!(database.schema_version().unwrap(), 6);
 
         let tables: Vec<String> = database
             .connection

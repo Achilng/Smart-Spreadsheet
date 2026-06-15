@@ -1,4 +1,4 @@
-pub const CURRENT_SCHEMA_VERSION: u32 = 5;
+pub const CURRENT_SCHEMA_VERSION: u32 = 6;
 
 pub(super) const MIGRATION_1: &str = r#"
 CREATE TABLE workbook (
@@ -150,4 +150,14 @@ CREATE TABLE groups (
 
 ALTER TABLE rows ADD COLUMN group_id INTEGER REFERENCES groups(id) ON DELETE SET NULL;
 CREATE INDEX idx_rows_group_id ON rows(group_id) WHERE group_id IS NOT NULL;
+"#;
+
+// v6：重复聚合 cluster 的自定义别名。
+pub(super) const MIGRATION_6: &str = r#"
+CREATE TABLE dedupe_aliases (
+    mode TEXT NOT NULL CHECK (mode IN ('artists', 'positivePrompt')),
+    key TEXT NOT NULL,
+    alias TEXT NOT NULL,
+    PRIMARY KEY (mode, key)
+) STRICT, WITHOUT ROWID;
 "#;

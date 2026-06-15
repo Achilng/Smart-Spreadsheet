@@ -415,6 +415,7 @@ export function getGroupMembers(
 export interface DedupeCluster {
   key: string;
   memberCount: number;
+  alias: string | null;
 }
 
 export function listDedupeClusters(
@@ -453,6 +454,14 @@ export function getDedupeClusterMembers(
     offset,
     limit,
   });
+}
+
+export function setDedupeAlias(
+  dedupe: DedupeMode,
+  key: string,
+  alias: string,
+): Promise<void> {
+  return invoke<void>("set_dedupe_alias", { dedupe, key, alias });
 }
 
 // ── Prompt Editing ──────────────────────────────────────────────

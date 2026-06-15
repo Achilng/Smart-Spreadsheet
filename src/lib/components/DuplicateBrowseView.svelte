@@ -8,6 +8,7 @@
   } from "../../api";
   import { errorText, formatCount } from "../app-state.svelte";
   import { rowStore } from "../row-store.svelte";
+  import { sectionMenu, showSectionMenu } from "../section-context-menu.svelte";
   import GroupSectionCard from "./GroupSectionCard.svelte";
 
   const MEMBERS_PAGE = 200;
@@ -34,14 +35,21 @@
     void rowStore.tagMode;
     void rowStore.singleArtistOnly;
     void rowStore.hideGrouped;
-    void loadClusters();
+    void loadClusters(true);
   });
 
-  async function loadClusters(): Promise<void> {
+  $effect(() => {
+    void sectionMenu.aliasVersion;
+    void loadClusters(false);
+  });
+
+  async function loadClusters(resetExpand: boolean): Promise<void> {
     clustersLoading = true;
     clustersError = null;
-    expandedKeys = [];
-    memberCache = {};
+    if (resetExpand) {
+      expandedKeys = [];
+      memberCache = {};
+    }
     try {
       clusters = await listDedupeClusters(
         dedupeMode,
@@ -134,6 +142,24 @@
     }
   }
 
+  function onHeaderContextMenu(
+    event: MouseEvent,
+    cluster: DedupeCluster,
+  ): void {
+    event.preventDefault();
+    if (dedupeMode === "none") return;
+    showSectionMenu(
+      {
+        kind: "dedupe",
+        mode: dedupeMode,
+        key: cluster.key,
+        displayName: cluster.alias ?? cluster.key,
+      },
+      event.clientX,
+      event.clientY,
+    );
+  }
+
   function setActive(row: RowRecord): void {
     rowStore.activeRow = row;
   }
@@ -166,9 +192,17 @@
         {@const expanded = isExpanded(cluster.key)}
         {@const data = getMemberData(cluster.key)}
         <section class="group-section">
-          <button type="button" class="section-header" onclick={() => void toggleCluster(cluster.key)}>
+          <button
+            type="button"
+            class="section-header"
+            onclick={() => void toggleCluster(cluster.key)}
+            oncontextmenu={(e) => onHeaderContextMenu(e, cluster)}
+          >
             <span class="expand-icon" class:is-expanded={expanded}>&#9654;</span>
-            <span class="section-name">{cluster.key}</span>
+            <span class="section-name">{cluster.alias ?? cluster.key}</span>
+            {#if cluster.alias}
+              <span class="section-orig-key" title={cluster.key}>({cluster.key.slice(0, 30)}{cluster.key.length > 30 ? "…" : ""})</span>
+            {/if}
             <span class="section-count">{formatCount(cluster.memberCount)} 张</span>
           </button>
           {#if expanded}
@@ -300,6 +334,16 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .section-orig-key {
+    font-size: 11px;
+    color: var(--text-3);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 240px;
+    flex: none;
   }
 
   .section-count {

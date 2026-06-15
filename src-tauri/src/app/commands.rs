@@ -88,6 +88,7 @@ pub(crate) struct ExportProgressDto {
 pub(crate) struct DedupeClusterDto {
     key: String,
     member_count: u64,
+    alias: Option<String>,
 }
 
 impl From<DedupeCluster> for DedupeClusterDto {
@@ -95,6 +96,7 @@ impl From<DedupeCluster> for DedupeClusterDto {
         Self {
             key: cluster.key,
             member_count: cluster.member_count,
+            alias: cluster.alias,
         }
     }
 }
@@ -432,6 +434,18 @@ pub(crate) fn get_dedupe_cluster_members(
             limit,
         )
         .map(RowPageDto::from)
+        .map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn set_dedupe_alias(
+    dedupe: DedupeMode,
+    key: String,
+    alias: String,
+    runtime: State<'_, AppRuntime>,
+) -> Result<(), String> {
+    runtime
+        .set_dedupe_alias(dedupe, &key, &alias)
         .map_err(error_text)
 }
 

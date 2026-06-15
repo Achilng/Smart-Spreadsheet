@@ -6,6 +6,14 @@
 
 v0.7.0 已发布：分组系统 + 提示词编辑。
 
+### M30 — 分组/重复视图右键菜单（2026-06-15）
+
+- **Section header 右键菜单**：分组视图支持"重命名"和"删除分组"，重复视图支持"重命名"（设置别名）。
+- **缩略图卡片右键菜单**：`GroupSectionCard` 新增右键触发现有 ContextMenu（复制 Prompt、导出原图、删除）。
+- **重复 cluster 别名系统**：新增 DB v6 迁移创建 `dedupe_aliases` 表，`set_dedupe_alias` API 支持 upsert/delete，`list_dedupe_clusters` 查询 LEFT JOIN 别名表。DuplicateBrowseView 优先显示别名，括号内附原始 key。
+- 新增 `SectionContextMenu.svelte` 和 `section-context-menu.svelte.ts` 管理 section 级右键状态。
+- 涉及文件：`migrations.rs`、`query.rs`、`mod.rs`、`runtime.rs`、`commands.rs`、`lib.rs`、`api.ts`、`GroupSectionCard.svelte`、`GroupBrowseView.svelte`、`DuplicateBrowseView.svelte`、`Workspace.svelte`、`SectionContextMenu.svelte`（新建）、`section-context-menu.svelte.ts`（新建）。
+
 ### M29 — 重复浏览视图（2026-06-15）
 
 - 后端新增 `list_dedupe_clusters` 和 `get_dedupe_cluster_members` 两个数据库方法及对应 Tauri 命令，按画师串或正向提示词聚合重复项（count >= 2），支持 Tag 筛选、分页。

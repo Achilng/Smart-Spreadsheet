@@ -24,6 +24,7 @@
   import GroupSuggestionView from "./GroupSuggestionView.svelte";
   import JsonDedupeView from "./JsonDedupeView.svelte";
   import SearchResultsView from "./SearchResultsView.svelte";
+  import SectionContextMenu from "./SectionContextMenu.svelte";
   import SelectionBar from "./SelectionBar.svelte";
   import TableView from "./TableView.svelte";
   import TagSidebar from "./TagSidebar.svelte";
@@ -132,6 +133,7 @@
 
 <SearchResultsView />
 <ContextMenu />
+<SectionContextMenu />
 <DeleteDialog />
 <DropConfirmDialog />
 

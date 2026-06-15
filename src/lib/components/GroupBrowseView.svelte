@@ -3,6 +3,7 @@
   import { errorText, formatCount } from "../app-state.svelte";
   import { groupStore, loadGroups } from "../group-store.svelte";
   import { rowStore } from "../row-store.svelte";
+  import { showSectionMenu } from "../section-context-menu.svelte";
   import GroupSectionCard from "./GroupSectionCard.svelte";
 
   const MEMBERS_PAGE = 200;
@@ -144,6 +145,19 @@
     }
   }
 
+  function onHeaderContextMenu(
+    event: MouseEvent,
+    groupId: number,
+    name: string,
+  ): void {
+    event.preventDefault();
+    showSectionMenu(
+      { kind: "group", groupId, name },
+      event.clientX,
+      event.clientY,
+    );
+  }
+
   function setActive(row: RowRecord): void {
     rowStore.activeRow = row;
   }
@@ -161,7 +175,12 @@
       {@const expanded = isExpanded(group.id)}
       {@const data = getMemberData(group.id)}
       <section class="group-section">
-        <button type="button" class="section-header" onclick={() => void toggleGroup(group.id)}>
+        <button
+          type="button"
+          class="section-header"
+          onclick={() => void toggleGroup(group.id)}
+          oncontextmenu={(e) => onHeaderContextMenu(e, group.id, group.name)}
+        >
           <span class="expand-icon" class:is-expanded={expanded}>&#9654;</span>
           <span class="section-name">{group.name}</span>
           <span class="section-count">{formatCount(group.memberCount)} 张</span>

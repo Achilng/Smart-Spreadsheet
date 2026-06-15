@@ -88,6 +88,7 @@ pub struct TagSummary {
 pub struct DedupeCluster {
     pub key: String,
     pub member_count: u64,
+    pub alias: Option<String>,
 }
 
 impl Database {
@@ -236,9 +237,9 @@ impl Database {
         single_artist_only: bool,
         hide_grouped: bool,
     ) -> Result<Vec<DedupeCluster>, DatabaseError> {
-        let column = match dedupe {
-            DedupeMode::PositivePrompt => "positive_prompt",
-            DedupeMode::Artists => "artists",
+        let (column, mode_str) = match dedupe {
+            DedupeMode::PositivePrompt => ("positive_prompt", "positivePrompt"),
+            DedupeMode::Artists => ("artists", "artists"),
             DedupeMode::None => return Ok(Vec::new()),
         };
         let normalized = normalize_tags(tags);
@@ -261,22 +262,27 @@ impl Database {
 
         let clusters = {
             let mut statement = transaction.prepare(&format!(
-                "SELECT dedupe_key, COUNT(*) AS cnt
+                "SELECT g.dedupe_key, g.cnt, da.alias
                  FROM (
-                     SELECT NULLIF(TRIM(COALESCE(rows.{column}, '')), '') AS dedupe_key
-                     FROM rows
-                     WHERE {predicate}
-                 )
-                 WHERE dedupe_key IS NOT NULL
-                 GROUP BY dedupe_key
-                 HAVING cnt >= 2
-                 ORDER BY cnt DESC, dedupe_key"
+                     SELECT dedupe_key, COUNT(*) AS cnt
+                     FROM (
+                         SELECT NULLIF(TRIM(COALESCE(rows.{column}, '')), '') AS dedupe_key
+                         FROM rows
+                         WHERE {predicate}
+                     )
+                     WHERE dedupe_key IS NOT NULL
+                     GROUP BY dedupe_key
+                     HAVING cnt >= 2
+                 ) g
+                 LEFT JOIN dedupe_aliases da ON da.mode = ?1 AND da.key = g.dedupe_key
+                 ORDER BY g.cnt DESC, g.dedupe_key"
             ))?;
             statement
-                .query_map([], |row| {
+                .query_map([mode_str], |row| {
                     Ok(DedupeCluster {
                         key: row.get(0)?,
                         member_count: row.get::<_, i64>(1)? as u64,
+                        alias: row.get(2)?,
                     })
                 })?
                 .collect::<Result<Vec<_>, _>>()?
@@ -365,6 +371,33 @@ impl Database {
             offset,
             limit,
         })
+    }
+
+    pub fn set_dedupe_alias(
+        &mut self,
+        mode: DedupeMode,
+        key: &str,
+        alias: &str,
+    ) -> Result<(), DatabaseError> {
+        let mode_str = match mode {
+            DedupeMode::PositivePrompt => "positivePrompt",
+            DedupeMode::Artists => "artists",
+            DedupeMode::None => return Ok(()),
+        };
+        let alias = alias.trim();
+        if alias.is_empty() {
+            self.connection.execute(
+                "DELETE FROM dedupe_aliases WHERE mode = ?1 AND key = ?2",
+                params![mode_str, key],
+            )?;
+        } else {
+            self.connection.execute(
+                "INSERT INTO dedupe_aliases (mode, key, alias) VALUES (?1, ?2, ?3)
+                 ON CONFLICT(mode, key) DO UPDATE SET alias = excluded.alias",
+                params![mode_str, key, alias],
+            )?;
+        }
+        Ok(())
     }
 }
 

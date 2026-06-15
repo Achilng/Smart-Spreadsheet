@@ -3,7 +3,14 @@
   import { rowStore } from "../row-store.svelte";
   import { thumbnails } from "../thumbnails";
 
+  import { showContextMenu } from "../context-menu.svelte";
+
   let { row, onactivate }: { row: RowRecord; onactivate: () => void } = $props();
+
+  function onContextMenu(event: MouseEvent): void {
+    event.preventDefault();
+    showContextMenu(row, event.clientX, event.clientY);
+  }
 
   const hasImage = $derived(
     Boolean(row.imagePath?.trim() || row.storedImagePath?.trim()),
@@ -36,6 +43,7 @@
   class:is-active={isActive}
   title={row.artists || row.positivePrompt?.slice(0, 80) || `#${row.sourceOrdinal}`}
   onclick={onactivate}
+  oncontextmenu={onContextMenu}
 >
   <div class="thumb">
     {#if thumbUrl}

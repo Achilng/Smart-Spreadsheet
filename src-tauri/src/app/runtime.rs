@@ -411,6 +411,15 @@ impl AppRuntime {
         })
     }
 
+    pub(crate) fn set_dedupe_alias(
+        &self,
+        mode: DedupeMode,
+        key: &str,
+        alias: &str,
+    ) -> Result<(), AppRuntimeError> {
+        self.with_database(|db| db.set_dedupe_alias(mode, key, alias))
+    }
+
     pub(crate) fn row_thumbnail(&self, row_id: i64) -> Result<Vec<u8>, AppRuntimeError> {
         self.row_image(row_id, ImageVariant::Thumbnail)
     }
