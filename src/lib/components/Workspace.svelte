@@ -1,8 +1,9 @@
 <script lang="ts">
-  import { untrack } from "svelte";
+  import { onMount, untrack } from "svelte";
 
   import { app } from "../app-state.svelte";
   import { deletion, requestDelete } from "../delete-actions.svelte";
+  import { dropState, listenDragDrop } from "../drop-import.svelte";
   import {
     clearSelection,
     getSelectedCount,
@@ -15,6 +16,7 @@
   import ContextMenu from "./ContextMenu.svelte";
   import DetailPanel from "./DetailPanel.svelte";
   import DeleteDialog from "./DeleteDialog.svelte";
+  import DropConfirmDialog from "./DropConfirmDialog.svelte";
   import GalleryView from "./GalleryView.svelte";
   import GroupBrowseView from "./GroupBrowseView.svelte";
   import GroupManageView from "./GroupManageView.svelte";
@@ -27,7 +29,7 @@
   import TopBar from "./TopBar.svelte";
 
   // 首次挂载和工作簿替换时：清缩略图缓存（行 ID 可能复用）、重载数据、刷新 Tag 库、清空选择。
-  // untrack：这些调用内部有“读-改-写”（如 pagesVersion += 1），不能注册为本 effect 的依赖。
+  // untrack：这些调用内部有”读-改-写”（如 pagesVersion += 1），不能注册为本 effect 的依赖。
   $effect(() => {
     void app.dataVersion;
     untrack(() => {
@@ -37,6 +39,8 @@
       void loadTags();
     });
   });
+
+  onMount(() => listenDragDrop());
 
   function onKeydown(event: KeyboardEvent): void {
     const target = event.target;
@@ -84,7 +88,7 @@
     </aside>
 
     <main class="main-area">
-      {#if rowStore.groupView}
+      {#if app.viewMode === "group"}
         <GroupBrowseView />
       {:else if app.viewMode === "gallery"}
         <GalleryView />
@@ -126,6 +130,13 @@
 <SearchResultsView />
 <ContextMenu />
 <DeleteDialog />
+<DropConfirmDialog />
+
+{#if dropState.dragging}
+  <div class="drop-overlay">
+    <div class="drop-hint">松开鼠标以导入图片</div>
+  </div>
+{/if}
 
 <style>
   .workspace {
@@ -183,6 +194,26 @@
   .detail-strip:hover {
     background: var(--surface-2);
     color: var(--text);
+  }
+
+  .drop-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: grid;
+    place-items: center;
+    background: rgb(15 20 28 / 45%);
+    pointer-events: none;
+  }
+
+  .drop-hint {
+    padding: 20px 40px;
+    background: var(--surface);
+    border: 2px dashed var(--accent, #5b9ef4);
+    border-radius: var(--radius-m);
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--accent, #5b9ef4);
   }
 
 </style>

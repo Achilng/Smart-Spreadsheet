@@ -66,7 +66,7 @@ async function ensureRejectedImagesDirectory(): Promise<boolean> {
   return Boolean(app.snapshot?.rejectedImagesDirectory) || chooseRejectedImagesDirectory();
 }
 
-async function runImageImport(path: string): Promise<void> {
+export async function runImageImport(path: string): Promise<void> {
   await runAction(async () => {
     const unlisten = await listen<ImageImportProgress>(
       "import-images://progress",
