@@ -298,6 +298,15 @@ export function exportRowImage(rowId: number, destination: string): Promise<void
   return invoke("export_row_image", { rowId, destination });
 }
 
+export interface FileDragInfo {
+  filePath: string;
+  iconPath: string;
+}
+
+export function prepareFileDrag(rowId: number): Promise<FileDragInfo> {
+  return invoke<FileDragInfo>("prepare_file_drag", { rowId });
+}
+
 export function exportXlsx(
   selection: RowSelection,
   path: string,

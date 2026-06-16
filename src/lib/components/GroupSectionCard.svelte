@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { RowRecord } from "../../api";
+  import { beginFileDrag } from "../file-drag";
   import { rowStore } from "../row-store.svelte";
   import { thumbnails } from "../thumbnails";
 
@@ -47,7 +48,13 @@
 >
   <div class="thumb">
     {#if thumbUrl}
-      <img src={thumbUrl} alt="#{row.sourceOrdinal}" loading="lazy" />
+      <img
+        src={thumbUrl}
+        alt="#{row.sourceOrdinal}"
+        loading="lazy"
+        draggable="false"
+        onmousedown={(e) => { if (hasImage) beginFileDrag(e, row.id); }}
+      />
     {:else if !hasImage}
       <span class="thumb-note faint">无图</span>
     {:else if thumbFailed}

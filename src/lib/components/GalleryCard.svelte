@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { RowRecord } from "../../api";
   import { showContextMenu } from "../context-menu.svelte";
+  import { beginFileDrag } from "../file-drag";
   import { rowStore } from "../row-store.svelte";
   import { getSelectedCount, isRowSelected, toggleRow } from "../selection-store.svelte";
   import { thumbnails } from "../thumbnails";
@@ -59,11 +60,18 @@
   const visibleTags = $derived(row?.tags.slice(0, 3) ?? []);
   const extraTagCount = $derived(Math.max(0, (row?.tags.length ?? 0) - 3));
 
+  let dragging = $state(false);
+
   function onContextMenu(event: MouseEvent): void {
     if (!row) return;
     event.preventDefault();
     rowStore.activeRow = row;
     showContextMenu(row, event.clientX, event.clientY);
+  }
+
+  function onThumbMouseDown(event: MouseEvent): void {
+    if (!row || !hasImage) return;
+    beginFileDrag(event, row.id, () => { dragging = true; });
   }
 </script>
 
@@ -97,10 +105,14 @@
       class="thumb"
       style:height="{imageHeight}px"
       aria-label="查看第 {row.sourceOrdinal} 行详情"
-      onclick={() => (rowStore.activeRow = row ?? null)}
+      onmousedown={onThumbMouseDown}
+      onclick={() => {
+        if (dragging) { dragging = false; return; }
+        rowStore.activeRow = row ?? null;
+      }}
     >
       {#if thumbUrl}
-        <img src={thumbUrl} alt="第 {row.sourceOrdinal} 行缩略图" loading="lazy" />
+        <img src={thumbUrl} alt="第 {row.sourceOrdinal} 行缩略图" loading="lazy" draggable="false" />
       {:else if !hasImage}
         <span class="thumb-note faint">无图片</span>
       {:else if thumbFailed}

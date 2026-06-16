@@ -11,6 +11,7 @@ pub mod storage;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_drag::init())
         .setup(|app| {
             use tauri::Manager;
 
@@ -69,6 +70,7 @@ pub fn run() {
             app::commands::search_similar_images,
             app::commands::show_item_in_explorer,
             app::commands::open_rejected_images_directory,
+            app::commands::prepare_file_drag,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Smart Spreadsheet");

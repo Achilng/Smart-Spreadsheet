@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { beginFileDrag } from "../file-drag";
   import { thumbnails } from "../thumbnails";
 
   let { rowId, hasImage, alt }: { rowId: number; hasImage: boolean; alt: string } = $props();
@@ -33,7 +34,13 @@
 </script>
 
 {#if url}
-  <img src={url} {alt} loading="lazy" />
+  <img
+    src={url}
+    {alt}
+    loading="lazy"
+    draggable="false"
+    onmousedown={(e) => { if (hasImage) beginFileDrag(e, rowId); }}
+  />
 {:else if !hasImage}
   <span class="note">无图</span>
 {:else if failed}

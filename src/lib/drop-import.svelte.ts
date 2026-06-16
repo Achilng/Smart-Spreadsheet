@@ -1,6 +1,7 @@
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 
 import { app } from "./app-state.svelte";
+import { outboundDrag } from "./file-drag";
 import { runImageImport } from "./import-actions.svelte";
 
 const ACCEPTED_EXTENSIONS = new Set([
@@ -64,12 +65,12 @@ export function listenDragDrop(): () => void {
       if (!app.snapshot?.dataDirectory) return;
 
       if (event.payload.type === "enter" || event.payload.type === "over") {
-        dropState.dragging = true;
+        if (!outboundDrag) dropState.dragging = true;
       } else if (event.payload.type === "leave") {
         dropState.dragging = false;
       } else if (event.payload.type === "drop") {
         dropState.dragging = false;
-        if (!app.busy && !dropState.open) {
+        if (!app.busy && !dropState.open && !outboundDrag) {
           requestDropImport(event.payload.paths);
         }
       }

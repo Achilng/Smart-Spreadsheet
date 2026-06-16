@@ -6,6 +6,15 @@
 
 v0.8.0 已发布：搜索功能。
 
+### M33 — 原图拖拽（2026-06-16）
+
+- 新增从缩略图直接拖拽原图文件到外部应用的功能，使用 `tauri-plugin-drag`（CrabNebula）实现原生 OS 文件拖拽。
+- 后端新增 `prepare_file_drag` 命令：解析行的原图文件路径并定位缩略图缓存文件作为拖拽图标。
+- 前端新增 `file-drag.ts` 工具模块：mousedown + mousemove 阈值检测区分点击与拖拽，超过 5px 移动后启动原生文件拖拽，不影响原有点击行为。
+- 支持范围：画廊卡片、表格行缩略图、详情面板预览/大图、分组卡片缩略图、以图搜图结果。
+- 全量验证：Rust 编译通过，`svelte-check` 0 错误，NSIS 安装包构建成功。
+- 涉及文件：`Cargo.toml`、`lib.rs`、`commands.rs`（后端）；`package.json`、`api.ts`、`file-drag.ts`（新建）、`GalleryCard.svelte`、`Thumbnail.svelte`、`DetailPanel.svelte`、`GroupSectionCard.svelte`、`SearchResultsView.svelte`、`capabilities/default.json`（前端）。
+
 ### M32 — 文件管理器集成 + 失败图片去重（2026-06-16）
 
 - 右键菜单新增「在文件管理器中打开」：画廊、表格、分组视图的行级右键菜单均可使用，后端通过 `show_item_in_explorer` 命令解析行的实际图片路径（优先原路径、回退受管副本），调用系统文件管理器选中该文件。

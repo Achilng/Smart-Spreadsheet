@@ -2,6 +2,7 @@
   import { createTag, getRowPreview, setTagsForRow, updateNegativePrompt, updatePositivePrompt } from "../../api";
   import { binaryBuffer } from "../../image-loader";
   import { app, errorText } from "../app-state.svelte";
+  import { beginFileDrag } from "../file-drag";
   import { requestDelete } from "../delete-actions.svelte";
   import { removeFromGroup } from "../group-store.svelte";
   import { patchRowFields, patchRowTags, resetRows, rowStore } from "../row-store.svelte";
@@ -275,7 +276,12 @@
             title="点击放大"
             onclick={() => (lightboxOpen = true)}
           >
-            <img src={displayUrl} alt="第 {row.sourceOrdinal} 行图片" />
+            <img
+              src={displayUrl}
+              alt="第 {row.sourceOrdinal} 行图片"
+              draggable="false"
+              onmousedown={(e) => { if (row && hasImage) beginFileDrag(e, row.id); }}
+            />
           </button>
         {:else if !hasImage}
           <span class="faint">无图片</span>
@@ -464,7 +470,12 @@
       }
     }}
   >
-    <img src={displayUrl} alt="第 {row.sourceOrdinal} 行大图" />
+    <img
+      src={displayUrl}
+      alt="第 {row.sourceOrdinal} 行大图"
+      draggable="false"
+      onmousedown={(e) => { if (row && hasImage) beginFileDrag(e, row.id); }}
+    />
   </div>
 {/if}
 

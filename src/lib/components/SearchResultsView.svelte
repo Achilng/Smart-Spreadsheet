@@ -2,6 +2,7 @@
   import { app, closeSearchResults, formatCount } from "../app-state.svelte";
   import { getRowThumbnail, getRowsByIds, type RowRecord } from "../../api";
   import { showContextMenu } from "../context-menu.svelte";
+  import { beginFileDrag } from "../file-drag";
   import { rowStore } from "../row-store.svelte";
 
   const results = $derived(app.searchResults ?? []);
@@ -88,6 +89,8 @@
                   src={thumbnailUrls.get(match.rowId)}
                   alt="行 {match.rowId}"
                   loading="lazy"
+                  draggable="false"
+                  onmousedown={(e) => beginFileDrag(e, match.rowId)}
                 />
               {:else}
                 <div class="placeholder">加载中</div>

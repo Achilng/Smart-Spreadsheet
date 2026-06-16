@@ -767,6 +767,47 @@ pub(crate) fn open_rejected_images_directory(
     Ok(())
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct FileDragInfo {
+    file_path: String,
+    icon_path: String,
+}
+
+#[tauri::command]
+pub(crate) fn prepare_file_drag(
+    row_id: i64,
+    runtime: State<'_, AppRuntime>,
+) -> Result<FileDragInfo, String> {
+    let directory = runtime.active_directory().map_err(error_text)?;
+    let locator = directory
+        .open_database()
+        .map_err(error_text)?
+        .row_image_locator(row_id)
+        .map_err(error_text)?;
+    let file_path = crate::storage::resolve_image_source(&directory, &locator)
+        .ok_or_else(|| format!("第 {row_id} 行没有可用的图片文件"))?;
+
+    let thumb_dir = directory.thumbnail_cache_path();
+    let prefix = format!("row-{row_id}-");
+    let find_icon = || -> Option<PathBuf> {
+        std::fs::read_dir(&thumb_dir)
+            .ok()?
+            .filter_map(|e| e.ok())
+            .find(|e| e.file_name().to_string_lossy().starts_with(&prefix))
+            .map(|e| e.path())
+    };
+    let icon_path = find_icon().unwrap_or_else(|| {
+        let _ = directory.load_row_image(row_id, crate::images::ImageVariant::Thumbnail);
+        find_icon().unwrap_or_else(|| file_path.clone())
+    });
+
+    Ok(FileDragInfo {
+        file_path: file_path.to_string_lossy().into_owned(),
+        icon_path: icon_path.to_string_lossy().into_owned(),
+    })
+}
+
 fn open_path_in_explorer(path: &Path) {
     #[cfg(target_os = "windows")]
     {
