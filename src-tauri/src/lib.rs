@@ -67,6 +67,8 @@ pub fn run() {
             app::commands::migrate_data_directory,
             app::commands::backfill_perceptual_hashes,
             app::commands::search_similar_images,
+            app::commands::show_item_in_explorer,
+            app::commands::open_rejected_images_directory,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Smart Spreadsheet");

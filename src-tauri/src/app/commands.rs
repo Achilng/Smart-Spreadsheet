@@ -738,6 +738,76 @@ pub(crate) async fn search_similar_images(
 }
 
 #[tauri::command]
+pub(crate) fn show_item_in_explorer(
+    row_id: i64,
+    runtime: State<'_, AppRuntime>,
+) -> Result<(), String> {
+    let directory = runtime.active_directory().map_err(error_text)?;
+    let locator = directory.open_database().map_err(error_text)?.row_image_locator(row_id).map_err(error_text)?;
+    let source = crate::storage::resolve_image_source(&directory, &locator)
+        .ok_or_else(|| format!("第 {row_id} 行没有可用的图片文件"))?;
+    open_path_in_explorer(&source);
+    Ok(())
+}
+
+#[tauri::command]
+pub(crate) fn open_rejected_images_directory(
+    runtime: State<'_, AppRuntime>,
+) -> Result<(), String> {
+    let directory = runtime.active_directory().map_err(error_text)?;
+    let rejected_dir = directory
+        .rejected_images_directory()
+        .map_err(error_text)?
+        .unwrap_or_else(|| directory.default_rejected_images_directory());
+    if rejected_dir.is_dir() {
+        open_path_in_explorer(&rejected_dir);
+    } else {
+        return Err(format!("失败图片目录不存在: {}", rejected_dir.display()));
+    }
+    Ok(())
+}
+
+fn open_path_in_explorer(path: &Path) {
+    #[cfg(target_os = "windows")]
+    {
+        if path.is_file() {
+            let _ = std::process::Command::new("explorer")
+                .arg("/select,")
+                .arg(path)
+                .spawn();
+        } else {
+            let _ = std::process::Command::new("explorer")
+                .arg(path)
+                .spawn();
+        }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        if path.is_file() {
+            let _ = std::process::Command::new("open")
+                .arg("-R")
+                .arg(path)
+                .spawn();
+        } else {
+            let _ = std::process::Command::new("open")
+                .arg(path)
+                .spawn();
+        }
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let target = if path.is_file() {
+            path.parent().unwrap_or(path)
+        } else {
+            path
+        };
+        let _ = std::process::Command::new("xdg-open")
+            .arg(target)
+            .spawn();
+    }
+}
+
+#[tauri::command]
 pub(crate) fn migrate_data_directory(
     path: String,
     runtime: State<'_, AppRuntime>,

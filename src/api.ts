@@ -505,3 +505,11 @@ export function prependArtist(
 ): Promise<PromptEditResult> {
   return invoke<PromptEditResult>("prepend_artist", { selection, artistName });
 }
+
+export function showItemInExplorer(rowId: number): Promise<void> {
+  return invoke<void>("show_item_in_explorer", { rowId });
+}
+
+export function openRejectedImagesDirectory(): Promise<void> {
+  return invoke<void>("open_rejected_images_directory");
+}

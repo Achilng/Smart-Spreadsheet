@@ -141,7 +141,7 @@ impl DataDirectory {
     }
 }
 
-fn resolve_locator_source(
+pub fn resolve_locator_source(
     directory: &DataDirectory,
     locator: &crate::db::RowImageLocator,
 ) -> Option<PathBuf> {

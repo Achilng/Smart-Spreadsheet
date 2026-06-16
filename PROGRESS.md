@@ -1,10 +1,19 @@
 # 开发进度
 
-最后更新：2026-06-15
+最后更新：2026-06-16
 
 ## 当前阶段
 
 v0.8.0 已发布：搜索功能。
+
+### M32 — 文件管理器集成 + 失败图片去重（2026-06-16）
+
+- 右键菜单新增「在文件管理器中打开」：画廊、表格、分组视图的行级右键菜单均可使用，后端通过 `show_item_in_explorer` 命令解析行的实际图片路径（优先原路径、回退受管副本），调用系统文件管理器选中该文件。
+- 工具菜单新增「打开失败图片目录」：通过 `open_rejected_images_directory` 命令在文件管理器中打开已配置的异常图片目录。
+- 失败图片去重：`move_rejected_image` 在移动前检查目标位置是否已存在内容相同的文件（先比较文件大小，再比较字节），若已存在则跳过移动并删除源文件，避免重复导入时积累大量同内容的 `_2`、`_3` 后缀文件。
+- 跨平台支持：Windows 使用 `explorer /select,`，macOS 使用 `open -R`，Linux 使用 `xdg-open`。
+- 全量验证：Rust 152 项测试通过，`svelte-check` 0 错误。
+- 涉及文件：`commands.rs`、`runtime.rs`、`export_images.rs`、`import_images.rs`、`storage/mod.rs`、`lib.rs`（后端）；`api.ts`、`ContextMenu.svelte`、`TopBar.svelte`（前端）。
 
 ### M31 — 搜索功能（2026-06-15）
 

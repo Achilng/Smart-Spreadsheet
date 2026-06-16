@@ -475,6 +475,10 @@ fn move_rejected_image(image: &SourceImage, rejected_root: &Path) -> Result<Path
     if let Some(parent) = desired.parent() {
         fs::create_dir_all(parent)?;
     }
+    if desired.is_file() && is_same_content(&image.absolute_path, &desired)? {
+        let _ = fs::remove_file(&image.absolute_path);
+        return Ok(desired);
+    }
     let destination = unique_destination(&desired);
     if fs::rename(&image.absolute_path, &destination).is_err() {
         fs::copy(&image.absolute_path, &destination)?;
@@ -484,6 +488,15 @@ fn move_rejected_image(image: &SourceImage, rejected_root: &Path) -> Result<Path
         }
     }
     Ok(destination)
+}
+
+fn is_same_content(a: &Path, b: &Path) -> Result<bool, std::io::Error> {
+    let meta_a = fs::metadata(a)?;
+    let meta_b = fs::metadata(b)?;
+    if meta_a.len() != meta_b.len() {
+        return Ok(false);
+    }
+    Ok(fs::read(a)? == fs::read(b)?)
 }
 
 fn unique_destination(desired: &Path) -> PathBuf {

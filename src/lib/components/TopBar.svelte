@@ -8,6 +8,7 @@
     formatCount,
     type ViewMode,
   } from "../app-state.svelte";
+  import { openRejectedImagesDirectory } from "../../api";
   import {
     chooseImageArchive,
     chooseImageFolder,
@@ -71,6 +72,7 @@
     { label: "管理分组", action: () => (app.groupManageOpen = true) },
     { label: "以图搜图", action: () => void chooseSearchImage() },
     { label: "刷新感知哈希", action: () => void runPhashBackfill() },
+    { label: "打开失败图片目录", action: () => void openRejectedImagesDirectory() },
     { label: "智绘姬 JSON 去重", action: () => (app.jsonDedupeOpen = true) },
     { label: "迁移数据目录", action: () => void chooseMigration() },
     { label: "重置表格", hint: "清空数据重新开始", action: () => void resetDataWithConfirmation() },

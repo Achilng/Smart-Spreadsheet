@@ -1,6 +1,6 @@
 <script lang="ts">
   import { save } from "@tauri-apps/plugin-dialog";
-  import { exportRowImage } from "../../api";
+  import { exportRowImage, showItemInExplorer } from "../../api";
   import { setNotice } from "../app-state.svelte";
   import { contextMenu, hideContextMenu } from "../context-menu.svelte";
   import { requestDelete } from "../delete-actions.svelte";
@@ -59,6 +59,19 @@
     }
   }
 
+  async function openInExplorer(): Promise<void> {
+    if (!row) return;
+    hideContextMenu();
+    try {
+      await showItemInExplorer(row.id);
+    } catch (error) {
+      setNotice({
+        tone: "error",
+        text: `打开文件管理器失败：${error instanceof Error ? error.message : String(error)}`,
+      });
+    }
+  }
+
   function deleteRow(): void {
     if (!row) return;
     hideContextMenu();
@@ -103,6 +116,14 @@
       onclick={() => void exportImage()}
     >
       导出原图
+    </button>
+    <button
+      type="button"
+      role="menuitem"
+      disabled={!hasImage}
+      onclick={() => void openInExplorer()}
+    >
+      在文件管理器中打开
     </button>
     <div class="separator"></div>
     <button

@@ -22,6 +22,7 @@ pub use delete::{RowDeletionError, RowDeletionReport};
 pub use content_hash::{ContentHashBackfillOutcome, ContentHashProgress};
 pub use export_images::{
     ImageFileExportMode, ImageFilesExportError, ImageFilesExportOutcome, ImageFilesProgress,
+    resolve_locator_source as resolve_image_source,
 };
 pub use export_json::{JsonExportError, JsonExportOutcome, JsonExportProgress};
 pub use export_xlsx::{ExportProgress, XlsxExportError, XlsxExportOutcome};

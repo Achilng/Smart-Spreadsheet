@@ -522,7 +522,7 @@ impl AppRuntime {
     }
 
     /// 取出活动数据目录的克隆并立即释放状态锁，供导出等长耗时操作使用。
-    fn active_directory(&self) -> Result<DataDirectory, AppRuntimeError> {
+    pub(crate) fn active_directory(&self) -> Result<DataDirectory, AppRuntimeError> {
         let state = self.lock_state()?;
         ensure_startup_valid(&state)?;
         Ok(state
