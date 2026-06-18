@@ -232,6 +232,45 @@ impl Database {
         Ok(summaries)
     }
 
+    /// 返回全库去重后的画师片段：逐行画师串按换行拆分，trim、去空、去重后排序。
+    pub fn list_distinct_artists(&self) -> Result<Vec<String>, DatabaseError> {
+        let mut statement = self.connection.prepare(
+            "SELECT artists FROM rows
+             WHERE artists IS NOT NULL AND TRIM(artists) != ''",
+        )?;
+        let stored = statement
+            .query_map([], |row| row.get::<_, String>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut set = std::collections::BTreeSet::new();
+        for value in stored {
+            for fragment in value.split('\n') {
+                let trimmed = fragment.trim();
+                if !trimmed.is_empty() {
+                    set.insert(trimmed.to_string());
+                }
+            }
+        }
+        Ok(set.into_iter().collect())
+    }
+
+    /// 返回画师串与给定值完全相同的所有行 ID（全库，忽略 Tag 筛选）。
+    pub fn row_ids_with_artists(&self, artists: &str) -> Result<Vec<i64>, DatabaseError> {
+        let trimmed = artists.trim();
+        if trimmed.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut statement = self.connection.prepare(
+            "SELECT id FROM rows
+             WHERE NULLIF(TRIM(COALESCE(artists, '')), '') = ?1
+             ORDER BY id",
+        )?;
+        let ids = statement
+            .query_map(params![trimmed], |row| row.get::<_, i64>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(ids)
+    }
+
+    #[allow(clippy::too_many_arguments)]
     pub fn list_dedupe_clusters(
         &mut self,
         dedupe: DedupeMode,
@@ -239,6 +278,7 @@ impl Database {
         tag_mode: TagMatchMode,
         single_artist_only: bool,
         hide_grouped: bool,
+        min_members: u64,
     ) -> Result<Vec<DedupeCluster>, DatabaseError> {
         let (column, mode_str) = match dedupe {
             DedupeMode::PositivePrompt => ("positive_prompt", "positivePrompt"),
@@ -275,7 +315,7 @@ impl Database {
                      )
                      WHERE dedupe_key IS NOT NULL
                      GROUP BY dedupe_key
-                     HAVING cnt >= 2
+                     HAVING cnt >= {min_members}
                  ) g
                  LEFT JOIN dedupe_aliases da ON da.mode = ?1 AND da.key = g.dedupe_key
                  ORDER BY g.cnt DESC, g.dedupe_key"
@@ -912,5 +952,78 @@ mod tests {
             .add_tags_to_rows(&[3, 4], &["Blue".into()])
             .unwrap();
         database
+    }
+
+    #[test]
+    fn list_distinct_artists_splits_dedupes_and_sorts() {
+        let database = database_with_rows(4);
+        database
+            .connection
+            .execute_batch(
+                "UPDATE rows SET artists = CASE id
+                     WHEN 1 THEN 'artist:b'
+                     WHEN 2 THEN 'artist:a' || CHAR(10) || 'artist:b'
+                     WHEN 3 THEN '  artist:c  '
+                     WHEN 4 THEN ''
+                 END;",
+            )
+            .unwrap();
+
+        let artists = database.list_distinct_artists().unwrap();
+        assert_eq!(artists, vec!["artist:a", "artist:b", "artist:c"]);
+    }
+
+    #[test]
+    fn row_ids_with_artists_matches_exact_trimmed_value() {
+        let database = database_with_rows(4);
+        database
+            .connection
+            .execute_batch(
+                "UPDATE rows SET artists = CASE id
+                     WHEN 1 THEN 'artist:a'
+                     WHEN 2 THEN ' artist:a '
+                     WHEN 3 THEN 'artist:b'
+                     WHEN 4 THEN NULL
+                 END;",
+            )
+            .unwrap();
+
+        assert_eq!(database.row_ids_with_artists("artist:a").unwrap(), vec![1, 2]);
+        assert_eq!(database.row_ids_with_artists("artist:b").unwrap(), vec![3]);
+        assert!(database.row_ids_with_artists("   ").unwrap().is_empty());
+        assert!(
+            database
+                .row_ids_with_artists("artist:missing")
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn list_dedupe_clusters_includes_singletons_when_min_is_one() {
+        let mut database = database_with_rows(3);
+        database
+            .connection
+            .execute_batch(
+                "UPDATE rows SET artists = CASE id
+                     WHEN 1 THEN 'artist:a'
+                     WHEN 2 THEN 'artist:a'
+                     WHEN 3 THEN 'artist:solo'
+                 END;",
+            )
+            .unwrap();
+
+        let duplicates = database
+            .list_dedupe_clusters(DedupeMode::Artists, &[], TagMatchMode::And, false, false, 2)
+            .unwrap();
+        assert_eq!(duplicates.len(), 1);
+        assert_eq!(duplicates[0].key, "artist:a");
+        assert_eq!(duplicates[0].member_count, 2);
+
+        let albums = database
+            .list_dedupe_clusters(DedupeMode::Artists, &[], TagMatchMode::And, false, false, 1)
+            .unwrap();
+        let keys: Vec<&str> = albums.iter().map(|cluster| cluster.key.as_str()).collect();
+        assert_eq!(keys, vec!["artist:a", "artist:solo"]);
     }
 }

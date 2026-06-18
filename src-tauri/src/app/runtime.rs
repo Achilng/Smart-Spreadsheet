@@ -373,6 +373,7 @@ impl AppRuntime {
         self.with_database(|db| db.get_group_members(group_id, offset, limit))
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn list_dedupe_clusters(
         &self,
         dedupe: DedupeMode,
@@ -380,10 +381,44 @@ impl AppRuntime {
         tag_mode: TagMatchMode,
         single_artist_only: bool,
         hide_grouped: bool,
+        min_members: u64,
     ) -> Result<Vec<DedupeCluster>, AppRuntimeError> {
         self.with_database(|db| {
-            db.list_dedupe_clusters(dedupe, tags, tag_mode, single_artist_only, hide_grouped)
+            db.list_dedupe_clusters(
+                dedupe,
+                tags,
+                tag_mode,
+                single_artist_only,
+                hide_grouped,
+                min_members,
+            )
         })
+    }
+
+    /// 画册集：每个画师串成一册（含单张），忽略 Tag 筛选与分组。
+    pub(crate) fn list_artist_albums(&self) -> Result<Vec<DedupeCluster>, AppRuntimeError> {
+        self.with_database(|db| {
+            db.list_dedupe_clusters(DedupeMode::Artists, &[], TagMatchMode::And, false, false, 1)
+        })
+    }
+
+    pub(crate) fn list_distinct_artists(&self) -> Result<Vec<String>, AppRuntimeError> {
+        self.with_database(|db| db.list_distinct_artists())
+    }
+
+    pub(crate) fn row_ids_with_artists(
+        &self,
+        artists: &str,
+    ) -> Result<Vec<i64>, AppRuntimeError> {
+        self.with_database(|db| db.row_ids_with_artists(artists))
+    }
+
+    pub(crate) fn get_custom_artists(&self) -> Result<String, AppRuntimeError> {
+        self.with_database(|db| db.setting("custom-artists").map(Option::unwrap_or_default))
+    }
+
+    pub(crate) fn set_custom_artists(&self, text: &str) -> Result<(), AppRuntimeError> {
+        self.with_database(|db| db.set_setting("custom-artists", text))
     }
 
     #[allow(clippy::too_many_arguments)]

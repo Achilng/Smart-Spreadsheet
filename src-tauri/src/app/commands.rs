@@ -405,9 +405,47 @@ pub(crate) fn list_dedupe_clusters(
     runtime: State<'_, AppRuntime>,
 ) -> Result<Vec<DedupeClusterDto>, String> {
     runtime
-        .list_dedupe_clusters(dedupe, &tags, tag_mode, single_artist_only, hide_grouped)
+        .list_dedupe_clusters(dedupe, &tags, tag_mode, single_artist_only, hide_grouped, 2)
         .map(|clusters| clusters.into_iter().map(DedupeClusterDto::from).collect())
         .map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn list_artist_albums(
+    runtime: State<'_, AppRuntime>,
+) -> Result<Vec<DedupeClusterDto>, String> {
+    runtime
+        .list_artist_albums()
+        .map(|clusters| clusters.into_iter().map(DedupeClusterDto::from).collect())
+        .map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn list_distinct_artists(
+    runtime: State<'_, AppRuntime>,
+) -> Result<Vec<String>, String> {
+    runtime.list_distinct_artists().map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn row_ids_with_artists(
+    artists: String,
+    runtime: State<'_, AppRuntime>,
+) -> Result<Vec<i64>, String> {
+    runtime.row_ids_with_artists(&artists).map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn get_custom_artists(runtime: State<'_, AppRuntime>) -> Result<String, String> {
+    runtime.get_custom_artists().map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn set_custom_artists(
+    text: String,
+    runtime: State<'_, AppRuntime>,
+) -> Result<(), String> {
+    runtime.set_custom_artists(&text).map_err(error_text)
 }
 
 #[tauri::command]
