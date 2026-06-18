@@ -72,6 +72,22 @@ export function toggleRow(rowId: number, index: number, shiftKey: boolean): void
   selection.version += 1;
 }
 
+/** 用一组明确行 ID 覆盖当前选择（切换为 explicit 模式）。 */
+export function setExplicitSelection(ids: number[]): void {
+  selection.kind = "explicit";
+  selection.filteredTags = [];
+  selection.filteredDedupe = "none";
+  selection.filteredSingleArtistOnly = false;
+  selection.filteredSearch = "";
+  selection.filteredTotal = 0;
+  selectionIds.clear();
+  for (const id of ids) {
+    selectionIds.add(id);
+  }
+  anchorIndex = null;
+  selection.version += 1;
+}
+
 export function clearSelection(): void {
   selection.kind = "explicit";
   selection.filteredTags = [];

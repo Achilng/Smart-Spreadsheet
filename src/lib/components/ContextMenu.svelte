@@ -1,16 +1,18 @@
 <script lang="ts">
   import { save } from "@tauri-apps/plugin-dialog";
-  import { exportRowImage, showItemInExplorer } from "../../api";
-  import { setNotice } from "../app-state.svelte";
+  import { exportRowImage, rowIdsWithArtists, showItemInExplorer } from "../../api";
+  import { formatCount, setNotice } from "../app-state.svelte";
   import { contextMenu, hideContextMenu } from "../context-menu.svelte";
   import { requestDelete } from "../delete-actions.svelte";
   import {
     getSelectedCount,
     selectionDto,
+    setExplicitSelection,
   } from "../selection-store.svelte";
 
   const row = $derived(contextMenu.row);
   const hasPrompt = $derived(Boolean(row?.positivePrompt?.trim()));
+  const hasArtists = $derived(Boolean(row?.artists?.trim()));
   const hasImage = $derived(
     Boolean(row && (row.imagePath?.trim() || row.storedImagePath?.trim())),
   );
@@ -72,6 +74,25 @@
     }
   }
 
+  async function selectSameArtists(): Promise<void> {
+    const artists = row?.artists?.trim();
+    if (!artists) return;
+    hideContextMenu();
+    try {
+      const ids = await rowIdsWithArtists(artists);
+      setExplicitSelection(ids);
+      setNotice({
+        tone: "success",
+        text: `已选中 ${formatCount(ids.length)} 张相同画师串的图。`,
+      });
+    } catch (error) {
+      setNotice({
+        tone: "error",
+        text: `选择失败：${error instanceof Error ? error.message : String(error)}`,
+      });
+    }
+  }
+
   function deleteRow(): void {
     if (!row) return;
     hideContextMenu();
@@ -124,6 +145,15 @@
       onclick={() => void openInExplorer()}
     >
       在文件管理器中打开
+    </button>
+    <div class="separator"></div>
+    <button
+      type="button"
+      role="menuitem"
+      disabled={!hasArtists}
+      onclick={() => void selectSameArtists()}
+    >
+      选中相同画师串
     </button>
     <div class="separator"></div>
     <button
