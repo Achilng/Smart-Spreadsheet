@@ -24,8 +24,12 @@
   }
 </script>
 
-{#if visible}
-  <div class="size-slider" title={isGallery ? "卡片大小" : "行高"}>
+<div
+  class="size-slider"
+  class:is-hidden={!visible}
+  title={isGallery ? "卡片大小" : "行高"}
+  aria-hidden={!visible}
+>
     <svg class="icon" viewBox="0 0 16 16" width="14" height="14">
       <rect x="3" y="3" width="4" height="4" rx="0.8" fill="currentColor" opacity="0.55" />
       <rect x="9" y="3" width="4" height="4" rx="0.8" fill="currentColor" opacity="0.55" />
@@ -46,8 +50,7 @@
       <rect x="1" y="9" width="6" height="6" rx="1" fill="currentColor" opacity="0.55" />
       <rect x="9" y="9" width="6" height="6" rx="1" fill="currentColor" opacity="0.55" />
     </svg>
-  </div>
-{/if}
+</div>
 
 <style>
   .size-slider {
@@ -55,6 +58,12 @@
     align-items: center;
     gap: 4px;
     flex: none;
+  }
+
+  /* 非画廊/表格视图下隐藏但保留占位，避免顶栏在切换视图时重排 */
+  .size-slider.is-hidden {
+    visibility: hidden;
+    pointer-events: none;
   }
 
   .icon {
