@@ -17,6 +17,7 @@
   import DetailPanel from "./DetailPanel.svelte";
   import DeleteDialog from "./DeleteDialog.svelte";
   import DropConfirmDialog from "./DropConfirmDialog.svelte";
+  import AlbumBrowseView from "./AlbumBrowseView.svelte";
   import ArtistGeneratorView from "./ArtistGeneratorView.svelte";
   import DuplicateBrowseView from "./DuplicateBrowseView.svelte";
   import GalleryView from "./GalleryView.svelte";
@@ -93,6 +94,8 @@
     <main class="main-area">
       {#if app.viewMode === "group"}
         <GroupBrowseView />
+      {:else if app.viewMode === "albums"}
+        <AlbumBrowseView />
       {:else if app.viewMode === "duplicates"}
         <DuplicateBrowseView />
       {:else if app.viewMode === "gallery"}

@@ -18,7 +18,7 @@ import {
   type SimilarImageMatch,
 } from "../api";
 
-export type ViewMode = "group" | "gallery" | "table" | "duplicates";
+export type ViewMode = "group" | "gallery" | "table" | "duplicates" | "albums";
 
 export interface Notice {
   tone: "error" | "success";
