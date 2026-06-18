@@ -131,27 +131,25 @@
     {/each}
   </div>
 
-  <div class="topbar-right">
-    <SizeSlider />
+  <SizeSlider />
 
-    <div class="search-box">
-      <input
-        type="text"
-        placeholder="搜索文件名 / 提示词 / 画师…"
-        value={searchInput}
-        oninput={onSearchInput}
-        class:has-value={searchInput.length > 0}
-      />
-      {#if searchInput.length > 0}
-        <button type="button" class="search-clear" onclick={clearSearch} title="清除搜索">&times;</button>
-      {/if}
-    </div>
+  <div class="search-box">
+    <input
+      type="text"
+      placeholder="搜索文件名 / 提示词 / 画师…"
+      value={searchInput}
+      oninput={onSearchInput}
+      class:has-value={searchInput.length > 0}
+    />
+    {#if searchInput.length > 0}
+      <button type="button" class="search-clear" onclick={clearSearch} title="清除搜索">&times;</button>
+    {/if}
+  </div>
 
-    <div class="actions">
-      <Dropdown label="工具" items={toolItems} disabled={app.busy} />
-      <Dropdown label="导入" items={importItems} disabled={app.busy} />
-      <Dropdown label="导出" items={exportItems} disabled={exportDisabled} primary />
-    </div>
+  <div class="actions">
+    <Dropdown label="工具" items={toolItems} disabled={app.busy} />
+    <Dropdown label="导入" items={importItems} disabled={app.busy} />
+    <Dropdown label="导出" items={exportItems} disabled={exportDisabled} primary />
   </div>
 
   <WindowControls />
@@ -257,15 +255,6 @@
 
   .search-clear:hover {
     color: var(--text);
-  }
-
-  .topbar-right {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 16px;
-    flex: 1;
-    min-width: 0;
   }
 
   .actions {
