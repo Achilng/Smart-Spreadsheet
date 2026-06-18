@@ -12,7 +12,7 @@ v0.9.0 已发布：围绕画师串的三组功能 —— 随机画师串生成�
 - **M35 随机画师串生成器**：工具菜单新增「随机画师串」浮层 `ArtistGeneratorView`。画师池 = 库内画师 + 自定义名单（勾选启用），「只用干净 artist: 片段」开关过滤带 `::` 权重片段；设数量 N，前端 Fisher-Yates 无放回随机抽取拼成 `, ` 连接串，一键复制（`navigator.clipboard`）；自定义名单防抖自动保存。
 - **M36 一键选中相同画师串**：缩略图/表格行右键菜单新增「选中相同画师串」（画师串为空时置灰），调用 `row_ids_with_artists` 后经 `setExplicitSelection` 设为当前选择，底部选择栏随即可批量打 Tag / 导出 / 删除。
 - **M37 画册集视图**：顶栏新增「画册」视图，复用画师串聚合（`min_members=1`，每个画师串成一册含单张）。`AlbumBrowseView` 列出画册（`AlbumCard` 用 IntersectionObserver 懒加载首张成员作封面），点进 `AlbumReader` 阅读式翻图：大图（`get_row_preview`）+ 上/下一张 + ←/→ 键 + 底部缩略图条，当前图同步右侧详情面板。成员加载复用现有 `get_dedupe_cluster_members`。
-- **M38 验收发布**：版本提升至 0.9.0；Rust 155 项测试 + Clippy + `svelte-check` 0 错误 + Vite 生产构建全部通过；Windows x64 release + NSIS 打包成功，启动冒烟测试通过。安装器 `智能表格_0.9.0_x64-setup.exe` 大小 4,236,153 字节，SHA-256 `A2679ACBA072D389FFEB02319A719382B65E27A0CF870BBC01FE9284D3204725`。GitHub Release [`v_11`](https://github.com/Achilng/Smart-Spreadsheet/releases/tag/v_11) 已发布。
+- **M38 验收发布**：版本提升至 0.9.0；Rust 155 项测试 + Clippy + `svelte-check` 0 错误 + Vite 生产构建全部通过；Windows x64 release + NSIS 打包成功，启动冒烟测试通过。安装器 `智能表格_0.9.0_x64-setup.exe` 大小 4,236,153 字节，SHA-256 `A2679ACBA072D389FFEB02319A719382B65E27A0CF870BBC01FE9284D3204725`。GitHub Release [`v_13`](https://github.com/Achilng/Smart-Spreadsheet/releases/tag/v_13) 已发布。
 
 ### M33 — 原图拖拽（2026-06-16）
 
