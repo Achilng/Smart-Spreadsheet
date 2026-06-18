@@ -44,6 +44,8 @@ export const app = $state({
   exportProgress: null as ExportProgress | null,
   /** 智绘姬 JSON 去重工具是否打开 */
   jsonDedupeOpen: false,
+  /** 随机画师串生成器是否打开 */
+  artistGenOpen: false,
   /** 感知哈希补算进度，空闲时为 null */
   phashProgress: null as PerceptualHashProgress | null,
   /** 以图搜图结果，空闲时为 null */

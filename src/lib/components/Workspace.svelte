@@ -17,6 +17,7 @@
   import DetailPanel from "./DetailPanel.svelte";
   import DeleteDialog from "./DeleteDialog.svelte";
   import DropConfirmDialog from "./DropConfirmDialog.svelte";
+  import ArtistGeneratorView from "./ArtistGeneratorView.svelte";
   import DuplicateBrowseView from "./DuplicateBrowseView.svelte";
   import GalleryView from "./GalleryView.svelte";
   import GroupBrowseView from "./GroupBrowseView.svelte";
@@ -121,6 +122,10 @@
 
 {#if app.jsonDedupeOpen}
   <JsonDedupeView />
+{/if}
+
+{#if app.artistGenOpen}
+  <ArtistGeneratorView />
 {/if}
 
 {#if app.groupSuggestOpen}

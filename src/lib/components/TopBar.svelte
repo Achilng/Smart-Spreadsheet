@@ -70,6 +70,7 @@
   const toolItems = $derived<DropdownItem[]>([
     { label: "建议分组", hint: "按相似度聚类未分组行", action: () => (app.groupSuggestOpen = true) },
     { label: "管理分组", action: () => (app.groupManageOpen = true) },
+    { label: "随机画师串", hint: "随机抽画师拼成提示词", action: () => (app.artistGenOpen = true) },
     { label: "以图搜图", action: () => void chooseSearchImage() },
     { label: "刷新感知哈希", action: () => void runPhashBackfill() },
     { label: "打开失败图片目录", action: () => void openRejectedImagesDirectory() },
