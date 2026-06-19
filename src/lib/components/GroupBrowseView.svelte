@@ -195,92 +195,101 @@
     <div class="status"><p class="muted">暂无分组。可通过工具菜单「建议分组」创建。</p></div>
   {:else}
     <div class="group-toolbar">
-      <label class="sort-toggle">
-        <input type="checkbox" bind:checked={sortByCount} />
-        按数量排序
-      </label>
+      <span class="toolbar-label">排序：</span>
+      <button
+        type="button"
+        class:is-active={!sortByCount}
+        onclick={() => (sortByCount = false)}
+      >按名称</button>
+      <button
+        type="button"
+        class:is-active={sortByCount}
+        onclick={() => (sortByCount = true)}
+      >按数量</button>
     </div>
 
-    {#each sortedGroups as group (group.id)}
-      {@const expanded = isExpanded(group.id)}
-      {@const data = memberCache[group.id]}
-      {@const renderKey = String(group.id)}
-      {@const limit = getRenderLimit(renderKey)}
-      <section class="group-section">
-        <button
-          type="button"
-          class="section-header"
-          onclick={() => void toggleGroup(group.id)}
-          oncontextmenu={(e) => onHeaderContextMenu(e, group.id, group.name)}
-        >
-          <span class="expand-icon" class:is-expanded={expanded}>&#9654;</span>
-          <span class="section-name">{group.name}</span>
-          <span class="section-count">{formatCount(group.memberCount)} 张</span>
-        </button>
-        {#if expanded}
-          <div class="member-grid">
-            {#if data?.loading && data.rows.length === 0}
-              <p class="muted grid-status">加载中…</p>
-            {:else if data?.error}
-              <p class="muted grid-status">加载失败：{data.error}</p>
-            {:else if data}
-              {#each data.rows.slice(0, limit) as member (member.id)}
-                <GroupSectionCard row={member} onactivate={() => setActive(member)} />
-              {/each}
-              {#if limit < data.rows.length}
-                <div class="render-sentinel" use:observeSentinel={renderKey}></div>
+    <div class="group-list">
+      {#each sortedGroups as group (group.id)}
+        {@const expanded = isExpanded(group.id)}
+        {@const data = memberCache[group.id]}
+        {@const renderKey = String(group.id)}
+        {@const limit = getRenderLimit(renderKey)}
+        <section class="group-section">
+          <button
+            type="button"
+            class="section-header"
+            onclick={() => void toggleGroup(group.id)}
+            oncontextmenu={(e) => onHeaderContextMenu(e, group.id, group.name)}
+          >
+            <span class="expand-icon" class:is-expanded={expanded}>&#9654;</span>
+            <span class="section-name">{group.name}</span>
+            <span class="section-count">{formatCount(group.memberCount)} 张</span>
+          </button>
+          {#if expanded}
+            <div class="member-grid">
+              {#if data?.loading && data.rows.length === 0}
+                <p class="muted grid-status">加载中…</p>
+              {:else if data?.error}
+                <p class="muted grid-status">加载失败：{data.error}</p>
+              {:else if data}
+                {#each data.rows.slice(0, limit) as member (member.id)}
+                  <GroupSectionCard row={member} onactivate={() => setActive(member)} />
+                {/each}
+                {#if limit < data.rows.length}
+                  <div class="render-sentinel" use:observeSentinel={renderKey}></div>
+                {/if}
+                {#if data.rows.length < data.totalCount && limit >= data.rows.length}
+                  <button
+                    type="button"
+                    class="load-more-btn"
+                    disabled={data.loading}
+                    onclick={() => void loadMoreMembers(group.id)}
+                  >
+                    {data.loading ? "加载中…" : `加载更多（还有 ${formatCount(data.totalCount - data.rows.length)} 张）`}
+                  </button>
+                {/if}
               {/if}
-              {#if data.rows.length < data.totalCount && limit >= data.rows.length}
+            </div>
+          {/if}
+        </section>
+      {/each}
+
+      <section class="group-section ungrouped-section">
+        <button type="button" class="section-header" onclick={() => void toggleUngrouped()}>
+          <span class="expand-icon" class:is-expanded={ungroupedExpanded}>&#9654;</span>
+          <span class="section-name">未分组</span>
+        </button>
+        {#if ungroupedExpanded}
+          {@const uLimit = getRenderLimit("ungrouped")}
+          <div class="member-grid">
+            {#if ungroupedLoading && ungroupedRows.length === 0}
+              <p class="muted grid-status">加载中…</p>
+            {:else if ungroupedError}
+              <p class="muted grid-status">加载失败：{ungroupedError}</p>
+            {:else if ungroupedRows.length === 0}
+              <p class="muted grid-status">没有未分组的行。</p>
+            {:else}
+              {#each ungroupedRows.slice(0, uLimit) as row (row.id)}
+                <GroupSectionCard {row} onactivate={() => setActive(row)} />
+              {/each}
+              {#if uLimit < ungroupedRows.length}
+                <div class="render-sentinel" use:observeSentinel={"ungrouped"}></div>
+              {/if}
+              {#if ungroupedRows.length < ungroupedTotal && uLimit >= ungroupedRows.length}
                 <button
                   type="button"
                   class="load-more-btn"
-                  disabled={data.loading}
-                  onclick={() => void loadMoreMembers(group.id)}
+                  disabled={ungroupedLoading}
+                  onclick={() => void loadMoreUngrouped()}
                 >
-                  {data.loading ? "加载中…" : `加载更多（还有 ${formatCount(data.totalCount - data.rows.length)} 张）`}
+                  {ungroupedLoading ? "加载中…" : `加载更多（还有 ${formatCount(ungroupedTotal - ungroupedRows.length)} 张）`}
                 </button>
               {/if}
             {/if}
           </div>
         {/if}
       </section>
-    {/each}
-
-    <section class="group-section ungrouped-section">
-      <button type="button" class="section-header" onclick={() => void toggleUngrouped()}>
-        <span class="expand-icon" class:is-expanded={ungroupedExpanded}>&#9654;</span>
-        <span class="section-name">未分组</span>
-      </button>
-      {#if ungroupedExpanded}
-        {@const uLimit = getRenderLimit("ungrouped")}
-        <div class="member-grid">
-          {#if ungroupedLoading && ungroupedRows.length === 0}
-            <p class="muted grid-status">加载中…</p>
-          {:else if ungroupedError}
-            <p class="muted grid-status">加载失败：{ungroupedError}</p>
-          {:else if ungroupedRows.length === 0}
-            <p class="muted grid-status">没有未分组的行。</p>
-          {:else}
-            {#each ungroupedRows.slice(0, uLimit) as row (row.id)}
-              <GroupSectionCard {row} onactivate={() => setActive(row)} />
-            {/each}
-            {#if uLimit < ungroupedRows.length}
-              <div class="render-sentinel" use:observeSentinel={"ungrouped"}></div>
-            {/if}
-            {#if ungroupedRows.length < ungroupedTotal && uLimit >= ungroupedRows.length}
-              <button
-                type="button"
-                class="load-more-btn"
-                disabled={ungroupedLoading}
-                onclick={() => void loadMoreUngrouped()}
-              >
-                {ungroupedLoading ? "加载中…" : `加载更多（还有 ${formatCount(ungroupedTotal - ungroupedRows.length)} 张）`}
-              </button>
-            {/if}
-          {/if}
-        </div>
-      {/if}
-    </section>
+    </div>
   {/if}
 </div>
 
@@ -288,41 +297,58 @@
   .group-browse {
     flex: 1;
     min-height: 0;
-    overflow-y: auto;
-    padding: 8px 0;
+    display: flex;
+    flex-direction: column;
   }
 
   .status {
-    height: 100%;
+    flex: 1;
     display: flex;
     align-items: center;
     justify-content: center;
   }
 
   .group-toolbar {
-    position: sticky;
-    top: 0;
-    z-index: 1;
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    padding: 4px 16px;
-    background: var(--bg);
-    border-bottom: 1px solid var(--border);
-  }
-
-  .sort-toggle {
+    flex: none;
     display: flex;
     align-items: center;
     gap: 6px;
+    padding: 8px 16px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .toolbar-label {
+    font-size: 13px;
+    color: var(--text-2);
+    margin-right: 4px;
+  }
+
+  .group-toolbar button {
+    border: 1px solid var(--border);
+    background: transparent;
+    border-radius: var(--radius-s);
+    padding: 4px 12px;
     font-size: 12px;
     color: var(--text-2);
     cursor: pointer;
-    user-select: none;
   }
 
-  .sort-toggle input {
-    margin: 0;
+  .group-toolbar button:hover {
+    background: var(--surface-2);
+  }
+
+  .group-toolbar button.is-active {
+    background: var(--surface-2);
+    color: var(--text);
+    border-color: var(--border-strong);
+  }
+
+  .group-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 8px 0;
   }
 
   .group-section {
