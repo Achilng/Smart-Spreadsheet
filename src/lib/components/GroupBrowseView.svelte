@@ -7,6 +7,7 @@
   import GroupSectionCard from "./GroupSectionCard.svelte";
 
   const MEMBERS_PAGE = 200;
+  const RENDER_BATCH = 40;
 
   interface MemberData {
     rows: RowRecord[];
@@ -16,7 +17,9 @@
   }
 
   let expandedIds = $state<number[]>([]);
-  let memberCache = $state<{ [key: string]: MemberData }>({});
+  let memberCache = $state<Record<number, MemberData>>({});
+  let renderLimits = $state<Record<string, number>>({});
+  let sortByCount = $state(false);
 
   let ungroupedRows = $state<RowRecord[]>([]);
   let ungroupedTotal = $state(0);
@@ -28,17 +31,41 @@
     void loadGroups();
   });
 
+  const sortedGroups = $derived(
+    sortByCount
+      ? [...groupStore.list].sort((a, b) => b.memberCount - a.memberCount)
+      : groupStore.list,
+  );
+
   function isExpanded(groupId: number): boolean {
     return expandedIds.includes(groupId);
   }
 
-  function getMemberData(groupId: number): MemberData | undefined {
-    return memberCache[groupId];
+  function getRenderLimit(key: string): number {
+    return renderLimits[key] ?? RENDER_BATCH;
+  }
+
+  function observeSentinel(node: HTMLElement, key: string) {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          renderLimits[key] = (renderLimits[key] ?? RENDER_BATCH) + RENDER_BATCH;
+        }
+      },
+      { rootMargin: "200px" },
+    );
+    observer.observe(node);
+    return {
+      destroy() {
+        observer.disconnect();
+      },
+    };
   }
 
   async function toggleGroup(groupId: number): Promise<void> {
     if (isExpanded(groupId)) {
       expandedIds = expandedIds.filter(id => id !== groupId);
+      delete renderLimits[groupId];
     } else {
       expandedIds = [...expandedIds, groupId];
       if (!memberCache[groupId]) {
@@ -48,20 +75,21 @@
   }
 
   async function loadGroupMembers(groupId: number): Promise<void> {
-    memberCache = {
-      ...memberCache,
-      [groupId]: { rows: [], totalCount: 0, loading: true, error: null },
-    };
+    memberCache[groupId] = { rows: [], totalCount: 0, loading: true, error: null };
     try {
       const page = await getGroupMembers(groupId, 0, MEMBERS_PAGE);
-      memberCache = {
-        ...memberCache,
-        [groupId]: { rows: page.rows, totalCount: page.totalCount, loading: false, error: null },
+      memberCache[groupId] = {
+        rows: page.rows,
+        totalCount: page.totalCount,
+        loading: false,
+        error: null,
       };
     } catch (e) {
-      memberCache = {
-        ...memberCache,
-        [groupId]: { rows: [], totalCount: 0, loading: false, error: errorText(e) },
+      memberCache[groupId] = {
+        rows: [],
+        totalCount: 0,
+        loading: false,
+        error: errorText(e),
       };
     }
   }
@@ -69,26 +97,16 @@
   async function loadMoreMembers(groupId: number): Promise<void> {
     const data = memberCache[groupId];
     if (!data || data.loading) return;
-    memberCache = {
-      ...memberCache,
-      [groupId]: { ...data, loading: true },
-    };
+    data.loading = true;
     try {
       const page = await getGroupMembers(groupId, data.rows.length, MEMBERS_PAGE);
-      memberCache = {
-        ...memberCache,
-        [groupId]: {
-          rows: [...data.rows, ...page.rows],
-          totalCount: page.totalCount,
-          loading: false,
-          error: null,
-        },
-      };
+      data.rows = [...data.rows, ...page.rows];
+      data.totalCount = page.totalCount;
+      data.loading = false;
+      data.error = null;
     } catch (e) {
-      memberCache = {
-        ...memberCache,
-        [groupId]: { ...data, loading: false, error: errorText(e) },
-      };
+      data.loading = false;
+      data.error = errorText(e);
     }
   }
 
@@ -96,6 +114,9 @@
     ungroupedExpanded = !ungroupedExpanded;
     if (ungroupedExpanded && ungroupedRows.length === 0) {
       await loadUngroupedRows();
+    }
+    if (!ungroupedExpanded) {
+      delete renderLimits["ungrouped"];
     }
   }
 
@@ -173,9 +194,18 @@
   {:else if groupStore.list.length === 0 && !ungroupedExpanded}
     <div class="status"><p class="muted">暂无分组。可通过工具菜单「建议分组」创建。</p></div>
   {:else}
-    {#each groupStore.list as group (group.id)}
+    <div class="group-toolbar">
+      <label class="sort-toggle">
+        <input type="checkbox" bind:checked={sortByCount} />
+        按数量排序
+      </label>
+    </div>
+
+    {#each sortedGroups as group (group.id)}
       {@const expanded = isExpanded(group.id)}
-      {@const data = getMemberData(group.id)}
+      {@const data = memberCache[group.id]}
+      {@const renderKey = String(group.id)}
+      {@const limit = getRenderLimit(renderKey)}
       <section class="group-section">
         <button
           type="button"
@@ -194,10 +224,13 @@
             {:else if data?.error}
               <p class="muted grid-status">加载失败：{data.error}</p>
             {:else if data}
-              {#each data.rows as member (member.id)}
+              {#each data.rows.slice(0, limit) as member (member.id)}
                 <GroupSectionCard row={member} onactivate={() => setActive(member)} />
               {/each}
-              {#if data.rows.length < data.totalCount}
+              {#if limit < data.rows.length}
+                <div class="render-sentinel" use:observeSentinel={renderKey}></div>
+              {/if}
+              {#if data.rows.length < data.totalCount && limit >= data.rows.length}
                 <button
                   type="button"
                   class="load-more-btn"
@@ -219,6 +252,7 @@
         <span class="section-name">未分组</span>
       </button>
       {#if ungroupedExpanded}
+        {@const uLimit = getRenderLimit("ungrouped")}
         <div class="member-grid">
           {#if ungroupedLoading && ungroupedRows.length === 0}
             <p class="muted grid-status">加载中…</p>
@@ -227,10 +261,13 @@
           {:else if ungroupedRows.length === 0}
             <p class="muted grid-status">没有未分组的行。</p>
           {:else}
-            {#each ungroupedRows as row (row.id)}
+            {#each ungroupedRows.slice(0, uLimit) as row (row.id)}
               <GroupSectionCard {row} onactivate={() => setActive(row)} />
             {/each}
-            {#if ungroupedRows.length < ungroupedTotal}
+            {#if uLimit < ungroupedRows.length}
+              <div class="render-sentinel" use:observeSentinel={"ungrouped"}></div>
+            {/if}
+            {#if ungroupedRows.length < ungroupedTotal && uLimit >= ungroupedRows.length}
               <button
                 type="button"
                 class="load-more-btn"
@@ -260,6 +297,32 @@
     display: flex;
     align-items: center;
     justify-content: center;
+  }
+
+  .group-toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 4px 16px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .sort-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--text-2);
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .sort-toggle input {
+    margin: 0;
   }
 
   .group-section {
@@ -321,6 +384,13 @@
     padding: 12px 16px;
     background: var(--bg);
     border-bottom: 1px solid var(--border);
+    content-visibility: auto;
+    contain-intrinsic-height: auto 500px;
+  }
+
+  .render-sentinel {
+    width: 100%;
+    height: 1px;
   }
 
   .grid-status {
