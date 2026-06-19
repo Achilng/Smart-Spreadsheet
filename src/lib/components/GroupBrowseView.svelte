@@ -187,6 +187,20 @@
 </script>
 
 <div class="group-browse">
+  <div class="group-toolbar">
+    <span class="toolbar-label">排序：</span>
+    <button
+      type="button"
+      class:is-active={!sortByCount}
+      onclick={() => (sortByCount = false)}
+    >按名称</button>
+    <button
+      type="button"
+      class:is-active={sortByCount}
+      onclick={() => (sortByCount = true)}
+    >按数量</button>
+  </div>
+
   {#if groupStore.loading}
     <div class="status"><p class="muted">正在加载分组…</p></div>
   {:else if groupStore.error}
@@ -194,20 +208,6 @@
   {:else if groupStore.list.length === 0 && !ungroupedExpanded}
     <div class="status"><p class="muted">暂无分组。可通过工具菜单「建议分组」创建。</p></div>
   {:else}
-    <div class="group-toolbar">
-      <span class="toolbar-label">排序：</span>
-      <button
-        type="button"
-        class:is-active={!sortByCount}
-        onclick={() => (sortByCount = false)}
-      >按名称</button>
-      <button
-        type="button"
-        class:is-active={sortByCount}
-        onclick={() => (sortByCount = true)}
-      >按数量</button>
-    </div>
-
     <div class="group-list">
       {#each sortedGroups as group (group.id)}
         {@const expanded = isExpanded(group.id)}
