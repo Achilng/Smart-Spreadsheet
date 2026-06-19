@@ -8,6 +8,13 @@
   let loading = $state(true);
   let error = $state<string | null>(null);
   let openAlbum = $state<DedupeCluster | null>(null);
+  let sortByCount = $state(true);
+
+  const sortedAlbums = $derived(
+    sortByCount
+      ? albums
+      : [...albums].sort((a, b) => (a.alias ?? a.key).localeCompare(b.alias ?? b.key)),
+  );
 
   // 初次挂载与数据变化（导入/删除）时重载画册列表。
   $effect(() => {
@@ -37,6 +44,20 @@
   <AlbumReader album={openAlbum} onback={() => (openAlbum = null)} />
 {:else}
   <div class="album-browse">
+    <div class="mode-bar">
+      <span class="mode-label">排序：</span>
+      <button
+        type="button"
+        class:is-active={sortByCount}
+        onclick={() => (sortByCount = true)}
+      >按数量</button>
+      <button
+        type="button"
+        class:is-active={!sortByCount}
+        onclick={() => (sortByCount = false)}
+      >按名称</button>
+    </div>
+
     {#if loading}
       <div class="status"><p class="muted">正在加载画册…</p></div>
     {:else if error}
@@ -45,7 +66,7 @@
       <div class="status"><p class="muted">还没有可成册的画师串（图片需含画师串）。</p></div>
     {:else}
       <div class="album-grid">
-        {#each albums as album (album.key)}
+        {#each sortedAlbums as album (album.key)}
           <AlbumCard {album} onopen={() => (openAlbum = album)} />
         {/each}
       </div>
@@ -60,6 +81,42 @@
     overflow-y: auto;
     display: flex;
     flex-direction: column;
+  }
+
+  .mode-bar {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .mode-label {
+    font-size: 13px;
+    color: var(--text-2);
+    margin-right: 4px;
+  }
+
+  .mode-bar button {
+    border: 1px solid var(--border);
+    background: transparent;
+    border-radius: var(--radius-s);
+    padding: 4px 12px;
+    font-size: 12px;
+    color: var(--text-2);
+    cursor: pointer;
+  }
+
+  .mode-bar button:hover {
+    background: var(--surface-2);
+  }
+
+  .mode-bar button.is-active {
+    background: var(--surface-2);
+    color: var(--text);
+    border-color: var(--border-strong);
   }
 
   .status {

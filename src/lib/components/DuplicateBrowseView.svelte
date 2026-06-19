@@ -26,6 +26,8 @@
   let clustersLoading = $state(false);
   let clustersError = $state<string | null>(null);
 
+  let sortByCount = $state(true);
+
   let expandedKeys = $state<string[]>([]);
   let memberCache = $state<Record<string, MemberData>>({});
 
@@ -65,6 +67,12 @@
       clustersLoading = false;
     }
   }
+
+  const sortedClusters = $derived(
+    sortByCount
+      ? clusters
+      : [...clusters].sort((a, b) => (a.alias ?? a.key).localeCompare(b.alias ?? b.key)),
+  );
 
   function isExpanded(key: string): boolean {
     return expandedKeys.includes(key);
@@ -178,6 +186,18 @@
       class:is-active={dedupeMode === "positivePrompt"}
       onclick={() => (dedupeMode = "positivePrompt")}
     >按正向提示词</button>
+    <span class="bar-separator"></span>
+    <span class="mode-label">排序：</span>
+    <button
+      type="button"
+      class:is-active={sortByCount}
+      onclick={() => (sortByCount = true)}
+    >按数量</button>
+    <button
+      type="button"
+      class:is-active={!sortByCount}
+      onclick={() => (sortByCount = false)}
+    >按名称</button>
   </div>
 
   {#if clustersLoading}
@@ -188,7 +208,7 @@
     <div class="status"><p class="muted">未找到重复项（所有条目均唯一）。</p></div>
   {:else}
     <div class="cluster-list">
-      {#each clusters as cluster (cluster.key)}
+      {#each sortedClusters as cluster (cluster.key)}
         {@const expanded = isExpanded(cluster.key)}
         {@const data = getMemberData(cluster.key)}
         <section class="group-section">
@@ -258,6 +278,13 @@
     font-size: 13px;
     color: var(--text-2);
     margin-right: 4px;
+  }
+
+  .bar-separator {
+    width: 1px;
+    height: 18px;
+    background: var(--border);
+    margin: 0 6px;
   }
 
   .mode-bar button {
