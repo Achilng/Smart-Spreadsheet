@@ -534,7 +534,7 @@ export function findReplacePrompt(
   return invoke<PromptEditResult>("find_replace_prompt", { selection, find, replace });
 }
 
-export function prependArtist(
+export function prefixArtistTag(
   selection: RowSelection,
   artistName: string,
 ): Promise<PromptEditResult> {

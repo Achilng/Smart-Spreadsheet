@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { findReplacePrompt, prependArtist, type RowSelection } from "../../api";
+  import { findReplacePrompt, prefixArtistTag, type RowSelection } from "../../api";
   import { errorText } from "../app-state.svelte";
   import { resetRows } from "../row-store.svelte";
 
@@ -41,8 +41,8 @@
     error = null;
     result = null;
     try {
-      const r = await prependArtist(selection, artistName.trim());
-      result = `已添加画师前缀到 ${r.affectedRows} 行`;
+      const r = await prefixArtistTag(selection, artistName.trim());
+      result = `已修正 ${r.affectedRows} 行画师前缀`;
       resetRows();
     } catch (e) {
       error = errorText(e);
@@ -63,7 +63,7 @@
 
     <nav class="tabs">
       <button type="button" class:active={tab === "replace"} onclick={() => (tab = "replace")}>查找替换</button>
-      <button type="button" class:active={tab === "artist"} onclick={() => (tab = "artist")}>添加画师前缀</button>
+      <button type="button" class:active={tab === "artist"} onclick={() => (tab = "artist")}>修正画师前缀</button>
     </nav>
 
     <div class="body">
@@ -86,22 +86,25 @@
         </button>
       {:else}
         <label>
-          <span>画师名</span>
+          <span>画师名（不带 artist:）</span>
           <input
             type="text"
             bind:value={artistName}
-            placeholder="将添加 artist:名称, 前缀"
+            placeholder="例如 parsley_f"
             disabled={busy}
             onkeydown={e => { if (e.key === "Enter") void doPrepend(); }}
           />
         </label>
+        <p class="hint">
+          只修正选中图片中完全匹配的该画师 tag；已带 artist: 的会跳过，支持 (tag:1.2)、花/方括号权重、0.7::tag 等格式。
+        </p>
         <button
           type="button"
           class="btn btn-primary action-btn"
           disabled={busy || !artistName.trim()}
           onclick={() => void doPrepend()}
         >
-          {busy ? "执行中…" : "添加前缀"}
+          {busy ? "执行中…" : "修正前缀"}
         </button>
       {/if}
 
@@ -209,6 +212,13 @@
   label input:focus {
     outline: none;
     border-color: var(--accent);
+  }
+
+  .hint {
+    margin: -2px 0 0;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-2);
   }
 
   .action-btn {
