@@ -16,8 +16,9 @@ use crate::storage::{
     DataDirectory, ExportProgress, ImageFileExportMode, ImageFilesExportError,
     ImageFilesExportOutcome, ImageFilesProgress, ImageImportError, ImageImportOutcome,
     ImageImportProgress, JsonExportError, JsonExportOutcome, JsonExportProgress,
-    PerceptualHashProgress, RowDeletionError, RowDeletionReport, SimilarImageMatch, StorageError,
-    WorkbookImportError, XlsxExportError, XlsxExportOutcome, ContentHashProgress,
+    PerceptualHashProgress, PromptDocAsset, PromptDocDetail, PromptDocError, PromptDocSummary,
+    RowDeletionError, RowDeletionReport, SimilarImageMatch, StorageError, WorkbookImportError,
+    XlsxExportError, XlsxExportOutcome, ContentHashProgress,
 };
 
 const LOCATOR_VERSION: u32 = 1;
@@ -70,6 +71,8 @@ pub(crate) enum AppRuntimeError {
     JsonExport(#[from] JsonExportError),
     #[error("图片文件导出失败: {0}")]
     ImageFilesExport(#[from] ImageFilesExportError),
+    #[error("提示词文档操作失败: {0}")]
+    PromptDoc(#[from] PromptDocError),
     #[error("定位文件更新失败且迁移回滚失败。定位错误: {locator}; 回滚错误: {rollback}")]
     MigrationRollbackFailed { locator: String, rollback: String },
     #[error("无法恢复此前的数据目录定位文件: {0}")]
@@ -419,6 +422,58 @@ impl AppRuntime {
 
     pub(crate) fn set_custom_artists(&self, text: &str) -> Result<(), AppRuntimeError> {
         self.with_database(|db| db.set_setting("custom-artists", text))
+    }
+
+    pub(crate) fn list_prompt_docs(&self) -> Result<Vec<PromptDocSummary>, AppRuntimeError> {
+        Ok(self.active_directory()?.list_prompt_docs()?)
+    }
+
+    pub(crate) fn create_prompt_doc(
+        &self,
+        title: &str,
+    ) -> Result<PromptDocDetail, AppRuntimeError> {
+        Ok(self.active_directory()?.create_prompt_doc(title)?)
+    }
+
+    pub(crate) fn load_prompt_doc(&self, doc_id: &str) -> Result<PromptDocDetail, AppRuntimeError> {
+        Ok(self.active_directory()?.load_prompt_doc(doc_id)?)
+    }
+
+    pub(crate) fn save_prompt_doc(
+        &self,
+        doc_id: &str,
+        title: &str,
+        content: &serde_json::Value,
+        plain_text: &str,
+    ) -> Result<PromptDocDetail, AppRuntimeError> {
+        Ok(self
+            .active_directory()?
+            .save_prompt_doc(doc_id, title, content, plain_text)?)
+    }
+
+    pub(crate) fn delete_prompt_doc(&self, doc_id: &str) -> Result<(), AppRuntimeError> {
+        Ok(self.active_directory()?.delete_prompt_doc(doc_id)?)
+    }
+
+    pub(crate) fn import_prompt_doc_image_from_path(
+        &self,
+        doc_id: &str,
+        path: impl AsRef<Path>,
+    ) -> Result<PromptDocAsset, AppRuntimeError> {
+        Ok(self
+            .active_directory()?
+            .import_prompt_doc_image_from_path(doc_id, path)?)
+    }
+
+    pub(crate) fn import_prompt_doc_image_bytes(
+        &self,
+        doc_id: &str,
+        file_name: &str,
+        bytes: &[u8],
+    ) -> Result<PromptDocAsset, AppRuntimeError> {
+        Ok(self
+            .active_directory()?
+            .import_prompt_doc_image_bytes(doc_id, file_name, bytes)?)
     }
 
     #[allow(clippy::too_many_arguments)]

@@ -51,6 +51,7 @@
   );
 
   const views: { mode: ViewMode; label: string }[] = [
+    { mode: "promptDocs", label: "提示词" },
     { mode: "group", label: "分组" },
     { mode: "albums", label: "画册" },
     { mode: "duplicates", label: "重复" },
@@ -133,18 +134,20 @@
 
   <SizeSlider />
 
-  <div class="search-box">
-    <input
-      type="text"
-      placeholder="搜索文件名 / 提示词 / 画师…"
-      value={searchInput}
-      oninput={onSearchInput}
-      class:has-value={searchInput.length > 0}
-    />
-    {#if searchInput.length > 0}
-      <button type="button" class="search-clear" onclick={clearSearch} title="清除搜索">&times;</button>
-    {/if}
-  </div>
+  {#if app.viewMode !== "promptDocs"}
+    <div class="search-box">
+      <input
+        type="text"
+        placeholder="搜索文件名 / 提示词 / 画师…"
+        value={searchInput}
+        oninput={onSearchInput}
+        class:has-value={searchInput.length > 0}
+      />
+      {#if searchInput.length > 0}
+        <button type="button" class="search-clear" onclick={clearSearch} title="清除搜索">&times;</button>
+      {/if}
+    </div>
+  {/if}
 
   <div class="actions">
     <Dropdown label="工具" items={toolItems} disabled={app.busy} />

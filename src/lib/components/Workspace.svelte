@@ -25,6 +25,7 @@
   import GroupManageView from "./GroupManageView.svelte";
   import GroupSuggestionView from "./GroupSuggestionView.svelte";
   import JsonDedupeView from "./JsonDedupeView.svelte";
+  import PromptDocsView from "./PromptDocsView.svelte";
   import SearchResultsView from "./SearchResultsView.svelte";
   import SectionContextMenu from "./SectionContextMenu.svelte";
   import SelectionBar from "./SelectionBar.svelte";
@@ -59,6 +60,7 @@
     if (
       event.key.toLowerCase() === "a" &&
       (event.ctrlKey || event.metaKey) &&
+      app.viewMode !== "promptDocs" &&
       !(event.target instanceof HTMLInputElement) &&
       !(event.target instanceof HTMLTextAreaElement)
     ) {
@@ -69,7 +71,7 @@
       return;
     }
 
-    if (event.key === "Delete" && !isEditing && !deletion.open) {
+    if (event.key === "Delete" && app.viewMode !== "promptDocs" && !isEditing && !deletion.open) {
       const selectedCount = getSelectedCount();
       if (selectedCount > 0) {
         event.preventDefault();
@@ -86,41 +88,49 @@
 
 <div class="workspace">
   <TopBar />
-  <div class="workspace-body">
-    <aside class="sidebar">
-      <TagSidebar />
-    </aside>
-
-    <main class="main-area">
-      {#if app.viewMode === "group"}
-        <GroupBrowseView />
-      {:else if app.viewMode === "albums"}
-        <AlbumBrowseView />
-      {:else if app.viewMode === "duplicates"}
-        <DuplicateBrowseView />
-      {:else if app.viewMode === "gallery"}
-        <GalleryView />
-      {:else}
-        <TableView />
-      {/if}
-      <SelectionBar />
-    </main>
-
-    {#if app.detailOpen}
-      <aside class="detail">
-        <DetailPanel />
+  {#if app.viewMode === "promptDocs"}
+    <div class="workspace-body prompt-docs-body">
+      <main class="prompt-docs-main">
+        <PromptDocsView />
+      </main>
+    </div>
+  {:else}
+    <div class="workspace-body">
+      <aside class="sidebar">
+        <TagSidebar />
       </aside>
-    {:else}
-      <button
-        type="button"
-        class="detail-strip"
-        title="展开详情面板"
-        onclick={() => (app.detailOpen = true)}
-      >
-        «
-      </button>
-    {/if}
-  </div>
+
+      <main class="main-area">
+        {#if app.viewMode === "group"}
+          <GroupBrowseView />
+        {:else if app.viewMode === "albums"}
+          <AlbumBrowseView />
+        {:else if app.viewMode === "duplicates"}
+          <DuplicateBrowseView />
+        {:else if app.viewMode === "gallery"}
+          <GalleryView />
+        {:else}
+          <TableView />
+        {/if}
+        <SelectionBar />
+      </main>
+
+      {#if app.detailOpen}
+        <aside class="detail">
+          <DetailPanel />
+        </aside>
+      {:else}
+        <button
+          type="button"
+          class="detail-strip"
+          title="展开详情面板"
+          onclick={() => (app.detailOpen = true)}
+        >
+          «
+        </button>
+      {/if}
+    </div>
+  {/if}
 </div>
 
 {#if app.jsonDedupeOpen}
@@ -145,7 +155,7 @@
 <DeleteDialog />
 <DropConfirmDialog />
 
-{#if dropState.dragging}
+{#if dropState.dragging && app.viewMode !== "promptDocs"}
   <div class="drop-overlay">
     <div class="drop-hint">松开鼠标以导入图片</div>
   </div>
@@ -182,6 +192,17 @@
     flex-direction: column;
     background: var(--bg);
     position: relative;
+  }
+
+  .prompt-docs-body {
+    background: var(--bg);
+  }
+
+  .prompt-docs-main {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
   }
 
   .detail {

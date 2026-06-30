@@ -9,7 +9,9 @@ use crate::db::{
     RowPage, RowQuery, RowRecord, RowSelection, SinglePromptEditResult, TagMatchMode,
     TagMutationResult, TagSelectionSummary, TagSummary,
 };
-use crate::storage::{PerceptualHashProgress, SimilarImageMatch};
+use crate::storage::{
+    PerceptualHashProgress, PromptDocAsset, PromptDocDetail, PromptDocSummary, SimilarImageMatch,
+};
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -446,6 +448,73 @@ pub(crate) fn set_custom_artists(
     runtime: State<'_, AppRuntime>,
 ) -> Result<(), String> {
     runtime.set_custom_artists(&text).map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn list_prompt_docs(
+    runtime: State<'_, AppRuntime>,
+) -> Result<Vec<PromptDocSummary>, String> {
+    runtime.list_prompt_docs().map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn create_prompt_doc(
+    title: String,
+    runtime: State<'_, AppRuntime>,
+) -> Result<PromptDocDetail, String> {
+    runtime.create_prompt_doc(&title).map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn load_prompt_doc(
+    doc_id: String,
+    runtime: State<'_, AppRuntime>,
+) -> Result<PromptDocDetail, String> {
+    runtime.load_prompt_doc(&doc_id).map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn save_prompt_doc(
+    doc_id: String,
+    title: String,
+    content: serde_json::Value,
+    plain_text: String,
+    runtime: State<'_, AppRuntime>,
+) -> Result<PromptDocDetail, String> {
+    runtime
+        .save_prompt_doc(&doc_id, &title, &content, &plain_text)
+        .map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn delete_prompt_doc(
+    doc_id: String,
+    runtime: State<'_, AppRuntime>,
+) -> Result<(), String> {
+    runtime.delete_prompt_doc(&doc_id).map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn import_prompt_doc_image_from_path(
+    doc_id: String,
+    path: String,
+    runtime: State<'_, AppRuntime>,
+) -> Result<PromptDocAsset, String> {
+    runtime
+        .import_prompt_doc_image_from_path(&doc_id, PathBuf::from(path))
+        .map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn import_prompt_doc_image_bytes(
+    doc_id: String,
+    file_name: String,
+    bytes: Vec<u8>,
+    runtime: State<'_, AppRuntime>,
+) -> Result<PromptDocAsset, String> {
+    runtime
+        .import_prompt_doc_image_bytes(&doc_id, &file_name, &bytes)
+        .map_err(error_text)
 }
 
 #[tauri::command]

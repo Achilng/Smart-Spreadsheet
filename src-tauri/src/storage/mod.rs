@@ -7,6 +7,7 @@ mod import;
 mod import_images;
 mod migration;
 mod perceptual_hash;
+mod prompt_docs;
 
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
@@ -34,6 +35,7 @@ pub use migration::{MigrationOutcome, PreparedMigration};
 pub use perceptual_hash::{
     PerceptualHashBackfillOutcome, PerceptualHashProgress, SimilarImageMatch,
 };
+pub use prompt_docs::{PromptDocAsset, PromptDocDetail, PromptDocError, PromptDocSummary};
 
 pub(super) const FORMAT_VERSION: u32 = 1;
 pub(super) const MARKER_FILE: &str = ".smart-spreadsheet-data.json";
@@ -102,6 +104,7 @@ impl DataDirectory {
         fs::create_dir_all(root)?;
         fs::create_dir_all(root.join("workbook"))?;
         fs::create_dir_all(root.join("files"))?;
+        fs::create_dir_all(root.join("prompt-docs"))?;
         fs::create_dir_all(root.join("cache").join("thumbnails"))?;
         fs::create_dir_all(root.join("migration"))?;
         drop(Database::open(root.join(DATABASE_FILE))?);
@@ -152,6 +155,8 @@ impl DataDirectory {
 
         // v1 受管目录没有 files/，打开时按需补建（目录格式版本保持 1）。
         fs::create_dir_all(root.join("files"))?;
+        // 提示词文档是文件夹资产，不提升目录格式版本，旧目录打开时补建。
+        fs::create_dir_all(root.join("prompt-docs"))?;
 
         let directory = Self {
             root: root.to_owned(),

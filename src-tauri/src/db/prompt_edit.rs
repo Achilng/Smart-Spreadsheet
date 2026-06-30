@@ -86,22 +86,22 @@ fn prefix_artist_tag_in_token(token: &str, artist_name: &str) -> Option<String> 
         return None;
     }
 
-    if let Some((prefix, inner, suffix)) = split_novelai_weight(token) {
-        if let Some(rewritten) = prefix_artist_tag_in_token(inner, artist_name) {
-            return Some(format!("{prefix}{rewritten}{suffix}"));
-        }
+    if let Some((prefix, inner, suffix)) = split_novelai_weight(token)
+        && let Some(rewritten) = prefix_artist_tag_in_token(inner, artist_name)
+    {
+        return Some(format!("{prefix}{rewritten}{suffix}"));
     }
 
-    if let Some((open, inner, close)) = split_outer_wrapper(token) {
-        if let Some(rewritten) = prefix_artist_tag_in_token(inner, artist_name) {
-            return Some(format!("{open}{rewritten}{close}"));
-        }
+    if let Some((open, inner, close)) = split_outer_wrapper(token)
+        && let Some(rewritten) = prefix_artist_tag_in_token(inner, artist_name)
+    {
+        return Some(format!("{open}{rewritten}{close}"));
     }
 
-    if let Some((name, weight)) = split_colon_weight(token) {
-        if let Some(rewritten) = prefix_artist_tag_in_token(name, artist_name) {
-            return Some(format!("{rewritten}{weight}"));
-        }
+    if let Some((name, weight)) = split_colon_weight(token)
+        && let Some(rewritten) = prefix_artist_tag_in_token(name, artist_name)
+    {
+        return Some(format!("{rewritten}{weight}"));
     }
 
     (token == artist_name).then(|| format!("artist:{token}"))
