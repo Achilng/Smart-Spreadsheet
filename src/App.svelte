@@ -17,7 +17,6 @@
     ),
   );
 
-  const showDevBuildMarker = import.meta.env.DEV;
 </script>
 
 {#if inWorkspace}
@@ -59,13 +58,6 @@
 
 <Notice />
 
-{#if showDevBuildMarker}
-  <div class="dev-build-marker">
-    DEV 最新代码标识 2026-07-02<br />
-    看不到我 = 没跑到最新前端
-  </div>
-{/if}
-
 <style>
   .flow-titlebar {
     position: fixed;
@@ -89,25 +81,5 @@
 
   .flow-body {
     height: 100%;
-  }
-
-  .dev-build-marker {
-    position: fixed;
-    top: 64px;
-    left: 50%;
-    z-index: 10000;
-    max-width: calc(100vw - 32px);
-    transform: translateX(-50%);
-    padding: 18px 34px;
-    border: 6px solid #ffea00;
-    background: #ff007a;
-    color: #ffffff;
-    box-shadow: 0 12px 36px rgb(0 0 0 / 35%);
-    font-size: 34px;
-    font-weight: 900;
-    line-height: 1.15;
-    letter-spacing: 0;
-    text-align: center;
-    pointer-events: none;
   }
 </style>
