@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use rusqlite::{Transaction, params};
+use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
 
 use super::tags::normalize_tags;
@@ -8,8 +8,19 @@ use super::{Database, DatabaseError};
 
 pub const MAX_PAGE_SIZE: u32 = 500;
 pub(super) const FILTER_TAGS_TABLE: &str = "temp.query_filter_tags";
+/// 主查询的筛选结果缓存表：随 `Database::query_cache` 一起跨调用复用。
 const FILTERED_ROWS_TABLE: &str = "temp.query_filtered_rows";
+/// 分组/画册成员等一次性查询的物化表，与缓存表分开以免破坏缓存。
+const SCRATCH_ROWS_TABLE: &str = "temp.query_scratch_rows";
 const PAGE_ROWS_TABLE: &str = "temp.query_page_rows";
+
+/// 已物化筛选结果的标识。key 覆盖全部筛选参数；数据变更通过
+/// `Database::bump_data_version` 直接清空缓存。
+#[derive(Debug)]
+pub(super) struct QueryCache {
+    key: String,
+    total_count: u64,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -103,32 +114,47 @@ impl Database {
         }
         let offset = i64::try_from(query.offset).map_err(|_| DatabaseError::OffsetOverflow)?;
         let tags = normalize_tags(&query.tags);
-        let transaction = self.connection.transaction()?;
-        create_filter_tags(&transaction, &tags)?;
-        create_filtered_rows_table(&transaction)?;
-        populate_filtered_rows(
-            &transaction,
-            FILTERED_ROWS_TABLE,
-            query.tag_mode,
-            query.dedupe,
-            query.single_artist_only,
-            query.group_view,
-            query.hide_grouped,
-            &query.search,
-        )?;
-        create_page_rows_table(&transaction)?;
-        create_page_rows(&transaction, query.limit, offset)?;
+        let cache_key = query_cache_key(query, &tags);
+        let cached_total = self
+            .query_cache
+            .as_ref()
+            .filter(|cache| cache.key == cache_key)
+            .map(|cache| cache.total_count);
 
-        let total_count = query_total_count(&transaction)?;
-        let mut rows = query_page_metadata(&transaction)?;
-        attach_page_tags(&transaction, &mut rows)?;
+        let total_count = match cached_total {
+            Some(total) => total,
+            None => {
+                self.query_cache = None;
+                let transaction = self.connection.transaction()?;
+                create_filter_tags(&transaction, &tags)?;
+                create_filtered_rows_table(&transaction, FILTERED_ROWS_TABLE)?;
+                populate_filtered_rows(
+                    &transaction,
+                    FILTERED_ROWS_TABLE,
+                    query.tag_mode,
+                    query.dedupe,
+                    query.single_artist_only,
+                    query.group_view,
+                    query.hide_grouped,
+                    &query.search,
+                )?;
+                transaction.execute_batch(&format!("DROP TABLE {FILTER_TAGS_TABLE};"))?;
+                transaction.commit()?;
+                let total = query_total_count(&self.connection, FILTERED_ROWS_TABLE)?;
+                self.query_cache = Some(QueryCache {
+                    key: cache_key,
+                    total_count: total,
+                });
+                total
+            }
+        };
 
-        transaction.execute_batch(&format!(
-            "DROP TABLE {PAGE_ROWS_TABLE};
-             DROP TABLE {FILTERED_ROWS_TABLE};
-             DROP TABLE {FILTER_TAGS_TABLE};"
-        ))?;
-        transaction.commit()?;
+        create_page_rows_table(&self.connection)?;
+        create_page_rows(&self.connection, FILTERED_ROWS_TABLE, query.limit, offset)?;
+        let mut rows = query_page_metadata(&self.connection)?;
+        attach_page_tags(&self.connection, &mut rows)?;
+        self.connection
+            .execute_batch(&format!("DROP TABLE {PAGE_ROWS_TABLE};"))?;
 
         Ok(RowPage {
             rows,
@@ -177,24 +203,24 @@ impl Database {
         }
         let offset_i64 = i64::try_from(offset).map_err(|_| DatabaseError::OffsetOverflow)?;
         let transaction = self.connection.transaction()?;
-        create_filtered_rows_table(&transaction)?;
+        create_filtered_rows_table(&transaction, SCRATCH_ROWS_TABLE)?;
         transaction.execute(
             &format!(
-                "INSERT INTO {FILTERED_ROWS_TABLE}(id)
+                "INSERT INTO {SCRATCH_ROWS_TABLE}(id)
                  SELECT id FROM rows WHERE group_id = ?1"
             ),
             [group_id],
         )?;
         create_page_rows_table(&transaction)?;
-        create_page_rows(&transaction, limit, offset_i64)?;
+        create_page_rows(&transaction, SCRATCH_ROWS_TABLE, limit, offset_i64)?;
 
-        let total_count = query_total_count(&transaction)?;
+        let total_count = query_total_count(&transaction, SCRATCH_ROWS_TABLE)?;
         let mut rows = query_page_metadata(&transaction)?;
         attach_page_tags(&transaction, &mut rows)?;
 
         transaction.execute_batch(&format!(
             "DROP TABLE {PAGE_ROWS_TABLE};
-             DROP TABLE {FILTERED_ROWS_TABLE};"
+             DROP TABLE {SCRATCH_ROWS_TABLE};"
         ))?;
         transaction.commit()?;
 
@@ -385,10 +411,10 @@ impl Database {
             predicate = format!("({predicate}) AND rows.group_id IS NULL");
         }
 
-        create_filtered_rows_table(&transaction)?;
+        create_filtered_rows_table(&transaction, SCRATCH_ROWS_TABLE)?;
         transaction.execute(
             &format!(
-                "INSERT INTO {FILTERED_ROWS_TABLE}(id)
+                "INSERT INTO {SCRATCH_ROWS_TABLE}(id)
                  SELECT rows.id FROM rows
                  WHERE NULLIF(TRIM(COALESCE(rows.{column}, '')), '') = ?1
                    AND ({predicate})"
@@ -396,15 +422,15 @@ impl Database {
             params![key],
         )?;
         create_page_rows_table(&transaction)?;
-        create_page_rows(&transaction, limit, offset_i64)?;
+        create_page_rows(&transaction, SCRATCH_ROWS_TABLE, limit, offset_i64)?;
 
-        let total_count = query_total_count(&transaction)?;
+        let total_count = query_total_count(&transaction, SCRATCH_ROWS_TABLE)?;
         let mut rows = query_page_metadata(&transaction)?;
         attach_page_tags(&transaction, &mut rows)?;
 
         transaction.execute_batch(&format!(
             "DROP TABLE {PAGE_ROWS_TABLE};
-             DROP TABLE {FILTERED_ROWS_TABLE};
+             DROP TABLE {SCRATCH_ROWS_TABLE};
              DROP TABLE {FILTER_TAGS_TABLE};"
         ))?;
         transaction.commit()?;
@@ -445,17 +471,31 @@ impl Database {
     }
 }
 
+/// 缓存键覆盖影响筛选结果集的全部参数（分页参数除外）。
+fn query_cache_key(query: &RowQuery, normalized_tags: &[String]) -> String {
+    format!(
+        "{tags:?}\u{1}{mode:?}\u{1}{dedupe:?}\u{1}{sao}\u{1}{gv}\u{1}{hg}\u{1}{search}",
+        tags = normalized_tags,
+        mode = query.tag_mode,
+        dedupe = query.dedupe,
+        sao = query.single_artist_only,
+        gv = query.group_view,
+        hg = query.hide_grouped,
+        search = query.search.trim().to_lowercase(),
+    )
+}
+
 pub(super) fn create_filter_tags(
-    transaction: &Transaction<'_>,
+    connection: &Connection,
     tags: &[String],
 ) -> Result<(), rusqlite::Error> {
-    transaction.execute_batch(&format!(
+    connection.execute_batch(&format!(
         "DROP TABLE IF EXISTS {FILTER_TAGS_TABLE};
          CREATE TEMP TABLE {FILTER_TAGS_TABLE} (
              name TEXT PRIMARY KEY COLLATE BINARY
          ) STRICT, WITHOUT ROWID;"
     ))?;
-    let mut insert = transaction.prepare(&format!(
+    let mut insert = connection.prepare(&format!(
         "INSERT INTO {FILTER_TAGS_TABLE}(name) VALUES (?1)"
     ))?;
     for tag in tags {
@@ -464,8 +504,8 @@ pub(super) fn create_filter_tags(
     Ok(())
 }
 
-fn create_page_rows_table(transaction: &Transaction<'_>) -> Result<(), rusqlite::Error> {
-    transaction.execute_batch(&format!(
+fn create_page_rows_table(connection: &Connection) -> Result<(), rusqlite::Error> {
+    connection.execute_batch(&format!(
         "DROP TABLE IF EXISTS {PAGE_ROWS_TABLE};
          CREATE TEMP TABLE {PAGE_ROWS_TABLE} (
              ordinal INTEGER PRIMARY KEY,
@@ -474,10 +514,13 @@ fn create_page_rows_table(transaction: &Transaction<'_>) -> Result<(), rusqlite:
     ))
 }
 
-fn create_filtered_rows_table(transaction: &Transaction<'_>) -> Result<(), rusqlite::Error> {
-    transaction.execute_batch(&format!(
-        "DROP TABLE IF EXISTS {FILTERED_ROWS_TABLE};
-         CREATE TEMP TABLE {FILTERED_ROWS_TABLE} (
+fn create_filtered_rows_table(
+    connection: &Connection,
+    table: &str,
+) -> Result<(), rusqlite::Error> {
+    connection.execute_batch(&format!(
+        "DROP TABLE IF EXISTS {table};
+         CREATE TEMP TABLE {table} (
              id INTEGER PRIMARY KEY
          ) STRICT, WITHOUT ROWID;"
     ))
@@ -485,7 +528,7 @@ fn create_filtered_rows_table(transaction: &Transaction<'_>) -> Result<(), rusql
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn populate_filtered_rows(
-    transaction: &Transaction<'_>,
+    connection: &Connection,
     target_table: &str,
     mode: TagMatchMode,
     dedupe: DedupeMode,
@@ -527,7 +570,7 @@ pub(super) fn populate_filtered_rows(
     };
 
     if group_view {
-        transaction.execute(
+        connection.execute(
             &format!(
                 "INSERT INTO {target_table}(id)
                  SELECT MIN(rows.id) FROM rows
@@ -541,7 +584,7 @@ pub(super) fn populate_filtered_rows(
         )?;
     } else {
         match dedupe {
-            DedupeMode::None => transaction.execute(
+            DedupeMode::None => connection.execute(
                 &format!(
                     "INSERT INTO {target_table}(id)
                      SELECT rows.id FROM rows WHERE {predicate}"
@@ -554,7 +597,7 @@ pub(super) fn populate_filtered_rows(
                     DedupeMode::Artists => "artists",
                     DedupeMode::None => unreachable!(),
                 };
-                transaction.execute(
+                connection.execute(
                     &format!(
                         "INSERT INTO {target_table}(id)
                          WITH filtered_rows AS (
@@ -579,16 +622,17 @@ pub(super) fn populate_filtered_rows(
 }
 
 fn create_page_rows(
-    transaction: &Transaction<'_>,
+    connection: &Connection,
+    source_table: &str,
     limit: u32,
     offset: i64,
 ) -> Result<(), rusqlite::Error> {
     // 行的展示顺序即入库顺序（rows.id 单调递增）。
-    transaction.execute(
+    connection.execute(
         &format!(
             "INSERT INTO {PAGE_ROWS_TABLE}(ordinal, id)
              SELECT ROW_NUMBER() OVER (ORDER BY filtered.id), filtered.id
-             FROM {FILTERED_ROWS_TABLE} AS filtered
+             FROM {source_table} AS filtered
              ORDER BY filtered.id
              LIMIT ?1 OFFSET ?2"
         ),
@@ -597,17 +641,17 @@ fn create_page_rows(
     Ok(())
 }
 
-fn query_total_count(transaction: &Transaction<'_>) -> Result<u64, DatabaseError> {
-    let count: i64 = transaction.query_row(
-        &format!("SELECT COUNT(*) FROM {FILTERED_ROWS_TABLE}"),
+fn query_total_count(connection: &Connection, table: &str) -> Result<u64, DatabaseError> {
+    let count: i64 = connection.query_row(
+        &format!("SELECT COUNT(*) FROM {table}"),
         [],
         |row| row.get(0),
     )?;
     u64::try_from(count).map_err(|_| DatabaseError::CountOverflow)
 }
 
-fn query_page_metadata(transaction: &Transaction<'_>) -> Result<Vec<RowRecord>, DatabaseError> {
-    let mut statement = transaction.prepare(&format!(
+fn query_page_metadata(connection: &Connection) -> Result<Vec<RowRecord>, DatabaseError> {
+    let mut statement = connection.prepare(&format!(
         "SELECT rows.id, rows.batch_id, rows.source_ordinal, rows.time,
                 rows.positive_prompt, rows.negative_prompt, rows.artists,
                 rows.image_folder, rows.image_path, rows.stored_image_path,
@@ -641,7 +685,7 @@ fn query_page_metadata(transaction: &Transaction<'_>) -> Result<Vec<RowRecord>, 
 }
 
 fn attach_page_tags(
-    transaction: &Transaction<'_>,
+    connection: &Connection,
     rows: &mut [RowRecord],
 ) -> Result<(), DatabaseError> {
     let index_by_id: HashMap<i64, usize> = rows
@@ -649,7 +693,7 @@ fn attach_page_tags(
         .enumerate()
         .map(|(index, row)| (row.id, index))
         .collect();
-    let mut statement = transaction.prepare(&format!(
+    let mut statement = connection.prepare(&format!(
         "SELECT page.id, tags.name
          FROM {PAGE_ROWS_TABLE} AS page
          JOIN row_tags ON row_tags.row_id = page.id
@@ -667,26 +711,27 @@ fn attach_page_tags(
     Ok(())
 }
 
+/// Tag 筛选谓词。子查询与外层行无关联，SQLite 只物化一次命中行集合，
+/// 避免旧实现对每一行执行相关子查询（万行库下的主要卡顿来源）。
 pub(super) fn filter_predicate(mode: TagMatchMode) -> &'static str {
     match mode {
         TagMatchMode::And => {
             "(SELECT COUNT(*) FROM query_filter_tags) = 0
-             OR (SELECT COUNT(*)
+             OR rows.id IN (
+                 SELECT row_tags.row_id
                  FROM row_tags
                  JOIN tags ON tags.id = row_tags.tag_id
                  JOIN query_filter_tags ON query_filter_tags.name = tags.name COLLATE BINARY
-                 WHERE row_tags.row_id = rows.id)
-                = (SELECT COUNT(*) FROM query_filter_tags)"
+                 GROUP BY row_tags.row_id
+                 HAVING COUNT(*) = (SELECT COUNT(*) FROM query_filter_tags))"
         }
         TagMatchMode::Or => {
             "(SELECT COUNT(*) FROM query_filter_tags) = 0
-             OR EXISTS (
-                 SELECT 1
+             OR rows.id IN (
+                 SELECT row_tags.row_id
                  FROM row_tags
                  JOIN tags ON tags.id = row_tags.tag_id
-                 JOIN query_filter_tags ON query_filter_tags.name = tags.name COLLATE BINARY
-                 WHERE row_tags.row_id = rows.id
-             )"
+                 JOIN query_filter_tags ON query_filter_tags.name = tags.name COLLATE BINARY)"
         }
     }
 }
@@ -901,6 +946,98 @@ mod tests {
     }
 
     #[test]
+    fn cached_filter_serves_pages_and_refreshes_after_bump() {
+        let mut database = database_with_rows(5);
+
+        assert_eq!(query(&mut database, &[], TagMatchMode::And).total_count, 5);
+        // 同参数二次查询走缓存，结果一致
+        let cached = query(&mut database, &[], TagMatchMode::And);
+        assert_eq!(cached.total_count, 5);
+        assert_eq!(cached.rows.len(), 5);
+
+        super::super::test_support::append_rows(
+            &mut database,
+            &[super::super::batches::NewRow {
+                source_ordinal: 99,
+                identity: r"file:d:\test\extra.png".into(),
+                ..super::super::batches::NewRow::default()
+            }],
+        );
+        // 缓存语义：数据变更后、失效前结果保持不变
+        assert_eq!(query(&mut database, &[], TagMatchMode::And).total_count, 5);
+
+        database.bump_data_version();
+        assert_eq!(query(&mut database, &[], TagMatchMode::And).total_count, 6);
+    }
+
+    #[test]
+    fn cache_hit_paging_returns_consistent_pages() {
+        let mut database = database_with_rows(10);
+        let page_query = |offset: u64| RowQuery {
+            offset,
+            limit: 3,
+            tags: Vec::new(),
+            tag_mode: TagMatchMode::And,
+            dedupe: DedupeMode::None,
+            single_artist_only: false,
+            group_view: false,
+            hide_grouped: false,
+            search: String::new(),
+        };
+
+        let first = database.query_rows(&page_query(0)).unwrap();
+        let second = database.query_rows(&page_query(3)).unwrap();
+        let last = database.query_rows(&page_query(9)).unwrap();
+
+        assert_eq!(first.rows.iter().map(|r| r.id).collect::<Vec<_>>(), vec![1, 2, 3]);
+        assert_eq!(second.rows.iter().map(|r| r.id).collect::<Vec<_>>(), vec![4, 5, 6]);
+        assert_eq!(last.rows.iter().map(|r| r.id).collect::<Vec<_>>(), vec![10]);
+        assert_eq!(last.total_count, 10);
+    }
+
+    #[test]
+    fn scratch_member_queries_do_not_clobber_cached_filter() {
+        let mut database = database_with_rows(4);
+        database
+            .connection
+            .execute("UPDATE rows SET artists = 'artist:a' WHERE id IN (1, 2)", [])
+            .unwrap();
+        database.bump_data_version();
+
+        let page_query = |offset: u64| RowQuery {
+            offset,
+            limit: 2,
+            tags: Vec::new(),
+            tag_mode: TagMatchMode::And,
+            dedupe: DedupeMode::None,
+            single_artist_only: false,
+            group_view: false,
+            hide_grouped: false,
+            search: String::new(),
+        };
+        assert_eq!(database.query_rows(&page_query(0)).unwrap().total_count, 4);
+
+        // 成员查询使用 scratch 表，不得破坏已缓存的主筛选结果
+        let members = database
+            .get_dedupe_cluster_members(
+                DedupeMode::Artists,
+                "artist:a",
+                &[],
+                TagMatchMode::And,
+                false,
+                false,
+                0,
+                100,
+            )
+            .unwrap();
+        assert_eq!(members.total_count, 2);
+
+        let page = database.query_rows(&page_query(2)).unwrap();
+        assert_eq!(page.rows.iter().map(|r| r.id).collect::<Vec<_>>(), vec![3, 4]);
+        assert_eq!(page.total_count, 4);
+    }
+
+    #[test]
     fn paginates_ten_thousand_rows_without_loading_all_records() {
         let mut database = database_with_rows(10_000);
 
@@ -923,6 +1060,80 @@ mod tests {
         assert_eq!(page.rows.first().unwrap().source_ordinal, 9_902);
         assert_eq!(page.rows.last().unwrap().source_ordinal, 10_001);
         assert!(!page.has_more());
+    }
+
+    /// 万行库性能基准（手动运行）：
+    /// cargo test --release bench_ten_thousand -- --ignored --nocapture
+    #[test]
+    #[ignore = "性能基准，手动运行"]
+    fn bench_ten_thousand_row_filters() {
+        use std::time::Instant;
+
+        let filler = "masterpiece, best quality, highly detailed background, cinematic lighting, \
+                      1girl, solo, long hair, looking at viewer, intricate details, depth of field, \
+                      soft shadows, volumetric light, dynamic angle, wide shot, detailed face"
+            .repeat(3);
+        let rows: Vec<super::super::batches::NewRow> = (1..=10_000)
+            .map(|index| super::super::batches::NewRow {
+                source_ordinal: index as u32,
+                identity: format!(r"file:d:\bench\{index}.png"),
+                positive_prompt: Some(format!("artist:painter{}, {filler}", index % 97)),
+                artists: Some(format!("artist:painter{}", index % 97)),
+                ..super::super::batches::NewRow::default()
+            })
+            .collect();
+        let mut database = Database::open_in_memory().unwrap();
+        super::super::test_support::append_rows(&mut database, &rows);
+        let all_ids: Vec<i64> = (1..=10_000).collect();
+        database
+            .add_tags_to_rows(&all_ids, &["常用".into()])
+            .unwrap();
+        let half_ids: Vec<i64> = (1..=5_000).collect();
+        database
+            .add_tags_to_rows(&half_ids, &["精选".into()])
+            .unwrap();
+        database.bump_data_version();
+
+        let base = RowQuery {
+            offset: 0,
+            limit: 200,
+            tags: Vec::new(),
+            tag_mode: TagMatchMode::And,
+            dedupe: DedupeMode::None,
+            single_artist_only: false,
+            group_view: false,
+            hide_grouped: false,
+            search: String::new(),
+        };
+        let mut bench = |label: &str, query: &RowQuery| {
+            let start = Instant::now();
+            let page = database.query_rows(query).unwrap();
+            println!(
+                "{label}: {:?}（命中 {} 行）",
+                start.elapsed(),
+                page.total_count
+            );
+        };
+
+        bench("无筛选 首查（全量物化）", &base);
+        bench("无筛选 缓存翻页", &RowQuery { offset: 5_000, ..base.clone() });
+        let tagged = RowQuery {
+            tags: vec!["常用".into(), "精选".into()],
+            ..base.clone()
+        };
+        bench("双 Tag AND 首查", &tagged);
+        bench("双 Tag AND 缓存翻页", &RowQuery { offset: 2_000, ..tagged.clone() });
+        let searched = RowQuery {
+            search: "painter42".into(),
+            ..base.clone()
+        };
+        bench("文本搜索 首查（INSTR 全扫）", &searched);
+        bench("文本搜索 缓存翻页", &RowQuery { offset: 50, ..searched.clone() });
+        let deduped = RowQuery {
+            dedupe: DedupeMode::Artists,
+            ..base.clone()
+        };
+        bench("画师串去重 首查", &deduped);
     }
 
     fn query(database: &mut Database, tags: &[&str], mode: TagMatchMode) -> RowPage {

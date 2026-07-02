@@ -89,6 +89,32 @@ struct Locator {
 struct RuntimeState {
     active: Option<DataDirectory>,
     startup_error: Option<String>,
+    /// 常驻数据库连接：跨命令复用（承载查询结果缓存），
+    /// 首次使用时懒打开；重置/迁移数据目录前必须先置 None 释放文件句柄。
+    database: Option<crate::db::Database>,
+}
+
+impl RuntimeState {
+    fn database(&mut self) -> Result<&mut crate::db::Database, AppRuntimeError> {
+        if let Some(error) = &self.startup_error {
+            return Err(AppRuntimeError::StartupStateInvalid(error.clone()));
+        }
+        let directory = self
+            .active
+            .as_ref()
+            .ok_or(AppRuntimeError::NotConfigured)?;
+        if self.database.is_none() {
+            self.database = Some(directory.open_database()?);
+        }
+        Ok(self.database.as_mut().expect("database opened above"))
+    }
+
+    /// 其它连接写入数据后调用：清空常驻连接上的查询缓存。
+    fn invalidate_query_cache(&mut self) {
+        if let Some(database) = self.database.as_mut() {
+            database.bump_data_version();
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -117,17 +143,17 @@ impl AppRuntime {
             state: Mutex::new(RuntimeState {
                 active,
                 startup_error,
+                database: None,
             }),
         }
     }
 
     pub(crate) fn snapshot(&self) -> Result<RuntimeSnapshot, AppRuntimeError> {
-        let state = self.lock_state()?;
-        let (library, rejected_images_directory) = if let Some(directory) = state.active.as_ref() {
-            (
-                Some(directory.open_database()?.library_summary()?),
-                directory.rejected_images_directory()?,
-            )
+        let mut state = self.lock_state()?;
+        let (library, rejected_images_directory) = if state.active.is_some() {
+            let library = state.database()?.library_summary()?;
+            let directory = state.active.as_ref().expect("checked above");
+            (Some(library), directory.rejected_images_directory()?)
         } else {
             (None, None)
         };
@@ -172,6 +198,7 @@ impl AppRuntime {
             .ok_or(AppRuntimeError::NotConfigured)?;
         let outcome = directory.import_workbook(path)?;
         drop(state);
+        self.lock_state()?.invalidate_query_cache();
         Ok((self.snapshot()?, outcome))
     }
 
@@ -190,6 +217,8 @@ impl AppRuntime {
         // 导入可能持续较久，提前释放状态锁，避免阻塞查询等其他操作。
         drop(state);
         let outcome = directory.import_images(path.as_ref(), progress)?;
+        // 导入走独立连接写库，常驻连接上的查询缓存必须失效。
+        self.lock_state()?.invalidate_query_cache();
         Ok((self.snapshot()?, outcome))
     }
 
@@ -215,11 +244,11 @@ impl AppRuntime {
     }
 
     pub(crate) fn delete_tag(&self, name: &str) -> Result<bool, AppRuntimeError> {
-        self.with_database(|db| db.delete_tag(name))
+        self.with_database_mut(|db| db.delete_tag(name))
     }
 
     pub(crate) fn create_tag(&self, name: &str) -> Result<bool, AppRuntimeError> {
-        self.with_database(|db| db.create_tag(name))
+        self.with_database_mut(|db| db.create_tag(name))
     }
 
     pub(crate) fn count_selected_rows(
@@ -248,7 +277,7 @@ impl AppRuntime {
         selection: &RowSelection,
         tags: &[String],
     ) -> Result<TagMutationResult, AppRuntimeError> {
-        self.with_database(|db| db.add_tags_to_selection(selection, tags))
+        self.with_database_mut(|db| db.add_tags_to_selection(selection, tags))
     }
 
     pub(crate) fn remove_tags_from_selection(
@@ -256,7 +285,7 @@ impl AppRuntime {
         selection: &RowSelection,
         tags: &[String],
     ) -> Result<TagMutationResult, AppRuntimeError> {
-        self.with_database(|db| db.remove_tags_from_selection(selection, tags))
+        self.with_database_mut(|db| db.remove_tags_from_selection(selection, tags))
     }
 
     pub(crate) fn set_tags_for_row(
@@ -264,7 +293,7 @@ impl AppRuntime {
         row_id: i64,
         tags: &[String],
     ) -> Result<TagMutationResult, AppRuntimeError> {
-        self.with_database(|db| db.set_tags_for_row(row_id, tags))
+        self.with_database_mut(|db| db.set_tags_for_row(row_id, tags))
     }
 
     pub(crate) fn delete_rows(
@@ -281,6 +310,8 @@ impl AppRuntime {
             .clone();
         drop(state);
         let report = directory.delete_rows(selection, trash_originals)?;
+        // 删除走独立连接写库，常驻连接上的查询缓存必须失效。
+        self.lock_state()?.invalidate_query_cache();
         Ok((self.snapshot()?, report))
     }
 
@@ -289,7 +320,7 @@ impl AppRuntime {
     }
 
     pub(crate) fn create_group(&self, name: &str) -> Result<GroupSummary, AppRuntimeError> {
-        self.with_database(|db| db.create_group(name))
+        self.with_database_mut(|db| db.create_group(name))
     }
 
     pub(crate) fn rename_group(
@@ -297,15 +328,15 @@ impl AppRuntime {
         group_id: i64,
         new_name: &str,
     ) -> Result<GroupSummary, AppRuntimeError> {
-        self.with_database(|db| db.rename_group(group_id, new_name))
+        self.with_database_mut(|db| db.rename_group(group_id, new_name))
     }
 
     pub(crate) fn delete_group(&self, group_id: i64) -> Result<bool, AppRuntimeError> {
-        self.with_database(|db| db.delete_group(group_id))
+        self.with_database_mut(|db| db.delete_group(group_id))
     }
 
     pub(crate) fn delete_empty_groups(&self) -> Result<u64, AppRuntimeError> {
-        self.with_database(|db| db.delete_empty_groups())
+        self.with_database_mut(|db| db.delete_empty_groups())
     }
 
     pub(crate) fn list_groups(&self) -> Result<Vec<GroupSummary>, AppRuntimeError> {
@@ -317,14 +348,14 @@ impl AppRuntime {
         selection: &RowSelection,
         group_id: i64,
     ) -> Result<u64, AppRuntimeError> {
-        self.with_database(|db| db.assign_rows_to_group(selection, group_id))
+        self.with_database_mut(|db| db.assign_rows_to_group(selection, group_id))
     }
 
     pub(crate) fn ungroup_rows(
         &self,
         selection: &RowSelection,
     ) -> Result<u64, AppRuntimeError> {
-        self.with_database(|db| db.ungroup_rows(selection))
+        self.with_database_mut(|db| db.ungroup_rows(selection))
     }
 
     pub(crate) fn update_positive_prompt(
@@ -332,7 +363,7 @@ impl AppRuntime {
         row_id: i64,
         new_prompt: &str,
     ) -> Result<crate::db::SinglePromptEditResult, AppRuntimeError> {
-        self.with_database(|db| db.update_positive_prompt(row_id, new_prompt))
+        self.with_database_mut(|db| db.update_positive_prompt(row_id, new_prompt))
     }
 
     pub(crate) fn update_negative_prompt(
@@ -340,7 +371,7 @@ impl AppRuntime {
         row_id: i64,
         new_prompt: &str,
     ) -> Result<u64, AppRuntimeError> {
-        self.with_database(|db| db.update_negative_prompt(row_id, new_prompt))
+        self.with_database_mut(|db| db.update_negative_prompt(row_id, new_prompt))
     }
 
     pub(crate) fn find_replace_prompt(
@@ -349,7 +380,7 @@ impl AppRuntime {
         find: &str,
         replace: &str,
     ) -> Result<crate::db::PromptEditResult, AppRuntimeError> {
-        self.with_database(|db| db.find_replace_prompt(selection, find, replace))
+        self.with_database_mut(|db| db.find_replace_prompt(selection, find, replace))
     }
 
     pub(crate) fn prepend_artist(
@@ -357,7 +388,7 @@ impl AppRuntime {
         selection: &RowSelection,
         artist_name: &str,
     ) -> Result<crate::db::PromptEditResult, AppRuntimeError> {
-        self.with_database(|db| db.prepend_artist(selection, artist_name))
+        self.with_database_mut(|db| db.prepend_artist(selection, artist_name))
     }
 
     pub(crate) fn ungrouped_keys(
@@ -508,7 +539,7 @@ impl AppRuntime {
         key: &str,
         alias: &str,
     ) -> Result<(), AppRuntimeError> {
-        self.with_database(|db| db.set_dedupe_alias(mode, key, alias))
+        self.with_database_mut(|db| db.set_dedupe_alias(mode, key, alias))
     }
 
     pub(crate) fn row_thumbnail(&self, row_id: i64) -> Result<Vec<u8>, AppRuntimeError> {
@@ -601,14 +632,26 @@ impl AppRuntime {
     where
         AppRuntimeError: From<E>,
     {
-        let state = self.lock_state()?;
+        let mut state = self.lock_state()?;
         ensure_startup_valid(&state)?;
-        let directory = state
-            .active
-            .as_ref()
-            .ok_or(AppRuntimeError::NotConfigured)?;
-        let mut db = directory.open_database()?;
-        Ok(f(&mut db)?)
+        Ok(f(state.database()?)?)
+    }
+
+    /// 与 `with_database` 相同，但操作成功后使查询缓存失效。
+    /// 所有会改动行/Tag/分组/提示词数据的调用必须走这个入口。
+    fn with_database_mut<T, E>(
+        &self,
+        f: impl FnOnce(&mut crate::db::Database) -> Result<T, E>,
+    ) -> Result<T, AppRuntimeError>
+    where
+        AppRuntimeError: From<E>,
+    {
+        let mut state = self.lock_state()?;
+        ensure_startup_valid(&state)?;
+        let database = state.database()?;
+        let result = f(database)?;
+        database.bump_data_version();
+        Ok(result)
     }
 
     /// 取出活动数据目录的克隆并立即释放状态锁，供导出等长耗时操作使用。
@@ -633,6 +676,8 @@ impl AppRuntime {
             .as_ref()
             .ok_or(AppRuntimeError::NotConfigured)?
             .clone();
+        // 迁移会复制并清理旧目录文件，必须先关闭常驻连接释放文件句柄。
+        state.database = None;
         let prepared = current.prepare_migration(destination)?;
         let next_root = prepared.data_directory().root().to_owned();
         if let Err(locator_error) = write_locator(&self.locator_path, &next_root) {
@@ -647,6 +692,7 @@ impl AppRuntime {
 
         let outcome = prepared.commit();
         state.active = Some(outcome.data_directory);
+        state.database = None;
         drop(state);
         Ok(RuntimeMigrationOutcome {
             snapshot: self.snapshot()?,
@@ -661,17 +707,21 @@ impl AppRuntime {
         }
         state.active = None;
         state.startup_error = None;
+        state.database = None;
         drop(state);
         self.snapshot()
     }
 
     pub(crate) fn reset_data(&self) -> Result<RuntimeSnapshot, AppRuntimeError> {
-        let state = self.lock_state()?;
+        let mut state = self.lock_state()?;
         ensure_startup_valid(&state)?;
         let directory = state
             .active
             .as_ref()
-            .ok_or(AppRuntimeError::NotConfigured)?;
+            .ok_or(AppRuntimeError::NotConfigured)?
+            .clone();
+        // 重置会删除数据库文件，必须先关闭常驻连接释放文件句柄。
+        state.database = None;
         directory.reset_data()?;
         drop(state);
         self.snapshot()
@@ -693,6 +743,7 @@ impl AppRuntime {
         let directory = open(path.as_ref())?;
         write_locator(&self.locator_path, directory.root())?;
         state.active = Some(directory);
+        state.database = None;
         drop(state);
         self.snapshot()
     }
@@ -979,6 +1030,39 @@ mod tests {
                 .data_directory,
             Some(temporary.data.clone())
         );
+    }
+
+    #[test]
+    fn query_cache_invalidates_across_tag_mutations_and_deletes() {
+        let temporary = TemporaryRuntime::new();
+        let runtime = AppRuntime::load(temporary.locator.clone(), temporary.data.clone());
+        runtime.import_workbook(sample_workbook()).unwrap();
+
+        let tagged_query = RowQuery {
+            offset: 0,
+            limit: 100,
+            tags: vec!["Keep".into()],
+            tag_mode: crate::db::TagMatchMode::And,
+            dedupe: crate::db::DedupeMode::None,
+            single_artist_only: false,
+            group_view: false,
+            hide_grouped: false,
+            search: String::new(),
+        };
+        assert_eq!(runtime.query_rows(&tagged_query).unwrap().total_count, 0);
+
+        runtime
+            .add_tags_to_selection(
+                &RowSelection::Explicit { row_ids: vec![1, 2] },
+                &["Keep".into()],
+            )
+            .unwrap();
+        assert_eq!(runtime.query_rows(&tagged_query).unwrap().total_count, 2);
+
+        runtime
+            .delete_rows(&RowSelection::Explicit { row_ids: vec![1] }, false)
+            .unwrap();
+        assert_eq!(runtime.query_rows(&tagged_query).unwrap().total_count, 1);
     }
 
     fn sample_workbook() -> PathBuf {

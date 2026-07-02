@@ -60,8 +60,12 @@ pub enum DatabaseError {
     GroupNotFound(i64),
 }
 
+#[derive(Debug)]
 pub struct Database {
     connection: Connection,
+    /// query_rows 的筛选结果缓存（物化在本连接的 temp 表里）。
+    /// 任何可能影响查询结果的数据变更后必须调用 `bump_data_version` 清空。
+    query_cache: Option<query::QueryCache>,
 }
 
 impl Database {
@@ -73,6 +77,11 @@ impl Database {
     pub fn open_in_memory() -> Result<Self, DatabaseError> {
         let connection = Connection::open_in_memory()?;
         Self::initialize(connection)
+    }
+
+    /// 数据发生变更（本连接或其它连接）后调用，使筛选结果缓存失效。
+    pub fn bump_data_version(&mut self) {
+        self.query_cache = None;
     }
 
     pub fn schema_version(&self) -> Result<u32, DatabaseError> {
@@ -102,10 +111,14 @@ impl Database {
         connection.execute_batch(
             "PRAGMA foreign_keys = ON;
              PRAGMA journal_mode = WAL;
-             PRAGMA synchronous = NORMAL;",
+             PRAGMA synchronous = NORMAL;
+             PRAGMA temp_store = MEMORY;",
         )?;
         migrate(&mut connection)?;
-        Ok(Self { connection })
+        Ok(Self {
+            connection,
+            query_cache: None,
+        })
     }
 }
 
