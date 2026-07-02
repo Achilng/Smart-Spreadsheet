@@ -8,6 +8,8 @@
   import { restoreScrollPosition, saveScrollPosition, scrollPositionVersion } from "../view-state";
   import GalleryCard from "./GalleryCard.svelte";
 
+  let { active = true }: { active?: boolean } = $props();
+
   const GAP = 12;
   const PADDING = 16;
   const FOOTER_HEIGHT = 34;
@@ -43,7 +45,7 @@
 
   const cells = $derived.by(() => {
     void rowStore.pagesVersion;
-    if (rowStore.totalCount === 0 || viewportWidth <= 0 || viewportHeight <= 0) {
+    if (!active || rowStore.totalCount === 0 || viewportWidth <= 0 || viewportHeight <= 0) {
       return [] as Cell[];
     }
     const firstRow = Math.max(0, Math.floor((scrollTop - PADDING) / cellHeight) - OVERSCAN_ROWS);
@@ -71,6 +73,9 @@
 
   // 可见区域变化时：补加载缺页，并让缩略图队列丢弃已滚出视野的请求
   $effect(() => {
+    if (!active || viewportWidth <= 0 || viewportHeight <= 0) {
+      return;
+    }
     const missingPages = new Set<number>();
     const visibleRowIds = new Set<number>();
     for (const cell of cells) {
@@ -93,6 +98,7 @@
   $effect(() => {
     if (
       restored ||
+      !active ||
       !viewport ||
       rowStore.initialLoading ||
       rowStore.refreshing ||

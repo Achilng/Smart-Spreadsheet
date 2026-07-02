@@ -12,7 +12,15 @@
   import { rowStore } from "../row-store.svelte";
   import Thumbnail from "./Thumbnail.svelte";
 
-  let { album, onback }: { album: DedupeCluster; onback: () => void } = $props();
+  let {
+    album,
+    active = true,
+    onback,
+  }: {
+    album: DedupeCluster;
+    active?: boolean;
+    onback: () => void;
+  } = $props();
 
   const PAGE = 200;
   let members = $state<RowRecord[]>([]);
@@ -101,7 +109,7 @@
 
   // 当前图同步到右侧详情面板，并记住本册阅读进度。
   $effect(() => {
-    if (current) {
+    if (active && current) {
       rowStore.activeRow = current;
       saveAlbumIndex(album.key, index);
     }
@@ -120,6 +128,7 @@
   $effect(() => {
     previewUrl = null;
     previewError = null;
+    if (!active) return;
     const row = current;
     if (!row) return;
     if (!hasImage(row)) {
@@ -149,6 +158,9 @@
   });
 
   function onKeydown(event: KeyboardEvent): void {
+    if (!active) {
+      return;
+    }
     const target = event.target;
     if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
       return;

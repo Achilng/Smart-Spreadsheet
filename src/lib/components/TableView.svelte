@@ -8,6 +8,8 @@
   import { restoreScrollPosition, saveScrollPosition, scrollPositionVersion } from "../view-state";
   import TableRow from "./TableRow.svelte";
 
+  let { active = true }: { active?: boolean } = $props();
+
   const HEADER_HEIGHT = 36;
   const OVERSCAN = 6;
 
@@ -32,7 +34,7 @@
 
   const items = $derived.by(() => {
     void rowStore.pagesVersion;
-    if (rowStore.totalCount === 0 || viewportHeight <= 0) {
+    if (!active || rowStore.totalCount === 0 || viewportHeight <= 0) {
       return [] as Item[];
     }
     const first = Math.max(0, Math.floor((scrollTop - HEADER_HEIGHT) / rowHeight) - OVERSCAN);
@@ -47,6 +49,9 @@
 
   // 可见区域变化时补加载缺页，并丢弃滚出视野的缩略图请求
   $effect(() => {
+    if (!active || viewportHeight <= 0) {
+      return;
+    }
     const missingPages = new Set<number>();
     const visibleRowIds = new Set<number>();
     for (const item of items) {
@@ -69,6 +74,7 @@
   $effect(() => {
     if (
       restored ||
+      !active ||
       !viewport ||
       rowStore.initialLoading ||
       rowStore.refreshing ||

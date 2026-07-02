@@ -20,7 +20,7 @@
     exportScopeLabel,
   } from "../export-actions";
   import { clearSelection } from "../selection-store.svelte";
-  import { setGroupView, setSearch } from "../row-store.svelte";
+  import { setSearch } from "../row-store.svelte";
   import Dropdown, { type DropdownItem } from "./Dropdown.svelte";
   import SizeSlider from "./SizeSlider.svelte";
   import WindowControls from "./WindowControls.svelte";
@@ -64,7 +64,6 @@
     const isGroup = mode === "group";
     app.viewMode = mode;
     if (wasGroup !== isGroup) {
-      setGroupView(isGroup);
       clearSelection();
     }
   }

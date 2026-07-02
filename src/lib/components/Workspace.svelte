@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, untrack } from "svelte";
 
-  import { app } from "../app-state.svelte";
+  import { app, type ViewMode } from "../app-state.svelte";
   import { deletion, requestDelete } from "../delete-actions.svelte";
   import { dropState, listenDragDrop } from "../drop-import.svelte";
   import {
@@ -32,6 +32,29 @@
   import TableView from "./TableView.svelte";
   import TagSidebar from "./TagSidebar.svelte";
   import TopBar from "./TopBar.svelte";
+
+  type DataViewMode = Exclude<ViewMode, "promptDocs">;
+
+  const visitedViews = $state<Record<ViewMode, boolean>>({
+    group: false,
+    gallery: true,
+    table: false,
+    duplicates: false,
+    albums: false,
+    promptDocs: false,
+  });
+
+  function isDataViewMode(mode: ViewMode): mode is DataViewMode {
+    return mode !== "promptDocs";
+  }
+
+  function rememberVisitedView(mode: ViewMode): void {
+    visitedViews[mode] = true;
+  }
+
+  $effect(() => {
+    rememberVisitedView(app.viewMode);
+  });
 
   // 首次挂载和工作簿替换时：清缩略图缓存（行 ID 可能复用）、重载数据、刷新 Tag 库、清空选择。
   // untrack：这些调用内部有”读-改-写”（如 pagesVersion += 1），不能注册为本 effect 的依赖。
@@ -88,52 +111,76 @@
 
 <div class="workspace">
   <TopBar />
-  {#if app.viewMode === "promptDocs"}
-    <div class="workspace-body prompt-docs-body">
+  {#if visitedViews.promptDocs}
+    <div
+      class="workspace-body prompt-docs-body"
+      class:is-active={app.viewMode === "promptDocs"}
+      aria-hidden={app.viewMode !== "promptDocs"}
+    >
       <main class="prompt-docs-main">
         <PromptDocsView />
       </main>
     </div>
-  {:else}
-    <div class="workspace-body">
-      <aside class="sidebar">
-        <TagSidebar />
-      </aside>
-
-      <main class="main-area">
-        {#if rowStore.refreshing}
-          <div class="refresh-bar" aria-hidden="true"></div>
-        {/if}
-        {#if app.viewMode === "group"}
-          <GroupBrowseView />
-        {:else if app.viewMode === "albums"}
-          <AlbumBrowseView />
-        {:else if app.viewMode === "duplicates"}
-          <DuplicateBrowseView />
-        {:else if app.viewMode === "gallery"}
-          <GalleryView />
-        {:else}
-          <TableView />
-        {/if}
-        <SelectionBar />
-      </main>
-
-      {#if app.detailOpen}
-        <aside class="detail">
-          <DetailPanel />
-        </aside>
-      {:else}
-        <button
-          type="button"
-          class="detail-strip"
-          title="展开详情面板"
-          onclick={() => (app.detailOpen = true)}
-        >
-          «
-        </button>
-      {/if}
-    </div>
   {/if}
+
+  <div
+    class="workspace-body data-body"
+    class:is-active={isDataViewMode(app.viewMode)}
+    aria-hidden={!isDataViewMode(app.viewMode)}
+  >
+    <aside class="sidebar">
+      <TagSidebar />
+    </aside>
+
+    <main class="main-area">
+      {#if rowStore.refreshing}
+        <div class="refresh-bar" aria-hidden="true"></div>
+      {/if}
+      <div class="view-stack">
+        {#if visitedViews.group}
+          <section class="view-panel" class:is-active={app.viewMode === "group"}>
+            <GroupBrowseView active={app.viewMode === "group"} />
+          </section>
+        {/if}
+        {#if visitedViews.albums}
+          <section class="view-panel" class:is-active={app.viewMode === "albums"}>
+            <AlbumBrowseView active={app.viewMode === "albums"} />
+          </section>
+        {/if}
+        {#if visitedViews.duplicates}
+          <section class="view-panel" class:is-active={app.viewMode === "duplicates"}>
+            <DuplicateBrowseView active={app.viewMode === "duplicates"} />
+          </section>
+        {/if}
+        {#if visitedViews.gallery}
+          <section class="view-panel" class:is-active={app.viewMode === "gallery"}>
+            <GalleryView active={app.viewMode === "gallery"} />
+          </section>
+        {/if}
+        {#if visitedViews.table}
+          <section class="view-panel" class:is-active={app.viewMode === "table"}>
+            <TableView active={app.viewMode === "table"} />
+          </section>
+        {/if}
+      </div>
+      <SelectionBar />
+    </main>
+
+    {#if app.detailOpen}
+      <aside class="detail">
+        <DetailPanel />
+      </aside>
+    {:else}
+      <button
+        type="button"
+        class="detail-strip"
+        title="展开详情面板"
+        onclick={() => (app.detailOpen = true)}
+      >
+        «
+      </button>
+    {/if}
+  </div>
 </div>
 
 {#if app.jsonDedupeOpen}
@@ -177,6 +224,10 @@
     min-height: 0;
   }
 
+  .workspace-body:not(.is-active) {
+    display: none;
+  }
+
   .sidebar {
     width: 240px;
     flex: none;
@@ -195,6 +246,24 @@
     flex-direction: column;
     background: var(--bg);
     position: relative;
+  }
+
+  .view-stack {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+  }
+
+  .view-panel {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    display: none;
+  }
+
+  .view-panel.is-active {
+    display: flex;
   }
 
   /* 筛选/搜索刷新中的细进度条：旧内容保持显示，仅顶部提示加载中 */

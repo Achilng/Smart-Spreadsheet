@@ -8,6 +8,8 @@
   import AlbumCard from "./AlbumCard.svelte";
   import AlbumReader from "./AlbumReader.svelte";
 
+  let { active = true }: { active?: boolean } = $props();
+
   const sortedAlbums = $derived(
     albumBrowse.sortByCount
       ? albumBrowse.albums
@@ -22,6 +24,9 @@
 
   // 数据/别名变化时重载画册列表；缓存有效时切回秒开。
   $effect(() => {
+    if (!active) {
+      return;
+    }
     void app.dataVersion;
     void sectionMenu.aliasVersion;
     untrack(() => syncAlbums());
@@ -32,7 +37,7 @@
   // 切回时恢复画册列表滚动位置（卡片封面异步加载，内部按帧重试）
   let restored = false;
   $effect(() => {
-    if (restored || !listEl || albumBrowse.loading) {
+    if (restored || !active || !listEl || albumBrowse.loading) {
       return;
     }
     restored = true;
@@ -45,7 +50,7 @@
 </script>
 
 {#if openAlbum}
-  <AlbumReader album={openAlbum} onback={() => (albumBrowse.openAlbumKey = null)} />
+  <AlbumReader album={openAlbum} {active} onback={() => (albumBrowse.openAlbumKey = null)} />
 {:else}
   <div class="album-browse" bind:this={listEl} onscroll={onScroll}>
     <div class="mode-bar">

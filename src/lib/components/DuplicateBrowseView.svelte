@@ -14,10 +14,15 @@
   import { restoreScrollPosition, saveScrollPosition } from "../view-state";
   import GroupSectionCard from "./GroupSectionCard.svelte";
 
+  let { active = true }: { active?: boolean } = $props();
+
   let listEl = $state<HTMLDivElement | null>(null);
 
   // 数据/筛选/聚合依据/别名变化时同步缓存；缓存有效时切回秒开。
   $effect(() => {
+    if (!active) {
+      return;
+    }
     void app.dataVersion;
     void sectionMenu.aliasVersion;
     void duplicateBrowse.dedupeMode;
@@ -31,7 +36,7 @@
   // 切回时恢复上次滚动位置（展开的成员网格异步加载，内部按帧重试）
   let restored = false;
   $effect(() => {
-    if (restored || !listEl || duplicateBrowse.loading) {
+    if (restored || !active || !listEl || duplicateBrowse.loading) {
       return;
     }
     restored = true;

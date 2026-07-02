@@ -17,6 +17,8 @@
   import { restoreScrollPosition, saveScrollPosition } from "../view-state";
   import GroupSectionCard from "./GroupSectionCard.svelte";
 
+  let { active = true }: { active?: boolean } = $props();
+
   const RENDER_BATCH = 40;
 
   let listEl = $state<HTMLDivElement | null>(null);
@@ -24,6 +26,9 @@
   // 数据/成员关系/筛选变化时失效缓存并重载；展开状态和已加载成员跨切换保留。
   // untrack：ensure* 读写 memberCache，不能让缓存写入触发本 effect 重跑。
   $effect(() => {
+    if (!active) {
+      return;
+    }
     void app.dataVersion;
     void groupStore.membershipVersion;
     void rowStore.tags;
@@ -46,7 +51,7 @@
   // 渲染，挂载瞬间高度不足，restoreScrollPosition 内部会按帧重试。
   let restored = false;
   $effect(() => {
-    if (restored || !listEl) {
+    if (restored || !active || !listEl) {
       return;
     }
     if (groupStore.loading && groupStore.list.length === 0) {
