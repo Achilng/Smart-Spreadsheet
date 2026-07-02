@@ -118,7 +118,7 @@
       {:else if thumbFailed}
         <span class="thumb-note faint">图片不可用</span>
       {:else}
-        <span class="thumb-note faint">…</span>
+        <span class="thumb-loading shimmer" aria-hidden="true"></span>
       {/if}
     </button>
     <div class="footer">
@@ -136,7 +136,7 @@
       </span>
     </div>
   {:else}
-    <div class="thumb skeleton-block" style:height="{imageHeight}px"></div>
+    <div class="thumb shimmer" style:height="{imageHeight}px"></div>
     <div class="footer">
       <span class="skeleton-line"></span>
     </div>
@@ -152,12 +152,13 @@
     border: 1px solid var(--border);
     border-radius: var(--radius-m);
     overflow: hidden;
-    transition: border-color 0.1s ease, box-shadow 0.1s ease;
+    transition: border-color 0.12s ease, box-shadow 0.12s ease, transform 0.12s ease;
   }
 
   .card:hover:not(.is-skeleton) {
     border-color: var(--border-strong);
-    box-shadow: var(--shadow-1);
+    box-shadow: var(--shadow-hover);
+    transform: translateY(-1px);
   }
 
   .card.is-active {
@@ -212,6 +213,12 @@
     font-size: 12px;
   }
 
+  .thumb-loading {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
   .footer {
     display: flex;
     align-items: center;
@@ -250,25 +257,10 @@
     flex: none;
   }
 
-  .skeleton-block {
-    background: linear-gradient(100deg, var(--surface-2) 40%, var(--border) 50%, var(--surface-2) 60%);
-    background-size: 200% 100%;
-    animation: shimmer 1.2s infinite linear;
-  }
-
   .skeleton-line {
     height: 10px;
     width: 60%;
     border-radius: 4px;
     background: var(--surface-2);
-  }
-
-  @keyframes shimmer {
-    from {
-      background-position: 200% 0;
-    }
-    to {
-      background-position: -200% 0;
-    }
   }
 </style>

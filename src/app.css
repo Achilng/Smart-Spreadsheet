@@ -1,14 +1,14 @@
 /* ---- 设计 token（浅色主题） ---- */
 :root {
   color-scheme: light;
-  --bg: #f2f4f7;
+  --bg: #eef1f5;
   --surface: #ffffff;
-  --surface-2: #f8fafc;
-  --border: #e3e7ec;
-  --border-strong: #ccd3db;
-  --text: #1f2733;
-  --text-2: #5a6472;
-  --text-3: #97a0ad;
+  --surface-2: #f6f8fa;
+  --border: #e4e8ee;
+  --border-strong: #cdd5df;
+  --text: #1c2430;
+  --text-2: #57626f;
+  --text-3: #929daa;
   --accent: #3163e8;
   --accent-hover: #2a55c9;
   --accent-soft: #e9effd;
@@ -17,8 +17,10 @@
   --danger-soft: #fbe9ec;
   --success: #178256;
   --success-soft: #e6f5ee;
-  --shadow-1: 0 1px 2px rgb(16 24 40 / 6%), 0 1px 3px rgb(16 24 40 / 8%);
+  --shadow-1: 0 1px 2px rgb(16 24 40 / 5%), 0 1px 3px rgb(16 24 40 / 7%);
   --shadow-2: 0 8px 24px rgb(16 24 40 / 14%);
+  --shadow-hover: 0 3px 10px rgb(16 24 40 / 10%);
+  --focus-ring: 0 0 0 3px rgb(49 99 232 / 18%);
   --radius-s: 6px;
   --radius-m: 10px;
   --font: "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif;
@@ -26,6 +28,37 @@
 
 * {
   box-sizing: border-box;
+}
+
+/* ---- 细滚动条（替换 Windows 默认粗灰条） ---- */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c7cfd9;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a9b4c2;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+::selection {
+  background: var(--accent-soft-border);
 }
 
 html,
@@ -69,6 +102,17 @@ textarea {
   font: inherit;
 }
 
+/* 统一键盘焦点环（鼠标点击不出现） */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+input:focus-visible,
+textarea:focus-visible {
+  outline: none;
+}
+
 /* ---- 通用控件 ---- */
 .btn {
   display: inline-flex;
@@ -81,12 +125,16 @@ textarea {
   background: var(--surface);
   color: var(--text);
   white-space: nowrap;
-  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease, box-shadow 0.12s ease;
 }
 
 .btn:hover:not(:disabled) {
   background: var(--surface-2);
   border-color: var(--text-3);
+}
+
+.btn:active:not(:disabled) {
+  background: var(--bg);
 }
 
 .btn-primary {
@@ -98,6 +146,10 @@ textarea {
 .btn-primary:hover:not(:disabled) {
   background: var(--accent-hover);
   border-color: var(--accent-hover);
+}
+
+.btn-primary:active:not(:disabled) {
+  background: var(--accent-hover);
 }
 
 .btn-danger {
@@ -163,4 +215,20 @@ textarea {
 .flow-card .flow-hint {
   font-size: 12px;
   color: var(--text-3);
+}
+
+/* ---- 加载占位微光（缩略图 / 骨架屏共用） ---- */
+.shimmer {
+  background: linear-gradient(100deg, var(--surface-2) 40%, var(--border) 50%, var(--surface-2) 60%);
+  background-size: 200% 100%;
+  animation: app-shimmer 1.2s infinite linear;
+}
+
+@keyframes app-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
 }

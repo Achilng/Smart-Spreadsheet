@@ -292,7 +292,8 @@
   }
 
   textarea:focus {
-    border-color: var(--primary, #4a90d9);
+    border-color: var(--accent);
+    box-shadow: var(--focus-ring);
   }
 
   .controls {

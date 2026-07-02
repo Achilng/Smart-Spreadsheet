@@ -209,6 +209,7 @@
   .create-row input:focus {
     outline: none;
     border-color: var(--accent);
+    box-shadow: var(--focus-ring);
   }
 
   .btn-primary {

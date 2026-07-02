@@ -624,6 +624,7 @@
   .create-form input:focus {
     outline: none;
     border-color: var(--accent);
+    box-shadow: var(--focus-ring);
   }
 
   .create-form .btn {

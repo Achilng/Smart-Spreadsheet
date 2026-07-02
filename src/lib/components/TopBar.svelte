@@ -206,11 +206,17 @@
     padding: 3px 14px;
     font-size: 13px;
     color: var(--text-2);
+    transition: color 0.12s ease, background 0.12s ease;
+  }
+
+  .view-switch button:hover:not(.is-active) {
+    color: var(--text);
   }
 
   .view-switch button.is-active {
     background: var(--surface);
     color: var(--text);
+    font-weight: 600;
     box-shadow: var(--shadow-1);
   }
 
@@ -231,14 +237,17 @@
     color: var(--text);
     outline: none;
     box-sizing: border-box;
+    transition: border-color 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
   }
 
   .search-box input:focus {
-    border-color: var(--primary, #4a90d9);
+    border-color: var(--accent);
+    background: var(--surface);
+    box-shadow: var(--focus-ring);
   }
 
   .search-box input::placeholder {
-    color: var(--text-3, #999);
+    color: var(--text-3);
   }
 
   .search-clear {

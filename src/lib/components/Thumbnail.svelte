@@ -46,7 +46,7 @@
 {:else if failed}
   <span class="note">不可用</span>
 {:else}
-  <span class="note">…</span>
+  <span class="loading shimmer" aria-hidden="true"></span>
 {/if}
 
 <style>
@@ -61,5 +61,12 @@
   .note {
     font-size: 11px;
     color: var(--text-3);
+  }
+
+  .loading {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border-radius: 4px;
   }
 </style>

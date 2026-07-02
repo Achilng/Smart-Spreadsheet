@@ -301,6 +301,9 @@
   }
 
   .section-header {
+    position: sticky;
+    top: 0;
+    z-index: 5;
     display: flex;
     align-items: center;
     gap: 8px;

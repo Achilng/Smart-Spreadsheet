@@ -568,6 +568,7 @@
 
   .doc-search:focus {
     border-color: var(--accent);
+    box-shadow: var(--focus-ring);
   }
 
   .doc-items {

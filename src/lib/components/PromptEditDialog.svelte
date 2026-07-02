@@ -212,6 +212,7 @@
   label input:focus {
     outline: none;
     border-color: var(--accent);
+    box-shadow: var(--focus-ring);
   }
 
   .hint {
