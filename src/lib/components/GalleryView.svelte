@@ -3,6 +3,7 @@
   import { app } from "../app-state.svelte";
   import { PAGE_SIZE, ensurePage, getRow, resetRows, rowStore } from "../row-store.svelte";
   import { thumbnails } from "../thumbnails";
+  import { saveScrollPosition, savedScrollPosition } from "../view-state";
   import GalleryCard from "./GalleryCard.svelte";
 
   const GAP = 12;
@@ -82,15 +83,37 @@
     }
   });
 
-  // 任何整体重载（筛选变化、批量操作、工作簿替换）都回到顶部
+  // 挂载后恢复上次离开时的滚动位置（spacer 高度依赖 totalCount，需等数据就绪）
+  let restored = false;
   $effect(() => {
-    if (rowStore.initialLoading) {
+    if (restored || !viewport || rowStore.initialLoading) {
+      return;
+    }
+    void rowStore.totalCount;
+    restored = true;
+    const saved = savedScrollPosition("gallery");
+    if (saved > 0) {
+      viewport.scrollTop = saved;
+      scrollTop = viewport.scrollTop;
+    }
+  });
+
+  // 筛选/搜索/数据变更导致结果集语义变化时回到顶部
+  let seenReset = rowStore.resetToken;
+  $effect(() => {
+    if (rowStore.resetToken !== seenReset) {
+      seenReset = rowStore.resetToken;
       scrollTop = 0;
       if (viewport) {
         viewport.scrollTop = 0;
       }
     }
   });
+
+  function onScroll(): void {
+    scrollTop = viewport?.scrollTop ?? 0;
+    saveScrollPosition("gallery", scrollTop);
+  }
 </script>
 
 <div
@@ -98,7 +121,7 @@
   bind:this={viewport}
   bind:clientWidth={viewportWidth}
   bind:clientHeight={viewportHeight}
-  onscroll={() => (scrollTop = viewport?.scrollTop ?? 0)}
+  onscroll={onScroll}
 >
   {#if rowStore.error}
     <div class="gallery-status">

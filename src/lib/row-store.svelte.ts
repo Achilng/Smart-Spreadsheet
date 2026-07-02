@@ -1,11 +1,15 @@
 import { queryRows, type DedupeMode, type RowRecord, type TagMatchMode } from "../api";
 import { errorText } from "./app-state.svelte";
+import { clearScrollPositions } from "./view-state";
 
 export const PAGE_SIZE = 200;
 
 /**
  * 行数据的分页缓存。页内容保存在非响应式 Map 中，
  * 通过 pagesVersion 计数器通知视图重算可见区域。
+ *
+ * 筛选/搜索变化采用 stale-while-revalidate：旧内容保持渲染
+ * （refreshing = true），新结果首页到达后原子替换，避免白屏闪烁。
  */
 export const rowStore = $state({
   tags: [] as string[],
@@ -16,22 +20,34 @@ export const rowStore = $state({
   hideGrouped: false,
   search: "",
   totalCount: 0,
+  /** 首次加载 / 数据集整体更换，期间没有可显示的旧内容 */
   initialLoading: true,
+  /** 新筛选结果在途，旧内容仍在渲染 */
+  refreshing: false,
   error: null as string | null,
   pagesVersion: 0,
+  /** 结果集语义变化（筛选/搜索/数据变更）完成时 +1，视图据此回到顶部 */
+  resetToken: 0,
   activeRow: null as RowRecord | null,
 });
 
 let pages = new Map<number, RowRecord[]>();
+/** 刷新中的新一代页缓存；首页到达后整体替换 pages */
+let incoming: Map<number, RowRecord[]> | null = null;
 let pendingPages = new Set<number>();
 let generation = 0;
+/** 本轮刷新完成时是否要求视图回到顶部 */
+let resetScrollOnSwap = true;
 
 export function getRow(index: number): RowRecord | undefined {
   return pages.get(Math.floor(index / PAGE_SIZE))?.[index % PAGE_SIZE];
 }
 
 export function ensurePage(pageIndex: number): void {
-  if (pageIndex < 0 || pages.has(pageIndex) || pendingPages.has(pageIndex)) {
+  if (pageIndex < 0 || pendingPages.has(pageIndex)) {
+    return;
+  }
+  if ((incoming ?? pages).has(pageIndex)) {
     return;
   }
   pendingPages.add(pageIndex);
@@ -52,7 +68,18 @@ export function ensurePage(pageIndex: number): void {
       if (requestGeneration !== generation) {
         return;
       }
-      pages.set(pageIndex, page.rows);
+      if (incoming) {
+        incoming.set(pageIndex, page.rows);
+        // 新结果首页到达：原子替换旧内容
+        pages = incoming;
+        incoming = null;
+        rowStore.refreshing = false;
+        if (resetScrollOnSwap) {
+          rowStore.resetToken += 1;
+        }
+      } else {
+        pages.set(pageIndex, page.rows);
+      }
       rowStore.totalCount = page.totalCount;
       rowStore.initialLoading = false;
       rowStore.error = null;
@@ -62,6 +89,7 @@ export function ensurePage(pageIndex: number): void {
         return;
       }
       rowStore.initialLoading = false;
+      rowStore.refreshing = false;
       rowStore.error = errorText(error);
     } finally {
       if (requestGeneration === generation) {
@@ -71,36 +99,62 @@ export function ensurePage(pageIndex: number): void {
   })();
 }
 
-/** 清空缓存并重新加载第一页。筛选变化、批量操作和工作簿替换后调用。 */
-export function resetRows(): void {
+interface ResetOptions {
+  /** false = 数据集整体更换（无可信旧内容），true = 保留旧内容直到新结果到达 */
+  keepStale?: boolean;
+  /** true = 筛选语义变化，各视图清位置回顶部；false = 就地刷新保留位置 */
+  resetScroll?: boolean;
+}
+
+/**
+ * 清空缓存并重新加载第一页。
+ * 默认（无参）= 批量操作后的就地刷新：保留旧内容与滚动位置，新结果到达后原位替换。
+ * 筛选/搜索变化传 resetScroll: true；导入/删除/换库传 keepStale: false。
+ */
+export function resetRows(options: ResetOptions = {}): void {
+  const { keepStale = true, resetScroll = false } = options;
   generation += 1;
-  pages = new Map();
   pendingPages = new Set();
-  rowStore.totalCount = 0;
-  rowStore.initialLoading = true;
   rowStore.error = null;
   rowStore.activeRow = null;
-  rowStore.pagesVersion += 1;
+  resetScrollOnSwap = resetScroll;
+  if (resetScroll) {
+    clearScrollPositions();
+  }
+  if (keepStale && pages.size > 0) {
+    incoming = new Map();
+    rowStore.refreshing = true;
+  } else {
+    pages = new Map();
+    incoming = null;
+    rowStore.totalCount = 0;
+    rowStore.initialLoading = true;
+    rowStore.refreshing = false;
+    if (resetScroll) {
+      rowStore.resetToken += 1;
+    }
+    rowStore.pagesVersion += 1;
+  }
   ensurePage(0);
 }
 
 export function setFilter(tags: string[], tagMode: TagMatchMode): void {
   rowStore.tags = [...tags];
   rowStore.tagMode = tagMode;
-  resetRows();
+  resetRows({ keepStale: true, resetScroll: true });
 }
 
 export function setDedupe(dedupe: DedupeMode): void {
   if (rowStore.dedupe !== dedupe) {
     rowStore.dedupe = dedupe;
-    resetRows();
+    resetRows({ keepStale: true, resetScroll: true });
   }
 }
 
 export function setSingleArtistOnly(value: boolean): void {
   if (rowStore.singleArtistOnly !== value) {
     rowStore.singleArtistOnly = value;
-    resetRows();
+    resetRows({ keepStale: true, resetScroll: true });
   }
 }
 
@@ -111,21 +165,22 @@ export function setGroupView(value: boolean): void {
       rowStore.dedupe = "none";
       rowStore.hideGrouped = false;
     }
-    resetRows();
+    // 视图切换不是筛选变化：保留画廊/表格的滚动位置
+    resetRows({ keepStale: true, resetScroll: false });
   }
 }
 
 export function setHideGrouped(value: boolean): void {
   if (rowStore.hideGrouped !== value) {
     rowStore.hideGrouped = value;
-    resetRows();
+    resetRows({ keepStale: true, resetScroll: true });
   }
 }
 
 export function setSearch(value: string): void {
   if (rowStore.search !== value) {
     rowStore.search = value;
-    resetRows();
+    resetRows({ keepStale: true, resetScroll: true });
   }
 }
 

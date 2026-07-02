@@ -39,7 +39,7 @@
     void app.dataVersion;
     untrack(() => {
       thumbnails.clear();
-      resetRows();
+      resetRows({ keepStale: false, resetScroll: true });
       clearSelection();
       void loadTags();
     });
@@ -101,6 +101,9 @@
       </aside>
 
       <main class="main-area">
+        {#if rowStore.refreshing}
+          <div class="refresh-bar" aria-hidden="true"></div>
+        {/if}
         {#if app.viewMode === "group"}
           <GroupBrowseView />
         {:else if app.viewMode === "albums"}
@@ -192,6 +195,39 @@
     flex-direction: column;
     background: var(--bg);
     position: relative;
+  }
+
+  /* 筛选/搜索刷新中的细进度条：旧内容保持显示，仅顶部提示加载中 */
+  .refresh-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    z-index: 30;
+    overflow: hidden;
+    background: transparent;
+    pointer-events: none;
+  }
+
+  .refresh-bar::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 40%;
+    border-radius: 2px;
+    background: var(--accent);
+    animation: refresh-slide 0.9s ease-in-out infinite;
+  }
+
+  @keyframes refresh-slide {
+    0% {
+      left: -40%;
+    }
+    100% {
+      left: 100%;
+    }
   }
 
   .prompt-docs-body {

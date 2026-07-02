@@ -1,7 +1,7 @@
 import { getRowThumbnail } from "./api";
 
-const MAX_CONCURRENT_REQUESTS = 4;
-const MAX_CACHED_URLS = 120;
+const MAX_CONCURRENT_REQUESTS = 8;
+const MAX_CACHED_URLS = 480;
 
 interface CachedThumbnail {
   url: string;
