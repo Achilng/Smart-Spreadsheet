@@ -16,3 +16,14 @@ export function savedScrollPosition(key: string): number {
 export function clearScrollPositions(): void {
   scrollPositions.clear();
 }
+
+/** 提示词文档：记住上次打开的文档，切走再切回时恢复（与筛选无关，不随滚动位置清空）。 */
+let lastPromptDocId: string | null = null;
+
+export function rememberPromptDoc(docId: string | null): void {
+  lastPromptDocId = docId;
+}
+
+export function lastPromptDoc(): string | null {
+  return lastPromptDocId;
+}

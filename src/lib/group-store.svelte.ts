@@ -15,7 +15,13 @@ export const groupStore = $state({
   list: [] as GroupSummary[],
   loading: false,
   error: null as string | null,
+  /** 分组成员关系变化（分配/移出/删除分组）时 +1，成员缓存据此失效 */
+  membershipVersion: 0,
 });
+
+export function bumpGroupMembership(): void {
+  groupStore.membershipVersion += 1;
+}
 
 export async function loadGroups(): Promise<void> {
   groupStore.loading = true;
@@ -54,6 +60,7 @@ export async function renameExistingGroup(groupId: number, newName: string): Pro
 export async function removeGroup(groupId: number): Promise<boolean> {
   try {
     await deleteGroup(groupId);
+    bumpGroupMembership();
     await loadGroups();
     return true;
   } catch (e) {
@@ -65,6 +72,7 @@ export async function removeGroup(groupId: number): Promise<boolean> {
 export async function cleanEmptyGroups(): Promise<number> {
   try {
     const count = await deleteEmptyGroups();
+    bumpGroupMembership();
     await loadGroups();
     return count;
   } catch (e) {
@@ -76,6 +84,7 @@ export async function cleanEmptyGroups(): Promise<number> {
 export async function assignToGroup(selection: RowSelection, groupId: number): Promise<number> {
   try {
     const count = await assignRowsToGroup(selection, groupId);
+    bumpGroupMembership();
     await loadGroups();
     return count;
   } catch (e) {
@@ -87,6 +96,7 @@ export async function assignToGroup(selection: RowSelection, groupId: number): P
 export async function removeFromGroup(selection: RowSelection): Promise<number> {
   try {
     const count = await ungroupRows(selection);
+    bumpGroupMembership();
     await loadGroups();
     return count;
   } catch (e) {

@@ -1,152 +1,72 @@
 <script lang="ts">
+  import { untrack } from "svelte";
+
+  import type { DedupeCluster, DedupeMode, RowRecord } from "../../api";
+  import { app, formatCount } from "../app-state.svelte";
   import {
-    listDedupeClusters,
-    getDedupeClusterMembers,
-    type DedupeCluster,
-    type DedupeMode,
-    type RowRecord,
-  } from "../../api";
-  import { errorText, formatCount } from "../app-state.svelte";
+    duplicateBrowse,
+    ensureClusterMembers,
+    loadMoreClusterMembers,
+    syncDuplicateCaches,
+  } from "../duplicate-browse-store.svelte";
   import { rowStore } from "../row-store.svelte";
   import { sectionMenu, showSectionMenu } from "../section-context-menu.svelte";
+  import { saveScrollPosition, savedScrollPosition } from "../view-state";
   import GroupSectionCard from "./GroupSectionCard.svelte";
 
-  const MEMBERS_PAGE = 200;
+  let listEl = $state<HTMLDivElement | null>(null);
 
-  interface MemberData {
-    rows: RowRecord[];
-    totalCount: number;
-    loading: boolean;
-    error: string | null;
-  }
-
-  let dedupeMode = $state<DedupeMode>("artists");
-
-  let clusters = $state<DedupeCluster[]>([]);
-  let clustersLoading = $state(false);
-  let clustersError = $state<string | null>(null);
-
-  let sortByCount = $state(true);
-
-  let expandedKeys = $state<string[]>([]);
-  let memberCache = $state<Record<string, MemberData>>({});
-
+  // 数据/筛选/聚合依据/别名变化时同步缓存；缓存有效时切回秒开。
   $effect(() => {
-    void dedupeMode;
+    void app.dataVersion;
+    void sectionMenu.aliasVersion;
+    void duplicateBrowse.dedupeMode;
     void rowStore.tags;
     void rowStore.tagMode;
     void rowStore.singleArtistOnly;
     void rowStore.hideGrouped;
-    void loadClusters(true);
+    untrack(() => syncDuplicateCaches());
   });
 
+  // 切回时恢复上次滚动位置
+  let restored = false;
   $effect(() => {
-    void sectionMenu.aliasVersion;
-    void loadClusters(false);
+    if (restored || !listEl || duplicateBrowse.loading) {
+      return;
+    }
+    restored = true;
+    const saved = savedScrollPosition("duplicates");
+    if (saved > 0) {
+      listEl.scrollTop = saved;
+    }
   });
 
-  async function loadClusters(resetExpand: boolean): Promise<void> {
-    clustersLoading = true;
-    clustersError = null;
-    if (resetExpand) {
-      expandedKeys = [];
-      memberCache = {};
-    }
-    try {
-      clusters = await listDedupeClusters(
-        dedupeMode,
-        [...rowStore.tags],
-        rowStore.tagMode,
-        rowStore.singleArtistOnly,
-        rowStore.hideGrouped,
-      );
-    } catch (e) {
-      clustersError = errorText(e);
-      clusters = [];
-    } finally {
-      clustersLoading = false;
-    }
+  function onScroll(): void {
+    saveScrollPosition("duplicates", listEl?.scrollTop ?? 0);
+  }
+
+  function setMode(mode: DedupeMode): void {
+    duplicateBrowse.dedupeMode = mode;
   }
 
   const sortedClusters = $derived(
-    sortByCount
-      ? clusters
-      : [...clusters].sort((a, b) => (a.alias ?? a.key).localeCompare(b.alias ?? b.key)),
+    duplicateBrowse.sortByCount
+      ? duplicateBrowse.clusters
+      : [...duplicateBrowse.clusters].sort((a, b) =>
+          (a.alias ?? a.key).localeCompare(b.alias ?? b.key),
+        ),
   );
 
   function isExpanded(key: string): boolean {
-    return expandedKeys.includes(key);
-  }
-
-  function getMemberData(key: string): MemberData | undefined {
-    return memberCache[key];
+    return duplicateBrowse.expandedKeys.includes(key);
   }
 
   async function toggleCluster(key: string): Promise<void> {
     if (isExpanded(key)) {
-      expandedKeys = expandedKeys.filter(k => k !== key);
+      duplicateBrowse.expandedKeys = duplicateBrowse.expandedKeys.filter(k => k !== key);
     } else {
-      expandedKeys = [...expandedKeys, key];
-      if (!memberCache[key]) {
-        await loadClusterMembers(key);
-      }
-    }
-  }
-
-  async function loadClusterMembers(key: string): Promise<void> {
-    memberCache = {
-      ...memberCache,
-      [key]: { rows: [], totalCount: 0, loading: true, error: null },
-    };
-    try {
-      const page = await getDedupeClusterMembers(
-        dedupeMode,
-        key,
-        [...rowStore.tags],
-        rowStore.tagMode,
-        rowStore.singleArtistOnly,
-        rowStore.hideGrouped,
-        0,
-        MEMBERS_PAGE,
-      );
-      memberCache = {
-        ...memberCache,
-        [key]: { rows: page.rows, totalCount: page.totalCount, loading: false, error: null },
-      };
-    } catch (e) {
-      memberCache = {
-        ...memberCache,
-        [key]: { rows: [], totalCount: 0, loading: false, error: errorText(e) },
-      };
-    }
-  }
-
-  async function loadMoreMembers(key: string): Promise<void> {
-    const data = memberCache[key];
-    if (!data || data.loading) return;
-    memberCache = { ...memberCache, [key]: { ...data, loading: true } };
-    try {
-      const page = await getDedupeClusterMembers(
-        dedupeMode,
-        key,
-        [...rowStore.tags],
-        rowStore.tagMode,
-        rowStore.singleArtistOnly,
-        rowStore.hideGrouped,
-        data.rows.length,
-        MEMBERS_PAGE,
-      );
-      memberCache = {
-        ...memberCache,
-        [key]: {
-          rows: [...data.rows, ...page.rows],
-          totalCount: page.totalCount,
-          loading: false,
-          error: null,
-        },
-      };
-    } catch (e) {
-      memberCache = { ...memberCache, [key]: { ...data, loading: false, error: errorText(e) } };
+      duplicateBrowse.expandedKeys = [...duplicateBrowse.expandedKeys, key];
+      await ensureClusterMembers(key);
     }
   }
 
@@ -155,11 +75,11 @@
     cluster: DedupeCluster,
   ): void {
     event.preventDefault();
-    if (dedupeMode === "none") return;
+    if (duplicateBrowse.dedupeMode === "none") return;
     showSectionMenu(
       {
         kind: "dedupe",
-        mode: dedupeMode,
+        mode: duplicateBrowse.dedupeMode as "artists" | "positivePrompt",
         key: cluster.key,
         displayName: cluster.alias ?? cluster.key,
       },
@@ -178,39 +98,39 @@
     <span class="mode-label">聚合依据：</span>
     <button
       type="button"
-      class:is-active={dedupeMode === "artists"}
-      onclick={() => (dedupeMode = "artists")}
+      class:is-active={duplicateBrowse.dedupeMode === "artists"}
+      onclick={() => setMode("artists")}
     >按画师串</button>
     <button
       type="button"
-      class:is-active={dedupeMode === "positivePrompt"}
-      onclick={() => (dedupeMode = "positivePrompt")}
+      class:is-active={duplicateBrowse.dedupeMode === "positivePrompt"}
+      onclick={() => setMode("positivePrompt")}
     >按正向提示词</button>
     <span class="bar-separator"></span>
     <span class="mode-label">排序：</span>
     <button
       type="button"
-      class:is-active={sortByCount}
-      onclick={() => (sortByCount = true)}
+      class:is-active={duplicateBrowse.sortByCount}
+      onclick={() => (duplicateBrowse.sortByCount = true)}
     >按数量</button>
     <button
       type="button"
-      class:is-active={!sortByCount}
-      onclick={() => (sortByCount = false)}
+      class:is-active={!duplicateBrowse.sortByCount}
+      onclick={() => (duplicateBrowse.sortByCount = false)}
     >按名称</button>
   </div>
 
-  {#if clustersLoading}
+  {#if duplicateBrowse.loading}
     <div class="status"><p class="muted">正在加载重复项…</p></div>
-  {:else if clustersError}
-    <div class="status"><p class="muted">加载失败：{clustersError}</p></div>
-  {:else if clusters.length === 0}
+  {:else if duplicateBrowse.error}
+    <div class="status"><p class="muted">加载失败：{duplicateBrowse.error}</p></div>
+  {:else if duplicateBrowse.clusters.length === 0}
     <div class="status"><p class="muted">未找到重复项（所有条目均唯一）。</p></div>
   {:else}
-    <div class="cluster-list">
+    <div class="cluster-list" bind:this={listEl} onscroll={onScroll}>
       {#each sortedClusters as cluster (cluster.key)}
         {@const expanded = isExpanded(cluster.key)}
-        {@const data = getMemberData(cluster.key)}
+        {@const data = duplicateBrowse.memberCache[cluster.key]}
         <section class="group-section">
           <button
             type="button"
@@ -227,11 +147,11 @@
           </button>
           {#if expanded}
             <div class="member-grid">
-              {#if data?.loading && data.rows.length === 0}
+              {#if !data || (data.loading && data.rows.length === 0)}
                 <p class="muted grid-status">加载中…</p>
-              {:else if data?.error}
+              {:else if data.error}
                 <p class="muted grid-status">加载失败：{data.error}</p>
-              {:else if data}
+              {:else}
                 {#each data.rows as member (member.id)}
                   <GroupSectionCard row={member} onactivate={() => setActive(member)} />
                 {/each}
@@ -240,7 +160,7 @@
                     type="button"
                     class="load-more-btn"
                     disabled={data.loading}
-                    onclick={() => void loadMoreMembers(cluster.key)}
+                    onclick={() => void loadMoreClusterMembers(cluster.key)}
                   >
                     {data.loading ? "加载中…" : `加载更多（还有 ${formatCount(data.totalCount - data.rows.length)} 张）`}
                   </button>

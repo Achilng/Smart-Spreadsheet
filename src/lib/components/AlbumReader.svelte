@@ -6,6 +6,7 @@
     type RowRecord,
   } from "../../api";
   import { binaryBuffer } from "../../image-loader";
+  import { saveAlbumIndex, savedAlbumIndex } from "../album-store.svelte";
   import { errorText, formatCount } from "../app-state.svelte";
   import { beginFileDrag } from "../file-drag";
   import { rowStore } from "../row-store.svelte";
@@ -35,7 +36,15 @@
       const page = await fetchPage(0);
       members = page.rows;
       totalCount = page.totalCount;
-      index = 0;
+      // 恢复上次阅读进度：补加载到目标页（数据可能已变化，越界时钳位）
+      const target = Math.min(savedAlbumIndex(album.key), Math.max(0, totalCount - 1));
+      while (members.length <= target && members.length < totalCount) {
+        const more = await fetchPage(members.length);
+        if (more.rows.length === 0) break;
+        members = [...members, ...more.rows];
+        totalCount = more.totalCount;
+      }
+      index = Math.max(0, Math.min(target, members.length - 1));
     } catch (e) {
       error = errorText(e);
     } finally {
@@ -90,10 +99,22 @@
     return Boolean(row.imagePath?.trim() || row.storedImagePath?.trim());
   }
 
-  // 当前图同步到右侧详情面板。
+  // 当前图同步到右侧详情面板，并记住本册阅读进度。
   $effect(() => {
-    if (current) rowStore.activeRow = current;
+    if (current) {
+      rowStore.activeRow = current;
+      saveAlbumIndex(album.key, index);
+    }
   });
+
+  // 胶片条上让当前图保持可见（含进度恢复后的首次定位）
+  function keepVisible(node: HTMLElement, isCurrent: boolean) {
+    const scroll = (flag: boolean) => {
+      if (flag) node.scrollIntoView({ block: "nearest", inline: "center" });
+    };
+    scroll(isCurrent);
+    return { update: scroll };
+  }
 
   // 加载当前图大图预览，切图时撤销旧对象 URL。
   $effect(() => {
@@ -201,6 +222,7 @@
           type="button"
           class="film"
           class:is-current={i === index}
+          use:keepVisible={i === index}
           onclick={() => jumpTo(i)}
           title={`#${member.sourceOrdinal}`}
         >

@@ -20,6 +20,7 @@
     type PromptDocSummary,
   } from "../../api";
   import { errorText, setNotice } from "../app-state.svelte";
+  import { lastPromptDoc, rememberPromptDoc } from "../view-state";
 
   const IMAGE_MIME_TYPES = [
     "image/png",
@@ -87,8 +88,11 @@
     await tick();
     createEditor();
     await reloadDocs();
-    if (docs.length > 0) {
-      await selectDoc(docs[0].id);
+    // 优先恢复上次打开的文档，不存在（已删/换库）则回退第一篇
+    const remembered = lastPromptDoc();
+    const target = remembered && docs.some(doc => doc.id === remembered) ? remembered : docs[0]?.id;
+    if (target) {
+      await selectDoc(target);
     } else {
       clearEditor();
     }
@@ -172,6 +176,7 @@
 
   function applyDoc(detail: PromptDocDetail): void {
     activeDoc = detail;
+    rememberPromptDoc(detail.id);
     title = detail.title;
     saveState = "saved";
     const content = toDisplayContent(detail.content, detail.assets);
@@ -184,6 +189,7 @@
 
   function clearEditor(): void {
     activeDoc = null;
+    rememberPromptDoc(null);
     title = "";
     saveState = "idle";
     displayToPersistent.clear();

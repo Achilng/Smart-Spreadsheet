@@ -1,73 +1,80 @@
 <script lang="ts">
-  import { listArtistAlbums, type DedupeCluster } from "../../api";
-  import { app, errorText } from "../app-state.svelte";
+  import { untrack } from "svelte";
+
+  import { app } from "../app-state.svelte";
+  import { albumBrowse, syncAlbums } from "../album-store.svelte";
+  import { sectionMenu } from "../section-context-menu.svelte";
+  import { saveScrollPosition, savedScrollPosition } from "../view-state";
   import AlbumCard from "./AlbumCard.svelte";
   import AlbumReader from "./AlbumReader.svelte";
 
-  let albums = $state<DedupeCluster[]>([]);
-  let loading = $state(true);
-  let error = $state<string | null>(null);
-  let openAlbum = $state<DedupeCluster | null>(null);
-  let sortByCount = $state(true);
-
   const sortedAlbums = $derived(
-    sortByCount
-      ? albums
-      : [...albums].sort((a, b) => (a.alias ?? a.key).localeCompare(b.alias ?? b.key)),
+    albumBrowse.sortByCount
+      ? albumBrowse.albums
+      : [...albumBrowse.albums].sort((a, b) => (a.alias ?? a.key).localeCompare(b.alias ?? b.key)),
   );
 
-  // 初次挂载与数据变化（导入/删除）时重载画册列表。
+  const openAlbum = $derived(
+    albumBrowse.openAlbumKey
+      ? (albumBrowse.albums.find(album => album.key === albumBrowse.openAlbumKey) ?? null)
+      : null,
+  );
+
+  // 数据/别名变化时重载画册列表；缓存有效时切回秒开。
   $effect(() => {
     void app.dataVersion;
-    void load();
+    void sectionMenu.aliasVersion;
+    untrack(() => syncAlbums());
   });
 
-  async function load(): Promise<void> {
-    loading = true;
-    error = null;
-    try {
-      albums = await listArtistAlbums();
-      // 列表刷新后，若当前打开的画册已不存在则退回列表。
-      if (openAlbum && !albums.some(album => album.key === openAlbum?.key)) {
-        openAlbum = null;
-      }
-    } catch (e) {
-      error = errorText(e);
-      albums = [];
-    } finally {
-      loading = false;
+  let listEl = $state<HTMLDivElement | null>(null);
+
+  // 切回时恢复画册列表滚动位置
+  let restored = false;
+  $effect(() => {
+    if (restored || !listEl || albumBrowse.loading) {
+      return;
     }
+    restored = true;
+    const saved = savedScrollPosition("albums");
+    if (saved > 0) {
+      listEl.scrollTop = saved;
+    }
+  });
+
+  function onScroll(): void {
+    saveScrollPosition("albums", listEl?.scrollTop ?? 0);
   }
 </script>
 
 {#if openAlbum}
-  <AlbumReader album={openAlbum} onback={() => (openAlbum = null)} />
+  <AlbumReader album={openAlbum} onback={() => (albumBrowse.openAlbumKey = null)} />
 {:else}
-  <div class="album-browse">
+  <div class="album-browse" bind:this={listEl} onscroll={onScroll}>
     <div class="mode-bar">
       <span class="mode-label">排序：</span>
       <button
         type="button"
-        class:is-active={sortByCount}
-        onclick={() => (sortByCount = true)}
+        class:is-active={albumBrowse.sortByCount}
+        onclick={() => (albumBrowse.sortByCount = true)}
       >按数量</button>
       <button
         type="button"
-        class:is-active={!sortByCount}
-        onclick={() => (sortByCount = false)}
+        class:is-active={!albumBrowse.sortByCount}
+        onclick={() => (albumBrowse.sortByCount = false)}
       >按名称</button>
     </div>
 
-    {#if loading}
+    {#if albumBrowse.loading}
       <div class="status"><p class="muted">正在加载画册…</p></div>
-    {:else if error}
-      <div class="status"><p class="muted">加载失败：{error}</p></div>
-    {:else if albums.length === 0}
+    {:else if albumBrowse.error}
+      <div class="status"><p class="muted">加载失败：{albumBrowse.error}</p></div>
+    {:else if albumBrowse.albums.length === 0}
       <div class="status"><p class="muted">还没有可成册的画师串（图片需含画师串）。</p></div>
     {:else}
       <div class="album-grid">
         {#each sortedAlbums as album (album.key)}
-          <AlbumCard {album} onopen={() => (openAlbum = album)} />
+          <AlbumCard {album} onopen={() => (albumBrowse.openAlbumKey = album.key)} />
         {/each}
       </div>
     {/if}

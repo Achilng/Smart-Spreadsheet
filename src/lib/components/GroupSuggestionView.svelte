@@ -1,7 +1,7 @@
 <script lang="ts">
   import { suggestGroups, assignRowsToGroup, createGroup, type SimilarityMode, type SuggestedGroup } from "../../api";
   import { app, errorText } from "../app-state.svelte";
-  import { loadGroups } from "../group-store.svelte";
+  import { bumpGroupMembership, loadGroups } from "../group-store.svelte";
   import { resetRows } from "../row-store.svelte";
 
   let mode = $state<SimilarityMode>("artists");
@@ -73,6 +73,7 @@
       }
       applyResult = `已创建 ${created} 个分组，分配 ${totalAssigned} 行`;
       applied = true;
+      bumpGroupMembership();
       await loadGroups();
       resetRows();
     } catch (e) {

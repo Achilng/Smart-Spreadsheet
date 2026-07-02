@@ -1,55 +1,86 @@
 <script lang="ts">
-  import { getGroupMembers, queryRows, type RowRecord } from "../../api";
-  import { errorText, formatCount } from "../app-state.svelte";
+  import { untrack } from "svelte";
+
+  import type { RowRecord } from "../../api";
+  import { app, formatCount } from "../app-state.svelte";
+  import {
+    ensureGroupMembers,
+    ensureUngrouped,
+    groupBrowse,
+    loadMoreGroupMembers,
+    loadMoreUngrouped,
+    syncGroupBrowseCaches,
+  } from "../group-browse-store.svelte";
   import { groupStore, loadGroups } from "../group-store.svelte";
   import { rowStore } from "../row-store.svelte";
   import { showSectionMenu } from "../section-context-menu.svelte";
+  import { saveScrollPosition, savedScrollPosition } from "../view-state";
   import GroupSectionCard from "./GroupSectionCard.svelte";
 
-  const MEMBERS_PAGE = 200;
   const RENDER_BATCH = 40;
 
-  interface MemberData {
-    rows: RowRecord[];
-    totalCount: number;
-    loading: boolean;
-    error: string | null;
-  }
+  let listEl = $state<HTMLDivElement | null>(null);
 
-  let expandedIds = $state<number[]>([]);
-  let memberCache = $state<Record<number, MemberData>>({});
-  let renderLimits = $state<Record<string, number>>({});
-  let sortByCount = $state(false);
-
-  let ungroupedRows = $state<RowRecord[]>([]);
-  let ungroupedTotal = $state(0);
-  let ungroupedExpanded = $state(false);
-  let ungroupedLoading = $state(false);
-  let ungroupedError = $state<string | null>(null);
-
+  // 数据/成员关系/筛选变化时失效缓存并重载；展开状态和已加载成员跨切换保留。
+  // untrack：ensure* 读写 memberCache，不能让缓存写入触发本 effect 重跑。
   $effect(() => {
-    void loadGroups();
+    void app.dataVersion;
+    void groupStore.membershipVersion;
+    void rowStore.tags;
+    void rowStore.tagMode;
+    void rowStore.singleArtistOnly;
+    void rowStore.search;
+    untrack(() => {
+      syncGroupBrowseCaches();
+      void loadGroups();
+      for (const groupId of groupBrowse.expandedIds) {
+        void ensureGroupMembers(groupId);
+      }
+      if (groupBrowse.ungroupedExpanded) {
+        void ensureUngrouped();
+      }
+    });
   });
 
+  // 切回时恢复上次滚动位置（成员缓存持久化，内容高度挂载即就绪）
+  let restored = false;
+  $effect(() => {
+    if (restored || !listEl) {
+      return;
+    }
+    if (groupStore.loading && groupStore.list.length === 0) {
+      return;
+    }
+    restored = true;
+    const saved = savedScrollPosition("groups");
+    if (saved > 0) {
+      listEl.scrollTop = saved;
+    }
+  });
+
+  function onScroll(): void {
+    saveScrollPosition("groups", listEl?.scrollTop ?? 0);
+  }
+
   const sortedGroups = $derived(
-    sortByCount
+    groupBrowse.sortByCount
       ? [...groupStore.list].sort((a, b) => b.memberCount - a.memberCount)
       : groupStore.list,
   );
 
   function isExpanded(groupId: number): boolean {
-    return expandedIds.includes(groupId);
+    return groupBrowse.expandedIds.includes(groupId);
   }
 
   function getRenderLimit(key: string): number {
-    return renderLimits[key] ?? RENDER_BATCH;
+    return groupBrowse.renderLimits[key] ?? RENDER_BATCH;
   }
 
   function observeSentinel(node: HTMLElement, key: string) {
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting) {
-          renderLimits[key] = (renderLimits[key] ?? RENDER_BATCH) + RENDER_BATCH;
+          groupBrowse.renderLimits[key] = (groupBrowse.renderLimits[key] ?? RENDER_BATCH) + RENDER_BATCH;
         }
       },
       { rootMargin: "200px" },
@@ -64,107 +95,20 @@
 
   async function toggleGroup(groupId: number): Promise<void> {
     if (isExpanded(groupId)) {
-      expandedIds = expandedIds.filter(id => id !== groupId);
-      delete renderLimits[groupId];
+      groupBrowse.expandedIds = groupBrowse.expandedIds.filter(id => id !== groupId);
+      delete groupBrowse.renderLimits[groupId];
     } else {
-      expandedIds = [...expandedIds, groupId];
-      if (!memberCache[groupId]) {
-        await loadGroupMembers(groupId);
-      }
-    }
-  }
-
-  async function loadGroupMembers(groupId: number): Promise<void> {
-    memberCache[groupId] = { rows: [], totalCount: 0, loading: true, error: null };
-    try {
-      const page = await getGroupMembers(groupId, 0, MEMBERS_PAGE);
-      memberCache[groupId] = {
-        rows: page.rows,
-        totalCount: page.totalCount,
-        loading: false,
-        error: null,
-      };
-    } catch (e) {
-      memberCache[groupId] = {
-        rows: [],
-        totalCount: 0,
-        loading: false,
-        error: errorText(e),
-      };
-    }
-  }
-
-  async function loadMoreMembers(groupId: number): Promise<void> {
-    const data = memberCache[groupId];
-    if (!data || data.loading) return;
-    data.loading = true;
-    try {
-      const page = await getGroupMembers(groupId, data.rows.length, MEMBERS_PAGE);
-      data.rows = [...data.rows, ...page.rows];
-      data.totalCount = page.totalCount;
-      data.loading = false;
-      data.error = null;
-    } catch (e) {
-      data.loading = false;
-      data.error = errorText(e);
+      groupBrowse.expandedIds = [...groupBrowse.expandedIds, groupId];
+      await ensureGroupMembers(groupId);
     }
   }
 
   async function toggleUngrouped(): Promise<void> {
-    ungroupedExpanded = !ungroupedExpanded;
-    if (ungroupedExpanded && ungroupedRows.length === 0) {
-      await loadUngroupedRows();
-    }
-    if (!ungroupedExpanded) {
-      delete renderLimits["ungrouped"];
-    }
-  }
-
-  async function loadUngroupedRows(): Promise<void> {
-    ungroupedLoading = true;
-    ungroupedError = null;
-    try {
-      const page = await queryRows({
-        offset: 0,
-        limit: MEMBERS_PAGE,
-        tags: [...rowStore.tags],
-        tagMode: rowStore.tagMode,
-        dedupe: "none",
-        singleArtistOnly: rowStore.singleArtistOnly,
-        groupView: false,
-        hideGrouped: true,
-        search: rowStore.search,
-      });
-      ungroupedRows = page.rows;
-      ungroupedTotal = page.totalCount;
-    } catch (e) {
-      ungroupedError = errorText(e);
-    } finally {
-      ungroupedLoading = false;
-    }
-  }
-
-  async function loadMoreUngrouped(): Promise<void> {
-    if (ungroupedLoading) return;
-    ungroupedLoading = true;
-    try {
-      const page = await queryRows({
-        offset: ungroupedRows.length,
-        limit: MEMBERS_PAGE,
-        tags: [...rowStore.tags],
-        tagMode: rowStore.tagMode,
-        dedupe: "none",
-        singleArtistOnly: rowStore.singleArtistOnly,
-        groupView: false,
-        hideGrouped: true,
-        search: rowStore.search,
-      });
-      ungroupedRows = [...ungroupedRows, ...page.rows];
-      ungroupedTotal = page.totalCount;
-    } catch (e) {
-      ungroupedError = errorText(e);
-    } finally {
-      ungroupedLoading = false;
+    groupBrowse.ungroupedExpanded = !groupBrowse.ungroupedExpanded;
+    if (groupBrowse.ungroupedExpanded) {
+      await ensureUngrouped();
+    } else {
+      delete groupBrowse.renderLimits["ungrouped"];
     }
   }
 
@@ -191,27 +135,27 @@
     <span class="toolbar-label">排序：</span>
     <button
       type="button"
-      class:is-active={!sortByCount}
-      onclick={() => (sortByCount = false)}
+      class:is-active={!groupBrowse.sortByCount}
+      onclick={() => (groupBrowse.sortByCount = false)}
     >按名称</button>
     <button
       type="button"
-      class:is-active={sortByCount}
-      onclick={() => (sortByCount = true)}
+      class:is-active={groupBrowse.sortByCount}
+      onclick={() => (groupBrowse.sortByCount = true)}
     >按数量</button>
   </div>
 
-  {#if groupStore.loading}
+  {#if groupStore.loading && groupStore.list.length === 0}
     <div class="status"><p class="muted">正在加载分组…</p></div>
   {:else if groupStore.error}
     <div class="status"><p class="muted">加载失败：{groupStore.error}</p></div>
-  {:else if groupStore.list.length === 0 && !ungroupedExpanded}
+  {:else if groupStore.list.length === 0 && !groupBrowse.ungroupedExpanded}
     <div class="status"><p class="muted">暂无分组。可通过工具菜单「建议分组」创建。</p></div>
   {:else}
-    <div class="group-list">
+    <div class="group-list" bind:this={listEl} onscroll={onScroll}>
       {#each sortedGroups as group (group.id)}
         {@const expanded = isExpanded(group.id)}
-        {@const data = memberCache[group.id]}
+        {@const data = groupBrowse.memberCache[group.id]}
         {@const renderKey = String(group.id)}
         {@const limit = getRenderLimit(renderKey)}
         <section class="group-section">
@@ -227,11 +171,11 @@
           </button>
           {#if expanded}
             <div class="member-grid">
-              {#if data?.loading && data.rows.length === 0}
+              {#if !data || (data.loading && data.rows.length === 0)}
                 <p class="muted grid-status">加载中…</p>
-              {:else if data?.error}
+              {:else if data.error}
                 <p class="muted grid-status">加载失败：{data.error}</p>
-              {:else if data}
+              {:else}
                 {#each data.rows.slice(0, limit) as member (member.id)}
                   <GroupSectionCard row={member} onactivate={() => setActive(member)} />
                 {/each}
@@ -243,7 +187,7 @@
                     type="button"
                     class="load-more-btn"
                     disabled={data.loading}
-                    onclick={() => void loadMoreMembers(group.id)}
+                    onclick={() => void loadMoreGroupMembers(group.id)}
                   >
                     {data.loading ? "加载中…" : `加载更多（还有 ${formatCount(data.totalCount - data.rows.length)} 张）`}
                   </button>
@@ -256,33 +200,34 @@
 
       <section class="group-section ungrouped-section">
         <button type="button" class="section-header" onclick={() => void toggleUngrouped()}>
-          <span class="expand-icon" class:is-expanded={ungroupedExpanded}>&#9654;</span>
+          <span class="expand-icon" class:is-expanded={groupBrowse.ungroupedExpanded}>&#9654;</span>
           <span class="section-name">未分组</span>
         </button>
-        {#if ungroupedExpanded}
+        {#if groupBrowse.ungroupedExpanded}
+          {@const uData = groupBrowse.ungrouped}
           {@const uLimit = getRenderLimit("ungrouped")}
           <div class="member-grid">
-            {#if ungroupedLoading && ungroupedRows.length === 0}
+            {#if !uData || (uData.loading && uData.rows.length === 0)}
               <p class="muted grid-status">加载中…</p>
-            {:else if ungroupedError}
-              <p class="muted grid-status">加载失败：{ungroupedError}</p>
-            {:else if ungroupedRows.length === 0}
+            {:else if uData.error}
+              <p class="muted grid-status">加载失败：{uData.error}</p>
+            {:else if uData.rows.length === 0}
               <p class="muted grid-status">没有未分组的行。</p>
             {:else}
-              {#each ungroupedRows.slice(0, uLimit) as row (row.id)}
+              {#each uData.rows.slice(0, uLimit) as row (row.id)}
                 <GroupSectionCard {row} onactivate={() => setActive(row)} />
               {/each}
-              {#if uLimit < ungroupedRows.length}
+              {#if uLimit < uData.rows.length}
                 <div class="render-sentinel" use:observeSentinel={"ungrouped"}></div>
               {/if}
-              {#if ungroupedRows.length < ungroupedTotal && uLimit >= ungroupedRows.length}
+              {#if uData.rows.length < uData.totalCount && uLimit >= uData.rows.length}
                 <button
                   type="button"
                   class="load-more-btn"
-                  disabled={ungroupedLoading}
+                  disabled={uData.loading}
                   onclick={() => void loadMoreUngrouped()}
                 >
-                  {ungroupedLoading ? "加载中…" : `加载更多（还有 ${formatCount(ungroupedTotal - ungroupedRows.length)} 张）`}
+                  {uData.loading ? "加载中…" : `加载更多（还有 ${formatCount(uData.totalCount - uData.rows.length)} 张）`}
                 </button>
               {/if}
             {/if}
