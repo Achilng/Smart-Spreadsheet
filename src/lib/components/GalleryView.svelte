@@ -1,9 +1,11 @@
 <script lang="ts">
+  import { onDestroy } from "svelte";
+
   import type { RowRecord } from "../../api";
   import { app } from "../app-state.svelte";
   import { PAGE_SIZE, ensurePage, getRow, resetRows, rowStore } from "../row-store.svelte";
   import { thumbnails } from "../thumbnails";
-  import { saveScrollPosition, savedScrollPosition } from "../view-state";
+  import { restoreScrollPosition, saveScrollPosition, scrollPositionVersion } from "../view-state";
   import GalleryCard from "./GalleryCard.svelte";
 
   const GAP = 12;
@@ -17,6 +19,7 @@
   let scrollTop = $state(0);
   let viewportWidth = $state(0);
   let viewportHeight = $state(0);
+  let lastScrollSaveVersion = scrollPositionVersion();
 
   const columns = $derived(
     Math.max(1, Math.floor((viewportWidth - PADDING * 2 + GAP) / (minCardWidth + GAP))),
@@ -88,16 +91,21 @@
   // 刷新在途时 totalCount 还是旧语义的值，提前恢复会被钳制到错误位置。
   let restored = false;
   $effect(() => {
-    if (restored || !viewport || rowStore.initialLoading || rowStore.refreshing) {
+    if (
+      restored ||
+      !viewport ||
+      rowStore.initialLoading ||
+      rowStore.refreshing ||
+      viewportWidth <= 0 ||
+      viewportHeight <= 0 ||
+      spacerHeight <= 0
+    ) {
       return;
     }
     void rowStore.totalCount;
+    void spacerHeight;
     restored = true;
-    const saved = savedScrollPosition("gallery");
-    if (saved > 0) {
-      viewport.scrollTop = saved;
-      scrollTop = viewport.scrollTop;
-    }
+    restoreScrollPosition(viewport, "gallery", 60, top => (scrollTop = top));
   });
 
   // 筛选/搜索/数据变更导致结果集语义变化时回到顶部
@@ -114,8 +122,19 @@
 
   function onScroll(): void {
     scrollTop = viewport?.scrollTop ?? 0;
-    saveScrollPosition("gallery", scrollTop);
+    saveGalleryScroll(scrollTop);
   }
+
+  function saveGalleryScroll(top: number): void {
+    saveScrollPosition("gallery", top);
+    lastScrollSaveVersion = scrollPositionVersion();
+  }
+
+  onDestroy(() => {
+    if (viewport && lastScrollSaveVersion === scrollPositionVersion()) {
+      saveGalleryScroll(viewport.scrollTop);
+    }
+  });
 </script>
 
 <div

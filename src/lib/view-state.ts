@@ -4,6 +4,7 @@
  * 仅视图切换（如 画廊 ↔ 分组）不清空。
  */
 const scrollPositions = new Map<string, number>();
+let scrollPositionsVersion = 0;
 
 export function saveScrollPosition(key: string, top: number): void {
   scrollPositions.set(key, top);
@@ -15,6 +16,11 @@ export function savedScrollPosition(key: string): number {
 
 export function clearScrollPositions(): void {
   scrollPositions.clear();
+  scrollPositionsVersion += 1;
+}
+
+export function scrollPositionVersion(): number {
+  return scrollPositionsVersion;
 }
 
 /**
@@ -22,7 +28,12 @@ export function clearScrollPositions(): void {
  * content-visibility 离屏区块只有预估高度），首次赋值会被浏览器钳制；
  * 因此按帧重试直到生效，用户主动滚动或元素卸载时立即放弃。
  */
-export function restoreScrollPosition(el: HTMLElement, key: string, maxFrames = 30): void {
+export function restoreScrollPosition(
+  el: HTMLElement,
+  key: string,
+  maxFrames = 60,
+  onApplied?: (top: number) => void,
+): void {
   const target = savedScrollPosition(key);
   if (target <= 0) {
     return;
@@ -35,6 +46,7 @@ export function restoreScrollPosition(el: HTMLElement, key: string, maxFrames = 
     }
     el.scrollTop = target;
     applied = el.scrollTop;
+    onApplied?.(applied);
     frames += 1;
     if (Math.abs(applied - target) > 1 && frames < maxFrames) {
       requestAnimationFrame(attempt);

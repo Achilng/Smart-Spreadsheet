@@ -1,9 +1,11 @@
 <script lang="ts">
+  import { onDestroy } from "svelte";
+
   import type { RowRecord } from "../../api";
   import { app } from "../app-state.svelte";
   import { PAGE_SIZE, ensurePage, getRow, resetRows, rowStore } from "../row-store.svelte";
   import { thumbnails } from "../thumbnails";
-  import { saveScrollPosition, savedScrollPosition } from "../view-state";
+  import { restoreScrollPosition, saveScrollPosition, scrollPositionVersion } from "../view-state";
   import TableRow from "./TableRow.svelte";
 
   const HEADER_HEIGHT = 36;
@@ -18,6 +20,7 @@
   let viewport = $state<HTMLDivElement | null>(null);
   let scrollTop = $state(0);
   let viewportHeight = $state(0);
+  let lastScrollSaveVersion = scrollPositionVersion();
 
   const spacerHeight = $derived(rowStore.totalCount * rowHeight);
 
@@ -64,16 +67,20 @@
   // 刷新在途时 totalCount 还是旧语义的值，提前恢复会被钳制到错误位置。
   let restored = false;
   $effect(() => {
-    if (restored || !viewport || rowStore.initialLoading || rowStore.refreshing) {
+    if (
+      restored ||
+      !viewport ||
+      rowStore.initialLoading ||
+      rowStore.refreshing ||
+      viewportHeight <= 0 ||
+      spacerHeight <= 0
+    ) {
       return;
     }
     void rowStore.totalCount;
+    void spacerHeight;
     restored = true;
-    const saved = savedScrollPosition("table");
-    if (saved > 0) {
-      viewport.scrollTop = saved;
-      scrollTop = viewport.scrollTop;
-    }
+    restoreScrollPosition(viewport, "table", 60, top => (scrollTop = top));
   });
 
   // 筛选/搜索/数据变更导致结果集语义变化时回到顶部
@@ -90,8 +97,19 @@
 
   function onScroll(): void {
     scrollTop = viewport?.scrollTop ?? 0;
-    saveScrollPosition("table", scrollTop);
+    saveTableScroll(scrollTop);
   }
+
+  function saveTableScroll(top: number): void {
+    saveScrollPosition("table", top);
+    lastScrollSaveVersion = scrollPositionVersion();
+  }
+
+  onDestroy(() => {
+    if (viewport && lastScrollSaveVersion === scrollPositionVersion()) {
+      saveTableScroll(viewport.scrollTop);
+    }
+  });
 </script>
 
 <div
