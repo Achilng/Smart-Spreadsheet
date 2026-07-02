@@ -14,7 +14,7 @@
   import { groupStore, loadGroups } from "../group-store.svelte";
   import { rowStore } from "../row-store.svelte";
   import { showSectionMenu } from "../section-context-menu.svelte";
-  import { saveScrollPosition, savedScrollPosition } from "../view-state";
+  import { restoreScrollPosition, saveScrollPosition } from "../view-state";
   import GroupSectionCard from "./GroupSectionCard.svelte";
 
   const RENDER_BATCH = 40;
@@ -42,7 +42,8 @@
     });
   });
 
-  // 切回时恢复上次滚动位置（成员缓存持久化，内容高度挂载即就绪）
+  // 切回时恢复上次滚动位置。成员网格是异步加载 + content-visibility 按需
+  // 渲染，挂载瞬间高度不足，restoreScrollPosition 内部会按帧重试。
   let restored = false;
   $effect(() => {
     if (restored || !listEl) {
@@ -52,10 +53,7 @@
       return;
     }
     restored = true;
-    const saved = savedScrollPosition("groups");
-    if (saved > 0) {
-      listEl.scrollTop = saved;
-    }
+    restoreScrollPosition(listEl, "groups");
   });
 
   function onScroll(): void {

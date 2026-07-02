@@ -4,7 +4,7 @@
   import { app } from "../app-state.svelte";
   import { albumBrowse, syncAlbums } from "../album-store.svelte";
   import { sectionMenu } from "../section-context-menu.svelte";
-  import { saveScrollPosition, savedScrollPosition } from "../view-state";
+  import { restoreScrollPosition, saveScrollPosition } from "../view-state";
   import AlbumCard from "./AlbumCard.svelte";
   import AlbumReader from "./AlbumReader.svelte";
 
@@ -29,17 +29,14 @@
 
   let listEl = $state<HTMLDivElement | null>(null);
 
-  // 切回时恢复画册列表滚动位置
+  // 切回时恢复画册列表滚动位置（卡片封面异步加载，内部按帧重试）
   let restored = false;
   $effect(() => {
     if (restored || !listEl || albumBrowse.loading) {
       return;
     }
     restored = true;
-    const saved = savedScrollPosition("albums");
-    if (saved > 0) {
-      listEl.scrollTop = saved;
-    }
+    restoreScrollPosition(listEl, "albums");
   });
 
   function onScroll(): void {

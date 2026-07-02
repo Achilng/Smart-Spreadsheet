@@ -83,10 +83,12 @@
     }
   });
 
-  // 挂载后恢复上次离开时的滚动位置（spacer 高度依赖 totalCount，需等数据就绪）
+  // 挂载后恢复上次离开时的滚动位置。spacer 高度依赖 totalCount，必须等
+  // 数据就绪；且视图切换可能触发换代刷新（如分组视图的行集合语义不同），
+  // 刷新在途时 totalCount 还是旧语义的值，提前恢复会被钳制到错误位置。
   let restored = false;
   $effect(() => {
-    if (restored || !viewport || rowStore.initialLoading) {
+    if (restored || !viewport || rowStore.initialLoading || rowStore.refreshing) {
       return;
     }
     void rowStore.totalCount;

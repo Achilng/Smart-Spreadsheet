@@ -4,7 +4,14 @@
 
 ## 当前阶段
 
-前端性能与外观改造完成（M42–M46）：查询层重构、去白屏、位置记忆、聚合缓存、浅色精致化全部落地并通过全量验证，待实际体验反馈后可发布新版本。
+前端性能与外观改造完成（M42–M47）：查询层重构、去白屏、位置记忆、聚合缓存、浅色精致化全部落地；用户实测反馈位置记忆失效，M47 定位并修复两处恢复时机 bug，待再次实测确认后发布新版本。
+
+### M47 — 位置记忆失效修复（2026-07-02）
+
+- 用户实测（`npm run tauri dev`）反馈"根本没记住"。用 Playwright + 假 Tauri IPC（`window.__TAURI_INTERNALS__` 注入，真实前端代码在 Edge 里跑）复现，7 个往返场景中 2 个失败，均为**恢复时机早于内容高度就绪，scrollTop 被浏览器钳制**：
+  1. 画廊/表格 ↔ 分组视图往返：`setGroupView` 触发 rowStore 换代刷新，group_view 查询把每组折叠为一行代表，totalCount 大幅缩水；切回时恢复逻辑在新结果落地前执行，虚拟滚动 spacer 高度不足（复现：20000px 被钳到 2088px）。修复：恢复条件增加 `!rowStore.refreshing`，等在途刷新落地、totalCount 恢复正确语义后再恢复。
+  2. 分组视图列表：成员网格 `content-visibility: auto` 离屏只有 500px 预估高度 + 成员异步加载，恢复瞬间总高度不足（复现：800px 被钳到 142px）。修复：新增 `restoreScrollPosition()` 助手（view-state.ts），按帧重试直到 scrollTop 生效，用户主动滚动或元素卸载即放弃；分组/重复/画册三个分区视图统一改用。
+- 修复后 7 场景全部 PASS（含画廊经分组往返、分组展开状态保留）；`svelte-check` 0 错误。复现脚本在 `D:\Agent\Agent_temp\ss-scroll-repro`（临时目录，含 mock-tauri.js 与 repro.mjs）。
 
 ### M46 — 性能改造全量验证（2026-07-02）
 

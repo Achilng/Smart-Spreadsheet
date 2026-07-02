@@ -11,7 +11,7 @@
   } from "../duplicate-browse-store.svelte";
   import { rowStore } from "../row-store.svelte";
   import { sectionMenu, showSectionMenu } from "../section-context-menu.svelte";
-  import { saveScrollPosition, savedScrollPosition } from "../view-state";
+  import { restoreScrollPosition, saveScrollPosition } from "../view-state";
   import GroupSectionCard from "./GroupSectionCard.svelte";
 
   let listEl = $state<HTMLDivElement | null>(null);
@@ -28,17 +28,14 @@
     untrack(() => syncDuplicateCaches());
   });
 
-  // 切回时恢复上次滚动位置
+  // 切回时恢复上次滚动位置（展开的成员网格异步加载，内部按帧重试）
   let restored = false;
   $effect(() => {
     if (restored || !listEl || duplicateBrowse.loading) {
       return;
     }
     restored = true;
-    const saved = savedScrollPosition("duplicates");
-    if (saved > 0) {
-      listEl.scrollTop = saved;
-    }
+    restoreScrollPosition(listEl, "duplicates");
   });
 
   function onScroll(): void {
