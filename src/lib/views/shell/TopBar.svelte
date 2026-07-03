@@ -5,8 +5,6 @@
     chooseSearchImage,
     resetDataWithConfirmation,
     runPhashBackfill,
-    formatCount,
-    type ViewMode,
   } from "../../stores/app-state.svelte";
   import { openRejectedImagesDirectory } from "../../api";
   import {
@@ -46,27 +44,6 @@
   }
 
   const library = $derived(app.snapshot?.library ?? null);
-  const lastSourceName = $derived(
-    app.snapshot?.library?.lastBatch?.sourcePath.split(/[\\/]/).pop() ?? null,
-  );
-
-  const views: { mode: ViewMode; label: string }[] = [
-    { mode: "promptDocs", label: "提示词" },
-    { mode: "group", label: "分组" },
-    { mode: "albums", label: "画册" },
-    { mode: "duplicates", label: "重复" },
-    { mode: "gallery", label: "画廊" },
-    { mode: "table", label: "表格" },
-  ];
-
-  function switchView(mode: ViewMode): void {
-    const wasGroup = app.viewMode === "group";
-    const isGroup = mode === "group";
-    app.viewMode = mode;
-    if (wasGroup !== isGroup) {
-      clearSelection();
-    }
-  }
 
   const toolItems = $derived<DropdownItem[]>([
     { label: "建议分组", hint: "按相似度聚类未分组行", action: () => (app.groupSuggestOpen = true) },
@@ -105,36 +82,8 @@
 </script>
 
 <header class="topbar" data-tauri-drag-region>
-  <div class="workbook-info" data-tauri-drag-region>
-    {#if library}
-      <strong class="name" data-tauri-drag-region title={app.snapshot?.library?.lastBatch?.sourcePath}>
-        图片资料库
-      </strong>
-      <span class="meta faint" data-tauri-drag-region>
-        {formatCount(library.rowCount)} 行 · {formatCount(library.batchCount)} 次导入{lastSourceName
-          ? ` · 最近：${lastSourceName}`
-          : ""}
-      </span>
-    {/if}
-  </div>
-
-  <div class="view-switch" role="group" aria-label="视图切换">
-    {#each views as view (view.mode)}
-      <button
-        type="button"
-        class:is-active={app.viewMode === view.mode}
-        aria-pressed={app.viewMode === view.mode}
-        onclick={() => switchView(view.mode)}
-      >
-        {view.label}
-      </button>
-    {/each}
-  </div>
-
-  <SizeSlider />
-
   {#if app.viewMode !== "promptDocs"}
-    <div class="search-box">
+    <div class="search-box" data-tauri-drag-region>
       <input
         type="text"
         placeholder="搜索文件名 / 提示词 / 画师…"
@@ -146,15 +95,19 @@
         <button type="button" class="search-clear" onclick={clearSearch} title="清除搜索">&times;</button>
       {/if}
     </div>
+  {:else}
+    <div class="topbar-spacer" data-tauri-drag-region></div>
   {/if}
 
-  <div class="actions">
-    <Dropdown label="工具" items={toolItems} disabled={app.busy} />
-    <Dropdown label="导入" items={importItems} disabled={app.busy} />
-    <Dropdown label="导出" items={exportItems} disabled={exportDisabled} primary />
+  <div class="topbar-right" data-tauri-drag-region>
+    <SizeSlider />
+    <div class="actions">
+      <Dropdown label="工具" items={toolItems} disabled={app.busy} />
+      <Dropdown label="导入" items={importItems} disabled={app.busy} />
+      <Dropdown label="导出" items={exportItems} disabled={exportDisabled} primary />
+    </div>
+    <WindowControls />
   </div>
-
-  <WindowControls />
 </header>
 
 <style>
@@ -162,61 +115,22 @@
     display: flex;
     align-items: center;
     gap: 16px;
-    height: 48px;
+    height: 40px;
     padding: 0 0 0 12px;
     background: var(--surface);
     border-bottom: 1px solid var(--border);
     flex: none;
   }
 
-  .workbook-info {
-    display: flex;
-    align-items: baseline;
-    gap: 8px;
-    min-width: 0;
+  .topbar-spacer {
     flex: 1;
   }
 
-  .name {
-    font-size: var(--font-base);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .meta {
-    font-size: var(--font-sm);
-    white-space: nowrap;
-  }
-
-  .view-switch {
+  .topbar-right {
     display: flex;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-s);
-    padding: 2px;
-    gap: 2px;
-  }
-
-  .view-switch button {
-    border: none;
-    background: transparent;
-    border-radius: var(--radius-s);
-    padding: 3px 14px;
-    font-size: var(--font-md);
-    color: var(--text-2);
-    transition: color 0.12s ease, background 0.12s ease;
-  }
-
-  .view-switch button:hover:not(.is-active) {
-    color: var(--text);
-  }
-
-  .view-switch button.is-active {
-    background: var(--surface);
-    color: var(--text);
-    font-weight: 600;
-    box-shadow: var(--shadow-1);
+    align-items: center;
+    gap: 16px;
+    margin-left: auto;
   }
 
   .search-box {

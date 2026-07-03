@@ -25,6 +25,7 @@
   import GroupManageView from "../groups/GroupManageView.svelte";
   import GroupSuggestionView from "../groups/GroupSuggestionView.svelte";
   import JsonDedupeView from "../tools/JsonDedupeView.svelte";
+  import NavRail from "./NavRail.svelte";
   import PromptDocsView from "../prompt-docs/PromptDocsView.svelte";
   import SearchResultsView from "../search/SearchResultsView.svelte";
   import SectionContextMenu from "./SectionContextMenu.svelte";
@@ -110,76 +111,79 @@
 <svelte:window onkeydown={onKeydown} />
 
 <div class="workspace">
-  <TopBar />
-  {#if visitedViews.promptDocs}
-    <div
-      class="workspace-body prompt-docs-body"
-      class:is-active={app.viewMode === "promptDocs"}
-      aria-hidden={app.viewMode !== "promptDocs"}
-    >
-      <main class="prompt-docs-main">
-        <PromptDocsView />
-      </main>
-    </div>
-  {/if}
-
-  <div
-    class="workspace-body data-body"
-    class:is-active={isDataViewMode(app.viewMode)}
-    aria-hidden={!isDataViewMode(app.viewMode)}
-  >
-    <aside class="sidebar">
-      <TagSidebar />
-    </aside>
-
-    <main class="main-area">
-      {#if rowStore.refreshing}
-        <div class="refresh-bar" aria-hidden="true"></div>
-      {/if}
-      <div class="view-stack">
-        {#if visitedViews.group}
-          <section class="view-panel" class:is-active={app.viewMode === "group"}>
-            <GroupBrowseView active={app.viewMode === "group"} />
-          </section>
-        {/if}
-        {#if visitedViews.albums}
-          <section class="view-panel" class:is-active={app.viewMode === "albums"}>
-            <AlbumBrowseView active={app.viewMode === "albums"} />
-          </section>
-        {/if}
-        {#if visitedViews.duplicates}
-          <section class="view-panel" class:is-active={app.viewMode === "duplicates"}>
-            <DuplicateBrowseView active={app.viewMode === "duplicates"} />
-          </section>
-        {/if}
-        {#if visitedViews.gallery}
-          <section class="view-panel" class:is-active={app.viewMode === "gallery"}>
-            <GalleryView active={app.viewMode === "gallery"} />
-          </section>
-        {/if}
-        {#if visitedViews.table}
-          <section class="view-panel" class:is-active={app.viewMode === "table"}>
-            <TableView active={app.viewMode === "table"} />
-          </section>
-        {/if}
-      </div>
-      <SelectionBar />
-    </main>
-
-    {#if app.detailOpen}
-      <aside class="detail">
-        <DetailPanel />
-      </aside>
-    {:else}
-      <button
-        type="button"
-        class="detail-strip"
-        title="展开详情面板"
-        onclick={() => (app.detailOpen = true)}
+  <NavRail />
+  <div class="workspace-inner">
+    <TopBar />
+    {#if visitedViews.promptDocs}
+      <div
+        class="workspace-body prompt-docs-body"
+        class:is-active={app.viewMode === "promptDocs"}
+        aria-hidden={app.viewMode !== "promptDocs"}
       >
-        «
-      </button>
+        <main class="prompt-docs-main">
+          <PromptDocsView />
+        </main>
+      </div>
     {/if}
+
+    <div
+      class="workspace-body data-body"
+      class:is-active={isDataViewMode(app.viewMode)}
+      aria-hidden={!isDataViewMode(app.viewMode)}
+    >
+      <aside class="sidebar">
+        <TagSidebar />
+      </aside>
+
+      <main class="main-area">
+        {#if rowStore.refreshing}
+          <div class="refresh-bar" aria-hidden="true"></div>
+        {/if}
+        <div class="view-stack">
+          {#if visitedViews.group}
+            <section class="view-panel" class:is-active={app.viewMode === "group"}>
+              <GroupBrowseView active={app.viewMode === "group"} />
+            </section>
+          {/if}
+          {#if visitedViews.albums}
+            <section class="view-panel" class:is-active={app.viewMode === "albums"}>
+              <AlbumBrowseView active={app.viewMode === "albums"} />
+            </section>
+          {/if}
+          {#if visitedViews.duplicates}
+            <section class="view-panel" class:is-active={app.viewMode === "duplicates"}>
+              <DuplicateBrowseView active={app.viewMode === "duplicates"} />
+            </section>
+          {/if}
+          {#if visitedViews.gallery}
+            <section class="view-panel" class:is-active={app.viewMode === "gallery"}>
+              <GalleryView active={app.viewMode === "gallery"} />
+            </section>
+          {/if}
+          {#if visitedViews.table}
+            <section class="view-panel" class:is-active={app.viewMode === "table"}>
+              <TableView active={app.viewMode === "table"} />
+            </section>
+          {/if}
+        </div>
+        <SelectionBar />
+      </main>
+
+      {#if app.detailOpen}
+        <aside class="detail">
+          <DetailPanel />
+        </aside>
+      {:else}
+        <button
+          type="button"
+          class="detail-strip"
+          title="展开详情面板"
+          onclick={() => (app.detailOpen = true)}
+        >
+          «
+        </button>
+      {/if}
+    </div>
   </div>
 </div>
 
@@ -214,6 +218,13 @@
 <style>
   .workspace {
     height: 100%;
+    display: flex;
+    flex-direction: row;
+  }
+
+  .workspace-inner {
+    flex: 1;
+    min-width: 0;
     display: flex;
     flex-direction: column;
   }
