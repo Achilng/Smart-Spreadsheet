@@ -4,7 +4,17 @@
 
 ## 当前阶段
 
-前端重构第六轮迭代进行中（见 PLAN.md 第 17 节）：Sonnet 子代理代工 + 主模型验收。阶段 0（目录重组）已完成，接下来是阶段 1（新设计语言）。方向已与用户对齐：左侧图标导航栏 + 浅色精修 + 现代轻盈风。
+前端重构第六轮迭代全部完成（PLAN.md 第 17 节）。5 个阶段均已落地并推送 GitHub。
+
+### M48 — 前端重构（2026-07-03）
+
+- **阶段 0 目录重组**：`src/lib/` 重组为 api/（11 文件）、images/、stores/（16 模块）、ui/（6 组件）、views/（9 组 36 组件）。SectionMembers 类型独立解耦。api.ts 102 个导出逐一核对无丢失。
+- **阶段 1 设计令牌**：:root 完整重写——色彩/阴影/圆角/字号/间距/z-index 全部令牌化。25 处 z-index、~150 处 font-size、~25 处 border-radius 硬编码消除。新增全局 .chip/.chip-more/.empty-state 工具类，删除 GalleryCard/TableRow/DetailPanel 等组件内重复定义。
+- **阶段 2 Modal 与菜单基础设施**：新增 Modal.svelte（ESC/遮罩点击/aria/焦点管理）和 ContextMenuShell.svelte（外部点击/ESC/统一样式）。7 个弹窗/菜单迁移上去，消除 3 种不一致的关闭行为，a11y warnings 从 10 降到 5。
+- **阶段 3 布局重排**：新增左侧 NavRail（52px 图标导航栏 + tooltip + 拖拽区），承载 6 个视图切换；TopBar 瘦身为 40px（搜索+尺寸+导入导出+窗口控制）；Workspace 改为水平布局。
+- **阶段 4 逻辑收编**：createSectionCache 工厂消除 group-browse-store/duplicate-browse-store 的成员加载重复；GalleryCard/GroupSectionCard/SearchResultsView 统一走 Thumbnail.svelte + 全局缩略图单例。
+- **阶段 5 逐视图精修**：DetailPanel 正/负向提示词 8 个 state + 6 个函数合并为 createPromptEditor 工厂 × 2 实例 + 模板 each 循环，净减 36 行。
+- **总体**：前端从 57 文件 11663 行变为 72 文件 11489 行（净减 ~170 行），但实际删除重复代码远多于此（被新增的基础设施和拆分后的文件头开销抵消）。svelte-check 0 错误、Vite 生产构建通过。
 
 ### M48 — 前端重构·阶段 0 目录重组（2026-07-03）
 
