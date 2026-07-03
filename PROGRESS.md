@@ -570,6 +570,13 @@
 - 应用版本提升到 0.2.0；`tauri.conf.json` 补充 bundle 图标配置并将打包目标固定为 NSIS。
 - 安装器 `智能表格_0.2.0_x64-setup.exe` 大小为 3,774,303 字节，SHA-256 为 `F305CBFC7FF7090D17D7C785B2A1FBAA897FFA13B1D41386DD894B2FDA9833B4`；以 ASCII 文件名上传至 GitHub Release `v_2`。
 
+### Release v_17 - 2026-07-03
+
+- 使用仓库内 Tauri CLI 完成 Windows x64 release 构建，生成 NSIS 安装包 `智能表格_0.9.2_x64-setup.exe`。
+- 发布前验证：`svelte-check` 0 错误、5 个既有可访问性警告；`vite build` 通过；`cargo test -- --test-threads=1` 通过 165 项、忽略 1 项，两个 Rust 集成测试均通过。
+- 安装包大小为 4,383,854 字节，SHA-256 为 `FED15926B41836FF63E325FBA4BCB9B75C4539036BE45D740A70B70A9C4C0938`。
+- 已准备以 ASCII 文件名 `Smart-Spreadsheet_0.9.2_x64-setup.exe` 上传至 GitHub Release `v_17`。
+
 ## 建议用户实机抽查（自动化无法覆盖的 native 对话框链路）
 
 - 文件夹/压缩包导入：选择对话框 → 进度横幅 → 完成提示（导入逻辑与进度事件已有单测覆盖）。
