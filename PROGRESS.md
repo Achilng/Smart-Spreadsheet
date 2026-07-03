@@ -575,7 +575,7 @@
 - 使用仓库内 Tauri CLI 完成 Windows x64 release 构建，生成 NSIS 安装包 `智能表格_0.9.2_x64-setup.exe`。
 - 发布前验证：`svelte-check` 0 错误、5 个既有可访问性警告；`vite build` 通过；`cargo test -- --test-threads=1` 通过 165 项、忽略 1 项，两个 Rust 集成测试均通过。
 - 安装包大小为 4,383,854 字节，SHA-256 为 `FED15926B41836FF63E325FBA4BCB9B75C4539036BE45D740A70B70A9C4C0938`。
-- 已准备以 ASCII 文件名 `Smart-Spreadsheet_0.9.2_x64-setup.exe` 上传至 GitHub Release `v_17`。
+- 已以 ASCII 文件名 `Smart-Spreadsheet_0.9.2_x64-setup.exe` 上传至 GitHub Release `v_17`：`https://github.com/Achilng/Smart-Spreadsheet/releases/tag/v_17`。
 
 ## 建议用户实机抽查（自动化无法覆盖的 native 对话框链路）
 
