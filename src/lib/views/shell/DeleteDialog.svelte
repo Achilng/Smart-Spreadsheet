@@ -65,7 +65,7 @@
   .dialog-backdrop {
     position: fixed;
     inset: 0;
-    z-index: 110;
+    z-index: var(--z-modal);
     display: grid;
     place-items: center;
     padding: 24px;
@@ -82,13 +82,13 @@
   }
 
   header h2 {
-    font-size: 17px;
+    font-size: var(--font-lg);
     margin-bottom: 6px;
   }
 
   header p {
     color: var(--text-2);
-    font-size: 13px;
+    font-size: var(--font-md);
     line-height: 1.55;
   }
 
@@ -115,19 +115,19 @@
   }
 
   .trash-option strong {
-    font-size: 13px;
+    font-size: var(--font-md);
   }
 
   .trash-option small {
     color: var(--text-2);
-    font-size: 12px;
+    font-size: var(--font-sm);
     line-height: 1.5;
   }
 
   .dialog-error {
     margin-bottom: 12px;
     color: var(--danger);
-    font-size: 12.5px;
+    font-size: var(--font-sm);
   }
 
   footer {

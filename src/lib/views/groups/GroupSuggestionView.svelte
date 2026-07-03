@@ -146,7 +146,7 @@
   .overlay {
     position: fixed;
     inset: 0;
-    z-index: 70;
+    z-index: var(--z-overlay);
     background: rgb(15 20 28 / 50%);
     display: flex;
     align-items: center;
@@ -175,14 +175,14 @@
   }
 
   header h2 {
-    font-size: 16px;
+    font-size: var(--font-lg);
     font-weight: 600;
   }
 
   .close-btn {
     border: none;
     background: none;
-    font-size: 20px;
+    font-size: var(--font-xl);
     color: var(--text-2);
     cursor: pointer;
   }
@@ -204,7 +204,7 @@
   }
 
   .config-item span {
-    font-size: 12px;
+    font-size: var(--font-sm);
     color: var(--text-2);
     font-weight: 600;
   }
@@ -215,12 +215,12 @@
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-s);
     background: var(--surface);
-    font-size: 13px;
+    font-size: var(--font-md);
   }
 
   .btn-primary {
     padding: 6px 16px;
-    font-size: 13px;
+    font-size: var(--font-md);
     background: var(--accent);
     color: white;
     border: 1px solid var(--accent);
@@ -240,19 +240,19 @@
 
   .error {
     padding: 8px 18px;
-    font-size: 13px;
+    font-size: var(--font-md);
     color: var(--danger);
   }
 
   .success {
     padding: 8px 18px;
-    font-size: 13px;
+    font-size: var(--font-md);
     color: var(--success, #22c55e);
   }
 
   .empty {
     padding: 24px 18px;
-    font-size: 13px;
+    font-size: var(--font-md);
     color: var(--text-3);
     text-align: center;
   }
@@ -264,7 +264,7 @@
     padding: 10px 18px;
     border-bottom: 1px solid var(--border);
     flex: none;
-    font-size: 13px;
+    font-size: var(--font-md);
   }
 
   .results-header label {
@@ -286,7 +286,7 @@
     gap: 8px;
     padding: 6px 0;
     border-bottom: 1px solid var(--border);
-    font-size: 13px;
+    font-size: var(--font-md);
     cursor: pointer;
   }
 
@@ -302,7 +302,7 @@
   }
 
   .sg-count {
-    font-size: 12px;
+    font-size: var(--font-sm);
     color: var(--text-3);
     flex: none;
   }

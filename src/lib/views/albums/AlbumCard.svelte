@@ -102,7 +102,7 @@
   }
 
   .cover-note {
-    font-size: 11px;
+    font-size: var(--font-xs);
   }
 
   .count-badge {
@@ -110,16 +110,16 @@
     right: 6px;
     bottom: 6px;
     padding: 1px 7px;
-    font-size: 11px;
+    font-size: var(--font-xs);
     color: #fff;
     background: rgb(0 0 0 / 60%);
-    border-radius: 10px;
+    border-radius: var(--radius-m);
   }
 
   .album-name {
     display: block;
     padding: 6px 8px;
-    font-size: 12px;
+    font-size: var(--font-sm);
     color: var(--text-2);
     white-space: nowrap;
     overflow: hidden;

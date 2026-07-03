@@ -49,7 +49,7 @@
 
 <style>
   .directory {
-    font-size: 12px;
+    font-size: var(--font-sm);
     color: var(--text-3);
     white-space: nowrap;
     overflow: hidden;
@@ -61,7 +61,7 @@
     border: none;
     color: var(--accent);
     cursor: pointer;
-    font-size: 12px;
+    font-size: var(--font-sm);
     padding: 0;
     text-decoration: underline;
   }

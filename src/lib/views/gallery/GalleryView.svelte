@@ -195,16 +195,16 @@
   onscroll={onScroll}
 >
   {#if rowStore.error}
-    <div class="gallery-status">
+    <div class="gallery-status empty-state">
       <p class="muted">加载失败：{rowStore.error}</p>
       <button type="button" class="btn" onclick={() => resetRows()}>重试</button>
     </div>
   {:else if rowStore.initialLoading}
-    <div class="gallery-status">
+    <div class="gallery-status empty-state">
       <p class="muted">正在加载…</p>
     </div>
   {:else if rowStore.totalCount === 0}
-    <div class="gallery-status">
+    <div class="gallery-status empty-state">
       <p class="muted">
         {rowStore.tags.length > 0 ? "当前筛选没有匹配记录。" : "工作簿没有数据行。"}
       </p>
@@ -239,10 +239,5 @@
 
   .gallery-status {
     height: 100%;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
   }
 </style>

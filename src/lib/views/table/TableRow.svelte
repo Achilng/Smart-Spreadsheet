@@ -148,7 +148,7 @@
   .cell {
     padding: 0 10px;
     min-width: 0;
-    font-size: 12.5px;
+    font-size: var(--font-sm);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -182,13 +182,13 @@
     align-items: center;
     justify-content: center;
     background: var(--surface-2);
-    border-radius: 4px;
+    border-radius: var(--radius-s);
     margin: 0 6px;
     overflow: hidden;
   }
 
   .cell-rowno {
-    font-size: 11.5px;
+    font-size: var(--font-sm);
   }
 
   .cell-time {
@@ -207,15 +207,7 @@
   }
 
   .chip {
-    background: var(--accent-soft);
-    color: var(--accent);
-    border-radius: 999px;
-    padding: 1px 8px;
-    font-size: 11px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 110px;
+    font-size: var(--font-xs);
     flex: none;
   }
 
@@ -232,7 +224,7 @@
     display: inline-block;
     height: 10px;
     width: 70%;
-    border-radius: 4px;
+    border-radius: var(--radius-s);
     background: var(--surface-2);
   }
 

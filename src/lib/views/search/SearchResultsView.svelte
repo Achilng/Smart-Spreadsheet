@@ -114,7 +114,7 @@
     position: fixed;
     inset: 0;
     background: rgba(0, 0, 0, 0.5);
-    z-index: 1000;
+    z-index: var(--z-overlay);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -122,8 +122,8 @@
 
   .panel {
     background: var(--surface);
-    border-radius: var(--radius-l, 12px);
-    box-shadow: var(--shadow-3, 0 8px 32px rgba(0, 0, 0, 0.2));
+    border-radius: var(--radius-l);
+    box-shadow: var(--shadow-3);
     max-width: 900px;
     max-height: 80vh;
     width: 90vw;
@@ -142,13 +142,13 @@
   }
 
   .panel-header h2 {
-    font-size: 16px;
+    font-size: var(--font-lg);
     font-weight: 600;
     margin: 0;
   }
 
   .query-name {
-    font-size: 13px;
+    font-size: var(--font-md);
     color: var(--text-2);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -157,7 +157,7 @@
   }
 
   .result-count {
-    font-size: 13px;
+    font-size: var(--font-md);
     color: var(--text-2);
     margin-left: auto;
   }
@@ -165,9 +165,9 @@
   .close-btn {
     padding: 4px 16px;
     border: 1px solid var(--border);
-    border-radius: var(--radius-s, 6px);
+    border-radius: var(--radius-s);
     background: var(--surface);
-    font-size: 13px;
+    font-size: var(--font-md);
     cursor: pointer;
     flex: none;
   }
@@ -186,7 +186,7 @@
 
   .result-card {
     border: 1px solid var(--border);
-    border-radius: var(--radius-s, 6px);
+    border-radius: var(--radius-s);
     overflow: hidden;
     background: var(--bg);
     cursor: pointer;
@@ -198,7 +198,7 @@
 
   .result-card:hover {
     border-color: var(--accent, #4a90d9);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    box-shadow: var(--shadow-hover);
   }
 
   .card-thumb {
@@ -218,7 +218,7 @@
 
   .placeholder {
     color: var(--text-3);
-    font-size: 12px;
+    font-size: var(--font-sm);
   }
 
   .card-info {
@@ -229,7 +229,7 @@
   }
 
   .distance {
-    font-size: 12px;
+    font-size: var(--font-sm);
     font-weight: 500;
     color: var(--text-2);
   }
@@ -239,7 +239,7 @@
   }
 
   .distance-value {
-    font-size: 11px;
+    font-size: var(--font-xs);
     color: var(--text-3);
   }
 </style>

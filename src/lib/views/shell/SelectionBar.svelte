@@ -113,7 +113,7 @@
     bottom: 16px;
     left: 50%;
     transform: translateX(-50%);
-    z-index: 40;
+    z-index: var(--z-nav);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -126,27 +126,27 @@
     gap: 8px;
     background: var(--surface);
     border: 1px solid var(--border-strong);
-    border-radius: 999px;
+    border-radius: var(--radius-full);
     box-shadow: var(--shadow-2);
     padding: 8px 10px 8px 16px;
     white-space: nowrap;
   }
 
   .count {
-    font-size: 13px;
+    font-size: var(--font-md);
     font-weight: 600;
     margin-right: 4px;
   }
 
   .count small {
     font-weight: 400;
-    font-size: 12px;
+    font-size: var(--font-sm);
   }
 
   .selection-bar .btn {
     padding: 4px 12px;
-    font-size: 12.5px;
-    border-radius: 999px;
+    font-size: var(--font-sm);
+    border-radius: var(--radius-full);
   }
 
 </style>

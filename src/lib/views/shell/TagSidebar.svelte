@@ -442,7 +442,7 @@
   }
 
   .sidebar-header h3 {
-    font-size: 13px;
+    font-size: var(--font-md);
     font-weight: 600;
   }
 
@@ -460,9 +460,9 @@
   .filter-mode button {
     border: none;
     background: transparent;
-    border-radius: 4px;
+    border-radius: var(--radius-s);
     padding: 1px 8px;
-    font-size: 11px;
+    font-size: var(--font-xs);
     color: var(--text-2);
   }
 
@@ -478,7 +478,7 @@
     align-items: center;
     gap: 8px;
     padding: 0 12px 8px;
-    font-size: 12px;
+    font-size: var(--font-sm);
     flex: none;
   }
 
@@ -490,7 +490,7 @@
     border: none;
     background: none;
     color: var(--accent);
-    font-size: 12px;
+    font-size: var(--font-sm);
     padding: 0;
   }
 
@@ -503,7 +503,7 @@
     gap: 5px;
     padding: 0 12px 10px;
     border-bottom: 1px solid var(--border);
-    font-size: 12px;
+    font-size: var(--font-sm);
     color: var(--text-2);
     flex: none;
   }
@@ -526,7 +526,7 @@
     padding: 0 12px 10px;
     border-bottom: 1px solid var(--border);
     color: var(--text-2);
-    font-size: 12px;
+    font-size: var(--font-sm);
     line-height: 1.45;
   }
 
@@ -546,7 +546,7 @@
 
   .list-note {
     padding: 8px 6px;
-    font-size: 12px;
+    font-size: var(--font-sm);
   }
 
   .tag-row {
@@ -558,7 +558,7 @@
     background: none;
     border-radius: var(--radius-s);
     padding: 5px 8px;
-    font-size: 13px;
+    font-size: var(--font-md);
     text-align: left;
     color: var(--text);
   }
@@ -590,7 +590,7 @@
 
   .tag-count,
   .coverage {
-    font-size: 11px;
+    font-size: var(--font-xs);
     color: var(--text-3);
     flex: none;
   }
@@ -618,7 +618,7 @@
     padding: 5px 9px;
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-s);
-    font-size: 12.5px;
+    font-size: var(--font-sm);
   }
 
   .create-form input:focus {
@@ -629,12 +629,12 @@
 
   .create-form .btn {
     padding: 4px 10px;
-    font-size: 12.5px;
+    font-size: var(--font-sm);
   }
 
   .form-status {
     padding: 2px 12px 8px;
-    font-size: 11.5px;
+    font-size: var(--font-sm);
     color: var(--success);
   }
 
@@ -644,7 +644,7 @@
 
   .tag-context-menu {
     position: fixed;
-    z-index: 9999;
+    z-index: var(--z-menu);
     min-width: 160px;
     padding: 4px;
     background: var(--surface);
@@ -659,10 +659,10 @@
     width: 100%;
     border: none;
     background: transparent;
-    border-radius: 4px;
+    border-radius: var(--radius-s);
     padding: 6px 10px;
     text-align: left;
-    font-size: 13px;
+    font-size: var(--font-md);
     color: var(--text);
     cursor: default;
   }
@@ -679,7 +679,7 @@
     position: fixed;
     inset: 0;
     background: rgba(0, 0, 0, 0.4);
-    z-index: 10000;
+    z-index: var(--z-modal);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -687,8 +687,8 @@
 
   .confirm-dialog {
     background: var(--surface);
-    border-radius: var(--radius-l, 12px);
-    box-shadow: var(--shadow-3, 0 8px 32px rgba(0, 0, 0, 0.2));
+    border-radius: var(--radius-l);
+    box-shadow: var(--shadow-3);
     padding: 20px 24px;
     max-width: 400px;
     width: 90vw;
@@ -696,7 +696,7 @@
 
   .confirm-dialog p {
     margin: 0 0 16px;
-    font-size: 14px;
+    font-size: var(--font-base);
     line-height: 1.5;
   }
 

@@ -94,7 +94,7 @@
 <style>
   .section-context-menu {
     position: fixed;
-    z-index: 9999;
+    z-index: var(--z-menu);
     min-width: 160px;
     padding: 4px;
     background: var(--surface);
@@ -112,10 +112,10 @@
     width: 100%;
     border: none;
     background: transparent;
-    border-radius: 4px;
+    border-radius: var(--radius-s);
     padding: 6px 10px;
     text-align: left;
-    font-size: 13px;
+    font-size: var(--font-md);
     color: var(--text);
     cursor: default;
   }

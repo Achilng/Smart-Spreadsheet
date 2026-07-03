@@ -497,13 +497,13 @@
   }
 
   .panel-header h3 {
-    font-size: 13px;
+    font-size: var(--font-md);
     font-weight: 600;
   }
 
   .collapse-btn {
     padding: 2px 8px;
-    font-size: 14px;
+    font-size: var(--font-base);
   }
 
   .panel-actions {
@@ -514,7 +514,7 @@
 
   .delete-btn {
     padding: 2px 8px;
-    font-size: 12px;
+    font-size: var(--font-sm);
   }
 
   .panel-empty {
@@ -563,7 +563,7 @@
 
   .tag-editor h4,
   .field h4 {
-    font-size: 12px;
+    font-size: var(--font-sm);
     color: var(--text-2);
     font-weight: 600;
     margin-bottom: 6px;
@@ -574,24 +574,22 @@
     flex-wrap: wrap;
     gap: 6px;
     margin-bottom: 8px;
-    font-size: 12px;
+    font-size: var(--font-sm);
   }
 
   .chip {
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    background: var(--accent-soft);
-    color: var(--accent);
-    border-radius: 999px;
     padding: 2px 6px 2px 10px;
+    max-width: none;
   }
 
   .chip button {
     border: none;
     background: none;
     color: inherit;
-    font-size: 13px;
+    font-size: var(--font-md);
     line-height: 1;
     padding: 0 2px;
     border-radius: 50%;
@@ -611,7 +609,7 @@
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-s);
     background: var(--surface);
-    font-size: 13px;
+    font-size: var(--font-md);
   }
 
   .tag-input-wrap input:focus {
@@ -625,7 +623,7 @@
     top: calc(100% + 4px);
     left: 0;
     right: 0;
-    z-index: 20;
+    z-index: var(--z-dropdown);
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius-s);
@@ -640,7 +638,7 @@
     background: none;
     text-align: left;
     padding: 6px 10px;
-    font-size: 13px;
+    font-size: var(--font-md);
   }
 
   .suggestions button:hover {
@@ -649,7 +647,7 @@
 
   .save-error {
     margin-top: 6px;
-    font-size: 12px;
+    font-size: var(--font-sm);
     color: var(--danger);
   }
 
@@ -657,20 +655,20 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 12.5px;
+    font-size: var(--font-sm);
   }
 
   .group-badge {
     background: var(--accent-soft);
     color: var(--accent);
     padding: 2px 8px;
-    border-radius: 999px;
-    font-size: 12px;
+    border-radius: var(--radius-full);
+    font-size: var(--font-sm);
   }
 
   .faint-text {
     color: var(--text-3);
-    font-size: 12.5px;
+    font-size: var(--font-sm);
   }
 
   .field-head {
@@ -690,7 +688,7 @@
     min-height: 120px;
     padding: 8px 10px;
     font-family: inherit;
-    font-size: 12.5px;
+    font-size: var(--font-sm);
     border: 1px solid var(--accent);
     border-radius: var(--radius-s);
     background: var(--surface);
@@ -712,7 +710,7 @@
 
   .btn-sm {
     padding: 3px 10px;
-    font-size: 12px;
+    font-size: var(--font-sm);
   }
 
   .btn-primary {
@@ -729,7 +727,7 @@
     border: none;
     background: none;
     color: var(--accent);
-    font-size: 12px;
+    font-size: var(--font-sm);
     padding: 0;
   }
 
@@ -740,7 +738,7 @@
   .field pre {
     margin: 0;
     font-family: inherit;
-    font-size: 12.5px;
+    font-size: var(--font-sm);
     white-space: pre-wrap;
     overflow-wrap: anywhere;
     background: var(--surface-2);
@@ -758,7 +756,7 @@
   .lightbox {
     position: fixed;
     inset: 0;
-    z-index: 90;
+    z-index: var(--z-lightbox);
     background: rgb(15 20 28 / 78%);
     display: flex;
     align-items: center;

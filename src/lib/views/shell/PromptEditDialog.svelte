@@ -122,7 +122,7 @@
   .overlay {
     position: fixed;
     inset: 0;
-    z-index: 80;
+    z-index: var(--z-modal);
     background: rgb(15 20 28 / 50%);
     display: flex;
     align-items: center;
@@ -147,14 +147,14 @@
   }
 
   header h3 {
-    font-size: 14px;
+    font-size: var(--font-base);
     font-weight: 600;
   }
 
   .close-btn {
     border: none;
     background: none;
-    font-size: 18px;
+    font-size: var(--font-xl);
     color: var(--text-2);
     padding: 0 4px;
     cursor: pointer;
@@ -170,7 +170,7 @@
     border: none;
     background: none;
     padding: 8px;
-    font-size: 13px;
+    font-size: var(--font-md);
     color: var(--text-2);
     cursor: pointer;
     border-bottom: 2px solid transparent;
@@ -196,7 +196,7 @@
   }
 
   label span {
-    font-size: 12px;
+    font-size: var(--font-sm);
     color: var(--text-2);
     font-weight: 600;
   }
@@ -206,7 +206,7 @@
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-s);
     background: var(--surface);
-    font-size: 13px;
+    font-size: var(--font-md);
   }
 
   label input:focus {
@@ -217,7 +217,7 @@
 
   .hint {
     margin: -2px 0 0;
-    font-size: 12px;
+    font-size: var(--font-sm);
     line-height: 1.5;
     color: var(--text-2);
   }
@@ -225,7 +225,7 @@
   .action-btn {
     align-self: flex-end;
     padding: 6px 16px;
-    font-size: 13px;
+    font-size: var(--font-md);
     background: var(--accent);
     color: white;
     border: 1px solid var(--accent);
@@ -243,12 +243,12 @@
   }
 
   .result-ok {
-    font-size: 13px;
+    font-size: var(--font-md);
     color: var(--success, #22c55e);
   }
 
   .result-err {
-    font-size: 13px;
+    font-size: var(--font-md);
     color: var(--danger);
   }
 </style>

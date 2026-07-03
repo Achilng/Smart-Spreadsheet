@@ -273,7 +273,7 @@
     left: 0;
     right: 0;
     height: 2px;
-    z-index: 30;
+    z-index: var(--z-nav);
     overflow: hidden;
     background: transparent;
     pointer-events: none;
@@ -327,7 +327,7 @@
     border-left: 1px solid var(--border);
     background: var(--surface);
     color: var(--text-3);
-    font-size: 13px;
+    font-size: var(--font-md);
   }
 
   .detail-strip:hover {
@@ -338,7 +338,7 @@
   .drop-overlay {
     position: fixed;
     inset: 0;
-    z-index: 100;
+    z-index: var(--z-dragdrop);
     display: grid;
     place-items: center;
     background: rgb(15 20 28 / 45%);
@@ -350,7 +350,7 @@
     background: var(--surface);
     border: 2px dashed var(--accent, #5b9ef4);
     border-radius: var(--radius-m);
-    font-size: 18px;
+    font-size: var(--font-xl);
     font-weight: 600;
     color: var(--accent, #5b9ef4);
   }

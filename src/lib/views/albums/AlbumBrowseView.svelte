@@ -81,11 +81,11 @@
     </div>
 
     {#if albumBrowse.loading}
-      <div class="status"><p class="muted">正在加载画册…</p></div>
+      <div class="status empty-state"><p class="muted">正在加载画册…</p></div>
     {:else if albumBrowse.error}
-      <div class="status"><p class="muted">加载失败：{albumBrowse.error}</p></div>
+      <div class="status empty-state"><p class="muted">加载失败：{albumBrowse.error}</p></div>
     {:else if albumBrowse.albums.length === 0}
-      <div class="status"><p class="muted">还没有可成册的画师串（图片需含画师串）。</p></div>
+      <div class="status empty-state"><p class="muted">还没有可成册的画师串（图片需含画师串）。</p></div>
     {:else}
       <div class="album-grid">
         {#each sortedAlbums as album (album.key)}
@@ -116,7 +116,7 @@
   }
 
   .mode-label {
-    font-size: 13px;
+    font-size: var(--font-md);
     color: var(--text-2);
     margin-right: 4px;
   }
@@ -126,7 +126,7 @@
     background: transparent;
     border-radius: var(--radius-s);
     padding: 4px 12px;
-    font-size: 12px;
+    font-size: var(--font-sm);
     color: var(--text-2);
     cursor: pointer;
   }
@@ -143,9 +143,6 @@
 
   .status {
     flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
   }
 
   .album-grid {

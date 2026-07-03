@@ -552,7 +552,7 @@
   }
 
   .doc-list-header h2 {
-    font-size: 15px;
+    font-size: var(--font-lg);
   }
 
   .doc-search {
@@ -609,7 +609,7 @@
   }
 
   .doc-date {
-    font-size: 11px;
+    font-size: var(--font-xs);
     color: var(--text-3);
   }
 
@@ -617,7 +617,7 @@
     display: -webkit-box;
     overflow: hidden;
     color: var(--text-2);
-    font-size: 12px;
+    font-size: var(--font-sm);
     line-height: 1.45;
     line-clamp: 2;
     -webkit-line-clamp: 2;
@@ -627,7 +627,7 @@
   .empty-list {
     padding: 16px 4px;
     color: var(--text-3);
-    font-size: 13px;
+    font-size: var(--font-md);
   }
 
   .doc-editor {
@@ -656,7 +656,7 @@
     border-radius: var(--radius-s);
     background: transparent;
     padding: 0 8px;
-    font-size: 18px;
+    font-size: var(--font-xl);
     font-weight: 650;
     color: var(--text);
     outline: none;
@@ -671,7 +671,7 @@
     width: 92px;
     flex: none;
     color: var(--text-3);
-    font-size: 12px;
+    font-size: var(--font-sm);
   }
 
   .save-status.error {
@@ -696,7 +696,7 @@
     background: var(--surface);
     color: var(--text-2);
     padding: 0 10px;
-    font-size: 13px;
+    font-size: var(--font-md);
   }
 
   .toolbar button:hover:not(:disabled),
@@ -754,7 +754,7 @@
   }
 
   .editor-empty h3 {
-    font-size: 16px;
+    font-size: var(--font-lg);
   }
 
   :global(.ProseMirror) {
@@ -763,7 +763,7 @@
     outline: none;
     color: var(--text);
     line-height: 1.7;
-    font-size: 15px;
+    font-size: var(--font-lg);
   }
 
   :global(.ProseMirror p) {
@@ -782,11 +782,11 @@
   }
 
   :global(.ProseMirror h2) {
-    font-size: 20px;
+    font-size: var(--font-xl);
   }
 
   :global(.ProseMirror h3) {
-    font-size: 17px;
+    font-size: var(--font-lg);
   }
 
   :global(.ProseMirror ul),

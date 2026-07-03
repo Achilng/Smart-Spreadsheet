@@ -90,7 +90,7 @@
     bottom: 20px;
     left: 50%;
     transform: translateX(-50%);
-    z-index: 100;
+    z-index: var(--z-toast);
     display: flex;
     align-items: center;
     gap: 10px;
@@ -100,7 +100,7 @@
     border: 1px solid;
     background: var(--surface);
     box-shadow: var(--shadow-2);
-    font-size: 13px;
+    font-size: var(--font-md);
   }
 
   .toast-success {
@@ -124,7 +124,7 @@
   .progress-track {
     width: 120px;
     height: 6px;
-    border-radius: 999px;
+    border-radius: var(--radius-full);
     background: var(--surface);
     overflow: hidden;
     flex: none;
@@ -133,7 +133,7 @@
   .progress-fill {
     display: block;
     height: 100%;
-    border-radius: 999px;
+    border-radius: var(--radius-full);
     background: var(--accent);
     transition: width 0.15s ease;
   }
@@ -146,7 +146,7 @@
     border: none;
     background: none;
     color: inherit;
-    font-size: 16px;
+    font-size: var(--font-lg);
     line-height: 1;
     padding: 0 2px;
   }

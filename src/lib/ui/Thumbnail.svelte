@@ -55,11 +55,11 @@
     height: 100%;
     object-fit: cover;
     display: block;
-    border-radius: 4px;
+    border-radius: var(--radius-s);
   }
 
   .note {
-    font-size: 11px;
+    font-size: var(--font-xs);
     color: var(--text-3);
   }
 
@@ -67,6 +67,6 @@
     display: block;
     width: 100%;
     height: 100%;
-    border-radius: 4px;
+    border-radius: var(--radius-s);
   }
 </style>

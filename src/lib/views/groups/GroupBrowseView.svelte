@@ -162,11 +162,11 @@
   </div>
 
   {#if groupStore.loading && groupStore.list.length === 0}
-    <div class="status"><p class="muted">正在加载分组…</p></div>
+    <div class="status empty-state"><p class="muted">正在加载分组…</p></div>
   {:else if groupStore.error}
-    <div class="status"><p class="muted">加载失败：{groupStore.error}</p></div>
+    <div class="status empty-state"><p class="muted">加载失败：{groupStore.error}</p></div>
   {:else if groupStore.list.length === 0 && !groupBrowse.ungroupedExpanded}
-    <div class="status"><p class="muted">暂无分组。可通过工具菜单「建议分组」创建。</p></div>
+    <div class="status empty-state"><p class="muted">暂无分组。可通过工具菜单「建议分组」创建。</p></div>
   {:else}
     <div class="group-list" bind:this={listEl} onscroll={onScroll}>
       {#each sortedGroups as group (group.id)}
@@ -264,9 +264,6 @@
 
   .status {
     flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
   }
 
   .group-toolbar {
@@ -280,7 +277,7 @@
   }
 
   .toolbar-label {
-    font-size: 13px;
+    font-size: var(--font-md);
     color: var(--text-2);
     margin-right: 4px;
   }
@@ -290,7 +287,7 @@
     background: transparent;
     border-radius: var(--radius-s);
     padding: 4px 12px;
-    font-size: 12px;
+    font-size: var(--font-sm);
     color: var(--text-2);
     cursor: pointer;
   }
@@ -319,7 +316,7 @@
   .section-header {
     position: sticky;
     top: 0;
-    z-index: 5;
+    z-index: var(--z-nav);
     display: flex;
     align-items: center;
     gap: 8px;
@@ -329,7 +326,7 @@
     background: var(--surface);
     border-bottom: 1px solid var(--border);
     cursor: pointer;
-    font-size: 14px;
+    font-size: var(--font-base);
     text-align: left;
     color: var(--text);
   }
@@ -339,7 +336,7 @@
   }
 
   .expand-icon {
-    font-size: 10px;
+    font-size: var(--font-xs);
     color: var(--text-3);
     transition: transform 0.15s ease;
     flex: none;
@@ -358,7 +355,7 @@
   }
 
   .section-count {
-    font-size: 12px;
+    font-size: var(--font-sm);
     color: var(--text-3);
     flex: none;
   }
@@ -387,7 +384,7 @@
     width: 100%;
     text-align: center;
     padding: 16px 0;
-    font-size: 13px;
+    font-size: var(--font-md);
   }
 
   .load-more-btn {
@@ -397,7 +394,7 @@
     border-radius: var(--radius-s);
     background: transparent;
     color: var(--text-2);
-    font-size: 12px;
+    font-size: var(--font-sm);
     cursor: pointer;
   }
 

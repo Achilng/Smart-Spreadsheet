@@ -107,13 +107,13 @@
   }
 
   .thumb-note {
-    font-size: 11px;
+    font-size: var(--font-xs);
   }
 
   .card-label {
     display: block;
     padding: 4px 6px;
-    font-size: 11px;
+    font-size: var(--font-xs);
     color: var(--text-2);
     white-space: nowrap;
     overflow: hidden;

@@ -164,16 +164,16 @@
   onscroll={onScroll}
 >
   {#if rowStore.error}
-    <div class="table-status">
+    <div class="table-status empty-state">
       <p class="muted">加载失败：{rowStore.error}</p>
       <button type="button" class="btn" onclick={() => resetRows()}>重试</button>
     </div>
   {:else if rowStore.initialLoading}
-    <div class="table-status">
+    <div class="table-status empty-state">
       <p class="muted">正在加载…</p>
     </div>
   {:else if rowStore.totalCount === 0}
-    <div class="table-status">
+    <div class="table-status empty-state">
       <p class="muted">
         {rowStore.tags.length > 0 ? "当前筛选没有匹配记录。" : "工作簿没有数据行。"}
       </p>
@@ -208,12 +208,12 @@
   .table-header {
     position: sticky;
     top: 0;
-    z-index: 10;
+    z-index: var(--z-nav);
     display: grid;
     align-items: center;
     background: var(--surface-2);
     border-bottom: 1px solid var(--border);
-    font-size: 12px;
+    font-size: var(--font-sm);
     color: var(--text-2);
     font-weight: 600;
   }
@@ -231,10 +231,5 @@
 
   .table-status {
     height: 100%;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
   }
 </style>

@@ -71,7 +71,7 @@
   .dialog-backdrop {
     position: fixed;
     inset: 0;
-    z-index: 110;
+    z-index: var(--z-modal);
     display: grid;
     place-items: center;
     padding: 24px;
@@ -88,13 +88,13 @@
   }
 
   header h2 {
-    font-size: 17px;
+    font-size: var(--font-lg);
     margin-bottom: 6px;
   }
 
   header p {
     color: var(--text-2);
-    font-size: 13px;
+    font-size: var(--font-md);
     line-height: 1.55;
   }
 
@@ -110,7 +110,7 @@
   }
 
   .path-list li {
-    font-size: 13px;
+    font-size: var(--font-md);
     line-height: 1.7;
     white-space: nowrap;
     overflow: hidden;

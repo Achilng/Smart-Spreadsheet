@@ -83,7 +83,7 @@
   }
 
   .caret {
-    font-size: 10px;
+    font-size: var(--font-xs);
     margin-left: 2px;
   }
 
@@ -91,7 +91,7 @@
     position: absolute;
     top: calc(100% + 4px);
     right: 0;
-    z-index: 80;
+    z-index: var(--z-menu);
     min-width: 200px;
     padding: 4px;
     background: var(--surface);
@@ -111,10 +111,10 @@
     width: 100%;
     border: none;
     background: transparent;
-    border-radius: 4px;
+    border-radius: var(--radius-s);
     padding: 6px 10px;
     text-align: left;
-    font-size: 13px;
+    font-size: var(--font-md);
     color: var(--text);
   }
 
@@ -127,7 +127,7 @@
   }
 
   .item-hint {
-    font-size: 11px;
+    font-size: var(--font-xs);
     color: var(--text-3);
   }
 </style>

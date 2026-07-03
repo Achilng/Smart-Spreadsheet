@@ -190,7 +190,7 @@
   .json-overlay {
     position: fixed;
     inset: 0;
-    z-index: 60;
+    z-index: var(--z-overlay);
     background: rgb(0 0 0 / 35%);
     display: flex;
     align-items: center;
@@ -222,7 +222,7 @@
   }
 
   .json-header h3 {
-    font-size: 15px;
+    font-size: var(--font-lg);
     margin: 0;
   }
 
@@ -232,7 +232,7 @@
     flex-direction: column;
     gap: 12px;
     overflow-y: auto;
-    font-size: 13px;
+    font-size: var(--font-md);
   }
 
   .json-body p {
@@ -264,13 +264,13 @@
   }
 
   .stats dt {
-    font-size: 11px;
+    font-size: var(--font-xs);
     color: var(--text-3);
   }
 
   .stats dd {
     margin: 0;
-    font-size: 16px;
+    font-size: var(--font-lg);
     font-weight: 600;
   }
 
@@ -293,7 +293,7 @@
 
   .preview-key {
     flex: none;
-    font-size: 11px;
+    font-size: var(--font-xs);
     color: var(--text-3);
   }
 
@@ -313,7 +313,7 @@
     border-top: 1px solid var(--border);
     background: var(--surface);
     border-radius: 0 0 var(--radius-m) var(--radius-m);
-    font-size: 13px;
+    font-size: var(--font-md);
   }
 
   .error-text {

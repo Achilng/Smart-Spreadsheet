@@ -141,7 +141,7 @@
   .overlay {
     position: fixed;
     inset: 0;
-    z-index: 80;
+    z-index: var(--z-modal);
     background: rgb(15 20 28 / 50%);
     display: flex;
     align-items: center;
@@ -170,14 +170,14 @@
   }
 
   header h3 {
-    font-size: 14px;
+    font-size: var(--font-base);
     font-weight: 600;
   }
 
   .close-btn {
     border: none;
     background: none;
-    font-size: 18px;
+    font-size: var(--font-xl);
     color: var(--text-2);
     padding: 0 4px;
     cursor: pointer;
@@ -203,7 +203,7 @@
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-s);
     background: var(--surface);
-    font-size: 13px;
+    font-size: var(--font-md);
   }
 
   .create-row input:focus {
@@ -214,7 +214,7 @@
 
   .btn-primary {
     padding: 6px 12px;
-    font-size: 12px;
+    font-size: var(--font-sm);
     background: var(--accent);
     color: white;
     border: 1px solid var(--accent);
@@ -238,7 +238,7 @@
   }
 
   .group-list h4 {
-    font-size: 12px;
+    font-size: var(--font-sm);
     color: var(--text-2);
     font-weight: 600;
     margin-bottom: 4px;
@@ -253,7 +253,7 @@
     background: transparent;
     border-radius: var(--radius-s);
     padding: 6px 10px;
-    font-size: 13px;
+    font-size: var(--font-md);
     cursor: pointer;
   }
 
@@ -262,23 +262,23 @@
   }
 
   .group-count {
-    font-size: 12px;
+    font-size: var(--font-sm);
     color: var(--text-3);
   }
 
   .ungroup-btn {
     align-self: flex-start;
     padding: 4px 12px;
-    font-size: 12px;
+    font-size: var(--font-sm);
   }
 
   .result-ok {
-    font-size: 13px;
+    font-size: var(--font-md);
     color: var(--success, #22c55e);
   }
 
   .result-err {
-    font-size: 13px;
+    font-size: var(--font-md);
     color: var(--danger);
   }
 </style>

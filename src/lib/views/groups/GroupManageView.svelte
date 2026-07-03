@@ -114,7 +114,7 @@
   .overlay {
     position: fixed;
     inset: 0;
-    z-index: 70;
+    z-index: var(--z-overlay);
     background: rgb(15 20 28 / 50%);
     display: flex;
     align-items: center;
@@ -143,7 +143,7 @@
   }
 
   header h2 {
-    font-size: 16px;
+    font-size: var(--font-lg);
     font-weight: 600;
   }
 
@@ -156,14 +156,14 @@
   .close-btn {
     border: none;
     background: none;
-    font-size: 20px;
+    font-size: var(--font-xl);
     color: var(--text-2);
     cursor: pointer;
   }
 
   .error {
     padding: 8px 18px;
-    font-size: 13px;
+    font-size: var(--font-md);
     color: var(--danger);
   }
 
@@ -184,14 +184,14 @@
 
   .group-name {
     flex: 1;
-    font-size: 13px;
+    font-size: var(--font-md);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
   .group-count {
-    font-size: 12px;
+    font-size: var(--font-sm);
     color: var(--text-3);
     flex: none;
   }
@@ -201,12 +201,12 @@
     padding: 4px 8px;
     border: 1px solid var(--accent);
     border-radius: var(--radius-s);
-    font-size: 13px;
+    font-size: var(--font-md);
   }
 
   .btn-sm {
     padding: 3px 8px;
-    font-size: 12px;
+    font-size: var(--font-sm);
   }
 
   .btn-primary {
@@ -221,7 +221,7 @@
 
   .empty {
     padding: 24px 0;
-    font-size: 13px;
+    font-size: var(--font-md);
     color: var(--text-3);
     text-align: center;
   }

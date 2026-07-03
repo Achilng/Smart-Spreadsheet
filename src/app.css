@@ -1,14 +1,16 @@
-/* ---- 设计 token（浅色主题） ---- */
 :root {
   color-scheme: light;
-  --bg: #eef1f5;
+
+  /* ---- 色彩 ---- */
+  --bg: #f4f5f7;
   --surface: #ffffff;
-  --surface-2: #f6f8fa;
-  --border: #e4e8ee;
-  --border-strong: #cdd5df;
-  --text: #1c2430;
-  --text-2: #57626f;
-  --text-3: #929daa;
+  --surface-2: #f7f8fa;
+  --surface-3: #eff1f4;
+  --border: #e8eaef;
+  --border-strong: #d4d9e1;
+  --text: #1d2531;
+  --text-2: #5a6572;
+  --text-3: #98a2b0;
   --accent: #3163e8;
   --accent-hover: #2a55c9;
   --accent-soft: #e9effd;
@@ -17,12 +19,48 @@
   --danger-soft: #fbe9ec;
   --success: #178256;
   --success-soft: #e6f5ee;
-  --shadow-1: 0 1px 2px rgb(16 24 40 / 5%), 0 1px 3px rgb(16 24 40 / 7%);
-  --shadow-2: 0 8px 24px rgb(16 24 40 / 14%);
-  --shadow-hover: 0 3px 10px rgb(16 24 40 / 10%);
+
+  /* ---- 阴影（柔和分层） ---- */
+  --shadow-1: 0 1px 2px rgb(23 30 42 / 4%), 0 1px 3px rgb(23 30 42 / 6%);
+  --shadow-2: 0 4px 12px rgb(23 30 42 / 8%), 0 2px 4px rgb(23 30 42 / 5%);
+  --shadow-3: 0 12px 32px rgb(23 30 42 / 14%), 0 4px 8px rgb(23 30 42 / 6%);
+  --shadow-hover: 0 6px 16px rgb(23 30 42 / 10%);
   --focus-ring: 0 0 0 3px rgb(49 99 232 / 18%);
-  --radius-s: 6px;
-  --radius-m: 10px;
+
+  /* ---- 圆角 ---- */
+  --radius-s: 8px;
+  --radius-m: 12px;
+  --radius-l: 16px;
+  --radius-full: 999px;
+
+  /* ---- 字号阶梯 ---- */
+  --font-xs: 11px;
+  --font-sm: 12px;
+  --font-md: 13px;
+  --font-base: 14px;
+  --font-lg: 16px;
+  --font-xl: 19px;
+
+  /* ---- 间距阶梯（供后续阶段与新代码使用） ---- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+
+  /* ---- 层级 ---- */
+  --z-nav: 50;
+  --z-dropdown: 200;
+  --z-menu: 600;
+  --z-overlay: 700;
+  --z-modal: 800;
+  --z-lightbox: 850;
+  --z-toast: 900;
+  --z-dragdrop: 1000;
+
   --font: "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif;
 }
 
@@ -42,7 +80,7 @@
 
 ::-webkit-scrollbar-thumb {
   background: #c7cfd9;
-  border-radius: 8px;
+  border-radius: var(--radius-s);
   border: 2px solid transparent;
   background-clip: padding-box;
 }
@@ -70,7 +108,7 @@ body,
 body {
   margin: 0;
   font-family: var(--font);
-  font-size: 14px;
+  font-size: var(--font-base);
   line-height: 1.5;
   background: var(--bg);
   color: var(--text);
@@ -203,7 +241,7 @@ textarea:focus-visible {
 }
 
 .flow-card h2 {
-  font-size: 18px;
+  font-size: var(--font-xl);
 }
 
 .flow-card .flow-actions {
@@ -213,8 +251,39 @@ textarea:focus-visible {
 }
 
 .flow-card .flow-hint {
-  font-size: 12px;
+  font-size: var(--font-sm);
   color: var(--text-3);
+}
+
+/* ---- 标签胶囊（画廊卡片 / 表格行 / 详情面板共用） ---- */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-radius: var(--radius-full);
+  padding: 1px 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 110px;
+}
+
+.chip-more {
+  background: var(--surface-2);
+  color: var(--text-2);
+  flex: none;
+}
+
+/* ---- 空状态 / 加载状态容器（居中 + 弱化文字） ---- */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--text-2);
 }
 
 /* ---- 加载占位微光（缩略图 / 骨架屏共用） ---- */

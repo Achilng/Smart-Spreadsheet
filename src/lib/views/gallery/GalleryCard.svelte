@@ -175,7 +175,7 @@
     position: absolute;
     top: 8px;
     left: 8px;
-    z-index: 5;
+    z-index: var(--z-nav);
     width: 18px;
     height: 18px;
     margin: 0;
@@ -210,7 +210,7 @@
   }
 
   .thumb-note {
-    font-size: 12px;
+    font-size: var(--font-sm);
   }
 
   .thumb-loading {
@@ -228,7 +228,7 @@
   }
 
   .row-no {
-    font-size: 11px;
+    font-size: var(--font-xs);
     flex: none;
   }
 
@@ -237,30 +237,13 @@
     align-items: center;
     gap: 4px;
     overflow: hidden;
-    font-size: 11px;
-  }
-
-  .chip {
-    background: var(--accent-soft);
-    color: var(--accent);
-    border-radius: 999px;
-    padding: 1px 8px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 110px;
-  }
-
-  .chip-more {
-    background: var(--surface-2);
-    color: var(--text-2);
-    flex: none;
+    font-size: var(--font-xs);
   }
 
   .skeleton-line {
     height: 10px;
     width: 60%;
-    border-radius: 4px;
+    border-radius: var(--radius-s);
     background: var(--surface-2);
   }
 </style>

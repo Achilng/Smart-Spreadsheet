@@ -69,11 +69,11 @@
     align-items: center;
     justify-content: space-between;
     padding-left: 14px;
-    z-index: 50;
+    z-index: var(--z-nav);
   }
 
   .flow-app-name {
-    font-size: 12.5px;
+    font-size: var(--font-sm);
     font-weight: 600;
     color: var(--text-3);
     letter-spacing: 0.04em;

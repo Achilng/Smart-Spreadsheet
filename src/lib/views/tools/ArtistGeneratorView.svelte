@@ -204,7 +204,7 @@
   .ag-overlay {
     position: fixed;
     inset: 0;
-    z-index: 60;
+    z-index: var(--z-overlay);
     background: rgb(0 0 0 / 35%);
     display: flex;
     align-items: center;
@@ -236,7 +236,7 @@
   }
 
   .ag-header h3 {
-    font-size: 15px;
+    font-size: var(--font-lg);
     margin: 0;
   }
 
@@ -246,7 +246,7 @@
     flex-direction: column;
     gap: 14px;
     overflow-y: auto;
-    font-size: 13px;
+    font-size: var(--font-md);
   }
 
   .ag-body p {
@@ -273,7 +273,7 @@
   }
 
   .field-label {
-    font-size: 12px;
+    font-size: var(--font-sm);
     color: var(--text-3);
   }
 
@@ -285,7 +285,7 @@
     border-radius: var(--radius-s);
     background: var(--bg);
     color: var(--text);
-    font-size: 13px;
+    font-size: var(--font-md);
     font-family: inherit;
     padding: 8px;
     outline: none;
@@ -310,7 +310,7 @@
     border-radius: var(--radius-s);
     background: var(--bg);
     color: var(--text);
-    font-size: 13px;
+    font-size: var(--font-md);
     padding: 0 8px;
     box-sizing: border-box;
   }

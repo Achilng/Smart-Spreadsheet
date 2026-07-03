@@ -281,7 +281,7 @@
   .reader-title {
     flex: 1;
     font-weight: 600;
-    font-size: 14px;
+    font-size: var(--font-base);
     color: var(--text);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -289,7 +289,7 @@
   }
 
   .reader-count {
-    font-size: 12px;
+    font-size: var(--font-sm);
     color: var(--text-3);
     flex: none;
   }
@@ -374,7 +374,7 @@
   }
 
   .film-more {
-    font-size: 12px;
+    font-size: var(--font-sm);
     color: var(--text-2);
   }
 </style>

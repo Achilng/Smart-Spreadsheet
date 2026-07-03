@@ -178,14 +178,14 @@
   }
 
   .name {
-    font-size: 14px;
+    font-size: var(--font-base);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
   .meta {
-    font-size: 12px;
+    font-size: var(--font-sm);
     white-space: nowrap;
   }
 
@@ -201,9 +201,9 @@
   .view-switch button {
     border: none;
     background: transparent;
-    border-radius: 4px;
+    border-radius: var(--radius-s);
     padding: 3px 14px;
-    font-size: 13px;
+    font-size: var(--font-md);
     color: var(--text-2);
     transition: color 0.12s ease, background 0.12s ease;
   }
@@ -232,7 +232,7 @@
     border: 1px solid var(--border);
     border-radius: var(--radius-s);
     background: var(--bg);
-    font-size: 12px;
+    font-size: var(--font-sm);
     color: var(--text);
     outline: none;
     box-sizing: border-box;
@@ -257,7 +257,7 @@
     border: none;
     background: transparent;
     color: var(--text-3, #999);
-    font-size: 16px;
+    font-size: var(--font-lg);
     line-height: 1;
     padding: 2px 4px;
     cursor: pointer;
