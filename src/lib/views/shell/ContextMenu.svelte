@@ -1,6 +1,7 @@
 <script lang="ts">
   import { save } from "@tauri-apps/plugin-dialog";
   import { exportRowImage, rowIdsWithArtists, showItemInExplorer } from "../../api";
+  import ContextMenuShell from "../../ui/ContextMenuShell.svelte";
   import { formatCount, setNotice } from "../../stores/app-state.svelte";
   import { contextMenu, hideContextMenu } from "../../stores/context-menu.svelte";
   import { requestDelete } from "../../stores/delete-actions.svelte";
@@ -16,14 +17,6 @@
   const hasImage = $derived(
     Boolean(row && (row.imagePath?.trim() || row.storedImagePath?.trim())),
   );
-
-  function handlePointerDown(event: PointerEvent): void {
-    if (contextMenu.open && menuEl && !menuEl.contains(event.target as Node)) {
-      hideContextMenu();
-    }
-  }
-
-  let menuEl = $state<HTMLDivElement | null>(null);
 
   async function copyPrompt(): Promise<void> {
     if (!row?.positivePrompt) return;
@@ -105,23 +98,8 @@
   }
 </script>
 
-<svelte:window
-  onpointerdown={handlePointerDown}
-  onkeydown={event => {
-    if (event.key === "Escape" && contextMenu.open) {
-      hideContextMenu();
-    }
-  }}
-/>
-
-{#if contextMenu.open && row}
-  <div
-    class="context-menu"
-    bind:this={menuEl}
-    role="menu"
-    style:left="{contextMenu.x}px"
-    style:top="{contextMenu.y}px"
-  >
+{#if row}
+  <ContextMenuShell open={contextMenu.open} x={contextMenu.x} y={contextMenu.y} onclose={hideContextMenu}>
     <button
       type="button"
       role="menuitem"
@@ -164,58 +142,5 @@
     >
       {getSelectedCount() > 0 ? `删除已选 ${getSelectedCount()} 行` : "删除"}
     </button>
-  </div>
+  </ContextMenuShell>
 {/if}
-
-<style>
-  .context-menu {
-    position: fixed;
-    z-index: var(--z-menu);
-    min-width: 180px;
-    padding: 4px;
-    background: var(--surface);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-s);
-    box-shadow: var(--shadow-2);
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-  }
-
-  .context-menu button {
-    display: flex;
-    align-items: center;
-    width: 100%;
-    border: none;
-    background: transparent;
-    border-radius: var(--radius-s);
-    padding: 6px 10px;
-    text-align: left;
-    font-size: var(--font-md);
-    color: var(--text);
-    cursor: default;
-  }
-
-  .context-menu button:hover:not(:disabled) {
-    background: var(--surface-2);
-  }
-
-  .context-menu button:disabled {
-    color: var(--text-3);
-    cursor: not-allowed;
-  }
-
-  .context-menu button.danger {
-    color: var(--danger);
-  }
-
-  .context-menu button.danger:disabled {
-    color: var(--text-3);
-  }
-
-  .separator {
-    height: 1px;
-    background: var(--border);
-    margin: 3px 4px;
-  }
-</style>

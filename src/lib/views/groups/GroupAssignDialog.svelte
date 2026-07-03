@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { RowSelection } from "../../api";
+  import Modal from "../../ui/Modal.svelte";
   import { errorText } from "../../stores/app-state.svelte";
   import { assignToGroup, createNewGroup, groupStore, loadGroups, removeFromGroup } from "../../stores/group-store.svelte";
   import { resetRows } from "../../stores/row-store.svelte";
@@ -78,10 +79,8 @@
   }
 </script>
 
-<!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="overlay" onkeydown={e => { if (e.key === "Escape") onclose(); }} onclick={onclose}>
-  <!-- svelte-ignore a11y_click_events_have_key_events a11y_interactive_supports_focus -->
-  <div class="dialog" role="dialog" aria-modal="true" onclick={e => e.stopPropagation()}>
+<Modal open={true} {onclose} width="400px">
+  <div class="dialog-content">
     <header>
       <h3>分组操作（{count} 行）</h3>
       <button type="button" class="close-btn" onclick={onclose}>&times;</button>
@@ -135,29 +134,13 @@
       {/if}
     </div>
   </div>
-</div>
+</Modal>
 
 <style>
-  .overlay {
-    position: fixed;
-    inset: 0;
-    z-index: var(--z-modal);
-    background: rgb(15 20 28 / 50%);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .dialog {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-m);
-    box-shadow: var(--shadow-2);
-    width: 400px;
-    max-width: 90vw;
-    max-height: 80vh;
+  .dialog-content {
     display: flex;
     flex-direction: column;
+    min-height: 0;
   }
 
   header {

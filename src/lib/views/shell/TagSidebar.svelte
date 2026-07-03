@@ -8,6 +8,8 @@
     type TagMatchMode,
     type TagSelectionSummary,
   } from "../../api";
+  import ContextMenuShell from "../../ui/ContextMenuShell.svelte";
+  import Modal from "../../ui/Modal.svelte";
   import { app, errorText, formatCount } from "../../stores/app-state.svelte";
   import { resetRows, rowStore, setDedupe, setFilter, setHideGrouped, setSingleArtistOnly } from "../../stores/row-store.svelte";
   import {
@@ -228,13 +230,6 @@
   }
 </script>
 
-<svelte:window
-  onpointerdown={() => {
-    if (tagMenu.open) closeTagMenu();
-  }}
-/>
-
-
 <div class="tag-sidebar">
   <header class="sidebar-header">
     <h3>Tag 库</h3>
@@ -398,32 +393,21 @@
   {/if}
 </div>
 
-{#if tagMenu.open}
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div
-    class="tag-context-menu"
-    role="menu"
-    style:left="{tagMenu.x}px"
-    style:top="{tagMenu.y}px"
-    onpointerdown={(e) => e.stopPropagation()}
-  >
-    <button type="button" role="menuitem" class="danger" onclick={requestDeleteTag}>
-      删除 Tag "{tagMenu.name}"
-    </button>
-  </div>
-{/if}
+<ContextMenuShell open={tagMenu.open} x={tagMenu.x} y={tagMenu.y} onclose={closeTagMenu}>
+  <button type="button" role="menuitem" class="danger" onclick={requestDeleteTag}>
+    删除 Tag "{tagMenu.name}"
+  </button>
+</ContextMenuShell>
 
-{#if confirmingDelete}
-  <div class="confirm-overlay" role="dialog" aria-label="确认删除">
-    <div class="confirm-dialog">
-      <p>确定删除 Tag「{confirmingDelete}」吗？所有行上的该 Tag 关联将被同时移除。</p>
-      <div class="confirm-actions">
-        <button type="button" class="btn" onclick={() => (confirmingDelete = null)}>取消</button>
-        <button type="button" class="btn btn-danger" onclick={() => void confirmDeleteTag()}>删除</button>
-      </div>
+<Modal open={confirmingDelete !== null} onclose={() => (confirmingDelete = null)} width="400px">
+  <div class="confirm-dialog" aria-label="确认删除">
+    <p>确定删除 Tag「{confirmingDelete}」吗？所有行上的该 Tag 关联将被同时移除。</p>
+    <div class="confirm-actions">
+      <button type="button" class="btn" onclick={() => (confirmingDelete = null)}>取消</button>
+      <button type="button" class="btn btn-danger" onclick={() => void confirmDeleteTag()}>删除</button>
     </div>
   </div>
-{/if}
+</Modal>
 
 <style>
   .tag-sidebar {
@@ -640,49 +624,6 @@
 
   .form-status.is-error {
     color: var(--danger);
-  }
-
-  .tag-context-menu {
-    position: fixed;
-    z-index: var(--z-menu);
-    min-width: 160px;
-    padding: 4px;
-    background: var(--surface);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-s);
-    box-shadow: var(--shadow-2);
-  }
-
-  .tag-context-menu button {
-    display: flex;
-    align-items: center;
-    width: 100%;
-    border: none;
-    background: transparent;
-    border-radius: var(--radius-s);
-    padding: 6px 10px;
-    text-align: left;
-    font-size: var(--font-md);
-    color: var(--text);
-    cursor: default;
-  }
-
-  .tag-context-menu button:hover {
-    background: var(--surface-2);
-  }
-
-  .tag-context-menu button.danger {
-    color: var(--danger);
-  }
-
-  .confirm-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.4);
-    z-index: var(--z-modal);
-    display: flex;
-    align-items: center;
-    justify-content: center;
   }
 
   .confirm-dialog {

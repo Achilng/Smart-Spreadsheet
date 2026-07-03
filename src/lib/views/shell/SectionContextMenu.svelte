@@ -1,5 +1,6 @@
 <script lang="ts">
   import { setDedupeAlias } from "../../api";
+  import ContextMenuShell from "../../ui/ContextMenuShell.svelte";
   import { setNotice } from "../../stores/app-state.svelte";
   import { removeGroup, renameExistingGroup } from "../../stores/group-store.svelte";
   import {
@@ -9,14 +10,6 @@
 
   const target = $derived(sectionMenu.target);
   const isGroup = $derived(target?.kind === "group");
-
-  let menuEl = $state<HTMLDivElement | null>(null);
-
-  function handlePointerDown(event: PointerEvent): void {
-    if (sectionMenu.open && menuEl && !menuEl.contains(event.target as Node)) {
-      hideSectionMenu();
-    }
-  }
 
   async function handleRename(): Promise<void> {
     if (!target) return;
@@ -59,21 +52,8 @@
   }
 </script>
 
-<svelte:window
-  onpointerdown={handlePointerDown}
-  onkeydown={(e) => {
-    if (e.key === "Escape" && sectionMenu.open) hideSectionMenu();
-  }}
-/>
-
-{#if sectionMenu.open && target}
-  <div
-    class="section-context-menu"
-    bind:this={menuEl}
-    role="menu"
-    style:left="{sectionMenu.x}px"
-    style:top="{sectionMenu.y}px"
-  >
+{#if target}
+  <ContextMenuShell open={sectionMenu.open} x={sectionMenu.x} y={sectionMenu.y} onclose={hideSectionMenu}>
     <button type="button" role="menuitem" onclick={() => void handleRename()}>
       重命名
     </button>
@@ -88,49 +68,5 @@
         删除分组
       </button>
     {/if}
-  </div>
+  </ContextMenuShell>
 {/if}
-
-<style>
-  .section-context-menu {
-    position: fixed;
-    z-index: var(--z-menu);
-    min-width: 160px;
-    padding: 4px;
-    background: var(--surface);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-s);
-    box-shadow: var(--shadow-2);
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-  }
-
-  .section-context-menu button {
-    display: flex;
-    align-items: center;
-    width: 100%;
-    border: none;
-    background: transparent;
-    border-radius: var(--radius-s);
-    padding: 6px 10px;
-    text-align: left;
-    font-size: var(--font-md);
-    color: var(--text);
-    cursor: default;
-  }
-
-  .section-context-menu button:hover {
-    background: var(--surface-2);
-  }
-
-  .section-context-menu button.danger {
-    color: var(--danger);
-  }
-
-  .separator {
-    height: 1px;
-    background: var(--border);
-    margin: 3px 4px;
-  }
-</style>
