@@ -4,7 +4,13 @@
 
 ## 当前阶段
 
-前端性能与外观改造完成（M42–M47）：查询层重构、去白屏、位置记忆、聚合缓存、浅色精致化全部落地；M47 保活方案补上最后一个根因（隐藏期间视口尺寸归零污染虚拟布局、切回瞬间 scrollTop 被钳制且污染位置记忆），7 场景自动化回归全部通过，待用户实测确认后发布新版本。
+前端重构第六轮迭代进行中（见 PLAN.md 第 17 节）：Sonnet 子代理代工 + 主模型验收。阶段 0（目录重组）已完成，接下来是阶段 1（新设计语言）。方向已与用户对齐：左侧图标导航栏 + 浅色精修 + 现代轻盈风。
+
+### M48 — 前端重构·阶段 0 目录重组（2026-07-03）
+
+- `src/lib/` 重组为 `api/`（api.ts 按 11 个领域文件拆分 + barrel，102 个导出与 62 个 invoke 调用逐一核对无丢失）、`images/`、`stores/`（16 个状态模块）、`ui/`（4 个通用组件）、`views/`（shell/gallery/table/groups/duplicates/albums/prompt-docs/search/tools 九组 36 个组件）。
+- 全部 `git mv` 保留历史；除 import 路径外唯一实质改动是 `SectionMembers` 抽到 `stores/section-types.ts`，消除 duplicate-browse-store → group-browse-store 的类型耦合。
+- 验收：`svelte-check` 0 错误（10 个 a11y 警告为既有基线）、Vite 生产构建通过。
 
 ### M47 — 位置记忆失效修复（2026-07-02 ~ 2026-07-03）
 

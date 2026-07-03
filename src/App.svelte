@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { app, refreshSnapshot, resetAndReconfigure } from "./lib/app-state.svelte";
-  import ImportScreen from "./lib/components/ImportScreen.svelte";
-  import Notice from "./lib/components/Notice.svelte";
-  import WindowControls from "./lib/components/WindowControls.svelte";
-  import Workspace from "./lib/components/Workspace.svelte";
+  import { app, refreshSnapshot, resetAndReconfigure } from "./lib/stores/app-state.svelte";
+  import ImportScreen from "./lib/views/shell/ImportScreen.svelte";
+  import Notice from "./lib/ui/Notice.svelte";
+  import WindowControls from "./lib/ui/WindowControls.svelte";
+  import Workspace from "./lib/views/shell/Workspace.svelte";
 
   void refreshSnapshot();
 
