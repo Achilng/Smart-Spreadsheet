@@ -24,24 +24,29 @@ export function scrollPositionVersion(): number {
 }
 
 /**
- * 恢复保存的滚动位置。挂载瞬间内容高度可能尚未就绪（成员异步加载、
+ * 恢复保存的滚动位置。恢复瞬间内容高度可能尚未就绪（成员异步加载、
  * content-visibility 离屏区块只有预估高度），首次赋值会被浏览器钳制；
  * 因此按帧重试直到生效，用户主动滚动或元素卸载时立即放弃。
+ * onSettled 在重试结束（成功、放弃或超时）时调用；恢复期间浏览器钳制
+ * 产生的 scroll 事件不代表用户位置，调用方应在结束前跳过位置保存。
  */
 export function restoreScrollPosition(
   el: HTMLElement,
   key: string,
   maxFrames = 60,
   onApplied?: (top: number) => void,
+  onSettled?: () => void,
 ): void {
   const target = savedScrollPosition(key);
   if (target <= 0) {
+    onSettled?.();
     return;
   }
   let applied = -1;
   let frames = 0;
   const attempt = (): void => {
     if (!el.isConnected || (applied >= 0 && Math.abs(el.scrollTop - applied) > 1)) {
+      onSettled?.();
       return;
     }
     el.scrollTop = target;
@@ -50,6 +55,8 @@ export function restoreScrollPosition(
     frames += 1;
     if (Math.abs(applied - target) > 1 && frames < maxFrames) {
       requestAnimationFrame(attempt);
+    } else {
+      onSettled?.();
     }
   };
   attempt();

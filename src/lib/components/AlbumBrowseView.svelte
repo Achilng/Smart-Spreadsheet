@@ -34,18 +34,31 @@
 
   let listEl = $state<HTMLDivElement | null>(null);
 
-  // 切回时恢复画册列表滚动位置（卡片封面异步加载，内部按帧重试）
+  // 挂载和每次切回激活时恢复画册列表滚动位置（卡片封面异步加载，切回第一帧
+  // 高度可能不足被钳制，内部按帧重试推回原位）
   let restored = false;
+  let restoring = false;
+
+  $effect(() => {
+    if (!active) {
+      restored = false;
+    }
+  });
+
   $effect(() => {
     if (restored || !active || !listEl || albumBrowse.loading) {
       return;
     }
     restored = true;
-    restoreScrollPosition(listEl, "albums");
+    restoring = true;
+    restoreScrollPosition(listEl, "albums", 60, undefined, () => (restoring = false));
   });
 
   function onScroll(): void {
-    saveScrollPosition("albums", listEl?.scrollTop ?? 0);
+    // 恢复期间的钳制事件不代表用户位置，不能写入记忆
+    if (active && !restoring) {
+      saveScrollPosition("albums", listEl?.scrollTop ?? 0);
+    }
   }
 </script>
 

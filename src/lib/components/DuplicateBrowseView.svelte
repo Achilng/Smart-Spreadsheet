@@ -33,18 +33,31 @@
     untrack(() => syncDuplicateCaches());
   });
 
-  // 切回时恢复上次滚动位置（展开的成员网格异步加载，内部按帧重试）
+  // 挂载和每次切回激活时恢复滚动位置（展开的成员网格异步加载，切回第一帧
+  // 高度可能不足被钳制，内部按帧重试推回原位）
   let restored = false;
+  let restoring = false;
+
+  $effect(() => {
+    if (!active) {
+      restored = false;
+    }
+  });
+
   $effect(() => {
     if (restored || !active || !listEl || duplicateBrowse.loading) {
       return;
     }
     restored = true;
-    restoreScrollPosition(listEl, "duplicates");
+    restoring = true;
+    restoreScrollPosition(listEl, "duplicates", 60, undefined, () => (restoring = false));
   });
 
   function onScroll(): void {
-    saveScrollPosition("duplicates", listEl?.scrollTop ?? 0);
+    // 恢复期间的钳制事件不代表用户位置，不能写入记忆
+    if (active && !restoring) {
+      saveScrollPosition("duplicates", listEl?.scrollTop ?? 0);
+    }
   }
 
   function setMode(mode: DedupeMode): void {

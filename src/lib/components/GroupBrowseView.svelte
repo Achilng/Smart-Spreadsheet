@@ -47,9 +47,18 @@
     });
   });
 
-  // 切回时恢复上次滚动位置。成员网格是异步加载 + content-visibility 按需
-  // 渲染，挂载瞬间高度不足，restoreScrollPosition 内部会按帧重试。
+  // 挂载和每次切回激活时恢复滚动位置。成员网格是异步加载 + content-visibility
+  // 按需渲染，切回第一帧总高度可能不足、scrollTop 被浏览器钳制，
+  // restoreScrollPosition 内部会按帧重试推回原位。
   let restored = false;
+  let restoring = false;
+
+  $effect(() => {
+    if (!active) {
+      restored = false;
+    }
+  });
+
   $effect(() => {
     if (restored || !active || !listEl) {
       return;
@@ -58,11 +67,15 @@
       return;
     }
     restored = true;
-    restoreScrollPosition(listEl, "groups");
+    restoring = true;
+    restoreScrollPosition(listEl, "groups", 60, undefined, () => (restoring = false));
   });
 
   function onScroll(): void {
-    saveScrollPosition("groups", listEl?.scrollTop ?? 0);
+    // 恢复期间的钳制事件不代表用户位置，不能写入记忆
+    if (active && !restoring) {
+      saveScrollPosition("groups", listEl?.scrollTop ?? 0);
+    }
   }
 
   const sortedGroups = $derived(

@@ -21,8 +21,17 @@
 
   let viewport = $state<HTMLDivElement | null>(null);
   let scrollTop = $state(0);
+  let measuredHeight = $state(0);
+  // 面板隐藏（display:none）时 ResizeObserver 会报 0，冻结最后一次有效
+  // 高度，避免隐藏期间可见区计算退化（与画廊视图同一套保活约定）。
   let viewportHeight = $state(0);
   let lastScrollSaveVersion = scrollPositionVersion();
+
+  $effect(() => {
+    if (measuredHeight > 0) {
+      viewportHeight = measuredHeight;
+    }
+  });
 
   const spacerHeight = $derived(rowStore.totalCount * rowHeight);
 
@@ -67,10 +76,19 @@
     }
   });
 
-  // 挂载后恢复上次离开时的滚动位置。spacer 高度依赖 totalCount，必须等
-  // 数据就绪；且视图切换可能触发换代刷新（如分组视图的行集合语义不同），
-  // 刷新在途时 totalCount 还是旧语义的值，提前恢复会被钳制到错误位置。
+  // 挂载和每次切回激活时恢复滚动位置。spacer 高度依赖 totalCount，必须等
+  // 数据就绪；刷新在途时 totalCount 还是旧语义的值，提前恢复会被钳制。
+  // 保活后浏览器通常能自行保留位置，这里作为钳制后的兜底按帧重试恢复。
   let restored = false;
+  let restoring = false;
+  let pendingReset = false;
+
+  $effect(() => {
+    if (!active) {
+      restored = false;
+    }
+  });
+
   $effect(() => {
     if (
       restored ||
@@ -86,24 +104,44 @@
     void rowStore.totalCount;
     void spacerHeight;
     restored = true;
-    restoreScrollPosition(viewport, "table", 60, top => (scrollTop = top));
+    if (pendingReset) {
+      // 隐藏期间发生过结果集重置：对 display:none 元素设置 scrollTop 会被
+      // 浏览器忽略，只能等到重新显示后在这里执行回顶。
+      pendingReset = false;
+      scrollTop = 0;
+      viewport.scrollTop = 0;
+      return;
+    }
+    restoring = true;
+    restoreScrollPosition(
+      viewport,
+      "table",
+      60,
+      top => (scrollTop = top),
+      () => (restoring = false),
+    );
   });
 
-  // 筛选/搜索/数据变更导致结果集语义变化时回到顶部
+  // 筛选/搜索/数据变更导致结果集语义变化时回到顶部；隐藏期间挂起到激活时执行
   let seenReset = rowStore.resetToken;
   $effect(() => {
     if (rowStore.resetToken !== seenReset) {
       seenReset = rowStore.resetToken;
-      scrollTop = 0;
-      if (viewport) {
+      if (active && viewport) {
+        scrollTop = 0;
         viewport.scrollTop = 0;
+      } else {
+        pendingReset = true;
       }
     }
   });
 
   function onScroll(): void {
     scrollTop = viewport?.scrollTop ?? 0;
-    saveTableScroll(scrollTop);
+    // 恢复期间的钳制事件和隐藏状态下的读数不代表用户位置，不能写入记忆
+    if (active && !restoring) {
+      saveTableScroll(scrollTop);
+    }
   }
 
   function saveTableScroll(top: number): void {
@@ -112,7 +150,8 @@
   }
 
   onDestroy(() => {
-    if (viewport && lastScrollSaveVersion === scrollPositionVersion()) {
+    // 隐藏状态下 scrollTop 恒为 0，只有激活状态的读数才可信
+    if (active && viewport && lastScrollSaveVersion === scrollPositionVersion()) {
       saveTableScroll(viewport.scrollTop);
     }
   });
@@ -121,7 +160,7 @@
 <div
   class="table-viewport"
   bind:this={viewport}
-  bind:clientHeight={viewportHeight}
+  bind:clientHeight={measuredHeight}
   onscroll={onScroll}
 >
   {#if rowStore.error}
