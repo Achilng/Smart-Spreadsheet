@@ -24,14 +24,74 @@
   let tagInputFocused = $state(false);
   let copiedField = $state<string | null>(null);
   let copyTimer = 0;
-  let editingPrompt = $state(false);
-  let editPromptValue = $state("");
-  let promptSaving = $state(false);
-  let promptError = $state<string | null>(null);
-  let editingNegPrompt = $state(false);
-  let editNegPromptValue = $state("");
-  let negPromptSaving = $state(false);
-  let negPromptError = $state<string | null>(null);
+
+  function createPromptEditor(
+    getField: () => string | null | undefined,
+    saveFn: (rowId: number, value: string) => Promise<any>,
+    patchField: (rowId: number, value: string, result: any) => void,
+  ) {
+    let editing = $state(false);
+    let value = $state("");
+    let saving = $state(false);
+    let error = $state<string | null>(null);
+
+    function start(): void {
+      if (!row) return;
+      value = getField() ?? "";
+      editing = true;
+      error = null;
+    }
+
+    function cancel(): void {
+      editing = false;
+      error = null;
+    }
+
+    async function save(): Promise<void> {
+      const current = row;
+      if (!current || saving) return;
+      saving = true;
+      error = null;
+      try {
+        const result = await saveFn(current.id, value);
+        editing = false;
+        patchField(current.id, value, result);
+      } catch (e) {
+        error = errorText(e);
+      } finally {
+        saving = false;
+      }
+    }
+
+    function reset(): void {
+      editing = false;
+      error = null;
+    }
+
+    return {
+      get editing() { return editing; },
+      get value() { return value; },
+      set value(v: string) { value = v; },
+      get saving() { return saving; },
+      get error() { return error; },
+      start,
+      cancel,
+      save,
+      reset,
+    };
+  }
+
+  const promptEditor = createPromptEditor(
+    () => row?.positivePrompt,
+    updatePositivePrompt,
+    (id, value, result) => patchRowFields(id, { positivePrompt: value, artists: result.newArtists }),
+  );
+
+  const negPromptEditor = createPromptEditor(
+    () => row?.negativePrompt,
+    updateNegativePrompt,
+    (id, value) => patchRowFields(id, { negativePrompt: value }),
+  );
 
   // 切换行时重置并加载图片：先用缓存缩略图占位，大图就绪后替换
   $effect(() => {
@@ -41,10 +101,8 @@
     lightboxOpen = false;
     tagQuery = "";
     saveError = null;
-    editingPrompt = false;
-    promptError = null;
-    editingNegPrompt = false;
-    negPromptError = null;
+    promptEditor.reset();
+    negPromptEditor.reset();
     const current = row;
     if (!current || !hasImage) {
       return;
@@ -154,65 +212,6 @@
     } else if (event.key === "Escape") {
       tagQuery = "";
       (event.target as HTMLInputElement).blur();
-    }
-  }
-
-  function startEditPrompt(): void {
-    if (!row) return;
-    editPromptValue = row.positivePrompt ?? "";
-    editingPrompt = true;
-    promptError = null;
-  }
-
-  function cancelEditPrompt(): void {
-    editingPrompt = false;
-    promptError = null;
-  }
-
-  async function savePrompt(): Promise<void> {
-    const current = row;
-    if (!current || promptSaving) return;
-    promptSaving = true;
-    promptError = null;
-    try {
-      const result = await updatePositivePrompt(current.id, editPromptValue);
-      editingPrompt = false;
-      patchRowFields(current.id, {
-        positivePrompt: editPromptValue,
-        artists: result.newArtists,
-      });
-    } catch (error) {
-      promptError = errorText(error);
-    } finally {
-      promptSaving = false;
-    }
-  }
-
-  function startEditNegPrompt(): void {
-    if (!row) return;
-    editNegPromptValue = row.negativePrompt ?? "";
-    editingNegPrompt = true;
-    negPromptError = null;
-  }
-
-  function cancelEditNegPrompt(): void {
-    editingNegPrompt = false;
-    negPromptError = null;
-  }
-
-  async function saveNegPrompt(): Promise<void> {
-    const current = row;
-    if (!current || negPromptSaving) return;
-    negPromptSaving = true;
-    negPromptError = null;
-    try {
-      await updateNegativePrompt(current.id, editNegPromptValue);
-      editingNegPrompt = false;
-      patchRowFields(current.id, { negativePrompt: editNegPromptValue });
-    } catch (error) {
-      negPromptError = errorText(error);
-    } finally {
-      negPromptSaving = false;
     }
   }
 
@@ -365,79 +364,44 @@
         <pre class:is-empty={!row.time}>{row.time ?? "—"}</pre>
       </section>
 
-      <section class="field">
-        <div class="field-head">
-          <h4>正向提示词</h4>
-          <div class="field-head-actions">
-            {#if !editingPrompt}
-              <button type="button" class="copy-btn" onclick={startEditPrompt}>编辑</button>
-            {/if}
-            {#if row.positivePrompt && !editingPrompt}
-              <button type="button" class="copy-btn" onclick={() => void copyField("正向提示词", row.positivePrompt ?? "")}>
-                {copiedField === "正向提示词" ? "已复制" : "复制"}
+      {#each [{ label: "正向提示词", text: row.positivePrompt, editor: promptEditor }, { label: "负向提示词", text: row.negativePrompt, editor: negPromptEditor }] as prompt (prompt.label)}
+        <section class="field">
+          <div class="field-head">
+            <h4>{prompt.label}</h4>
+            <div class="field-head-actions">
+              {#if !prompt.editor.editing}
+                <button type="button" class="copy-btn" onclick={prompt.editor.start}>编辑</button>
+              {/if}
+              {#if prompt.text && !prompt.editor.editing}
+                <button type="button" class="copy-btn" onclick={() => void copyField(prompt.label, prompt.text ?? "")}>
+                  {copiedField === prompt.label ? "已复制" : "复制"}
+                </button>
+              {/if}
+            </div>
+          </div>
+          {#if prompt.editor.editing}
+            <textarea
+              class="prompt-textarea"
+              bind:value={prompt.editor.value}
+              disabled={prompt.editor.saving}
+              onkeydown={event => {
+                if (event.key === "Escape") prompt.editor.cancel();
+              }}
+            ></textarea>
+            <div class="prompt-edit-actions">
+              <button type="button" class="btn btn-sm" disabled={prompt.editor.saving} onclick={prompt.editor.cancel}>取消</button>
+              <button type="button" class="btn btn-sm btn-primary" disabled={prompt.editor.saving} onclick={() => void prompt.editor.save()}>
+                {prompt.editor.saving ? "保存中…" : "保存"}
               </button>
+            </div>
+            {#if prompt.editor.error}
+              <p class="save-error">{prompt.editor.error}</p>
             {/if}
-          </div>
-        </div>
-        {#if editingPrompt}
-          <textarea
-            class="prompt-textarea"
-            bind:value={editPromptValue}
-            disabled={promptSaving}
-            onkeydown={event => {
-              if (event.key === "Escape") cancelEditPrompt();
-            }}
-          ></textarea>
-          <div class="prompt-edit-actions">
-            <button type="button" class="btn btn-sm" disabled={promptSaving} onclick={cancelEditPrompt}>取消</button>
-            <button type="button" class="btn btn-sm btn-primary" disabled={promptSaving} onclick={() => void savePrompt()}>
-              {promptSaving ? "保存中…" : "保存"}
-            </button>
-          </div>
-          {#if promptError}
-            <p class="save-error">{promptError}</p>
+          {:else}
+            <pre class:is-empty={!prompt.text}>{prompt.text ?? "—"}</pre>
           {/if}
-        {:else}
-          <pre class:is-empty={!row.positivePrompt}>{row.positivePrompt ?? "—"}</pre>
-        {/if}
-      </section>
-
-      <section class="field">
-        <div class="field-head">
-          <h4>负向提示词</h4>
-          <div class="field-head-actions">
-            {#if !editingNegPrompt}
-              <button type="button" class="copy-btn" onclick={startEditNegPrompt}>编辑</button>
-            {/if}
-            {#if row.negativePrompt && !editingNegPrompt}
-              <button type="button" class="copy-btn" onclick={() => void copyField("负向提示词", row.negativePrompt ?? "")}>
-                {copiedField === "负向提示词" ? "已复制" : "复制"}
-              </button>
-            {/if}
-          </div>
-        </div>
-        {#if editingNegPrompt}
-          <textarea
-            class="prompt-textarea"
-            bind:value={editNegPromptValue}
-            disabled={negPromptSaving}
-            onkeydown={event => {
-              if (event.key === "Escape") cancelEditNegPrompt();
-            }}
-          ></textarea>
-          <div class="prompt-edit-actions">
-            <button type="button" class="btn btn-sm" disabled={negPromptSaving} onclick={cancelEditNegPrompt}>取消</button>
-            <button type="button" class="btn btn-sm btn-primary" disabled={negPromptSaving} onclick={() => void saveNegPrompt()}>
-              {negPromptSaving ? "保存中…" : "保存"}
-            </button>
-          </div>
-          {#if negPromptError}
-            <p class="save-error">{negPromptError}</p>
-          {/if}
-        {:else}
-          <pre class:is-empty={!row.negativePrompt}>{row.negativePrompt ?? "—"}</pre>
-        {/if}
-      </section>
+        </section>
+      {/each}
 
       {#each [{ label: "画师串", value: row.artists }, { label: "图片文件夹", value: row.imageFolder }, { label: "图片路径", value: row.imagePath }] as field (field.label)}
         <section class="field">
