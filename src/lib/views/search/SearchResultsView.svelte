@@ -1,14 +1,13 @@
 <script lang="ts">
   import { app, closeSearchResults, formatCount } from "../../stores/app-state.svelte";
-  import { getRowThumbnail, getRowsByIds, type RowRecord } from "../../api";
+  import { getRowsByIds, type RowRecord } from "../../api";
   import { showContextMenu } from "../../stores/context-menu.svelte";
-  import { beginFileDrag } from "../../stores/file-drag";
   import { rowStore } from "../../stores/row-store.svelte";
+  import Thumbnail from "../../ui/Thumbnail.svelte";
 
   const results = $derived(app.searchResults ?? []);
   const queryName = $derived(app.searchQueryPath?.split(/[\\/]/).pop() ?? "");
 
-  let thumbnailUrls = $state<Map<number, string>>(new Map());
   let rowRecords = $state<Map<number, RowRecord>>(new Map());
 
   $effect(() => {
@@ -27,24 +26,7 @@
       .catch(() => {});
   });
 
-  $effect(() => {
-    const current = results;
-    for (const match of current.slice(0, 50)) {
-      if (!thumbnailUrls.has(match.rowId)) {
-        getRowThumbnail(match.rowId)
-          .then((buffer: ArrayBuffer) => {
-            const blob = new Blob([buffer], { type: "image/png" });
-            const url = URL.createObjectURL(blob);
-            thumbnailUrls = new Map([...thumbnailUrls, [match.rowId, url]]);
-          })
-          .catch(() => {});
-      }
-    }
-  });
-
   function handleClose() {
-    for (const url of thumbnailUrls.values()) URL.revokeObjectURL(url);
-    thumbnailUrls = new Map();
     closeSearchResults();
   }
 
@@ -84,17 +66,7 @@
           <!-- svelte-ignore a11y_no_static_element_interactions -->
           <div class="result-card" oncontextmenu={(e) => onContextMenu(e, match.rowId)}>
             <div class="card-thumb">
-              {#if thumbnailUrls.has(match.rowId)}
-                <img
-                  src={thumbnailUrls.get(match.rowId)}
-                  alt="行 {match.rowId}"
-                  loading="lazy"
-                  draggable="false"
-                  onmousedown={(e) => beginFileDrag(e, match.rowId)}
-                />
-              {:else}
-                <div class="placeholder">加载中</div>
-              {/if}
+              <Thumbnail rowId={match.rowId} hasImage={true} alt="行 {match.rowId}" />
             </div>
             <div class="card-info">
               <span class="distance" class:exact={match.distance === 0}>
@@ -208,17 +180,6 @@
     align-items: center;
     justify-content: center;
     overflow: hidden;
-  }
-
-  .card-thumb img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-
-  .placeholder {
-    color: var(--text-3);
-    font-size: var(--font-sm);
   }
 
   .card-info {

@@ -7,9 +7,8 @@ import {
 import { app, errorText } from "./app-state.svelte";
 import { rowStore } from "./row-store.svelte";
 import { sectionMenu } from "./section-context-menu.svelte";
+import { createSectionCache } from "./section-cache";
 import type { SectionMembers } from "./section-types";
-
-const MEMBERS_PAGE = 200;
 
 /**
  * 重复视图的模块级状态：聚合结果、展开状态和已加载成员跨视图切换保留，
@@ -85,7 +84,7 @@ async function loadClusters(): Promise<void> {
   }
 }
 
-function fetchMembers(key: string, offset: number) {
+function fetchMembers(key: string, offset: number, limit: number) {
   return getDedupeClusterMembers(
     duplicateBrowse.dedupeMode,
     key,
@@ -94,61 +93,20 @@ function fetchMembers(key: string, offset: number) {
     rowStore.singleArtistOnly,
     rowStore.hideGrouped,
     offset,
-    MEMBERS_PAGE,
+    limit,
   );
 }
 
-export async function ensureClusterMembers(key: string): Promise<void> {
-  if (duplicateBrowse.memberCache[key]) {
-    return;
-  }
-  const signature = clusterSignature;
-  duplicateBrowse.memberCache[key] = { rows: [], totalCount: 0, loading: true, error: null };
-  try {
-    const page = await fetchMembers(key, 0);
-    if (signature !== clusterSignature) {
-      return;
-    }
-    duplicateBrowse.memberCache[key] = {
-      rows: page.rows,
-      totalCount: page.totalCount,
-      loading: false,
-      error: null,
-    };
-  } catch (e) {
-    if (signature !== clusterSignature) {
-      return;
-    }
-    duplicateBrowse.memberCache[key] = {
-      rows: [],
-      totalCount: 0,
-      loading: false,
-      error: errorText(e),
-    };
-  }
+const clusterMemberCache = createSectionCache(
+  () => duplicateBrowse.memberCache,
+  (key, value) => { duplicateBrowse.memberCache[key] = value; },
+  () => clusterSignature,
+);
+
+export function ensureClusterMembers(key: string): Promise<void> {
+  return clusterMemberCache.ensure(key, (offset, limit) => fetchMembers(key, offset, limit));
 }
 
-export async function loadMoreClusterMembers(key: string): Promise<void> {
-  const data = duplicateBrowse.memberCache[key];
-  if (!data || data.loading) {
-    return;
-  }
-  const signature = clusterSignature;
-  data.loading = true;
-  try {
-    const page = await fetchMembers(key, data.rows.length);
-    if (signature !== clusterSignature) {
-      return;
-    }
-    data.rows = [...data.rows, ...page.rows];
-    data.totalCount = page.totalCount;
-    data.loading = false;
-    data.error = null;
-  } catch (e) {
-    if (signature !== clusterSignature) {
-      return;
-    }
-    data.loading = false;
-    data.error = errorText(e);
-  }
+export function loadMoreClusterMembers(key: string): Promise<void> {
+  return clusterMemberCache.loadMore(key, (offset, limit) => fetchMembers(key, offset, limit));
 }

@@ -1,8 +1,7 @@
 <script lang="ts">
   import type { RowRecord } from "../../api";
-  import { beginFileDrag } from "../../stores/file-drag";
   import { rowStore } from "../../stores/row-store.svelte";
-  import { thumbnails } from "../../images/thumbnails";
+  import Thumbnail from "../../ui/Thumbnail.svelte";
 
   import { showContextMenu } from "../../stores/context-menu.svelte";
 
@@ -18,21 +17,6 @@
   );
   const isActive = $derived(rowStore.activeRow?.id === row.id);
 
-  let thumbUrl = $state<string | null>(null);
-  let thumbFailed = $state(false);
-
-  $effect(() => {
-    thumbUrl = null;
-    thumbFailed = false;
-    if (!hasImage) return;
-    let cancelled = false;
-    thumbnails.load(row.id).then(
-      url => { if (!cancelled) thumbUrl = url; },
-      () => { if (!cancelled) thumbFailed = true; },
-    );
-    return () => { cancelled = true; };
-  });
-
   const label = $derived(
     row.artists?.split("\n")[0]?.trim() || `#${row.sourceOrdinal}`,
   );
@@ -47,21 +31,7 @@
   oncontextmenu={onContextMenu}
 >
   <div class="thumb">
-    {#if thumbUrl}
-      <img
-        src={thumbUrl}
-        alt="#{row.sourceOrdinal}"
-        loading="lazy"
-        draggable="false"
-        onmousedown={(e) => { if (hasImage) beginFileDrag(e, row.id); }}
-      />
-    {:else if !hasImage}
-      <span class="thumb-note faint">无图</span>
-    {:else if thumbFailed}
-      <span class="thumb-note faint">不可用</span>
-    {:else}
-      <span class="thumb-note faint">…</span>
-    {/if}
+    <Thumbnail rowId={row.id} {hasImage} alt={label} />
   </div>
   <span class="card-label">{label}</span>
 </button>
@@ -97,17 +67,6 @@
     justify-content: center;
     background: var(--surface-2);
     overflow: hidden;
-  }
-
-  .thumb img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
-  }
-
-  .thumb-note {
-    font-size: var(--font-xs);
   }
 
   .card-label {

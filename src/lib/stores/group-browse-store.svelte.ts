@@ -2,9 +2,8 @@ import { getGroupMembers, queryRows } from "../api";
 import { app, errorText } from "./app-state.svelte";
 import { groupStore } from "./group-store.svelte";
 import { rowStore } from "./row-store.svelte";
+import { createSectionCache, MEMBERS_PAGE } from "./section-cache";
 import type { SectionMembers } from "./section-types";
-
-export const MEMBERS_PAGE = 200;
 
 /**
  * 分组浏览视图的模块级状态：切走再切回时保留展开状态、已加载的成员和滚动位置。
@@ -15,7 +14,7 @@ export const groupBrowse = $state({
   sortByCount: false,
   expandedIds: [] as number[],
   renderLimits: {} as Record<string, number>,
-  memberCache: {} as Record<number, SectionMembers>,
+  memberCache: {} as Record<string, SectionMembers>,
   ungroupedExpanded: false,
   ungrouped: null as SectionMembers | null,
 });
@@ -51,59 +50,24 @@ export function syncGroupBrowseCaches(): void {
   }
 }
 
-export async function ensureGroupMembers(groupId: number): Promise<void> {
-  if (groupBrowse.memberCache[groupId]) {
-    return;
-  }
-  const signature = memberSignature;
-  groupBrowse.memberCache[groupId] = { rows: [], totalCount: 0, loading: true, error: null };
-  try {
-    const page = await getGroupMembers(groupId, 0, MEMBERS_PAGE);
-    if (signature !== memberSignature) {
-      return;
-    }
-    groupBrowse.memberCache[groupId] = {
-      rows: page.rows,
-      totalCount: page.totalCount,
-      loading: false,
-      error: null,
-    };
-  } catch (e) {
-    if (signature !== memberSignature) {
-      return;
-    }
-    groupBrowse.memberCache[groupId] = {
-      rows: [],
-      totalCount: 0,
-      loading: false,
-      error: errorText(e),
-    };
-  }
+const groupMemberCache = createSectionCache(
+  () => groupBrowse.memberCache,
+  (key, value) => { groupBrowse.memberCache[key] = value; },
+  () => memberSignature,
+);
+
+export function ensureGroupMembers(groupId: number): Promise<void> {
+  return groupMemberCache.ensure(
+    String(groupId),
+    (offset, limit) => getGroupMembers(groupId, offset, limit),
+  );
 }
 
-export async function loadMoreGroupMembers(groupId: number): Promise<void> {
-  const data = groupBrowse.memberCache[groupId];
-  if (!data || data.loading) {
-    return;
-  }
-  const signature = memberSignature;
-  data.loading = true;
-  try {
-    const page = await getGroupMembers(groupId, data.rows.length, MEMBERS_PAGE);
-    if (signature !== memberSignature) {
-      return;
-    }
-    data.rows = [...data.rows, ...page.rows];
-    data.totalCount = page.totalCount;
-    data.loading = false;
-    data.error = null;
-  } catch (e) {
-    if (signature !== memberSignature) {
-      return;
-    }
-    data.loading = false;
-    data.error = errorText(e);
-  }
+export function loadMoreGroupMembers(groupId: number): Promise<void> {
+  return groupMemberCache.loadMore(
+    String(groupId),
+    (offset, limit) => getGroupMembers(groupId, offset, limit),
+  );
 }
 
 function ungroupedQuery(offset: number) {

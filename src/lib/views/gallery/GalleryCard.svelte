@@ -4,7 +4,7 @@
   import { beginFileDrag } from "../../stores/file-drag";
   import { rowStore } from "../../stores/row-store.svelte";
   import { getSelectedCount, isRowSelected, toggleRow } from "../../stores/selection-store.svelte";
-  import { thumbnails } from "../../images/thumbnails";
+  import Thumbnail from "../../ui/Thumbnail.svelte";
 
   let {
     row,
@@ -28,34 +28,6 @@
   const isActive = $derived(row != null && rowStore.activeRow?.id === row.id);
   const isChecked = $derived(row != null && isRowSelected(row.id));
   const selectionActive = $derived(getSelectedCount() > 0);
-
-  let thumbUrl = $state<string | null>(null);
-  let thumbFailed = $state(false);
-
-  $effect(() => {
-    thumbUrl = null;
-    thumbFailed = false;
-    const rowId = row?.id;
-    if (rowId == null || !hasImage) {
-      return;
-    }
-    let cancelled = false;
-    thumbnails.load(rowId).then(
-      url => {
-        if (!cancelled) {
-          thumbUrl = url;
-        }
-      },
-      () => {
-        if (!cancelled) {
-          thumbFailed = true;
-        }
-      },
-    );
-    return () => {
-      cancelled = true;
-    };
-  });
 
   const visibleTags = $derived(row?.tags.slice(0, 3) ?? []);
   const extraTagCount = $derived(Math.max(0, (row?.tags.length ?? 0) - 3));
@@ -111,15 +83,7 @@
         rowStore.activeRow = row ?? null;
       }}
     >
-      {#if thumbUrl}
-        <img src={thumbUrl} alt="第 {row.sourceOrdinal} 行缩略图" loading="lazy" draggable="false" />
-      {:else if !hasImage}
-        <span class="thumb-note faint">无图片</span>
-      {:else if thumbFailed}
-        <span class="thumb-note faint">图片不可用</span>
-      {:else}
-        <span class="thumb-loading shimmer" aria-hidden="true"></span>
-      {/if}
+      <Thumbnail rowId={row.id} {hasImage} alt="第 {row.sourceOrdinal} 行缩略图" />
     </button>
     <div class="footer">
       <span class="row-no faint">#{row.sourceOrdinal}</span>
@@ -200,23 +164,6 @@
     padding: 0;
     background: var(--surface-2);
     overflow: hidden;
-  }
-
-  .thumb img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
-  }
-
-  .thumb-note {
-    font-size: var(--font-sm);
-  }
-
-  .thumb-loading {
-    display: block;
-    width: 100%;
-    height: 100%;
   }
 
   .footer {
