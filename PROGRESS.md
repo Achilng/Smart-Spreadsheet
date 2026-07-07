@@ -1,10 +1,20 @@
 # 开发进度
 
-最后更新：2026-07-03
+最后更新：2026-07-07
 
 ## 当前阶段
 
-前端重构第六轮迭代全部完成（PLAN.md 第 17 节）。5 个阶段均已落地并推送 GitHub。
+v_18 已发布。移除 xlsx 导入、拖拽严格原图、vibe 标识。
+
+### M49 — 移除 xlsx 导入 + 拖拽严格原图 + vibe 标识（2026-07-07）
+
+- **移除 xlsx 导入功能**：删除 `storage::import` 模块和 `excel::ooxml` 模块，仅保留 xlsx 导出和 v1→v2 迁移遗留的嵌入图提取。xlsx 嵌入图为无元数据缩略图，已不再作为导入来源。
+- **拖拽严格使用原图**：新增 `resolve_original_source` 函数，拖拽时优先使用外部原图路径（文件夹来源），允许压缩包受管副本（元数据完整），但拒绝 xlsx 嵌入副本（无元数据）。原图不可用时弹出 toast 错误提示，不再静默降级到无元数据副本。
+- **RowImageLocator 扩展**：新增 `source_type` 字段（JOIN `import_batches` 表），区分 Folder/Archive/Xlsx 来源以决定受管副本是否可信。
+- **Vibe 标识**：DetailPanel 图片预览区新增紫色 vibe 徽章，解析 PNG Comment JSON 中的 `reference_image_multiple` 字段并显示引用数量（如 `VIBE ×3`），提示拖到 NovelAI 可一并导入。
+- **新增 `get_row_vibe_status` 命令**：后端读取 PNG tEXt Comment chunk、解析 JSON、统计 vibe 引用数。
+- **测试全部迁移**：原 xlsx 导入测试改为文件夹导入方式，新增 `test_fixtures` 模块生成带 tEXt 元数据的真实 16×16 PNG。157 项测试通过。
+- **Release v_18** 已发布至 GitHub。
 
 ### M48 — 前端重构（2026-07-03）
 
