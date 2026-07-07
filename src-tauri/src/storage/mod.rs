@@ -3,11 +3,12 @@ mod content_hash;
 mod export_images;
 mod export_json;
 mod export_xlsx;
-mod import;
 mod import_images;
 mod migration;
 mod perceptual_hash;
 mod prompt_docs;
+#[cfg(test)]
+pub(crate) mod test_fixtures;
 
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
@@ -23,11 +24,10 @@ pub use delete::{RowDeletionError, RowDeletionReport};
 pub use content_hash::{ContentHashBackfillOutcome, ContentHashProgress};
 pub use export_images::{
     ImageFileExportMode, ImageFilesExportError, ImageFilesExportOutcome, ImageFilesProgress,
-    resolve_locator_source as resolve_image_source,
+    OriginalSourceError, resolve_locator_source as resolve_image_source, resolve_original_source,
 };
 pub use export_json::{JsonExportError, JsonExportOutcome, JsonExportProgress};
 pub use export_xlsx::{ExportProgress, XlsxExportError, XlsxExportOutcome};
-pub use import::{ImportOutcome, WorkbookImportError};
 pub use import_images::{
     ImageImportError, ImageImportOutcome, ImageImportProgress, ImageImportStage,
 };

@@ -13,12 +13,12 @@ use crate::db::{
 };
 use crate::images::{ImageVariant, RowImageError};
 use crate::storage::{
-    DataDirectory, ExportProgress, ImageFileExportMode, ImageFilesExportError,
-    ImageFilesExportOutcome, ImageFilesProgress, ImageImportError, ImageImportOutcome,
-    ImageImportProgress, JsonExportError, JsonExportOutcome, JsonExportProgress,
-    PerceptualHashProgress, PromptDocAsset, PromptDocDetail, PromptDocError, PromptDocSummary,
-    RowDeletionError, RowDeletionReport, SimilarImageMatch, StorageError, WorkbookImportError,
-    XlsxExportError, XlsxExportOutcome, ContentHashProgress,
+    ContentHashProgress, DataDirectory, ExportProgress, ImageFileExportMode,
+    ImageFilesExportError, ImageFilesExportOutcome, ImageFilesProgress, ImageImportError,
+    ImageImportOutcome, ImageImportProgress, JsonExportError, JsonExportOutcome,
+    JsonExportProgress, PerceptualHashProgress, PromptDocAsset, PromptDocDetail, PromptDocError,
+    PromptDocSummary, RowDeletionError, RowDeletionReport, SimilarImageMatch, StorageError,
+    XlsxExportError, XlsxExportOutcome,
 };
 
 const LOCATOR_VERSION: u32 = 1;
@@ -53,8 +53,6 @@ pub(crate) enum AppRuntimeError {
     LocatorJson(#[from] serde_json::Error),
     #[error("数据目录操作失败: {0}")]
     Storage(#[from] StorageError),
-    #[error("工作簿导入失败: {0}")]
-    Import(#[from] WorkbookImportError),
     #[error("图片导入失败: {0}")]
     ImageImport(#[from] ImageImportError),
     #[error("数据库操作失败: {0}")]
@@ -183,23 +181,6 @@ impl AppRuntime {
         self.configure_directory(path, |path| {
             DataDirectory::open_with_hash_progress(path, progress)
         })
-    }
-
-    #[cfg(test)]
-    pub(crate) fn import_workbook(
-        &self,
-        path: impl AsRef<Path>,
-    ) -> Result<(RuntimeSnapshot, crate::storage::ImportOutcome), AppRuntimeError> {
-        let state = self.lock_state()?;
-        ensure_startup_valid(&state)?;
-        let directory = state
-            .active
-            .as_ref()
-            .ok_or(AppRuntimeError::NotConfigured)?;
-        let outcome = directory.import_workbook(path)?;
-        drop(state);
-        self.lock_state()?.invalidate_query_cache();
-        Ok((self.snapshot()?, outcome))
     }
 
     pub(crate) fn import_images(
@@ -896,11 +877,12 @@ mod tests {
     }
 
     #[test]
-    fn imports_workbook_and_restores_summary_after_reload() {
+    fn imports_images_and_restores_summary_after_reload() {
         let temporary = TemporaryRuntime::new();
         let runtime = AppRuntime::load(temporary.locator.clone(), temporary.data.clone());
+        let folder = crate::storage::test_fixtures::sample_image_folder(&temporary.root, 5);
 
-        let (_, outcome) = runtime.import_workbook(sample_workbook()).unwrap();
+        let (_, outcome) = runtime.import_images(&folder, |_| {}).unwrap();
         let reloaded = AppRuntime::load(temporary.locator.clone(), temporary.data.clone())
             .snapshot()
             .unwrap();
@@ -910,7 +892,7 @@ mod tests {
         assert_eq!(library.row_count, 5);
         assert_eq!(library.batch_count, 1);
         let last_batch = library.last_batch.unwrap();
-        assert!(last_batch.source_path.ends_with("novelai_metadata.xlsx"));
+        assert!(last_batch.source_path.contains("sample-images"));
         assert_eq!(last_batch.added_count, 5);
     }
 
@@ -918,10 +900,11 @@ mod tests {
     fn appends_second_import_and_deletes_rows() {
         let temporary = TemporaryRuntime::new();
         let runtime = AppRuntime::load(temporary.locator.clone(), temporary.data.clone());
-        runtime.import_workbook(sample_workbook()).unwrap();
+        let folder = crate::storage::test_fixtures::sample_image_folder(&temporary.root, 5);
+        runtime.import_images(&folder, |_| {}).unwrap();
 
         // 重复导入：全部跳过，行数不变。
-        let (snapshot, outcome) = runtime.import_workbook(sample_workbook()).unwrap();
+        let (snapshot, outcome) = runtime.import_images(&folder, |_| {}).unwrap();
         assert_eq!(outcome.added, 0);
         assert_eq!(outcome.skipped_existing, 5);
         assert_eq!(snapshot.library.as_ref().unwrap().row_count, 5);
@@ -939,7 +922,8 @@ mod tests {
     fn exposes_tag_queries_and_filtered_mutations() {
         let temporary = TemporaryRuntime::new();
         let runtime = AppRuntime::load(temporary.locator.clone(), temporary.data.clone());
-        runtime.import_workbook(sample_workbook()).unwrap();
+        let folder = crate::storage::test_fixtures::sample_image_folder(&temporary.root, 5);
+        runtime.import_images(&folder, |_| {}).unwrap();
 
         let explicit = RowSelection::Explicit {
             row_ids: vec![1, 2, 3],
@@ -971,7 +955,8 @@ mod tests {
     fn loads_thumbnail_and_preview_for_imported_row() {
         let temporary = TemporaryRuntime::new();
         let runtime = AppRuntime::load(temporary.locator.clone(), temporary.data.clone());
-        runtime.import_workbook(sample_workbook()).unwrap();
+        let folder = crate::storage::test_fixtures::sample_image_folder(&temporary.root, 1);
+        runtime.import_images(&folder, |_| {}).unwrap();
 
         let thumbnail = runtime.row_thumbnail(1).unwrap();
         let preview = runtime.row_preview(1).unwrap();
@@ -985,7 +970,8 @@ mod tests {
     fn migrates_directory_then_reloads_from_new_locator() {
         let temporary = TemporaryRuntime::new();
         let runtime = AppRuntime::load(temporary.locator.clone(), temporary.data.clone());
-        runtime.import_workbook(sample_workbook()).unwrap();
+        let folder = crate::storage::test_fixtures::sample_image_folder(&temporary.root, 3);
+        runtime.import_images(&folder, |_| {}).unwrap();
         runtime
             .add_tags_to_selection(
                 &RowSelection::Explicit { row_ids: vec![1] },
@@ -1011,7 +997,8 @@ mod tests {
     fn locator_write_failure_restores_source_and_disables_destination() {
         let temporary = TemporaryRuntime::new();
         let runtime = AppRuntime::load(temporary.locator.clone(), temporary.data.clone());
-        runtime.import_workbook(sample_workbook()).unwrap();
+        let folder = crate::storage::test_fixtures::sample_image_folder(&temporary.root, 2);
+        runtime.import_images(&folder, |_| {}).unwrap();
         let destination = temporary.root.join("failed-migration");
         let blocked_temporary = temporary.locator.parent().unwrap().join(format!(
             ".smart-spreadsheet-state-{}.tmp",
@@ -1036,7 +1023,8 @@ mod tests {
     fn query_cache_invalidates_across_tag_mutations_and_deletes() {
         let temporary = TemporaryRuntime::new();
         let runtime = AppRuntime::load(temporary.locator.clone(), temporary.data.clone());
-        runtime.import_workbook(sample_workbook()).unwrap();
+        let folder = crate::storage::test_fixtures::sample_image_folder(&temporary.root, 3);
+        runtime.import_images(&folder, |_| {}).unwrap();
 
         let tagged_query = RowQuery {
             offset: 0,
@@ -1063,13 +1051,6 @@ mod tests {
             .delete_rows(&RowSelection::Explicit { row_ids: vec![1] }, false)
             .unwrap();
         assert_eq!(runtime.query_rows(&tagged_query).unwrap().total_count, 1);
-    }
-
-    fn sample_workbook() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("..")
-            .join("Examples")
-            .join("novelai_metadata.xlsx")
     }
 
     struct TemporaryRuntime {

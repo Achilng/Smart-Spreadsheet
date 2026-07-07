@@ -170,6 +170,50 @@ pub fn resolve_locator_source(
     None
 }
 
+/// 只解析"完整原件"：外部原图，或压缩包批次提取的副本（与包内原件字节一致）。
+/// xlsx 批次的嵌入图是 Excel 压缩过的无元数据缩略图，不算原件——拖出或导出
+/// 这种副本会让 NovelAI 等下游丢失全部元数据，宁可报错也不静默降级。
+pub fn resolve_original_source(
+    directory: &DataDirectory,
+    locator: &crate::db::RowImageLocator,
+) -> Result<PathBuf, OriginalSourceError> {
+    if let Some(path) = locator
+        .image_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+    {
+        let path = Path::new(path);
+        if path.is_file() {
+            return Ok(path.to_owned());
+        }
+        if locator.source_type != crate::db::SourceType::Archive {
+            return Err(OriginalSourceError::OriginalMissing(path.to_owned()));
+        }
+    }
+    if locator.source_type == crate::db::SourceType::Archive
+        && let Some(stored) = locator
+            .stored_image_path
+            .as_deref()
+            .map(str::trim)
+            .filter(|p| !p.is_empty())
+    {
+        let path = directory.root().join(stored);
+        if path.is_file() {
+            return Ok(path);
+        }
+    }
+    Err(OriginalSourceError::NoOriginal)
+}
+
+#[derive(Debug, Error)]
+pub enum OriginalSourceError {
+    #[error("原图文件不存在或已移动: {0}（表格里的缩略图副本不含元数据，已阻止使用）")]
+    OriginalMissing(PathBuf),
+    #[error("该行没有可用的原图文件（仅存的表格内嵌副本不含元数据，已阻止使用）")]
+    NoOriginal,
+}
+
 fn resolve_source(directory: &DataDirectory, row: &ExportRow) -> Option<PathBuf> {
     if let Some(path) = row.image_path.as_deref().map(str::trim).filter(|p| !p.is_empty()) {
         let path = Path::new(path);

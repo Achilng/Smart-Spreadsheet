@@ -1,5 +1,6 @@
 import { startDrag } from "@crabnebula/tauri-plugin-drag";
 import { prepareFileDrag } from "../api";
+import { errorText, setNotice } from "./app-state.svelte";
 
 const DRAG_THRESHOLD = 5;
 
@@ -27,7 +28,10 @@ function onMouseMove(e: MouseEvent): void {
       startDrag({ item: [info.filePath], icon: info.iconPath }).finally(
         () => { outboundDrag = false; },
       ),
-    () => { outboundDrag = false; },
+    (error) => {
+      outboundDrag = false;
+      setNotice({ tone: "error", text: errorText(error) });
+    },
   );
 }
 

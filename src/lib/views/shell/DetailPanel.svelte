@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { createTag, getRowPreview, setTagsForRow, updateNegativePrompt, updatePositivePrompt } from "../../api";
+  import { createTag, getRowPreview, getRowVibeStatus, setTagsForRow, updateNegativePrompt, updatePositivePrompt } from "../../api";
   import { binaryBuffer } from "../../images/image-loader";
   import { app, errorText } from "../../stores/app-state.svelte";
   import { beginFileDrag } from "../../stores/file-drag";
@@ -17,6 +17,7 @@
   let thumbUrl = $state<string | null>(null);
   let previewUrl = $state<string | null>(null);
   let previewError = $state<string | null>(null);
+  let vibeRefs = $state<number | null>(null);
   let lightboxOpen = $state(false);
   let saving = $state(false);
   let saveError = $state<string | null>(null);
@@ -98,6 +99,7 @@
     thumbUrl = null;
     previewUrl = null;
     previewError = null;
+    vibeRefs = null;
     lightboxOpen = false;
     tagQuery = "";
     saveError = null;
@@ -114,6 +116,14 @@
       url => {
         if (!cancelled) {
           thumbUrl = url;
+        }
+      },
+      () => {},
+    );
+    void getRowVibeStatus(rowId).then(
+      count => {
+        if (!cancelled) {
+          vibeRefs = count;
         }
       },
       () => {},
@@ -281,6 +291,12 @@
               draggable="false"
               onmousedown={(e) => { if (row && hasImage) beginFileDrag(e, row.id); }}
             />
+            {#if vibeRefs}
+              <span
+                class="vibe-badge"
+                title="原图元数据包含 {vibeRefs} 个 vibe 引用，拖到 NovelAI 可一并导入"
+              >VIBE ×{vibeRefs}</span>
+            {/if}
           </button>
         {:else if !hasImage}
           <span class="faint">无图片</span>
@@ -516,6 +532,21 @@
     width: 100%;
     display: flex;
     justify-content: center;
+    position: relative;
+  }
+
+  .vibe-badge {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    padding: 2px 8px;
+    border-radius: var(--radius-m);
+    background: rgba(90, 60, 160, 0.85);
+    color: #fff;
+    font-size: var(--font-sm);
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    pointer-events: none;
   }
 
   .preview-btn img {

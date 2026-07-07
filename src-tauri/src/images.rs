@@ -331,6 +331,7 @@ mod tests {
                     .into_owned(),
             ),
             stored_image_path: Some("files/1/embedded/row-1.png".into()),
+            source_type: crate::db::SourceType::Xlsx,
         };
 
         let first = load_row_image(&directory, &locator, ImageVariant::Thumbnail).unwrap();
@@ -363,6 +364,7 @@ mod tests {
             row_id: 7,
             image_path: Some(external.to_string_lossy().into_owned()),
             stored_image_path: Some("files/1/missing.png".into()),
+            source_type: crate::db::SourceType::Archive,
         };
 
         let payload = load_row_image(&directory, &locator, ImageVariant::Preview).unwrap();

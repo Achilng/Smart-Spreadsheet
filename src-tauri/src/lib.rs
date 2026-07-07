@@ -83,6 +83,7 @@ pub fn run() {
             app::commands::show_item_in_explorer,
             app::commands::open_rejected_images_directory,
             app::commands::prepare_file_drag,
+            app::commands::get_row_vibe_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Smart Spreadsheet");

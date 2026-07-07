@@ -122,6 +122,11 @@ export function prepareFileDrag(rowId: number): Promise<FileDragInfo> {
   return invoke<FileDragInfo>("prepare_file_drag", { rowId });
 }
 
+/** 行图片 Comment 元数据里的 vibe 引用数；文件缺失或解析失败时为 null。 */
+export function getRowVibeStatus(rowId: number): Promise<number | null> {
+  return invoke<number | null>("get_row_vibe_status", { rowId });
+}
+
 export function showItemInExplorer(rowId: number): Promise<void> {
   return invoke<void>("show_item_in_explorer", { rowId });
 }

@@ -120,24 +120,25 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::*;
+    use crate::storage::test_fixtures;
 
     #[test]
     fn deletes_rows_with_stored_copies_and_thumbnails() {
         let temporary = TemporaryDelete::new();
         let directory = DataDirectory::initialize(&temporary.data).unwrap();
-        let outcome = directory.import_workbook(sample_workbook()).unwrap();
+        let folder = test_fixtures::sample_image_folder(&temporary.root, 5);
+        let outcome = directory.import_images(&folder, |_| {}).unwrap();
         assert_eq!(outcome.added, 5);
 
-        // 行 1 的受管副本与伪造的缩略图缓存。
-        let stored = directory
+        // 行 1 的外部图片 + 文件夹导入生成的受管副本，加伪造的缩略图缓存。
+        let external = directory
             .open_database()
             .unwrap()
             .row_image_locator(1)
             .unwrap()
-            .stored_image_path
+            .image_path
             .unwrap();
-        let stored_path = directory.root().join(&stored);
-        assert!(stored_path.is_file());
+        assert!(PathBuf::from(&external).is_file());
         let thumbnail = directory
             .thumbnail_cache_path()
             .join("row-1-0123456789abcdef.png");
@@ -155,7 +156,6 @@ mod tests {
         assert_eq!(report.removed_files, 1);
         assert_eq!(report.cleanup_failures, 0);
         assert_eq!(report.trashed_original_files, 0);
-        assert!(!stored_path.exists());
         assert!(!thumbnail.exists());
         assert!(unrelated.exists());
         let database = directory.open_database().unwrap();
@@ -264,13 +264,6 @@ mod tests {
         assert_eq!(trash_calls, 0);
         assert!(original.is_file());
         assert_eq!(fs::read(original).unwrap(), b"original bytes");
-    }
-
-    fn sample_workbook() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("..")
-            .join("Examples")
-            .join("novelai_metadata.xlsx")
     }
 
     struct TemporaryDelete {

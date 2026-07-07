@@ -20,7 +20,7 @@ impl SourceType {
         }
     }
 
-    fn from_str(value: &str) -> Result<Self, DatabaseError> {
+    pub(crate) fn from_str(value: &str) -> Result<Self, DatabaseError> {
         match value {
             "xlsx" => Ok(Self::Xlsx),
             "folder" => Ok(Self::Folder),

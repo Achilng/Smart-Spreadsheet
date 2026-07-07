@@ -892,8 +892,10 @@ pub(crate) fn prepare_file_drag(
         .map_err(error_text)?
         .row_image_locator(row_id)
         .map_err(error_text)?;
-    let file_path = crate::storage::resolve_image_source(&directory, &locator)
-        .ok_or_else(|| format!("第 {row_id} 行没有可用的图片文件"))?;
+    // 拖出的文件会被下游（如 NovelAI）读取元数据，必须是完整原件，
+    // 不能静默回退到无元数据的 xlsx 嵌入缩略图。
+    let file_path = crate::storage::resolve_original_source(&directory, &locator)
+        .map_err(|error| format!("第 {row_id} 行无法拖出：{error}"))?;
 
     let thumb_dir = directory.thumbnail_cache_path();
     let prefix = format!("row-{row_id}-");
@@ -913,6 +915,40 @@ pub(crate) fn prepare_file_drag(
         file_path: file_path.to_string_lossy().into_owned(),
         icon_path: icon_path.to_string_lossy().into_owned(),
     })
+}
+
+/// 行图片的 vibe 引用数：读取图片 Comment 元数据中的 `reference_image_multiple`。
+/// 文件缺失或元数据无法解析时返回 None（前端不显示徽标）。
+#[tauri::command]
+pub(crate) async fn get_row_vibe_status(
+    row_id: i64,
+    app: tauri::AppHandle,
+) -> Result<Option<u32>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let runtime = app.state::<AppRuntime>();
+        let directory = runtime.active_directory().map_err(error_text)?;
+        let locator = directory
+            .open_database()
+            .map_err(error_text)?
+            .row_image_locator(row_id)
+            .map_err(error_text)?;
+        let Some(path) = crate::storage::resolve_image_source(&directory, &locator) else {
+            return Ok(None);
+        };
+        Ok(vibe_reference_count(&path))
+    })
+    .await
+    .map_err(|e| format!("vibe 状态读取异常: {e}"))?
+}
+
+fn vibe_reference_count(path: &Path) -> Option<u32> {
+    let chunks = crate::pipeline::png_text::read_png_text_chunks(path).ok()?;
+    let value: serde_json::Value = serde_json::from_str(chunks.get("Comment")?).ok()?;
+    let count = value
+        .get("reference_image_multiple")
+        .and_then(|refs| refs.as_array())
+        .map_or(0, Vec::len);
+    u32::try_from(count).ok()
 }
 
 fn open_path_in_explorer(path: &Path) {

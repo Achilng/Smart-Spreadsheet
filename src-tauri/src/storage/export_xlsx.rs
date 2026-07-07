@@ -192,12 +192,14 @@ mod tests {
 
     use super::*;
     use crate::db::TagMatchMode;
+    use crate::storage::test_fixtures;
 
     #[test]
     fn exports_selection_with_tags_and_embedded_thumbnails() {
         let temporary = TemporaryXlsxExport::new();
         let directory = DataDirectory::initialize(&temporary.data).unwrap();
-        directory.import_workbook(sample_workbook()).unwrap();
+        let folder = test_fixtures::sample_image_folder(&temporary.root, 5);
+        directory.import_images(&folder, |_| {}).unwrap();
         {
             let mut database = directory.open_database().unwrap();
             database
@@ -245,7 +247,8 @@ mod tests {
     fn refuses_existing_destination_and_empty_selection() {
         let temporary = TemporaryXlsxExport::new();
         let directory = DataDirectory::initialize(&temporary.data).unwrap();
-        directory.import_workbook(sample_workbook()).unwrap();
+        let folder = test_fixtures::sample_image_folder(&temporary.root, 5);
+        directory.import_images(&folder, |_| {}).unwrap();
 
         fs::write(&temporary.destination, b"keep").unwrap();
         let existing = directory
@@ -275,13 +278,6 @@ mod tests {
             .unwrap_err();
         assert!(matches!(empty, XlsxExportError::EmptySelection));
         assert!(!other.exists());
-    }
-
-    fn sample_workbook() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("..")
-            .join("Examples")
-            .join("novelai_metadata.xlsx")
     }
 
     struct TemporaryXlsxExport {
