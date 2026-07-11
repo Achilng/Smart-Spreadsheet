@@ -422,7 +422,6 @@ impl AppRuntime {
         tag_mode: TagMatchMode,
         single_artist_only: bool,
         hide_grouped: bool,
-        min_members: u64,
     ) -> Result<Vec<DedupeCluster>, AppRuntimeError> {
         self.with_database(|db| {
             db.list_dedupe_clusters(
@@ -431,15 +430,7 @@ impl AppRuntime {
                 tag_mode,
                 single_artist_only,
                 hide_grouped,
-                min_members,
             )
-        })
-    }
-
-    /// 画册集：每个画师串成一册（含单张），忽略 Tag 筛选与分组。
-    pub(crate) fn list_artist_albums(&self) -> Result<Vec<DedupeCluster>, AppRuntimeError> {
-        self.with_database(|db| {
-            db.list_dedupe_clusters(DedupeMode::Artists, &[], TagMatchMode::And, false, false, 1)
         })
     }
 

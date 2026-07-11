@@ -17,7 +17,6 @@
   import DetailPanel from "./DetailPanel.svelte";
   import DeleteDialog from "./DeleteDialog.svelte";
   import DropConfirmDialog from "./DropConfirmDialog.svelte";
-  import AlbumBrowseView from "../albums/AlbumBrowseView.svelte";
   import ArtistGeneratorView from "../tools/ArtistGeneratorView.svelte";
   import DuplicateBrowseView from "../duplicates/DuplicateBrowseView.svelte";
   import GalleryView from "../gallery/GalleryView.svelte";
@@ -42,7 +41,6 @@
     gallery: true,
     table: false,
     duplicates: false,
-    albums: false,
     promptDocs: false,
   });
 
@@ -144,11 +142,6 @@
           {#if visitedViews.group}
             <section class="view-panel" class:is-active={app.viewMode === "group"}>
               <GroupBrowseView active={app.viewMode === "group"} />
-            </section>
-          {/if}
-          {#if visitedViews.albums}
-            <section class="view-panel" class:is-active={app.viewMode === "albums"}>
-              <AlbumBrowseView active={app.viewMode === "albums"} />
             </section>
           {/if}
           {#if visitedViews.duplicates}

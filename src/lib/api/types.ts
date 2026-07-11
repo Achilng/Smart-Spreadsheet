@@ -16,7 +16,7 @@ export type RowSelection =
     };
 
 // ── Dedupe Clusters ────────────────────────────────────────────
-// 该类型由 duplicates.ts（真正的重复聚合）与 albums.ts（画师画册，复用同一结构）共用。
+// 重复项聚合结构。
 
 export interface DedupeCluster {
   key: string;

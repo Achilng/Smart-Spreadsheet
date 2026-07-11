@@ -10,7 +10,7 @@ pub const MAX_PAGE_SIZE: u32 = 500;
 pub(super) const FILTER_TAGS_TABLE: &str = "temp.query_filter_tags";
 /// 主查询的筛选结果缓存表：随 `Database::query_cache` 一起跨调用复用。
 const FILTERED_ROWS_TABLE: &str = "temp.query_filtered_rows";
-/// 分组/画册成员等一次性查询的物化表，与缓存表分开以免破坏缓存。
+/// 分组成员等一次性查询的物化表，与缓存表分开以免破坏缓存。
 const SCRATCH_ROWS_TABLE: &str = "temp.query_scratch_rows";
 const PAGE_ROWS_TABLE: &str = "temp.query_page_rows";
 
@@ -297,7 +297,6 @@ impl Database {
         Ok(ids)
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub fn list_dedupe_clusters(
         &mut self,
         dedupe: DedupeMode,
@@ -305,7 +304,6 @@ impl Database {
         tag_mode: TagMatchMode,
         single_artist_only: bool,
         hide_grouped: bool,
-        min_members: u64,
     ) -> Result<Vec<DedupeCluster>, DatabaseError> {
         let (column, mode_str) = match dedupe {
             DedupeMode::PositivePrompt => ("positive_prompt", "positivePrompt"),
@@ -342,7 +340,7 @@ impl Database {
                      )
                      WHERE dedupe_key IS NOT NULL
                      GROUP BY dedupe_key
-                     HAVING cnt >= {min_members}
+                     HAVING cnt >= 2
                  ) g
                  LEFT JOIN dedupe_aliases da ON da.mode = ?1 AND da.key = g.dedupe_key
                  ORDER BY g.cnt DESC, g.dedupe_key"
@@ -1247,7 +1245,7 @@ mod tests {
     }
 
     #[test]
-    fn list_dedupe_clusters_includes_singletons_when_min_is_one() {
+    fn list_dedupe_clusters_excludes_singletons() {
         let mut database = database_with_rows(3);
         database
             .connection
@@ -1261,16 +1259,10 @@ mod tests {
             .unwrap();
 
         let duplicates = database
-            .list_dedupe_clusters(DedupeMode::Artists, &[], TagMatchMode::And, false, false, 2)
+            .list_dedupe_clusters(DedupeMode::Artists, &[], TagMatchMode::And, false, false)
             .unwrap();
         assert_eq!(duplicates.len(), 1);
         assert_eq!(duplicates[0].key, "artist:a");
         assert_eq!(duplicates[0].member_count, 2);
-
-        let albums = database
-            .list_dedupe_clusters(DedupeMode::Artists, &[], TagMatchMode::And, false, false, 1)
-            .unwrap();
-        let keys: Vec<&str> = albums.iter().map(|cluster| cluster.key.as_str()).collect();
-        assert_eq!(keys, vec!["artist:a", "artist:solo"]);
     }
 }

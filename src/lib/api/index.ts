@@ -4,7 +4,7 @@ export * from "./rows";
 export * from "./tags";
 export * from "./groups";
 export * from "./duplicates";
-export * from "./albums";
+export * from "./artists";
 export * from "./prompt-edit";
 export * from "./import-export";
 export * from "./search";

@@ -17,7 +17,12 @@
     ),
   );
 
+  function suppressDefaultContextMenu(event: MouseEvent): void {
+    event.preventDefault();
+  }
 </script>
+
+<svelte:window oncontextmenu={suppressDefaultContextMenu} />
 
 {#if inWorkspace}
   <Workspace />

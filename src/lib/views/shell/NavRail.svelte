@@ -6,7 +6,6 @@
     { mode: "gallery", label: "画廊" },
     { mode: "table", label: "表格" },
     { mode: "group", label: "分组" },
-    { mode: "albums", label: "画册" },
     { mode: "duplicates", label: "重复" },
     { mode: "promptDocs", label: "提示词" },
   ];
@@ -50,11 +49,6 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
           <circle cx="9" cy="9" r="6" />
           <circle cx="15" cy="15" r="6" />
-        </svg>
-      {:else if view.mode === "albums"}
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round">
-          <path d="M12 6c-2-1.5-5-2-8-1.5v13c3-.5 6 0 8 1.5c2-1.5 5-2 8-1.5v-13c-3-.5-6 0-8 1.5Z" />
-          <line x1="12" y1="6" x2="12" y2="19" />
         </svg>
       {:else if view.mode === "duplicates"}
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">

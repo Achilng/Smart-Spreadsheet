@@ -42,7 +42,6 @@ pub fn run() {
             app::commands::list_dedupe_clusters,
             app::commands::get_dedupe_cluster_members,
             app::commands::set_dedupe_alias,
-            app::commands::list_artist_albums,
             app::commands::list_distinct_artists,
             app::commands::row_ids_with_artists,
             app::commands::get_custom_artists,
