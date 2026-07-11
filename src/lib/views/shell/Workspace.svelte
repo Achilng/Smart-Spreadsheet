@@ -33,6 +33,7 @@
   import TableView from "../table/TableView.svelte";
   import TagSidebar from "./TagSidebar.svelte";
   import TopBar from "./TopBar.svelte";
+  import UpdateImportDialog from "./UpdateImportDialog.svelte";
 
   type DataViewMode = Exclude<ViewMode, "promptDocs">;
 
@@ -208,6 +209,7 @@
 <SectionContextMenu />
 <DeleteDialog />
 <DropConfirmDialog />
+<UpdateImportDialog />
 
 {#if dropState.dragging && app.viewMode !== "promptDocs"}
   <div class="drop-overlay">

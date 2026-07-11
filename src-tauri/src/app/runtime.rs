@@ -14,11 +14,11 @@ use crate::db::{
 use crate::images::{ImageVariant, RowImageError};
 use crate::storage::{
     ContentHashProgress, DataDirectory, ExportProgress, ImageFileExportMode,
-    ImageFilesExportError, ImageFilesExportOutcome, ImageFilesProgress, ImageImportError,
-    ImageImportOutcome, ImageImportProgress, JsonExportError, JsonExportOutcome,
-    JsonExportProgress, PerceptualHashProgress, PromptDocAsset, PromptDocDetail, PromptDocError,
-    PromptDocSummary, RowDeletionError, RowDeletionReport, SimilarImageMatch, StorageError,
-    XlsxExportError, XlsxExportOutcome,
+    ExistingImageUpdateOutcome, ImageFilesExportError, ImageFilesExportOutcome,
+    ImageFilesProgress, ImageImportError, ImageImportOutcome, ImageImportProgress, JsonExportError,
+    JsonExportOutcome, JsonExportProgress, PerceptualHashProgress, PromptDocAsset, PromptDocDetail,
+    PromptDocError, PromptDocSummary, RowDeletionError, RowDeletionReport, SimilarImageMatch,
+    StorageError, XlsxExportError, XlsxExportOutcome,
 };
 
 const LOCATOR_VERSION: u32 = 1;
@@ -199,6 +199,24 @@ impl AppRuntime {
         drop(state);
         let outcome = directory.import_images(path.as_ref(), progress)?;
         // 导入走独立连接写库，常驻连接上的查询缓存必须失效。
+        self.lock_state()?.invalidate_query_cache();
+        Ok((self.snapshot()?, outcome))
+    }
+
+    pub(crate) fn update_existing_images(
+        &self,
+        path: impl AsRef<Path>,
+        progress: impl Fn(ImageImportProgress) + Sync,
+    ) -> Result<(RuntimeSnapshot, ExistingImageUpdateOutcome), AppRuntimeError> {
+        let state = self.lock_state()?;
+        ensure_startup_valid(&state)?;
+        let directory = state
+            .active
+            .as_ref()
+            .ok_or(AppRuntimeError::NotConfigured)?
+            .clone();
+        drop(state);
+        let outcome = directory.update_existing_images(path.as_ref(), progress)?;
         self.lock_state()?.invalidate_query_cache();
         Ok((self.snapshot()?, outcome))
     }

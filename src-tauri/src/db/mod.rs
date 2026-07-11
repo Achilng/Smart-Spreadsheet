@@ -3,6 +3,7 @@ mod delete;
 mod export;
 mod groups;
 mod hashes;
+mod image_updates;
 pub mod identity;
 mod images;
 mod migrations;
@@ -26,6 +27,7 @@ use thiserror::Error;
 
 pub use export::ExportRow;
 pub use hashes::ContentHashCandidate;
+pub use image_updates::{ExistingImageTarget, ExistingImageUpdate};
 pub use images::RowImageLocator;
 pub use migrations::CURRENT_SCHEMA_VERSION;
 use migrations::{MIGRATION_1, MIGRATION_2, MIGRATION_3, MIGRATION_4, MIGRATION_5, MIGRATION_6};

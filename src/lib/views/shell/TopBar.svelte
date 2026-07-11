@@ -57,10 +57,15 @@
     { label: "重置表格", hint: "清空数据重新开始", action: () => void resetDataWithConfirmation() },
   ]);
 
-  const importItems: DropdownItem[] = [
+  const importItems = $derived<DropdownItem[]>([
     { label: "导入文件夹", action: () => void chooseImageFolder() },
     { label: "导入压缩包", hint: "zip / 7z / rar", action: () => void chooseImageArchive() },
-  ];
+    {
+      label: "更新现有图片",
+      hint: "只更新，不新增；保留 Tag / 分组",
+      action: () => (app.updateImportOpen = true),
+    },
+  ]);
 
   const scopeHint = $derived(`导出${exportScopeLabel()}`);
   const exportItems = $derived<DropdownItem[]>([

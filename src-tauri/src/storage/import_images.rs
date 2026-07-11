@@ -12,7 +12,8 @@ use super::content_hash::sha256_file;
 use super::perceptual_hash::compute_phash;
 use super::{DataDirectory, StagingDir, StorageError, canonical_display_path};
 use crate::db::identity::{archive_member_identity, file_identity};
-use crate::db::{DatabaseError, NewRow, SourceType};
+use crate::db::{DatabaseError, ExistingImageUpdate, NewRow, SourceType};
+use crate::fsx::{replace_output_file, unique_sibling_path};
 use crate::pipeline::archive::{ArchiveError, archive_extension, extract_archive};
 use crate::pipeline::scan::{ScanError, SourceImage, collect_png_files};
 use crate::pipeline::{parallel, parse_novelai_metadata, png_text};
@@ -69,6 +70,20 @@ pub struct ImageImportOutcome {
     pub rejected_moved: u64,
     /// 未能移动到用户配置目录的异常图片数；这些图片仍不入库。
     pub rejected_move_failures: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExistingImageUpdateOutcome {
+    pub source_type: SourceType,
+    pub total_found: usize,
+    pub matched: u64,
+    pub updated: u64,
+    /// 来源中没有对应资料库身份键的图片；更新模式明确忽略，不追加。
+    pub unmatched: u64,
+    /// 已匹配但 PNG 元数据读取失败或正负提示词均为空；保留原行。
+    pub metadata_rejected: u64,
+    /// 已匹配且元数据有效，但受管原图副本刷新失败；保留原行。
+    pub copy_failures: u64,
 }
 
 #[derive(Debug, Error)]
@@ -343,6 +358,209 @@ impl DataDirectory {
     }
 }
 
+impl DataDirectory {
+    /// 重新读取来源中已入库图片的元数据和图片指纹，原位更新对应行。
+    /// 新图片不追加，来源中缺失的旧图片不删除；Tag、分组和行 ID 均保持不变。
+    pub fn update_existing_images(
+        &self,
+        input: &Path,
+        progress: impl Fn(ImageImportProgress) + Sync,
+    ) -> Result<ExistingImageUpdateOutcome, ImageImportError> {
+        let reporter = ProgressReporter::new(progress);
+        let input_display = canonical_display_path(input);
+        let is_archive = input.is_file() && archive_extension(input).is_some();
+        let mut run_temp: Option<RunTempDir> = None;
+        let (scan_root, source_type) = if is_archive {
+            reporter.emit(ImageImportStage::Extracting, 0, 0, true);
+            let temp = RunTempDir::create()?;
+            let extract_dir = temp.path().join("archive");
+            extract_archive(input, &extract_dir)?;
+            run_temp = Some(temp);
+            (extract_dir, SourceType::Archive)
+        } else {
+            (input.to_owned(), SourceType::Folder)
+        };
+
+        reporter.emit(ImageImportStage::Scanning, 0, 0, true);
+        let images = collect_png_files(&scan_root)?;
+        if images.is_empty() {
+            return Err(ImageImportError::NoImagesFound(input.to_owned()));
+        }
+        let total_found = images.len();
+        reporter.emit(ImageImportStage::Scanning, total_found, total_found, true);
+
+        let scan_root_display = if source_type == SourceType::Archive {
+            input_display.clone()
+        } else if input.is_file() {
+            Path::new(&input_display)
+                .parent()
+                .map(|parent| parent.display().to_string())
+                .unwrap_or_else(|| input_display.clone())
+        } else {
+            input_display.clone()
+        };
+        let identities = images
+            .iter()
+            .map(|image| match source_type {
+                SourceType::Archive => {
+                    archive_member_identity(&input_display, &image.relative_path)
+                }
+                _ => file_identity(&format!(
+                    "{scan_root_display}\\{}",
+                    image.relative_path
+                )),
+            })
+            .collect::<Vec<_>>();
+
+        let mut database = self.open_database()?;
+        let targets = database.existing_image_targets(&identities)?;
+        let matched = u64::try_from(targets.len()).unwrap_or(u64::MAX);
+        let unmatched = u64::try_from(total_found.saturating_sub(targets.len()))
+            .unwrap_or(u64::MAX);
+        let jobs = images
+            .into_iter()
+            .zip(identities)
+            .filter_map(|(image, identity)| {
+                targets
+                    .get(&identity)
+                    .cloned()
+                    .map(|target| (image, target))
+            })
+            .collect::<Vec<_>>();
+
+        let processing_total = jobs.len();
+        reporter.emit(ImageImportStage::Processing, 0, processing_total, true);
+        let inspected = parallel::parallel_map(
+            jobs,
+            parallel::worker_count(processing_total),
+            |_, (image, target)| (inspect_metadata(image), target),
+            |completed| {
+                reporter.emit(
+                    ImageImportStage::Processing,
+                    completed,
+                    processing_total,
+                    completed == processing_total,
+                );
+            },
+        );
+        let mut metadata_rejected = 0_u64;
+        let valid = inspected
+            .into_iter()
+            .filter_map(|(inspection, target)| match inspection {
+                MetadataInspection::Valid(image) => Some((image, target)),
+                MetadataInspection::Rejected(_) => {
+                    metadata_rejected += 1;
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+
+        let hash_total = valid.len();
+        reporter.emit(ImageImportStage::Hashing, 0, hash_total, true);
+        let hashed = parallel::parallel_map(
+            valid,
+            parallel::worker_count(hash_total),
+            |_, (image, target)| {
+                let content_hash = sha256_file(&image.source.absolute_path).ok();
+                (image, target, content_hash)
+            },
+            |completed| {
+                reporter.emit(
+                    ImageImportStage::Hashing,
+                    completed,
+                    hash_total,
+                    completed == hash_total,
+                );
+            },
+        );
+
+        let phash_total = hashed.len();
+        reporter.emit(ImageImportStage::PerceptualHashing, 0, phash_total, true);
+        let prepared = parallel::parallel_map(
+            hashed,
+            parallel::worker_count(phash_total),
+            |_, (image, target, content_hash)| {
+                let perceptual_hash = compute_phash(&image.source.absolute_path).ok();
+                (image, target, content_hash, perceptual_hash)
+            },
+            |completed| {
+                reporter.emit(
+                    ImageImportStage::PerceptualHashing,
+                    completed,
+                    phash_total,
+                    completed == phash_total,
+                );
+            },
+        );
+
+        let mut copy_failures = 0_u64;
+        let mut updates = Vec::with_capacity(prepared.len());
+        for (image, target, content_hash, perceptual_hash) in prepared {
+            if let Some(relative) = target.stored_image_path.as_deref()
+                && refresh_stored_copy(self, &image.source.absolute_path, relative).is_err()
+            {
+                copy_failures += 1;
+                continue;
+            }
+            // 缓存删除失败不应阻止元数据更新；下次图片加载仍会按文件签名生成新缓存。
+            let _ = remove_row_thumbnail_cache(self, target.row_id);
+            updates.push(ExistingImageUpdate {
+                row_id: target.row_id,
+                source_size: i64::try_from(image.source.size).ok(),
+                source_mtime: image.source.modified_nanos,
+                positive_prompt: image.positive_prompt,
+                negative_prompt: image.negative_prompt,
+                artists: image.artists,
+                content_hash,
+                perceptual_hash,
+            });
+        }
+        let updated = database.update_existing_images(&updates)?;
+
+        drop(run_temp);
+        Ok(ExistingImageUpdateOutcome {
+            source_type,
+            total_found,
+            matched,
+            updated,
+            unmatched,
+            metadata_rejected,
+            copy_failures,
+        })
+    }
+}
+
+fn refresh_stored_copy(
+    directory: &DataDirectory,
+    source: &Path,
+    relative: &str,
+) -> Result<(), std::io::Error> {
+    let target = directory.root().join(relative);
+    if let Some(parent) = target.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let temporary = unique_sibling_path(&target, "image-update");
+    if let Err(error) = fs::copy(source, &temporary) {
+        let _ = fs::remove_file(&temporary);
+        return Err(error);
+    }
+    replace_output_file(&temporary, &target)
+}
+
+fn remove_row_thumbnail_cache(
+    directory: &DataDirectory,
+    row_id: i64,
+) -> Result<(), std::io::Error> {
+    let prefix = format!("row-{row_id}-");
+    for entry in fs::read_dir(directory.thumbnail_cache_path())? {
+        let entry = entry?;
+        if entry.path().is_file() && entry.file_name().to_string_lossy().starts_with(&prefix) {
+            fs::remove_file(entry.path())?;
+        }
+    }
+    Ok(())
+}
+
 struct ProcessImageContext<'a> {
     source_type: SourceType,
     input_display: &'a str,
@@ -610,6 +828,7 @@ mod tests {
 
     use super::*;
     use crate::db::RowSelection;
+    use crate::storage::test_fixtures::write_metadata_png;
 
     /// 仅含文本元数据的最小 PNG（签名 + tEXt + IEND，CRC 占位即可，
     /// 文本读取器跳过 CRC 校验）。
@@ -699,6 +918,64 @@ mod tests {
     }
 
     #[test]
+    fn update_import_changes_only_existing_rows_and_preserves_tags_and_group() {
+        let temporary = TemporaryImageImport::new();
+        let input = temporary.root.join("update-input");
+        fs::create_dir_all(&input).unwrap();
+        let existing = input.join("existing.png");
+        let rejected_update = input.join("failing.png");
+        write_metadata_png(&existing, "old prompt, artist:old");
+        write_metadata_png(&rejected_update, "keep this old prompt");
+        let directory = temporary.initialize_directory();
+        directory.import_images(&input, |_| {}).unwrap();
+
+        let mut database = directory.open_database().unwrap();
+        database.create_tag("保留标签").unwrap();
+        database
+            .set_tags_for_row(1, &["保留标签".into()])
+            .unwrap();
+        let group = database.create_group("保留分组").unwrap();
+        database
+            .assign_rows_to_group(
+                &RowSelection::Explicit { row_ids: vec![1] },
+                group.id,
+            )
+            .unwrap();
+        let stored_path = database
+            .row_image_locator(1)
+            .unwrap()
+            .stored_image_path
+            .unwrap();
+        drop(database);
+
+        write_metadata_png(&existing, "new prompt, artist:new");
+        fs::write(&rejected_update, b"not a valid png").unwrap();
+        write_metadata_png(&input.join("brand-new.png"), "must not be added");
+
+        let outcome = directory.update_existing_images(&input, |_| {}).unwrap();
+
+        assert_eq!(outcome.total_found, 3);
+        assert_eq!(outcome.matched, 2);
+        assert_eq!(outcome.updated, 1);
+        assert_eq!(outcome.unmatched, 1);
+        assert_eq!(outcome.metadata_rejected, 1);
+        assert_eq!(outcome.copy_failures, 0);
+        let mut database = directory.open_database().unwrap();
+        assert_eq!(database.library_summary().unwrap().row_count, 2);
+        let rows = database.get_rows_by_ids(&[1, 2]).unwrap();
+        assert_eq!(rows[0].positive_prompt.as_deref(), Some("new prompt, artist:new"));
+        assert_eq!(rows[0].artists.as_deref(), Some("artist:new"));
+        assert_eq!(rows[0].tags, vec!["保留标签"]);
+        assert_eq!(rows[0].group_id, Some(group.id));
+        assert_eq!(rows[0].group_name.as_deref(), Some("保留分组"));
+        assert_eq!(rows[1].positive_prompt.as_deref(), Some("keep this old prompt"));
+        assert_eq!(
+            fs::read(directory.root().join(stored_path)).unwrap(),
+            fs::read(existing).unwrap()
+        );
+    }
+
+    #[test]
     fn imports_zip_archive_with_stored_copies_and_skips_reimport() {
         let temporary = TemporaryImageImport::new();
         fs::create_dir_all(&temporary.root).unwrap();
@@ -753,6 +1030,69 @@ mod tests {
                 .unwrap()
                 .row_count,
             1
+        );
+    }
+
+    #[test]
+    fn update_import_refreshes_existing_archive_member_without_adding_new_member() {
+        let temporary = TemporaryImageImport::new();
+        fs::create_dir_all(&temporary.root).unwrap();
+        let existing_png = temporary.root.join("archive-existing.png");
+        let new_png = temporary.root.join("archive-new.png");
+        let archive_path = temporary.root.join("update-pack.zip");
+        write_metadata_png(&existing_png, "archive old prompt");
+        {
+            let file = fs::File::create(&archive_path).unwrap();
+            let mut writer = zip::ZipWriter::new(file);
+            writer
+                .start_file("nested/existing.png", zip::write::SimpleFileOptions::default())
+                .unwrap();
+            writer.write_all(&fs::read(&existing_png).unwrap()).unwrap();
+            writer.finish().unwrap();
+        }
+        let directory = temporary.initialize_directory();
+        directory.import_images(&archive_path, |_| {}).unwrap();
+        let stored_path = directory
+            .open_database()
+            .unwrap()
+            .row_image_locator(1)
+            .unwrap()
+            .stored_image_path
+            .unwrap();
+
+        write_metadata_png(&existing_png, "archive new prompt");
+        write_metadata_png(&new_png, "archive member must not be added");
+        {
+            let file = fs::File::create(&archive_path).unwrap();
+            let mut writer = zip::ZipWriter::new(file);
+            let options = zip::write::SimpleFileOptions::default();
+            writer.start_file("nested/existing.png", options).unwrap();
+            writer.write_all(&fs::read(&existing_png).unwrap()).unwrap();
+            writer.start_file("nested/new.png", options).unwrap();
+            writer.write_all(&fs::read(&new_png).unwrap()).unwrap();
+            writer.finish().unwrap();
+        }
+
+        let outcome = directory
+            .update_existing_images(&archive_path, |_| {})
+            .unwrap();
+
+        assert_eq!(outcome.source_type, SourceType::Archive);
+        assert_eq!(outcome.total_found, 2);
+        assert_eq!(outcome.matched, 1);
+        assert_eq!(outcome.updated, 1);
+        assert_eq!(outcome.unmatched, 1);
+        let mut database = directory.open_database().unwrap();
+        assert_eq!(database.library_summary().unwrap().row_count, 1);
+        assert_eq!(
+            database.get_rows_by_ids(&[1]).unwrap()[0]
+                .positive_prompt
+                .as_deref(),
+            Some("archive new prompt")
+        );
+        assert_eq!(
+            fs::read(directory.root().join(stored_path)).unwrap(),
+            fs::read(existing_png).unwrap()
         );
     }
 

@@ -3,6 +3,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 
 import {
   importImages,
+  updateExistingImages,
   type ImageImportProgress,
 } from "../api";
 import { app, formatCount, runAction, setNotice } from "./app-state.svelte";
@@ -70,6 +71,41 @@ export async function runImageImport(path: string): Promise<void> {
       setNotice({
         tone: "success",
         text: `导入完成（共发现 ${formatCount(result.totalFound)} 张）：${parts.join("，")}。`,
+      });
+    } finally {
+      unlisten();
+      app.importProgress = null;
+    }
+  });
+}
+
+export async function runExistingImageUpdate(path: string): Promise<void> {
+  await runAction(async () => {
+    const unlisten = await listen<ImageImportProgress>(
+      "import-images://progress",
+      event => {
+        app.importProgress = event.payload;
+      },
+    );
+    try {
+      const result = await updateExistingImages(path);
+      app.snapshot = result.snapshot;
+      if (result.updated > 0) {
+        app.dataVersion += 1;
+      }
+      const parts = [`更新 ${formatCount(result.updated)} 张`];
+      if (result.unmatched > 0) {
+        parts.push(`忽略 ${formatCount(result.unmatched)} 张未入库图片（未新增）`);
+      }
+      if (result.metadataRejected > 0) {
+        parts.push(`${formatCount(result.metadataRejected)} 张元数据读取失败（保留原数据）`);
+      }
+      if (result.copyFailures > 0) {
+        parts.push(`${formatCount(result.copyFailures)} 张副本刷新失败（保留原数据）`);
+      }
+      setNotice({
+        tone: "success",
+        text: `更新完成（共发现 ${formatCount(result.totalFound)} 张，匹配 ${formatCount(result.matched)} 张）：${parts.join("，")}。`,
       });
     } finally {
       unlisten();

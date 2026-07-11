@@ -38,6 +38,8 @@ export const app = $state({
   dataVersion: 0,
   /** 文件夹/压缩包导入进行中的进度，空闲时为 null */
   importProgress: null as ImageImportProgress | null,
+  /** “更新现有图片”说明与来源选择弹窗 */
+  updateImportOpen: false,
   /** 打开旧目录时历史图片内容哈希补算进度，空闲时为 null */
   hashProgress: null as ContentHashProgress | null,
   /** 导出（xlsx / JSON / 图片文件）进行中的进度，空闲时为 null */

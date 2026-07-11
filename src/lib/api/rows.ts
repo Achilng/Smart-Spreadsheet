@@ -16,6 +16,17 @@ export interface ImageImportResult {
   rejectedMoveFailures: number;
 }
 
+export interface ExistingImageUpdateResult {
+  snapshot: AppSnapshot;
+  sourceType: SourceType;
+  totalFound: number;
+  matched: number;
+  updated: number;
+  unmatched: number;
+  metadataRejected: number;
+  copyFailures: number;
+}
+
 export type ImageImportStage = "extracting" | "scanning" | "hashing" | "processing" | "perceptualHashing";
 
 export interface ImageImportProgress {
@@ -79,6 +90,10 @@ export interface RowPage {
 
 export function importImages(path: string): Promise<ImageImportResult> {
   return invoke<ImageImportResult>("import_images", { path });
+}
+
+export function updateExistingImages(path: string): Promise<ExistingImageUpdateResult> {
+  return invoke<ExistingImageUpdateResult>("update_existing_images", { path });
 }
 
 export function deleteRows(selection: RowSelection, trashOriginals: boolean): Promise<DeleteResult> {

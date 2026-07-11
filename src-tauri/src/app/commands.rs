@@ -69,6 +69,19 @@ pub(crate) struct ImageImportResultDto {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub(crate) struct ExistingImageUpdateResultDto {
+    snapshot: AppSnapshotDto,
+    source_type: &'static str,
+    total_found: usize,
+    matched: u64,
+    updated: u64,
+    unmatched: u64,
+    metadata_rejected: u64,
+    copy_failures: u64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct RowPageDto {
     rows: Vec<RowRecord>,
     total_count: u64,
@@ -233,6 +246,34 @@ pub(crate) async fn import_images(
     })
     .await
     .map_err(|error| format!("导入任务异常中止: {error}"))?
+}
+
+/// 仅更新身份键已存在的图片；进度复用 `import-images://progress`。
+#[tauri::command]
+pub(crate) async fn update_existing_images(
+    path: String,
+    app: tauri::AppHandle,
+) -> Result<ExistingImageUpdateResultDto, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let runtime = app.state::<AppRuntime>();
+        runtime
+            .update_existing_images(PathBuf::from(path), |progress| {
+                let _ = app.emit("import-images://progress", progress);
+            })
+            .map(|(snapshot, outcome)| ExistingImageUpdateResultDto {
+                snapshot: snapshot.into(),
+                source_type: outcome.source_type.as_str(),
+                total_found: outcome.total_found,
+                matched: outcome.matched,
+                updated: outcome.updated,
+                unmatched: outcome.unmatched,
+                metadata_rejected: outcome.metadata_rejected,
+                copy_failures: outcome.copy_failures,
+            })
+            .map_err(error_text)
+    })
+    .await
+    .map_err(|error| format!("更新现有图片任务异常中止: {error}"))?
 }
 
 #[tauri::command]

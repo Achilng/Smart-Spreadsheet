@@ -29,7 +29,8 @@ pub use export_images::{
 pub use export_json::{JsonExportError, JsonExportOutcome, JsonExportProgress};
 pub use export_xlsx::{ExportProgress, XlsxExportError, XlsxExportOutcome};
 pub use import_images::{
-    ImageImportError, ImageImportOutcome, ImageImportProgress, ImageImportStage,
+    ExistingImageUpdateOutcome, ImageImportError, ImageImportOutcome, ImageImportProgress,
+    ImageImportStage,
 };
 pub use migration::{MigrationOutcome, PreparedMigration};
 pub use perceptual_hash::{
