@@ -47,7 +47,7 @@ pub enum XlsxExportError {
 }
 
 impl DataDirectory {
-    /// 把选中行全新生成为带缩略图的 xlsx（7 列 + Tags 列）。
+    /// 把选中行全新生成为带缩略图的 xlsx（8 列 + Tags 列）。
     /// 缩略图复用应用缓存；个别图片不可用时该行仍导出文字字段。
     pub fn export_xlsx(
         &self,
@@ -90,17 +90,19 @@ impl DataDirectory {
             worksheet.set_column_width_pixels(0, THUMBNAIL_CELL_PIXELS)?;
             worksheet.set_column_width(1, 20)?;
             worksheet.set_column_width(2, 64)?;
-            worksheet.set_column_width(3, 48)?;
-            worksheet.set_column_width(4, 34)?;
-            worksheet.set_column_width(5, 18)?;
-            worksheet.set_column_width(6, 58)?;
-            worksheet.set_column_width(7, 30)?;
+            worksheet.set_column_width(3, 64)?;
+            worksheet.set_column_width(4, 48)?;
+            worksheet.set_column_width(5, 34)?;
+            worksheet.set_column_width(6, 18)?;
+            worksheet.set_column_width(7, 58)?;
+            worksheet.set_column_width(8, 30)?;
             worksheet.set_row_height_pixels(0, 28)?;
 
             for (column, header) in [
                 "图片",
                 "时间",
                 "正向提示词",
+                "角色提示词",
                 "负向提示词",
                 "画师串",
                 "图片文件夹",
@@ -129,13 +131,14 @@ impl DataDirectory {
 
                 write_text(worksheet, row_number, 1, &row.time, &text_format)?;
                 write_text(worksheet, row_number, 2, &row.positive_prompt, &text_format)?;
-                write_text(worksheet, row_number, 3, &row.negative_prompt, &text_format)?;
-                write_text(worksheet, row_number, 4, &row.artists, &text_format)?;
-                write_text(worksheet, row_number, 5, &row.image_folder, &text_format)?;
-                write_text(worksheet, row_number, 6, &row.image_path, &text_format)?;
+                write_text(worksheet, row_number, 3, &row.character_prompt, &text_format)?;
+                write_text(worksheet, row_number, 4, &row.negative_prompt, &text_format)?;
+                write_text(worksheet, row_number, 5, &row.artists, &text_format)?;
+                write_text(worksheet, row_number, 6, &row.image_folder, &text_format)?;
+                write_text(worksheet, row_number, 7, &row.image_path, &text_format)?;
                 worksheet.write_string_with_format(
                     row_number,
-                    7,
+                    8,
                     truncate_for_excel(&row.tags.join(", ")),
                     &text_format,
                 )?;
@@ -232,12 +235,16 @@ mod tests {
 
         let mut workbook: Xlsx<_> = open_workbook(&temporary.destination).unwrap();
         let range = workbook.worksheet_range_at(0).unwrap().unwrap();
-        assert_eq!(range.get_value((0, 7)), Some(&Data::String("Tags".into())));
         assert_eq!(
-            range.get_value((1, 7)),
+            range.get_value((0, 3)),
+            Some(&Data::String("角色提示词".into()))
+        );
+        assert_eq!(range.get_value((0, 8)), Some(&Data::String("Tags".into())));
+        assert_eq!(
+            range.get_value((1, 8)),
             Some(&Data::String("Landscape, landscape".into()))
         );
-        assert_eq!(range.get_value((5, 7)), Some(&Data::String("中文".into())));
+        assert_eq!(range.get_value((5, 8)), Some(&Data::String("中文".into())));
         // 重新解析固定结构成功 → 7 个必需表头完整。
         let parsed = crate::excel::read_fixed_workbook(&temporary.destination).unwrap();
         assert_eq!(parsed.rows.len(), 5);

@@ -509,6 +509,7 @@ impl DataDirectory {
                 source_size: i64::try_from(image.source.size).ok(),
                 source_mtime: image.source.modified_nanos,
                 positive_prompt: image.positive_prompt,
+                character_prompt: image.character_prompt,
                 negative_prompt: image.negative_prompt,
                 artists: image.artists,
                 content_hash,
@@ -572,6 +573,7 @@ struct ProcessImageContext<'a> {
 struct ParsedImage {
     source: SourceImage,
     positive_prompt: Option<String>,
+    character_prompt: Option<String>,
     negative_prompt: Option<String>,
     artists: Option<String>,
 }
@@ -587,13 +589,15 @@ fn inspect_metadata(image: SourceImage) -> MetadataInspection {
     };
     let metadata = parse_novelai_metadata(&chunks);
     let positive_prompt = nonempty_string(metadata.positive_prompt);
+    let character_prompt = nonempty_string(metadata.character_prompt);
     let negative_prompt = nonempty_string(metadata.negative_prompt);
-    if positive_prompt.is_none() && negative_prompt.is_none() {
+    if positive_prompt.is_none() && character_prompt.is_none() && negative_prompt.is_none() {
         return MetadataInspection::Rejected(image);
     }
     MetadataInspection::Valid(ParsedImage {
         source: image,
         positive_prompt,
+        character_prompt,
         negative_prompt,
         artists: nonempty_string(metadata.artist_tags.join("\n")),
     })
@@ -650,6 +654,7 @@ fn build_new_row(
         perceptual_hash,
         time: image.source.created.map(format_local_time),
         positive_prompt: image.positive_prompt,
+        character_prompt: image.character_prompt,
         negative_prompt: image.negative_prompt,
         artists: image.artists,
         image_folder: None,
@@ -828,7 +833,7 @@ mod tests {
 
     use super::*;
     use crate::db::RowSelection;
-    use crate::storage::test_fixtures::write_metadata_png;
+    use crate::storage::test_fixtures::{metadata_png_bytes, write_metadata_png};
 
     /// 仅含文本元数据的最小 PNG（签名 + tEXt + IEND，CRC 占位即可，
     /// 文本读取器跳过 CRC 校验）。
@@ -948,7 +953,16 @@ mod tests {
             .unwrap();
         drop(database);
 
-        write_metadata_png(&existing, "new prompt, artist:new");
+        fs::write(
+            &existing,
+            metadata_png_bytes(
+                "new base prompt, artist:base",
+                Some(
+                    r#"{"v4_prompt":{"caption":{"char_captions":[{"char_caption":"1girl, artist:character"}]}}}"#,
+                ),
+            ),
+        )
+        .unwrap();
         fs::write(&rejected_update, b"not a valid png").unwrap();
         write_metadata_png(&input.join("brand-new.png"), "must not be added");
 
@@ -963,8 +977,18 @@ mod tests {
         let mut database = directory.open_database().unwrap();
         assert_eq!(database.library_summary().unwrap().row_count, 2);
         let rows = database.get_rows_by_ids(&[1, 2]).unwrap();
-        assert_eq!(rows[0].positive_prompt.as_deref(), Some("new prompt, artist:new"));
-        assert_eq!(rows[0].artists.as_deref(), Some("artist:new"));
+        assert_eq!(
+            rows[0].positive_prompt.as_deref(),
+            Some("new base prompt, artist:base")
+        );
+        assert_eq!(
+            rows[0].character_prompt.as_deref(),
+            Some("1girl, artist:character")
+        );
+        assert_eq!(
+            rows[0].artists.as_deref(),
+            Some("artist:base\nartist:character")
+        );
         assert_eq!(rows[0].tags, vec!["保留标签"]);
         assert_eq!(rows[0].group_id, Some(group.id));
         assert_eq!(rows[0].group_name.as_deref(), Some("保留分组"));

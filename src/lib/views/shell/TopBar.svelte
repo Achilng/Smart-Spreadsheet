@@ -91,7 +91,7 @@
     <div class="search-box" data-tauri-drag-region>
       <input
         type="text"
-        placeholder="搜索文件名 / 提示词 / 画师…"
+        placeholder="搜索文件名 / 正向 / 角色 / 负向 / 画师…"
         value={searchInput}
         oninput={onSearchInput}
         class:has-value={searchInput.length > 0}

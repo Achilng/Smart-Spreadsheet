@@ -27,6 +27,13 @@ export function updateNegativePrompt(
   return invoke<number>("update_negative_prompt", { rowId, newPrompt });
 }
 
+export function updateCharacterPrompt(
+  rowId: number,
+  newPrompt: string,
+): Promise<SinglePromptEditResult> {
+  return invoke<SinglePromptEditResult>("update_character_prompt", { rowId, newPrompt });
+}
+
 export function findReplacePrompt(
   selection: RowSelection,
   find: string,

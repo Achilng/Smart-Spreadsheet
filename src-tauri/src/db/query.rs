@@ -64,6 +64,7 @@ pub struct RowRecord {
     pub source_ordinal: u32,
     pub time: Option<String>,
     pub positive_prompt: Option<String>,
+    pub character_prompt: Option<String>,
     pub negative_prompt: Option<String>,
     pub artists: Option<String>,
     pub image_folder: Option<String>,
@@ -558,6 +559,7 @@ pub(super) fn populate_filtered_rows(
             "({predicate}) AND (
                 INSTR(LOWER(COALESCE(rows.image_path, '')), ?1) > 0
                 OR INSTR(LOWER(COALESCE(rows.positive_prompt, '')), ?1) > 0
+                OR INSTR(LOWER(COALESCE(rows.character_prompt, '')), ?1) > 0
                 OR INSTR(LOWER(COALESCE(rows.negative_prompt, '')), ?1) > 0
                 OR INSTR(LOWER(COALESCE(rows.artists, '')), ?1) > 0
             )"
@@ -653,7 +655,7 @@ fn query_total_count(connection: &Connection, table: &str) -> Result<u64, Databa
 fn query_page_metadata(connection: &Connection) -> Result<Vec<RowRecord>, DatabaseError> {
     let mut statement = connection.prepare(&format!(
         "SELECT rows.id, rows.batch_id, rows.source_ordinal, rows.time,
-                rows.positive_prompt, rows.negative_prompt, rows.artists,
+                rows.positive_prompt, rows.character_prompt, rows.negative_prompt, rows.artists,
                 rows.image_folder, rows.image_path, rows.stored_image_path,
                 rows.metadata_failed, rows.group_id, groups.name
          FROM {PAGE_ROWS_TABLE} AS page
@@ -669,14 +671,15 @@ fn query_page_metadata(connection: &Connection) -> Result<Vec<RowRecord>, Databa
                 source_ordinal: row.get(2)?,
                 time: row.get(3)?,
                 positive_prompt: row.get(4)?,
-                negative_prompt: row.get(5)?,
-                artists: row.get(6)?,
-                image_folder: row.get(7)?,
-                image_path: row.get(8)?,
-                stored_image_path: row.get(9)?,
-                metadata_failed: row.get(10)?,
-                group_id: row.get(11)?,
-                group_name: row.get(12)?,
+                character_prompt: row.get(5)?,
+                negative_prompt: row.get(6)?,
+                artists: row.get(7)?,
+                image_folder: row.get(8)?,
+                image_path: row.get(9)?,
+                stored_image_path: row.get(10)?,
+                metadata_failed: row.get(11)?,
+                group_id: row.get(12)?,
+                group_name: row.get(13)?,
                 tags: Vec::new(),
             })
         })?
@@ -968,6 +971,39 @@ mod tests {
 
         database.bump_data_version();
         assert_eq!(query(&mut database, &[], TagMatchMode::And).total_count, 6);
+    }
+
+    #[test]
+    fn search_matches_character_prompt() {
+        let mut database = database_with_rows(3);
+        database
+            .connection
+            .execute(
+                "UPDATE rows SET character_prompt = 'silver hair, unique_role_token' WHERE id = 2",
+                [],
+            )
+            .unwrap();
+
+        let result = database
+            .query_rows(&RowQuery {
+                offset: 0,
+                limit: 10,
+                tags: Vec::new(),
+                tag_mode: TagMatchMode::And,
+                dedupe: DedupeMode::None,
+                single_artist_only: false,
+                group_view: false,
+                hide_grouped: false,
+                search: "UNIQUE_ROLE_TOKEN".into(),
+            })
+            .unwrap();
+
+        assert_eq!(result.total_count, 1);
+        assert_eq!(result.rows[0].id, 2);
+        assert_eq!(
+            result.rows[0].character_prompt.as_deref(),
+            Some("silver hair, unique_role_token")
+        );
     }
 
     #[test]

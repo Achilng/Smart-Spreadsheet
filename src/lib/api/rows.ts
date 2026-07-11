@@ -69,6 +69,7 @@ export interface RowRecord {
   sourceOrdinal: number;
   time: string | null;
   positivePrompt: string | null;
+  characterPrompt: string | null;
   negativePrompt: string | null;
   artists: string | null;
   imageFolder: string | null;

@@ -17,6 +17,7 @@ pub struct ExistingImageUpdate {
     pub source_size: Option<i64>,
     pub source_mtime: Option<i64>,
     pub positive_prompt: Option<String>,
+    pub character_prompt: Option<String>,
     pub negative_prompt: Option<String>,
     pub artists: Option<String>,
     pub content_hash: Option<String>,
@@ -81,11 +82,12 @@ impl Database {
                     source_size = ?2,
                     source_mtime = ?3,
                     positive_prompt = ?4,
-                    negative_prompt = ?5,
-                    artists = ?6,
+                    character_prompt = ?5,
+                    negative_prompt = ?6,
+                    artists = ?7,
                     metadata_failed = 0,
-                    content_hash = ?7,
-                    perceptual_hash = ?8
+                    content_hash = ?8,
+                    perceptual_hash = ?9
                  WHERE id = ?1",
             )?;
             for update in updates {
@@ -94,6 +96,7 @@ impl Database {
                     update.source_size,
                     update.source_mtime,
                     update.positive_prompt,
+                    update.character_prompt,
                     update.negative_prompt,
                     update.artists,
                     update.content_hash,
@@ -141,6 +144,7 @@ mod tests {
                 source_size: Some(100),
                 source_mtime: Some(200),
                 positive_prompt: Some("new prompt".into()),
+                character_prompt: Some("new character".into()),
                 negative_prompt: Some("new negative".into()),
                 artists: Some("artist:new".into()),
                 content_hash: Some("content".into()),
@@ -151,6 +155,7 @@ mod tests {
         assert_eq!(updated, 1);
         let rows = database.get_rows_by_ids(&[1]).unwrap();
         assert_eq!(rows[0].positive_prompt.as_deref(), Some("new prompt"));
+        assert_eq!(rows[0].character_prompt.as_deref(), Some("new character"));
         assert_eq!(rows[0].negative_prompt.as_deref(), Some("new negative"));
         assert_eq!(rows[0].artists.as_deref(), Some("artist:new"));
         assert_eq!(rows[0].tags, vec!["保留标签"]);

@@ -56,7 +56,7 @@ rows
   source_ordinal,                       -- 批内序号（xlsx 源行号 / 扫描序号）
   identity TEXT UNIQUE,                 -- 增量跳过的身份键
   source_size, source_mtime,            -- 变化检测（仅报告用）
-  time, positive_prompt, negative_prompt, artists,
+  time, positive_prompt, character_prompt, negative_prompt, artists,
   image_folder,                         -- 旧 xlsx 列，直接导入时为空
   image_path,                           -- 原始路径 / "压缩包 > 包内路径" 溯源文本
   stored_image_path,                    -- 受管副本相对路径（压缩包图/嵌入图），可空
@@ -71,6 +71,7 @@ tags / row_tags / settings              -- 不变（含 COLLATE BINARY 唯一索
 - `identity` 唯一索引是增量跳过的依据；导入时用 `INSERT ... ON CONFLICT(identity) DO NOTHING` 类语义批量判定。
 - `embedded_image_ref` 退役：v1→v2 迁移时把嵌入图从工作簿副本提取到受管 `files/`，行改为引用提取副本。
 - **v1→v2 迁移**：旧 `workbook` 记录转为一个 `source_type='xlsx'` 批次；行按原 `source_row` 顺序重建保持显示顺序；Tag 与关联原样保留；迁移在事务内完成，嵌入图提取失败不丢行（仅失去嵌入图回退）。
+- **v6→v7 迁移**：新增 `character_prompt` 可空列；历史正向提示词不做换行猜测拆分，避免误伤用户原有格式，使用“更新现有图片”后从 PNG V4 元数据准确回填。
 - 删除行：级联清理 `row_tags`，同时删除该行的受管副本文件和缩略图缓存；不再被引用的 Tag 沿用现有清理规则。
 
 受管数据目录新增 `files/` 子目录（按批次分目录存放提取副本），目录格式保持版本 1，`files/` 在打开时按需创建：

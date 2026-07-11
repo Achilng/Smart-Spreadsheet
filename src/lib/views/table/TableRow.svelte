@@ -93,6 +93,9 @@
     <div class="cell cell-prompt" title={row.positivePrompt ?? ""}>
       {row.positivePrompt ?? "—"}
     </div>
+    <div class="cell cell-prompt" title={row.characterPrompt ?? ""}>
+      {row.characterPrompt ?? "—"}
+    </div>
     <div class="cell cell-artists" title={row.artists ?? ""}>{row.artists ?? "—"}</div>
     <div class="cell cell-tags" title={row.tags.join(", ")}>
       {#each visibleTags as tag (tag)}
@@ -110,6 +113,7 @@
     <div class="cell cell-thumb"><span class="skeleton-line"></span></div>
     <div class="cell"><span class="skeleton-line"></span></div>
     <div class="cell"><span class="skeleton-line"></span></div>
+    <div class="cell"><span class="skeleton-line wide"></span></div>
     <div class="cell"><span class="skeleton-line wide"></span></div>
     <div class="cell"><span class="skeleton-line"></span></div>
     <div class="cell"><span class="skeleton-line"></span></div>

@@ -16,7 +16,7 @@
   const rowHeight = $derived(app.tableRowHeight);
   const thumbColWidth = $derived(Math.max(52, Math.round(rowHeight * 1.15)));
   const gridCols = $derived(
-    `36px ${thumbColWidth}px 64px 150px minmax(0, 2.2fr) minmax(0, 1.2fr) minmax(0, 1.4fr)`,
+    `36px ${thumbColWidth}px 64px 150px minmax(0, 1.8fr) minmax(0, 1.8fr) minmax(0, 1.1fr) minmax(0, 1.3fr)`,
   );
 
   let viewport = $state<HTMLDivElement | null>(null);
@@ -185,6 +185,7 @@
       <span>行号</span>
       <span>时间</span>
       <span>正向提示词</span>
+      <span>角色提示词</span>
       <span>画师串</span>
       <span>Tags</span>
     </div>

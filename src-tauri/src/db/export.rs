@@ -13,6 +13,7 @@ pub struct ExportRow {
     pub id: i64,
     pub time: Option<String>,
     pub positive_prompt: Option<String>,
+    pub character_prompt: Option<String>,
     pub negative_prompt: Option<String>,
     pub artists: Option<String>,
     pub image_folder: Option<String>,
@@ -35,8 +36,9 @@ impl Database {
         let mut rows: Vec<ExportRow> = Vec::new();
         {
             let mut statement = transaction.prepare(&format!(
-                "SELECT rows.id, rows.time, rows.positive_prompt, rows.negative_prompt,
-                        rows.artists, rows.image_folder, rows.image_path, rows.stored_image_path
+                "SELECT rows.id, rows.time, rows.positive_prompt, rows.character_prompt,
+                        rows.negative_prompt, rows.artists, rows.image_folder, rows.image_path,
+                        rows.stored_image_path
                  FROM {TARGET_ROWS_TABLE} AS target
                  JOIN rows ON rows.id = target.id
                  ORDER BY rows.id"
@@ -47,11 +49,12 @@ impl Database {
                     id: row.get(0)?,
                     time: row.get(1)?,
                     positive_prompt: row.get(2)?,
-                    negative_prompt: row.get(3)?,
-                    artists: row.get(4)?,
-                    image_folder: row.get(5)?,
-                    image_path: row.get(6)?,
-                    stored_image_path: row.get(7)?,
+                    character_prompt: row.get(3)?,
+                    negative_prompt: row.get(4)?,
+                    artists: row.get(5)?,
+                    image_folder: row.get(6)?,
+                    image_path: row.get(7)?,
+                    stored_image_path: row.get(8)?,
                     tags: Vec::new(),
                 });
             }

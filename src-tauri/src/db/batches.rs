@@ -60,6 +60,7 @@ pub struct NewRow {
     pub perceptual_hash: Option<String>,
     pub time: Option<String>,
     pub positive_prompt: Option<String>,
+    pub character_prompt: Option<String>,
     pub negative_prompt: Option<String>,
     pub artists: Option<String>,
     pub image_folder: Option<String>,
@@ -129,10 +130,10 @@ impl Database {
             let mut insert = transaction.prepare(
                 "INSERT INTO rows (
                     batch_id, source_ordinal, identity, source_size, source_mtime,
-                    time, positive_prompt, negative_prompt, artists,
+                    time, positive_prompt, character_prompt, negative_prompt, artists,
                     image_folder, image_path, stored_image_path, metadata_failed,
                     content_hash, perceptual_hash
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
             )?;
             for row in rows {
                 let existing = find_existing
@@ -175,6 +176,7 @@ impl Database {
                     row.source_mtime,
                     row.time,
                     row.positive_prompt,
+                    row.character_prompt,
                     row.negative_prompt,
                     row.artists,
                     row.image_folder,

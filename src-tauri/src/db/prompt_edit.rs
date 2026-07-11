@@ -153,17 +153,43 @@ impl Database {
         row_id: i64,
         new_prompt: &str,
     ) -> Result<SinglePromptEditResult, TagMutationError> {
-        let artists = extract_artist_tags(new_prompt);
-        let artists_str = if artists.is_empty() {
-            None
-        } else {
-            Some(artists.join(", "))
-        };
         let transaction = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let character_prompt: Option<String> = transaction.query_row(
+            "SELECT character_prompt FROM rows WHERE id = ?1",
+            [row_id],
+            |row| row.get(0),
+        )?;
+        let artists_str = combined_artists(new_prompt, character_prompt.as_deref());
         let updated = transaction.execute(
             "UPDATE rows SET positive_prompt = ?2, artists = ?3 WHERE id = ?1",
+            rusqlite::params![row_id, new_prompt, &artists_str],
+        )?;
+        transaction.commit()?;
+        Ok(SinglePromptEditResult {
+            affected_rows: updated as u64,
+            new_artists: artists_str,
+        })
+    }
+
+    pub fn update_character_prompt(
+        &mut self,
+        row_id: i64,
+        new_prompt: &str,
+    ) -> Result<SinglePromptEditResult, TagMutationError> {
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let positive_prompt: Option<String> = transaction.query_row(
+            "SELECT positive_prompt FROM rows WHERE id = ?1",
+            [row_id],
+            |row| row.get(0),
+        )?;
+        let artists_str =
+            combined_artists(positive_prompt.as_deref().unwrap_or(""), Some(new_prompt));
+        let updated = transaction.execute(
+            "UPDATE rows SET character_prompt = ?2, artists = ?3 WHERE id = ?1",
             rusqlite::params![row_id, new_prompt, &artists_str],
         )?;
         transaction.commit()?;
@@ -205,26 +231,21 @@ impl Database {
 
         let target = super::tags::TARGET_ROWS_TABLE;
         let mut stmt = transaction.prepare(&format!(
-            "SELECT r.id, r.positive_prompt FROM rows r
+            "SELECT r.id, r.positive_prompt, r.character_prompt FROM rows r
              INNER JOIN {target} t ON t.id = r.id
              WHERE r.positive_prompt IS NOT NULL AND INSTR(r.positive_prompt, ?1) > 0"
         ))?;
-        let rows_to_update: Vec<(i64, String)> = stmt
-            .query_map([find], |row| Ok((row.get(0)?, row.get(1)?)))?
+        let rows_to_update: Vec<(i64, String, Option<String>)> = stmt
+            .query_map([find], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
             .collect::<Result<Vec<_>, _>>()?;
         drop(stmt);
 
         let mut update = transaction
             .prepare("UPDATE rows SET positive_prompt = ?2, artists = ?3 WHERE id = ?1")?;
         let mut count = 0u64;
-        for (id, prompt) in &rows_to_update {
+        for (id, prompt, character_prompt) in &rows_to_update {
             let new_prompt = prompt.replace(find, replace);
-            let artists = extract_artist_tags(&new_prompt);
-            let artists_str = if artists.is_empty() {
-                None
-            } else {
-                Some(artists.join(", "))
-            };
+            let artists_str = combined_artists(&new_prompt, character_prompt.as_deref());
             update.execute(rusqlite::params![id, new_prompt, artists_str])?;
             count += 1;
         }
@@ -254,30 +275,25 @@ impl Database {
 
         let target = super::tags::TARGET_ROWS_TABLE;
         let mut stmt = transaction.prepare(&format!(
-            "SELECT r.id, r.positive_prompt FROM rows r
+            "SELECT r.id, r.positive_prompt, r.character_prompt FROM rows r
              INNER JOIN {target} t ON t.id = r.id"
         ))?;
-        let rows_to_update: Vec<(i64, Option<String>)> = stmt
-            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+        let rows_to_update: Vec<(i64, Option<String>, Option<String>)> = stmt
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
             .collect::<Result<Vec<_>, _>>()?;
         drop(stmt);
 
         let mut update = transaction
             .prepare("UPDATE rows SET positive_prompt = ?2, artists = ?3 WHERE id = ?1")?;
         let mut count = 0u64;
-        for (id, prompt) in &rows_to_update {
+        for (id, prompt, character_prompt) in &rows_to_update {
             let Some(old) = prompt.as_deref() else {
                 continue;
             };
             let Some(new_prompt) = prefix_artist_tag_in_prompt(old, artist_name) else {
                 continue;
             };
-            let artists = extract_artist_tags(&new_prompt);
-            let artists_str = if artists.is_empty() {
-                None
-            } else {
-                Some(artists.join(", "))
-            };
+            let artists_str = combined_artists(&new_prompt, character_prompt.as_deref());
             update.execute(rusqlite::params![id, new_prompt, artists_str])?;
             count += 1;
         }
@@ -289,6 +305,15 @@ impl Database {
             affected_rows: count,
         })
     }
+}
+
+fn combined_artists(positive_prompt: &str, character_prompt: Option<&str>) -> Option<String> {
+    let combined = match character_prompt.filter(|value| !value.trim().is_empty()) {
+        Some(character) => format!("{positive_prompt}\n{character}"),
+        None => positive_prompt.to_owned(),
+    };
+    let artists = extract_artist_tags(&combined);
+    (!artists.is_empty()).then(|| artists.join(", "))
 }
 
 #[cfg(test)]
@@ -314,6 +339,40 @@ mod tests {
             .unwrap();
         assert_eq!(prompt, "artist:alice, best quality, artist:bob");
         assert_eq!(artists, "artist:alice, artist:bob");
+    }
+
+    #[test]
+    fn editing_either_prompt_reextracts_artists_from_both_fields() {
+        let mut db = database_with_rows(1);
+        let character = db
+            .update_character_prompt(1, "1girl, artist:character")
+            .unwrap();
+        assert_eq!(character.new_artists.as_deref(), Some("artist:character"));
+
+        let positive = db
+            .update_positive_prompt(1, "best quality, artist:base")
+            .unwrap();
+        assert_eq!(
+            positive.new_artists.as_deref(),
+            Some("artist:base, artist:character")
+        );
+
+        let row: (String, String, String) = db
+            .connection
+            .query_row(
+                "SELECT positive_prompt, character_prompt, artists FROM rows WHERE id = 1",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            row,
+            (
+                "best quality, artist:base".into(),
+                "1girl, artist:character".into(),
+                "artist:base, artist:character".into()
+            )
+        );
     }
 
     #[test]

@@ -30,7 +30,9 @@ pub use hashes::ContentHashCandidate;
 pub use image_updates::{ExistingImageTarget, ExistingImageUpdate};
 pub use images::RowImageLocator;
 pub use migrations::CURRENT_SCHEMA_VERSION;
-use migrations::{MIGRATION_1, MIGRATION_2, MIGRATION_3, MIGRATION_4, MIGRATION_5, MIGRATION_6};
+use migrations::{
+    MIGRATION_1, MIGRATION_2, MIGRATION_3, MIGRATION_4, MIGRATION_5, MIGRATION_6, MIGRATION_7,
+};
 
 #[derive(Debug, Error)]
 pub enum DatabaseError {
@@ -175,6 +177,10 @@ fn apply_pending_migrations(
     if version == 5 {
         transaction.execute_batch(MIGRATION_6)?;
         version = 6;
+    }
+    if version == 6 {
+        transaction.execute_batch(MIGRATION_7)?;
+        version = 7;
     }
     debug_assert_eq!(version, CURRENT_SCHEMA_VERSION);
     transaction.pragma_update(None, "user_version", version)?;
@@ -395,7 +401,7 @@ mod tests {
 
         let database = Database::open(&temporary.path).unwrap();
 
-        assert_eq!(database.schema_version().unwrap(), 6);
+        assert_eq!(database.schema_version().unwrap(), CURRENT_SCHEMA_VERSION);
         // 批次：旧工作簿转为唯一的 xlsx 批次。
         let batch: (String, String, i64) = database
             .connection
@@ -469,7 +475,7 @@ mod tests {
 
         let database = Database::open(&temporary.path).unwrap();
 
-        assert_eq!(database.schema_version().unwrap(), 6);
+        assert_eq!(database.schema_version().unwrap(), CURRENT_SCHEMA_VERSION);
         let row: (i64, String, Option<String>, Option<i64>) = database
             .connection
             .query_row(
@@ -498,7 +504,7 @@ mod tests {
 
         let database = Database::open(&temporary.path).unwrap();
 
-        assert_eq!(database.schema_version().unwrap(), 6);
+        assert_eq!(database.schema_version().unwrap(), CURRENT_SCHEMA_VERSION);
         let row: (i64, Option<String>, Option<String>) = database
             .connection
             .query_row(
@@ -517,7 +523,7 @@ mod tests {
 
         let database = Database::open(&temporary.path).unwrap();
 
-        assert_eq!(database.schema_version().unwrap(), 6);
+        assert_eq!(database.schema_version().unwrap(), CURRENT_SCHEMA_VERSION);
 
         let tables: Vec<String> = database
             .connection
@@ -529,15 +535,15 @@ mod tests {
             .unwrap();
         assert!(tables.contains(&"groups".to_owned()));
 
-        let row: (i64, String, Option<i64>) = database
+        let row: (i64, String, Option<String>, Option<i64>) = database
             .connection
             .query_row(
-                "SELECT id, positive_prompt, group_id FROM rows",
+                "SELECT id, positive_prompt, character_prompt, group_id FROM rows",
                 [],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
             )
             .unwrap();
-        assert_eq!(row, (1, "test prompt".into(), None));
+        assert_eq!(row, (1, "test prompt".into(), None, None));
 
         let tag_name: String = database
             .connection

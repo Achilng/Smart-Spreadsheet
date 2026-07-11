@@ -386,6 +386,17 @@ pub(crate) fn update_negative_prompt(
 }
 
 #[tauri::command]
+pub(crate) fn update_character_prompt(
+    row_id: i64,
+    new_prompt: String,
+    runtime: State<'_, AppRuntime>,
+) -> Result<SinglePromptEditResult, String> {
+    runtime
+        .update_character_prompt(row_id, &new_prompt)
+        .map_err(error_text)
+}
+
+#[tauri::command]
 pub(crate) fn find_replace_prompt(
     selection: RowSelection,
     find: String,

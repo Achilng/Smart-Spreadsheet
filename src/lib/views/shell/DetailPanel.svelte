@@ -1,5 +1,13 @@
 <script lang="ts">
-  import { createTag, getRowPreview, getRowVibeStatus, setTagsForRow, updateNegativePrompt, updatePositivePrompt } from "../../api";
+  import {
+    createTag,
+    getRowPreview,
+    getRowVibeStatus,
+    setTagsForRow,
+    updateCharacterPrompt,
+    updateNegativePrompt,
+    updatePositivePrompt,
+  } from "../../api";
   import { binaryBuffer } from "../../images/image-loader";
   import { app, errorText } from "../../stores/app-state.svelte";
   import { beginFileDrag } from "../../stores/file-drag";
@@ -94,6 +102,13 @@
     (id, value) => patchRowFields(id, { negativePrompt: value }),
   );
 
+  const characterPromptEditor = createPromptEditor(
+    () => row?.characterPrompt,
+    updateCharacterPrompt,
+    (id, value, result) =>
+      patchRowFields(id, { characterPrompt: value, artists: result.newArtists }),
+  );
+
   // 切换行时重置并加载图片：先用缓存缩略图占位，大图就绪后替换
   $effect(() => {
     thumbUrl = null;
@@ -104,6 +119,7 @@
     tagQuery = "";
     saveError = null;
     promptEditor.reset();
+    characterPromptEditor.reset();
     negPromptEditor.reset();
     const current = row;
     if (!current || !hasImage) {
@@ -380,7 +396,11 @@
         <pre class:is-empty={!row.time}>{row.time ?? "—"}</pre>
       </section>
 
-      {#each [{ label: "正向提示词", text: row.positivePrompt, editor: promptEditor }, { label: "负向提示词", text: row.negativePrompt, editor: negPromptEditor }] as prompt (prompt.label)}
+      {#each [
+        { label: "正向提示词", text: row.positivePrompt, editor: promptEditor },
+        { label: "角色提示词", text: row.characterPrompt, editor: characterPromptEditor },
+        { label: "负向提示词", text: row.negativePrompt, editor: negPromptEditor },
+      ] as prompt (prompt.label)}
         <section class="field">
           <div class="field-head">
             <h4>{prompt.label}</h4>

@@ -1,4 +1,4 @@
-pub const CURRENT_SCHEMA_VERSION: u32 = 6;
+pub const CURRENT_SCHEMA_VERSION: u32 = 7;
 
 pub(super) const MIGRATION_1: &str = r#"
 CREATE TABLE workbook (
@@ -160,4 +160,11 @@ CREATE TABLE dedupe_aliases (
     alias TEXT NOT NULL,
     PRIMARY KEY (mode, key)
 ) STRICT, WITHOUT ROWID;
+"#;
+
+// v7：NovelAI V4 角色描述与基础正向提示词分开存储。
+// 历史数据不做启发式拆分，避免把用户原有的换行提示词误判为角色描述；
+// 用户可通过“更新现有图片”从原 PNG 元数据准确回填。
+pub(super) const MIGRATION_7: &str = r#"
+ALTER TABLE rows ADD COLUMN character_prompt TEXT;
 "#;

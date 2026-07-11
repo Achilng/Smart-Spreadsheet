@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NovelAiMetadata {
     pub positive_prompt: String,
+    pub character_prompt: String,
     pub negative_prompt: String,
     pub artist_tags: Vec<String>,
 }
@@ -28,13 +29,12 @@ pub fn parse_novelai_metadata(text_chunks: &BTreeMap<String, String>) -> NovelAi
     ])
     .unwrap_or_default();
 
-    let positive_prompt = join_non_empty(
-        std::iter::once(base_positive_prompt).chain(
-            comment_json
-                .as_ref()
-                .into_iter()
-                .flat_map(v4_character_captions),
-        ),
+    let positive_prompt = base_positive_prompt;
+    let character_prompt = join_non_empty(
+        comment_json
+            .as_ref()
+            .into_iter()
+            .flat_map(v4_character_captions),
     );
 
     let negative_prompt = first_non_empty([
@@ -50,10 +50,14 @@ pub fn parse_novelai_metadata(text_chunks: &BTreeMap<String, String>) -> NovelAi
     ])
     .unwrap_or_default();
 
-    let artist_tags = extract_artist_tags(&positive_prompt);
+    let artist_tags = extract_artist_tags(&join_non_empty([
+        positive_prompt.clone(),
+        character_prompt.clone(),
+    ]));
 
     NovelAiMetadata {
         positive_prompt,
+        character_prompt,
         negative_prompt,
         artist_tags,
     }
@@ -191,7 +195,7 @@ mod tests {
     }
 
     #[test]
-    fn appends_v4_character_captions_to_positive_prompt() {
+    fn keeps_v4_character_captions_separate_from_positive_prompt() {
         let mut chunks = BTreeMap::new();
         chunks.insert(
             "Comment".to_string(),
@@ -211,9 +215,10 @@ mod tests {
 
         let metadata = parse_novelai_metadata(&chunks);
 
+        assert_eq!(metadata.positive_prompt, "best quality, artist:base");
         assert_eq!(
-            metadata.positive_prompt,
-            "best quality, artist:base\n1girl, artist:character\nblue eyes, long hair"
+            metadata.character_prompt,
+            "1girl, artist:character\nblue eyes, long hair"
         );
         assert_eq!(
             metadata.artist_tags,
@@ -222,7 +227,7 @@ mod tests {
     }
 
     #[test]
-    fn character_caption_is_positive_prompt_when_base_is_empty() {
+    fn character_caption_stays_separate_when_base_is_empty() {
         let mut chunks = BTreeMap::new();
         chunks.insert(
             "Comment".to_string(),
@@ -232,6 +237,7 @@ mod tests {
 
         let metadata = parse_novelai_metadata(&chunks);
 
-        assert_eq!(metadata.positive_prompt, "solo, red hair");
+        assert_eq!(metadata.positive_prompt, "");
+        assert_eq!(metadata.character_prompt, "solo, red hair");
     }
 }
