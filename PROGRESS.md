@@ -647,6 +647,14 @@ v_21 已发布。画册功能移除与 WebView 原生右键菜单屏蔽已随 0.
 - 验证结果：`npm run check` 0 错误（4 个既有可访问性警告），`npm run build` 通过；Rust 库内 169 项测试中 168 项通过、1 项性能测试忽略；`read_fixed_workbook` 集成测试通过。
 - 全工作区测试仍被既有 `tests/map_embedded_images.rs` 挡住：该测试引用已从 `excel` 模块移除的 `map_embedded_images` / `read_embedded_image` API，与本次改动无关。
 
+### Release v_22 - 2026-07-14
+
+- 使用仓库内 Tauri CLI 完成 Windows x64 release 优化构建，生成 NSIS 安装包 `智能表格_0.9.5_x64-setup.exe`。
+- 发布内容为图片备注功能：详情面板可编辑备注，搜索和 Excel 导出包含备注，智绘姬 JSON 使用备注作为预设键，并阻止空备注或重复备注导出。
+- 发布前验证：`svelte-check` 0 错误、4 个既有可访问性警告；Vite 生产构建通过；Rust 库内 168 项测试通过、忽略 1 项；固定 Excel 样例集成测试通过。
+- 安装包大小为 4,415,568 字节，SHA-256 为 `3469F8F53F4846A86D12D9997899B0FCDDBF36BAF39D909C95928298CDD91704`。
+- 以 ASCII 文件名 `Smart-Spreadsheet_0.9.5_x64-setup.exe` 上传至 GitHub Release `v_22`：`https://github.com/Achilng/Smart-Spreadsheet/releases/tag/v_22`。
+
 ## 建议用户实机抽查（自动化无法覆盖的 native 对话框链路）
 
 - 文件夹/压缩包导入：选择对话框 → 进度横幅 → 完成提示（导入逻辑与进度事件已有单测覆盖）。
