@@ -20,6 +20,11 @@ export interface JsonExportResult {
   exported: number;
 }
 
+export interface JsonExportNoteInspection {
+  total: number;
+  emptyNotes: number;
+}
+
 export type ImageFileExportMode = "copy" | "hardlink";
 
 export interface ImageFilesExportResult {
@@ -39,8 +44,19 @@ export function exportXlsx(
 export function exportZhihuijiJson(
   selection: RowSelection,
   path: string,
+  useNumericNamesForEmpty: boolean,
 ): Promise<JsonExportResult> {
-  return invoke<JsonExportResult>("export_zhihuiji_json", { selection, path });
+  return invoke<JsonExportResult>("export_zhihuiji_json", {
+    selection,
+    path,
+    useNumericNamesForEmpty,
+  });
+}
+
+export function inspectZhihuijiExportNotes(
+  selection: RowSelection,
+): Promise<JsonExportNoteInspection> {
+  return invoke<JsonExportNoteInspection>("inspect_zhihuiji_export_notes", { selection });
 }
 
 export function exportImageFiles(

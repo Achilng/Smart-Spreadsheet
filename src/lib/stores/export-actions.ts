@@ -1,15 +1,17 @@
 import { listen } from "@tauri-apps/api/event";
-import { open, save } from "@tauri-apps/plugin-dialog";
+import { confirm as confirmDialog, open, save } from "@tauri-apps/plugin-dialog";
 
 import {
   exportImageFiles,
   exportXlsx,
   exportZhihuijiJson,
+  inspectZhihuijiExportNotes,
   type ExportProgress,
   type ImageFileExportMode,
+  type JsonExportNoteInspection,
   type RowSelection,
 } from "../api";
-import { app, formatCount, runAction, setNotice } from "./app-state.svelte";
+import { app, errorText, formatCount, runAction, setNotice } from "./app-state.svelte";
 import { rowStore } from "./row-store.svelte";
 import { getSelectedCount, selectionDto } from "./selection-store.svelte";
 
@@ -68,6 +70,36 @@ export async function chooseJsonExport(): Promise<void> {
   if (!hasRows()) {
     return;
   }
+  const scope = exportScope();
+  let inspection: JsonExportNoteInspection;
+  app.busy = true;
+  setNotice(null);
+  try {
+    inspection = await inspectZhihuijiExportNotes(scope);
+  } catch (error) {
+    setNotice({ tone: "error", text: errorText(error) });
+    return;
+  } finally {
+    app.busy = false;
+  }
+
+  let useNumericNamesForEmpty = false;
+  if (inspection.emptyNotes > 0) {
+    const confirmed = await confirmDialog(
+      `导出范围内有 ${formatCount(inspection.emptyNotes)} 条空备注。继续后，这些预设将使用其导出序号命名。要继续吗？`,
+      {
+        title: "存在空备注",
+        kind: "warning",
+        okLabel: "继续导出",
+        cancelLabel: "取消",
+      },
+    );
+    if (!confirmed) {
+      return;
+    }
+    useNumericNamesForEmpty = true;
+  }
+
   const destination = await save({
     title: "导出智绘姬 JSON（已有文件会被替换）",
     defaultPath: "智绘姬预设.json",
@@ -76,9 +108,8 @@ export async function chooseJsonExport(): Promise<void> {
   if (typeof destination !== "string") {
     return;
   }
-  const scope = exportScope();
   await runExport(async () => {
-    const result = await exportZhihuijiJson(scope, destination);
+    const result = await exportZhihuijiJson(scope, destination, useNumericNamesForEmpty);
     setNotice({
       tone: "success",
       text: `已导出 ${formatCount(result.exported)} 条预设到 ${result.path}`,

@@ -56,6 +56,7 @@ impl DataDirectory {
         &self,
         selection: &RowSelection,
         destination: impl AsRef<Path>,
+        use_numeric_names_for_empty: bool,
         progress: impl Fn(JsonExportProgress) + Sync,
     ) -> Result<JsonExportOutcome, JsonExportError> {
         let destination = destination.as_ref();
@@ -76,10 +77,12 @@ impl DataDirectory {
                 .as_deref()
                 .map(str::trim)
                 .filter(|name| !name.is_empty())
+                .map(str::to_owned)
+                .or_else(|| use_numeric_names_for_empty.then(|| position.to_string()))
                 .ok_or(JsonExportError::EmptyNote { position })?;
-            if let Some(first_position) = first_position_by_name.insert(name, position) {
+            if let Some(first_position) = first_position_by_name.insert(name.clone(), position) {
                 return Err(JsonExportError::DuplicateNote {
-                    note: name.to_owned(),
+                    note: name,
                     first_position,
                     second_position: position,
                 });
@@ -104,7 +107,7 @@ impl DataDirectory {
                 writer.write_all(b",")?;
             }
             writer.write_all(b"\n    ")?;
-            serde_json::to_writer(&mut writer, preset_names[index])?;
+            serde_json::to_writer(&mut writer, &preset_names[index])?;
             writer.write_all(b": {\n      \"fixedPrompt\": ")?;
             serde_json::to_writer(&mut writer, row.positive_prompt.as_deref().unwrap_or(""))?;
             writer.write_all(b",\n      \"fixedPrompt_end\": \"\",\n      \"negativePrompt\": ")?;
@@ -180,6 +183,7 @@ mod tests {
                     excluded_row_ids: Vec::new(),
                 },
                 &temporary.destination,
+                false,
                 |_| {},
             )
             .unwrap();
@@ -222,6 +226,7 @@ mod tests {
             .export_zhihuiji_json(
                 &RowSelection::Explicit { row_ids: vec![1] },
                 &temporary.destination,
+                false,
                 |_| {},
             )
             .unwrap();
@@ -232,7 +237,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_blank_and_duplicate_notes_without_creating_output() {
+    fn confirms_blank_fallback_and_rejects_all_name_collisions() {
         let temporary = TemporaryJsonExport::new();
         let directory = DataDirectory::initialize(&temporary.data).unwrap();
         {
@@ -265,11 +270,26 @@ mod tests {
             .export_zhihuiji_json(
                 &RowSelection::Explicit { row_ids: vec![1] },
                 &temporary.destination,
+                false,
                 |_| {},
             )
             .unwrap_err();
         assert!(matches!(blank, JsonExportError::EmptyNote { position: 1 }));
         assert!(!temporary.destination.exists());
+
+        directory
+            .export_zhihuiji_json(
+                &RowSelection::Explicit { row_ids: vec![1, 2] },
+                &temporary.destination,
+                true,
+                |_| {},
+            )
+            .unwrap();
+        let json: Value =
+            serde_json::from_slice(&fs::read(&temporary.destination).unwrap()).unwrap();
+        assert_eq!(json["presets"]["1"]["fixedPrompt"], "one");
+        assert_eq!(json["presets"]["同名"]["fixedPrompt"], "two");
+        fs::remove_file(&temporary.destination).unwrap();
 
         {
             let mut database = directory.open_database().unwrap();
@@ -279,6 +299,7 @@ mod tests {
             .export_zhihuiji_json(
                 &RowSelection::Explicit { row_ids: vec![1, 2] },
                 &temporary.destination,
+                false,
                 |_| {},
             )
             .unwrap_err();
@@ -289,6 +310,25 @@ mod tests {
                 second_position: 2,
                 ..
             }
+        ));
+        assert!(!temporary.destination.exists());
+
+        {
+            let mut database = directory.open_database().unwrap();
+            database.update_note(1, "2").unwrap();
+            database.update_note(2, "").unwrap();
+        }
+        let fallback_collision = directory
+            .export_zhihuiji_json(
+                &RowSelection::Explicit { row_ids: vec![1, 2] },
+                &temporary.destination,
+                true,
+                |_| {},
+            )
+            .unwrap_err();
+        assert!(matches!(
+            fallback_collision,
+            JsonExportError::DuplicateNote { ref note, .. } if note == "2"
         ));
         assert!(!temporary.destination.exists());
     }

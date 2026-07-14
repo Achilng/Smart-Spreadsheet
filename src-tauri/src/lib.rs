@@ -75,6 +75,7 @@ pub fn run() {
             app::commands::get_row_preview,
             app::commands::export_row_image,
             app::commands::export_xlsx,
+            app::commands::inspect_zhihuiji_export_notes,
             app::commands::export_zhihuiji_json,
             app::commands::export_image_files,
             app::commands::inspect_zhihuiji_json,

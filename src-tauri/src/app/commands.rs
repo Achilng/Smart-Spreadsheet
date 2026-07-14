@@ -134,6 +134,13 @@ pub(crate) struct JsonExportResultDto {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub(crate) struct JsonExportNoteInspectionDto {
+    total: usize,
+    empty_notes: usize,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct ImageFilesExportResultDto {
     directory: String,
     exported: usize,
@@ -775,17 +782,34 @@ pub(crate) async fn export_xlsx(
 }
 
 #[tauri::command]
+pub(crate) fn inspect_zhihuiji_export_notes(
+    selection: RowSelection,
+    runtime: State<'_, AppRuntime>,
+) -> Result<JsonExportNoteInspectionDto, String> {
+    runtime
+        .inspect_zhihuiji_export_notes(&selection)
+        .map(|(total, empty_notes)| JsonExportNoteInspectionDto { total, empty_notes })
+        .map_err(error_text)
+}
+
+#[tauri::command]
 pub(crate) async fn export_zhihuiji_json(
     selection: RowSelection,
     path: String,
+    use_numeric_names_for_empty: bool,
     app: tauri::AppHandle,
 ) -> Result<JsonExportResultDto, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let runtime = app.state::<AppRuntime>();
         runtime
-            .export_zhihuiji_json(&selection, PathBuf::from(path), |progress| {
-                emit_export_progress(&app, progress.processed, progress.total);
-            })
+            .export_zhihuiji_json(
+                &selection,
+                PathBuf::from(path),
+                use_numeric_names_for_empty,
+                |progress| {
+                    emit_export_progress(&app, progress.processed, progress.total);
+                },
+            )
             .map(|outcome| JsonExportResultDto {
                 path: outcome.destination.to_string_lossy().into_owned(),
                 exported: outcome.exported,

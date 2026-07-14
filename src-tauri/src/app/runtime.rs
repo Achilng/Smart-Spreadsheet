@@ -582,10 +582,28 @@ impl AppRuntime {
         &self,
         selection: &RowSelection,
         destination: impl AsRef<Path>,
+        use_numeric_names_for_empty: bool,
         progress: impl Fn(JsonExportProgress) + Sync,
     ) -> Result<JsonExportOutcome, AppRuntimeError> {
         let directory = self.active_directory()?;
-        Ok(directory.export_zhihuiji_json(selection, destination, progress)?)
+        Ok(directory.export_zhihuiji_json(
+            selection,
+            destination,
+            use_numeric_names_for_empty,
+            progress,
+        )?)
+    }
+
+    pub(crate) fn inspect_zhihuiji_export_notes(
+        &self,
+        selection: &RowSelection,
+    ) -> Result<(usize, usize), AppRuntimeError> {
+        let rows = self.with_database(|database| database.export_rows(selection))?;
+        let empty_notes = rows
+            .iter()
+            .filter(|row| row.note.as_deref().is_none_or(|note| note.trim().is_empty()))
+            .count();
+        Ok((rows.len(), empty_notes))
     }
 
     pub(crate) fn export_row_image(
