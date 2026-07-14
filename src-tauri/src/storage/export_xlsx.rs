@@ -47,7 +47,7 @@ pub enum XlsxExportError {
 }
 
 impl DataDirectory {
-    /// 把选中行全新生成为带缩略图的 xlsx（8 列 + Tags 列）。
+    /// 把选中行全新生成为带缩略图的 xlsx（8 个原始字段 + 备注 + Tags）。
     /// 缩略图复用应用缓存；个别图片不可用时该行仍导出文字字段。
     pub fn export_xlsx(
         &self,
@@ -96,6 +96,7 @@ impl DataDirectory {
             worksheet.set_column_width(6, 18)?;
             worksheet.set_column_width(7, 58)?;
             worksheet.set_column_width(8, 30)?;
+            worksheet.set_column_width(9, 30)?;
             worksheet.set_row_height_pixels(0, 28)?;
 
             for (column, header) in [
@@ -107,6 +108,7 @@ impl DataDirectory {
                 "画师串",
                 "图片文件夹",
                 "图片路径",
+                "备注",
                 "Tags",
             ]
             .into_iter()
@@ -136,9 +138,10 @@ impl DataDirectory {
                 write_text(worksheet, row_number, 5, &row.artists, &text_format)?;
                 write_text(worksheet, row_number, 6, &row.image_folder, &text_format)?;
                 write_text(worksheet, row_number, 7, &row.image_path, &text_format)?;
+                write_text(worksheet, row_number, 8, &row.note, &text_format)?;
                 worksheet.write_string_with_format(
                     row_number,
-                    8,
+                    9,
                     truncate_for_excel(&row.tags.join(", ")),
                     &text_format,
                 )?;
@@ -209,6 +212,7 @@ mod tests {
                 .add_tags_to_rows(&[1], &["Landscape".into(), "landscape".into()])
                 .unwrap();
             database.add_tags_to_rows(&[5], &["中文".into()]).unwrap();
+            database.update_note(1, "首个预设").unwrap();
         }
 
         let mut events = Vec::new();
@@ -239,12 +243,14 @@ mod tests {
             range.get_value((0, 3)),
             Some(&Data::String("角色提示词".into()))
         );
-        assert_eq!(range.get_value((0, 8)), Some(&Data::String("Tags".into())));
+        assert_eq!(range.get_value((0, 8)), Some(&Data::String("备注".into())));
+        assert_eq!(range.get_value((1, 8)), Some(&Data::String("首个预设".into())));
+        assert_eq!(range.get_value((0, 9)), Some(&Data::String("Tags".into())));
         assert_eq!(
-            range.get_value((1, 8)),
+            range.get_value((1, 9)),
             Some(&Data::String("Landscape, landscape".into()))
         );
-        assert_eq!(range.get_value((5, 8)), Some(&Data::String("中文".into())));
+        assert_eq!(range.get_value((5, 9)), Some(&Data::String("中文".into())));
         // 重新解析固定结构成功 → 7 个必需表头完整。
         let parsed = crate::excel::read_fixed_workbook(&temporary.destination).unwrap();
         assert_eq!(parsed.rows.len(), 5);

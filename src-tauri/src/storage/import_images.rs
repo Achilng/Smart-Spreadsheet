@@ -656,6 +656,7 @@ fn build_new_row(
         positive_prompt: image.positive_prompt,
         character_prompt: image.character_prompt,
         negative_prompt: image.negative_prompt,
+        note: None,
         artists: image.artists,
         image_folder: None,
         image_path: Some(image_path),

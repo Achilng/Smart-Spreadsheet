@@ -66,6 +66,7 @@ pub struct RowRecord {
     pub positive_prompt: Option<String>,
     pub character_prompt: Option<String>,
     pub negative_prompt: Option<String>,
+    pub note: Option<String>,
     pub artists: Option<String>,
     pub image_folder: Option<String>,
     pub image_path: Option<String>,
@@ -559,6 +560,7 @@ pub(super) fn populate_filtered_rows(
                 OR INSTR(LOWER(COALESCE(rows.positive_prompt, '')), ?1) > 0
                 OR INSTR(LOWER(COALESCE(rows.character_prompt, '')), ?1) > 0
                 OR INSTR(LOWER(COALESCE(rows.negative_prompt, '')), ?1) > 0
+                OR INSTR(LOWER(COALESCE(rows.note, '')), ?1) > 0
                 OR INSTR(LOWER(COALESCE(rows.artists, '')), ?1) > 0
             )"
         );
@@ -653,8 +655,8 @@ fn query_total_count(connection: &Connection, table: &str) -> Result<u64, Databa
 fn query_page_metadata(connection: &Connection) -> Result<Vec<RowRecord>, DatabaseError> {
     let mut statement = connection.prepare(&format!(
         "SELECT rows.id, rows.batch_id, rows.source_ordinal, rows.time,
-                rows.positive_prompt, rows.character_prompt, rows.negative_prompt, rows.artists,
-                rows.image_folder, rows.image_path, rows.stored_image_path,
+                rows.positive_prompt, rows.character_prompt, rows.negative_prompt, rows.note,
+                rows.artists, rows.image_folder, rows.image_path, rows.stored_image_path,
                 rows.metadata_failed, rows.group_id, groups.name
          FROM {PAGE_ROWS_TABLE} AS page
          JOIN rows ON rows.id = page.id
@@ -671,13 +673,14 @@ fn query_page_metadata(connection: &Connection) -> Result<Vec<RowRecord>, Databa
                 positive_prompt: row.get(4)?,
                 character_prompt: row.get(5)?,
                 negative_prompt: row.get(6)?,
-                artists: row.get(7)?,
-                image_folder: row.get(8)?,
-                image_path: row.get(9)?,
-                stored_image_path: row.get(10)?,
-                metadata_failed: row.get(11)?,
-                group_id: row.get(12)?,
-                group_name: row.get(13)?,
+                note: row.get(7)?,
+                artists: row.get(8)?,
+                image_folder: row.get(9)?,
+                image_path: row.get(10)?,
+                stored_image_path: row.get(11)?,
+                metadata_failed: row.get(12)?,
+                group_id: row.get(13)?,
+                group_name: row.get(14)?,
                 tags: Vec::new(),
             })
         })?
@@ -1002,6 +1005,30 @@ mod tests {
             result.rows[0].character_prompt.as_deref(),
             Some("silver hair, unique_role_token")
         );
+    }
+
+    #[test]
+    fn search_matches_note() {
+        let mut database = database_with_rows(3);
+        database.update_note(2, "夏日海边预设").unwrap();
+
+        let result = database
+            .query_rows(&RowQuery {
+                offset: 0,
+                limit: 10,
+                tags: Vec::new(),
+                tag_mode: TagMatchMode::And,
+                dedupe: DedupeMode::None,
+                single_artist_only: false,
+                group_view: false,
+                hide_grouped: false,
+                search: "海边".into(),
+            })
+            .unwrap();
+
+        assert_eq!(result.total_count, 1);
+        assert_eq!(result.rows[0].id, 2);
+        assert_eq!(result.rows[0].note.as_deref(), Some("夏日海边预设"));
     }
 
     #[test]

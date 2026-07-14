@@ -373,6 +373,14 @@ impl AppRuntime {
         self.with_database_mut(|db| db.update_negative_prompt(row_id, new_prompt))
     }
 
+    pub(crate) fn update_note(
+        &self,
+        row_id: i64,
+        note: &str,
+    ) -> Result<u64, AppRuntimeError> {
+        self.with_database_mut(|db| db.update_note(row_id, note))
+    }
+
     pub(crate) fn update_character_prompt(
         &self,
         row_id: i64,

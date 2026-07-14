@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
@@ -28,6 +29,14 @@ pub enum JsonExportError {
     InvalidExtension(PathBuf),
     #[error("没有可导出的行")]
     EmptySelection,
+    #[error("第 {position} 个导出项未填写备注；智绘姬 JSON 的预设名称不能为空")]
+    EmptyNote { position: usize },
+    #[error("导出项 {first_position} 和 {second_position} 的备注重复：{note}")]
+    DuplicateNote {
+        note: String,
+        first_position: usize,
+        second_position: usize,
+    },
     #[error("应用数据目录不可用: {0}")]
     Storage(#[from] StorageError),
     #[error("{0}")]
@@ -39,7 +48,7 @@ pub enum JsonExportError {
 }
 
 impl DataDirectory {
-    /// 把选中行导出为智绘姬 JSON：按入库顺序连续编号，
+    /// 把选中行导出为智绘姬 JSON：按入库顺序输出，以备注作为 preset 键，
     /// 正向提示词 → fixedPrompt、负向提示词 → negativePrompt，
     /// `fixedPrompt_end` 为空串、顶层 `images` 为空对象。
     /// 逐条写入临时文件，成功后原子替换目标。
@@ -57,6 +66,25 @@ impl DataDirectory {
         let rows = self.open_database()?.export_rows(selection)?;
         if rows.is_empty() {
             return Err(JsonExportError::EmptySelection);
+        }
+        let mut preset_names = Vec::with_capacity(rows.len());
+        let mut first_position_by_name = HashMap::with_capacity(rows.len());
+        for (index, row) in rows.iter().enumerate() {
+            let position = index + 1;
+            let name = row
+                .note
+                .as_deref()
+                .map(str::trim)
+                .filter(|name| !name.is_empty())
+                .ok_or(JsonExportError::EmptyNote { position })?;
+            if let Some(first_position) = first_position_by_name.insert(name, position) {
+                return Err(JsonExportError::DuplicateNote {
+                    note: name.to_owned(),
+                    first_position,
+                    second_position: position,
+                });
+            }
+            preset_names.push(name);
         }
         let total = rows.len();
         progress(JsonExportProgress {
@@ -76,7 +104,7 @@ impl DataDirectory {
                 writer.write_all(b",")?;
             }
             writer.write_all(b"\n    ")?;
-            serde_json::to_writer(&mut writer, &exported.to_string())?;
+            serde_json::to_writer(&mut writer, preset_names[index])?;
             writer.write_all(b": {\n      \"fixedPrompt\": ")?;
             serde_json::to_writer(&mut writer, row.positive_prompt.as_deref().unwrap_or(""))?;
             writer.write_all(b",\n      \"fixedPrompt_end\": \"\",\n      \"negativePrompt\": ")?;
@@ -116,7 +144,7 @@ mod tests {
     use crate::db::{NewRow, SourceType, TagMatchMode};
 
     #[test]
-    fn exports_selection_as_strict_numbered_json() {
+    fn exports_selection_with_notes_as_preset_names() {
         let temporary = TemporaryJsonExport::new();
         let directory = DataDirectory::initialize(&temporary.data).unwrap();
         {
@@ -132,6 +160,7 @@ mod tests {
                 identity: format!("file:test\\{index}.png"),
                 positive_prompt: Some((*positive).to_owned()),
                 negative_prompt: negative.map(str::to_owned),
+                note: Some(["预设一", "预设二"][index].into()),
                 ..NewRow::default()
             })
             .collect();
@@ -158,11 +187,11 @@ mod tests {
         assert_eq!(outcome.exported, 2);
         let json: Value =
             serde_json::from_slice(&fs::read(&temporary.destination).unwrap()).unwrap();
-        assert_eq!(json["presets"]["1"]["fixedPrompt"], "第一行\n\"引号\"与中文");
-        assert_eq!(json["presets"]["1"]["fixedPrompt_end"], "");
-        assert_eq!(json["presets"]["1"]["negativePrompt"], "负向一");
-        assert_eq!(json["presets"]["2"]["fixedPrompt"], "second");
-        assert_eq!(json["presets"]["2"]["negativePrompt"], "");
+        assert_eq!(json["presets"]["预设一"]["fixedPrompt"], "第一行\n\"引号\"与中文");
+        assert_eq!(json["presets"]["预设一"]["fixedPrompt_end"], "");
+        assert_eq!(json["presets"]["预设一"]["negativePrompt"], "负向一");
+        assert_eq!(json["presets"]["预设二"]["fixedPrompt"], "second");
+        assert_eq!(json["presets"]["预设二"]["negativePrompt"], "");
         assert_eq!(json["images"], serde_json::json!({}));
     }
 
@@ -180,6 +209,7 @@ mod tests {
                         source_ordinal: 1,
                         identity: "file:one".into(),
                         positive_prompt: Some("replaced".into()),
+                        note: Some("替换后的预设".into()),
                         ..NewRow::default()
                     }],
                     |_| Ok(()),
@@ -198,7 +228,69 @@ mod tests {
 
         let json: Value =
             serde_json::from_slice(&fs::read(&temporary.destination).unwrap()).unwrap();
-        assert_eq!(json["presets"]["1"]["fixedPrompt"], "replaced");
+        assert_eq!(json["presets"]["替换后的预设"]["fixedPrompt"], "replaced");
+    }
+
+    #[test]
+    fn rejects_blank_and_duplicate_notes_without_creating_output() {
+        let temporary = TemporaryJsonExport::new();
+        let directory = DataDirectory::initialize(&temporary.data).unwrap();
+        {
+            let mut database = directory.open_database().unwrap();
+            database
+                .append_batch(
+                    SourceType::Folder,
+                    r"D:\test",
+                    &[
+                        NewRow {
+                            source_ordinal: 1,
+                            identity: "file:one".into(),
+                            positive_prompt: Some("one".into()),
+                            ..NewRow::default()
+                        },
+                        NewRow {
+                            source_ordinal: 2,
+                            identity: "file:two".into(),
+                            positive_prompt: Some("two".into()),
+                            note: Some("同名".into()),
+                            ..NewRow::default()
+                        },
+                    ],
+                    |_| Ok(()),
+                )
+                .unwrap();
+        }
+
+        let blank = directory
+            .export_zhihuiji_json(
+                &RowSelection::Explicit { row_ids: vec![1] },
+                &temporary.destination,
+                |_| {},
+            )
+            .unwrap_err();
+        assert!(matches!(blank, JsonExportError::EmptyNote { position: 1 }));
+        assert!(!temporary.destination.exists());
+
+        {
+            let mut database = directory.open_database().unwrap();
+            database.update_note(1, "同名").unwrap();
+        }
+        let duplicate = directory
+            .export_zhihuiji_json(
+                &RowSelection::Explicit { row_ids: vec![1, 2] },
+                &temporary.destination,
+                |_| {},
+            )
+            .unwrap_err();
+        assert!(matches!(
+            duplicate,
+            JsonExportError::DuplicateNote {
+                first_position: 1,
+                second_position: 2,
+                ..
+            }
+        ));
+        assert!(!temporary.destination.exists());
     }
 
     struct TemporaryJsonExport {

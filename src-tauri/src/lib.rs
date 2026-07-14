@@ -57,6 +57,7 @@ pub fn run() {
             app::commands::update_positive_prompt,
             app::commands::update_character_prompt,
             app::commands::update_negative_prompt,
+            app::commands::update_note,
             app::commands::find_replace_prompt,
             app::commands::prepend_artist,
             app::commands::query_rows,

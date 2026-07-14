@@ -636,6 +636,17 @@ v_21 已发布。画册功能移除与 WebView 原生右键菜单屏蔽已随 0.
 - 安装包大小为 4,383,854 字节，SHA-256 为 `FED15926B41836FF63E325FBA4BCB9B75C4539036BE45D740A70B70A9C4C0938`。
 - 已以 ASCII 文件名 `Smart-Spreadsheet_0.9.2_x64-setup.exe` 上传至 GitHub Release `v_17`：`https://github.com/Achilng/Smart-Spreadsheet/releases/tag/v_17`。
 
+### 图片备注与智绘姬预设命名 - 2026-07-14
+
+- 资料库 schema 从 v7 升至 v8，为 `rows` 增加可空的 `note` 字段；新增迁移测试确认旧数据无损、历史行备注默认为空。
+- 详情面板在 Tags 上方新增“备注”区域，支持编辑、取消、保存和复制；保存时清理首尾空白，纯空白内容按空备注处理。
+- 新增 `update_note` 数据库、runtime、Tauri command 与前端 API 链路；保存成功后原位刷新行缓存，不丢失当前详情与滚动位置。
+- 行查询、导出快照和 TypeScript `RowRecord` 已包含备注；全局搜索可匹配备注，更新现有图片元数据不会覆盖用户备注。
+- “导出智绘姬 JSON”改为使用备注作为 `presets` 键；空备注或重复备注会在落盘前报错，避免同名 JSON 键静默覆盖。
+- Excel 导出在 Tags 前增加“备注”列，并补充内容断言。
+- 验证结果：`npm run check` 0 错误（4 个既有可访问性警告），`npm run build` 通过；Rust 库内 169 项测试中 168 项通过、1 项性能测试忽略；`read_fixed_workbook` 集成测试通过。
+- 全工作区测试仍被既有 `tests/map_embedded_images.rs` 挡住：该测试引用已从 `excel` 模块移除的 `map_embedded_images` / `read_embedded_image` API，与本次改动无关。
+
 ## 建议用户实机抽查（自动化无法覆盖的 native 对话框链路）
 
 - 文件夹/压缩包导入：选择对话框 → 进度横幅 → 完成提示（导入逻辑与进度事件已有单测覆盖）。

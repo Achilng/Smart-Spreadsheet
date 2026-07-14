@@ -6,6 +6,7 @@
     setTagsForRow,
     updateCharacterPrompt,
     updateNegativePrompt,
+    updateNote,
     updatePositivePrompt,
   } from "../../api";
   import { binaryBuffer } from "../../images/image-loader";
@@ -109,6 +110,12 @@
       patchRowFields(id, { characterPrompt: value, artists: result.newArtists }),
   );
 
+  const noteEditor = createPromptEditor(
+    () => row?.note,
+    updateNote,
+    (id, value) => patchRowFields(id, { note: value.trim() || null }),
+  );
+
   // 切换行时重置并加载图片：先用缓存缩略图占位，大图就绪后替换
   $effect(() => {
     thumbUrl = null;
@@ -121,6 +128,7 @@
     promptEditor.reset();
     characterPromptEditor.reset();
     negPromptEditor.reset();
+    noteEditor.reset();
     const current = row;
     if (!current || !hasImage) {
       return;
@@ -322,6 +330,44 @@
           <span class="faint">正在加载图片…</span>
         {/if}
       </div>
+
+      <section class="field note-field">
+        <div class="field-head">
+          <h4>备注</h4>
+          <div class="field-head-actions">
+            {#if !noteEditor.editing}
+              <button type="button" class="copy-btn" onclick={noteEditor.start}>编辑</button>
+            {/if}
+            {#if row.note && !noteEditor.editing}
+              <button type="button" class="copy-btn" onclick={() => void copyField("备注", row.note ?? "")}>
+                {copiedField === "备注" ? "已复制" : "复制"}
+              </button>
+            {/if}
+          </div>
+        </div>
+        {#if noteEditor.editing}
+          <textarea
+            class="prompt-textarea note-textarea"
+            placeholder="输入备注；导出智绘姬 JSON 时会作为预设名称"
+            bind:value={noteEditor.value}
+            disabled={noteEditor.saving}
+            onkeydown={event => {
+              if (event.key === "Escape") noteEditor.cancel();
+            }}
+          ></textarea>
+          <div class="prompt-edit-actions">
+            <button type="button" class="btn btn-sm" disabled={noteEditor.saving} onclick={noteEditor.cancel}>取消</button>
+            <button type="button" class="btn btn-sm btn-primary" disabled={noteEditor.saving} onclick={() => void noteEditor.save()}>
+              {noteEditor.saving ? "保存中…" : "保存"}
+            </button>
+          </div>
+          {#if noteEditor.error}
+            <p class="save-error">{noteEditor.error}</p>
+          {/if}
+        {:else}
+          <pre class:is-empty={!row.note}>{row.note ?? "—"}</pre>
+        {/if}
+      </section>
 
       <section class="tag-editor">
         <h4>Tags</h4>
@@ -714,6 +760,10 @@
     outline: none;
     border-color: var(--accent);
     box-shadow: 0 0 0 2px var(--accent-soft);
+  }
+
+  .note-textarea {
+    min-height: 72px;
   }
 
   .prompt-edit-actions {

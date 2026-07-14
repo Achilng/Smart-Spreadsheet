@@ -386,6 +386,15 @@ pub(crate) fn update_negative_prompt(
 }
 
 #[tauri::command]
+pub(crate) fn update_note(
+    row_id: i64,
+    note: String,
+    runtime: State<'_, AppRuntime>,
+) -> Result<u64, String> {
+    runtime.update_note(row_id, &note).map_err(error_text)
+}
+
+#[tauri::command]
 pub(crate) fn update_character_prompt(
     row_id: i64,
     new_prompt: String,

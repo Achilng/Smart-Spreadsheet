@@ -1,4 +1,4 @@
-pub const CURRENT_SCHEMA_VERSION: u32 = 7;
+pub const CURRENT_SCHEMA_VERSION: u32 = 8;
 
 pub(super) const MIGRATION_1: &str = r#"
 CREATE TABLE workbook (
@@ -167,4 +167,9 @@ CREATE TABLE dedupe_aliases (
 // 用户可通过“更新现有图片”从原 PNG 元数据准确回填。
 pub(super) const MIGRATION_7: &str = r#"
 ALTER TABLE rows ADD COLUMN character_prompt TEXT;
+"#;
+
+// v8：为每张图片增加用户可编辑的备注；智绘姬 JSON 导出使用备注作为 preset 键。
+pub(super) const MIGRATION_8: &str = r#"
+ALTER TABLE rows ADD COLUMN note TEXT;
 "#;

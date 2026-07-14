@@ -7,6 +7,7 @@ mod image_updates;
 pub mod identity;
 mod images;
 mod migrations;
+mod notes;
 mod prompt_edit;
 mod query;
 mod settings;
@@ -32,6 +33,7 @@ pub use images::RowImageLocator;
 pub use migrations::CURRENT_SCHEMA_VERSION;
 use migrations::{
     MIGRATION_1, MIGRATION_2, MIGRATION_3, MIGRATION_4, MIGRATION_5, MIGRATION_6, MIGRATION_7,
+    MIGRATION_8,
 };
 
 #[derive(Debug, Error)]
@@ -182,6 +184,10 @@ fn apply_pending_migrations(
         transaction.execute_batch(MIGRATION_7)?;
         version = 7;
     }
+    if version == 7 {
+        transaction.execute_batch(MIGRATION_8)?;
+        version = 8;
+    }
     debug_assert_eq!(version, CURRENT_SCHEMA_VERSION);
     transaction.pragma_update(None, "user_version", version)?;
     transaction.commit()?;
@@ -243,7 +249,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn initializes_v5_schema_and_foreign_keys() {
+    fn initializes_current_schema_and_foreign_keys() {
         let database = Database::open_in_memory().unwrap();
 
         assert_eq!(database.schema_version().unwrap(), CURRENT_SCHEMA_VERSION);
@@ -321,6 +327,16 @@ mod tests {
             )
             .unwrap();
         assert_eq!(phash_index, ("idx_rows_perceptual_hash".into(), 0, 1));
+
+        let note_column: (String, String, i64) = database
+            .connection
+            .query_row(
+                "SELECT name, type, \"notnull\" FROM pragma_table_info('rows') WHERE name = 'note'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(note_column, ("note".into(), "TEXT".into(), 0));
     }
 
     #[test]
@@ -554,6 +570,49 @@ mod tests {
             )
             .unwrap();
         assert_eq!(tag_name, "v4 tag");
+    }
+
+    #[test]
+    fn upgrades_v7_database_adding_nullable_note() {
+        let connection = Connection::open_in_memory().unwrap();
+        for migration in [
+            MIGRATION_1,
+            MIGRATION_2,
+            MIGRATION_3,
+            MIGRATION_4,
+            MIGRATION_5,
+            MIGRATION_6,
+            MIGRATION_7,
+        ] {
+            connection.execute_batch(migration).unwrap();
+        }
+        connection.pragma_update(None, "user_version", 7).unwrap();
+        connection
+            .execute(
+                "INSERT INTO import_batches
+                    (id, source_type, source_path, imported_at, added_count, skipped_count)
+                 VALUES (1, 'folder', 'D:\\test', '2026-07-14T00:00:00Z', 1, 0)",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO rows (id, batch_id, source_ordinal, identity, positive_prompt)
+                 VALUES (1, 1, 1, 'file:d:\\test\\one.png', 'keep prompt')",
+                [],
+            )
+            .unwrap();
+
+        let database = Database::initialize(connection).unwrap();
+
+        assert_eq!(database.schema_version().unwrap(), CURRENT_SCHEMA_VERSION);
+        let row: (String, Option<String>) = database
+            .connection
+            .query_row("SELECT positive_prompt, note FROM rows WHERE id = 1", [], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })
+            .unwrap();
+        assert_eq!(row, ("keep prompt".into(), None));
     }
 
     /// 手工构造 v1 库：3 行数据。第 2、3 行 image_path 重复（必须退化为

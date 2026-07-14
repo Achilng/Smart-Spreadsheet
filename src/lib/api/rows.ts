@@ -71,6 +71,7 @@ export interface RowRecord {
   positivePrompt: string | null;
   characterPrompt: string | null;
   negativePrompt: string | null;
+  note: string | null;
   artists: string | null;
   imageFolder: string | null;
   imagePath: string | null;

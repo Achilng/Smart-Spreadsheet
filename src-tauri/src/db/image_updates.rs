@@ -133,6 +133,7 @@ mod tests {
             .unwrap();
         database.create_tag("保留标签").unwrap();
         database.set_tags_for_row(1, &["保留标签".into()]).unwrap();
+        database.update_note(1, "保留备注").unwrap();
         let group = database.create_group("保留分组").unwrap();
         database
             .assign_rows_to_group(&RowSelection::Explicit { row_ids: vec![1] }, group.id)
@@ -158,6 +159,7 @@ mod tests {
         assert_eq!(rows[0].character_prompt.as_deref(), Some("new character"));
         assert_eq!(rows[0].negative_prompt.as_deref(), Some("new negative"));
         assert_eq!(rows[0].artists.as_deref(), Some("artist:new"));
+        assert_eq!(rows[0].note.as_deref(), Some("保留备注"));
         assert_eq!(rows[0].tags, vec!["保留标签"]);
         assert_eq!(rows[0].group_id, Some(group.id));
         assert_eq!(rows[0].group_name.as_deref(), Some("保留分组"));

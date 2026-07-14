@@ -27,6 +27,10 @@ export function updateNegativePrompt(
   return invoke<number>("update_negative_prompt", { rowId, newPrompt });
 }
 
+export function updateNote(rowId: number, note: string): Promise<number> {
+  return invoke<number>("update_note", { rowId, note });
+}
+
 export function updateCharacterPrompt(
   rowId: number,
   newPrompt: string,
