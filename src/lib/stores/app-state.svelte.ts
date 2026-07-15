@@ -36,6 +36,8 @@ export const app = $state({
   tableRowHeight: 64,
   /** 资料库行集合变化（导入/删除）时 +1，数据视图据此整体重载 */
   dataVersion: 0,
+  /** 本次行集合变化是否应保留视图滚动位置 */
+  preserveScrollOnDataChange: false,
   /** 文件夹/压缩包导入进行中的进度，空闲时为 null */
   importProgress: null as ImageImportProgress | null,
   /** “更新现有图片”说明与来源选择弹窗 */
@@ -72,6 +74,15 @@ export function setNotice(notice: Notice | null): void {
   }
 }
 
+/**
+ * 通知数据视图重载行集合。删除只是就地移除行，可保留滚动位置；
+ * 导入、换库等数据集整体变化继续回顶。
+ */
+export function bumpDataVersion(options: { preserveScroll?: boolean } = {}): void {
+  app.preserveScrollOnDataChange = options.preserveScroll ?? false;
+  app.dataVersion += 1;
+}
+
 export async function refreshSnapshot(): Promise<void> {
   app.busy = true;
   try {
@@ -98,7 +109,7 @@ export async function resetDataWithConfirmation(): Promise<void> {
   if (!confirmed) return;
   await runAction(async () => {
     app.snapshot = await apiResetData();
-    app.dataVersion += 1;
+    bumpDataVersion();
     setNotice({ tone: "success", text: "表格已重置，请重新导入数据。" });
   });
 }

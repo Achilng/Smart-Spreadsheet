@@ -8,14 +8,17 @@
   <div class="delete-dialog" aria-labelledby="delete-title">
     <header>
       <h2 id="delete-title">删除 {formatCount(deletion.count)} 行？</h2>
-      <p>对应的 Tag 关联、受管图片副本和缩略图缓存也会清理。此操作不可撤销。</p>
+      <p class="irreversible-warning">
+        此操作不会加入撤销记录，删除后无法通过 Ctrl+Z 恢复。
+      </p>
+      <p>对应的 Tag 关联、分组关系、受管图片副本和缩略图缓存也会永久清理。</p>
     </header>
 
     <label class="trash-option">
       <input type="checkbox" bind:checked={deletion.trashOriginals} disabled={deletion.busy} />
       <span>
         <strong>同时将原始图片文件移入回收站</strong>
-        <small>默认不勾选。仅处理文件夹/单 PNG 来源；压缩包来源没有独立原文件，会自动跳过。</small>
+        <small>默认勾选。原图移入 Windows 回收站后，应用内无法恢复；压缩包来源没有独立原文件，会自动跳过。</small>
       </span>
     </label>
 
@@ -51,6 +54,12 @@
     color: var(--text-2);
     font-size: var(--font-md);
     line-height: 1.55;
+  }
+
+  header .irreversible-warning {
+    margin-bottom: 4px;
+    color: var(--danger);
+    font-weight: 600;
   }
 
   .trash-option {

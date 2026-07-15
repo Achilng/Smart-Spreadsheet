@@ -1,11 +1,11 @@
 import { deleteRows, type RowSelection } from "../api";
-import { app, errorText, formatCount, setNotice } from "./app-state.svelte";
+import { app, bumpDataVersion, errorText, formatCount, setNotice } from "./app-state.svelte";
 
 export const deletion = $state({
   open: false,
   selection: null as RowSelection | null,
   count: 0,
-  trashOriginals: false,
+  trashOriginals: true,
   busy: false,
   error: null as string | null,
 });
@@ -16,7 +16,7 @@ export function requestDelete(selection: RowSelection, count: number): void {
   }
   deletion.selection = selection;
   deletion.count = count;
-  deletion.trashOriginals = false;
+  deletion.trashOriginals = true;
   deletion.error = null;
   deletion.open = true;
 }
@@ -42,7 +42,7 @@ export async function confirmDelete(): Promise<void> {
     app.snapshot = result.snapshot;
     deletion.open = false;
     deletion.selection = null;
-    app.dataVersion += 1;
+    bumpDataVersion({ preserveScroll: true });
 
     const parts = [`已删除 ${formatCount(result.deletedRows)} 行`];
     if (deletion.trashOriginals) {

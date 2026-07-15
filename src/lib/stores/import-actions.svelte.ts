@@ -6,7 +6,7 @@ import {
   updateExistingImages,
   type ImageImportProgress,
 } from "../api";
-import { app, formatCount, runAction, setNotice } from "./app-state.svelte";
+import { app, bumpDataVersion, formatCount, runAction, setNotice } from "./app-state.svelte";
 
 export async function chooseImageFolder(): Promise<void> {
   const selection = await open({
@@ -45,7 +45,7 @@ export async function runImageImport(path: string): Promise<void> {
       const result = await importImages(path);
       app.snapshot = result.snapshot;
       if (result.added > 0) {
-        app.dataVersion += 1;
+        bumpDataVersion();
       }
       const parts = [`新增 ${formatCount(result.added)} 行`];
       if (result.skippedExisting > 0) {
@@ -91,7 +91,7 @@ export async function runExistingImageUpdate(path: string): Promise<void> {
       const result = await updateExistingImages(path);
       app.snapshot = result.snapshot;
       if (result.updated > 0) {
-        app.dataVersion += 1;
+        bumpDataVersion();
       }
       const parts = [`更新 ${formatCount(result.updated)} 张`];
       if (result.unmatched > 0) {

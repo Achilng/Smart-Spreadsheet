@@ -60,9 +60,10 @@
   // untrack：这些调用内部有”读-改-写”（如 pagesVersion += 1），不能注册为本 effect 的依赖。
   $effect(() => {
     void app.dataVersion;
+    const preserveScroll = app.preserveScrollOnDataChange;
     untrack(() => {
       thumbnails.clear();
-      resetRows({ keepStale: false, resetScroll: true });
+      resetRows({ keepStale: preserveScroll, resetScroll: !preserveScroll });
       clearSelection();
       void loadTags();
     });
