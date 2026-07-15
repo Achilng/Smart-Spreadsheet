@@ -4,6 +4,7 @@
   import { app, type ViewMode } from "../../stores/app-state.svelte";
   import { deletion, requestDelete } from "../../stores/delete-actions.svelte";
   import { dropState, listenDragDrop } from "../../stores/drop-import.svelte";
+  import { redoLastAction, undoLastAction } from "../../stores/history.svelte";
   import {
     clearSelection,
     getSelectedCount,
@@ -73,12 +74,38 @@
 
   function onKeydown(event: KeyboardEvent): void {
     const target = event.target;
-    const isEditing =
+    const isTextEditing =
       target instanceof HTMLInputElement ||
       target instanceof HTMLTextAreaElement ||
-      target instanceof HTMLSelectElement ||
-      target instanceof HTMLButtonElement ||
       (target instanceof HTMLElement && target.isContentEditable);
+    const isEditing =
+      isTextEditing ||
+      target instanceof HTMLSelectElement ||
+      target instanceof HTMLButtonElement;
+
+    // 输入控件内保留浏览器原生文字撤销；其他位置走资料库操作历史。
+    if (
+      (event.ctrlKey || event.metaKey) &&
+      !event.altKey &&
+      !isTextEditing &&
+      !deletion.open
+    ) {
+      const key = event.key.toLowerCase();
+      if (key === "z") {
+        event.preventDefault();
+        if (event.shiftKey) {
+          void redoLastAction();
+        } else {
+          void undoLastAction();
+        }
+        return;
+      }
+      if (key === "y" && !event.shiftKey) {
+        event.preventDefault();
+        void redoLastAction();
+        return;
+      }
+    }
 
     // Ctrl+A 全选筛选结果（输入框内除外）
     if (
