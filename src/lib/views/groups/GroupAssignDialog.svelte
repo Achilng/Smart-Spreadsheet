@@ -2,6 +2,8 @@
   import type { RowSelection } from "../../api";
   import Modal from "../../ui/Modal.svelte";
   import { errorText } from "../../stores/app-state.svelte";
+  import { captureSelectionStates, recordRowStateChange } from "../../stores/history-actions";
+  import { beginHistoryGroup, commitHistoryGroup } from "../../stores/history.svelte";
   import { assignToGroup, createNewGroup, groupStore, loadGroups, removeFromGroup } from "../../stores/group-store.svelte";
   import { resetRows } from "../../stores/row-store.svelte";
 
@@ -28,9 +30,11 @@
     error = null;
     result = null;
     try {
+      const before = await captureSelectionStates(selection);
       const affected = await assignToGroup(selection, groupId);
       result = `已将 ${affected} 行分配到「${groupName}」`;
       resetRows();
+      await recordRowStateChange(`分配到分组「${groupName}」`, before);
     } catch (e) {
       error = errorText(e);
     } finally {
@@ -44,7 +48,10 @@
     busy = true;
     error = null;
     result = null;
+    let historyGroupStarted = false;
     try {
+      const before = await captureSelectionStates(selection);
+      historyGroupStarted = beginHistoryGroup(`新建并分配分组「${name}」`);
       const group = await createNewGroup(name);
       if (!group) {
         error = groupStore.error ?? "创建分组失败";
@@ -55,9 +62,13 @@
       result = `已创建「${group.name}」并分配 ${affected} 行`;
       newGroupName = "";
       resetRows();
+      await recordRowStateChange(`分配到分组「${group.name}」`, before);
     } catch (e) {
       error = errorText(e);
     } finally {
+      if (historyGroupStarted) {
+        commitHistoryGroup();
+      }
       busy = false;
     }
   }
@@ -68,9 +79,11 @@
     error = null;
     result = null;
     try {
+      const before = await captureSelectionStates(selection);
       const affected = await removeFromGroup(selection);
       result = `已取消 ${affected} 行的分组`;
       resetRows();
+      await recordRowStateChange("取消分组", before);
     } catch (e) {
       error = errorText(e);
     } finally {

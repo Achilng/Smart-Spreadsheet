@@ -271,6 +271,32 @@ impl Database {
         stored.into_iter().map(batch_summary_from_stored).collect()
     }
 
+    pub fn row_ids_for_batch(&self, batch_id: i64) -> Result<Vec<i64>, DatabaseError> {
+        let exists: bool = self.connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM import_batches WHERE id = ?1)",
+            [batch_id],
+            |row| row.get(0),
+        )?;
+        if !exists {
+            return Err(DatabaseError::BatchNotFound(batch_id));
+        }
+        let mut statement = self
+            .connection
+            .prepare("SELECT id FROM rows WHERE batch_id = ?1 ORDER BY id")?;
+        Ok(statement
+            .query_map([batch_id], |row| row.get::<_, i64>(0))?
+            .collect::<Result<Vec<_>, _>>()?)
+    }
+
+    pub fn delete_batch_if_empty(&mut self, batch_id: i64) -> Result<bool, DatabaseError> {
+        let deleted = self.connection.execute(
+            "DELETE FROM import_batches
+             WHERE id = ?1 AND NOT EXISTS (SELECT 1 FROM rows WHERE batch_id = ?1)",
+            [batch_id],
+        )?;
+        Ok(deleted > 0)
+    }
+
     pub fn library_summary(&self) -> Result<LibrarySummary, DatabaseError> {
         let row_count: i64 =
             self.connection

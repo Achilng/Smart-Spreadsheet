@@ -9,7 +9,7 @@
     <header>
       <h2 id="delete-title">删除 {formatCount(deletion.count)} 行？</h2>
       <p class="irreversible-warning">
-        此操作不会加入撤销记录，删除后无法通过 Ctrl+Z 恢复。
+        此操作不会加入撤销记录，删除后无法通过 Ctrl+Z 恢复，并会清空当前撤销/重做记录。
       </p>
       <p>对应的 Tag 关联、分组关系、受管图片副本和缩略图缓存也会永久清理。</p>
     </header>

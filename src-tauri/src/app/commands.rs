@@ -5,7 +5,7 @@ use tauri::{Emitter, Manager, State, ipc::Response};
 
 use super::runtime::{AppRuntime, RuntimeSnapshot};
 use crate::db::{
-    BatchSummary, DedupeCluster, DedupeMode, GroupSummary, LibrarySummary, PromptEditResult,
+    BatchSummary, DedupeCluster, DedupeMode, GroupSummary, LibrarySummary, MutableRowState, PromptEditResult,
     RowPage, RowQuery, RowRecord, RowSelection, SinglePromptEditResult, TagMatchMode,
     TagMutationResult, TagSelectionSummary, TagSummary,
 };
@@ -56,6 +56,7 @@ pub(crate) struct DeleteResultDto {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ImageImportResultDto {
     snapshot: AppSnapshotDto,
+    batch_id: i64,
     source_type: &'static str,
     total_found: usize,
     added: u64,
@@ -239,6 +240,7 @@ pub(crate) async fn import_images(
             })
             .map(|(snapshot, outcome)| ImageImportResultDto {
                 snapshot: snapshot.into(),
+                batch_id: outcome.batch_id,
                 source_type: outcome.source_type.as_str(),
                 total_found: outcome.total_found,
                 added: outcome.added,
@@ -390,6 +392,40 @@ pub(crate) fn update_negative_prompt(
     runtime
         .update_negative_prompt(row_id, &new_prompt)
         .map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn restore_group(
+    group: GroupSummary,
+    runtime: State<'_, AppRuntime>,
+) -> Result<GroupSummary, String> {
+    runtime.restore_group(&group).map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn undo_import_batch(
+    batch_id: i64,
+    runtime: State<'_, AppRuntime>,
+) -> Result<DeleteResultDto, String> {
+    runtime
+        .undo_import_batch(batch_id)
+        .map(|(snapshot, report)| DeleteResultDto {
+            snapshot: snapshot.into(),
+            deleted_rows: report.deleted_rows,
+            cleanup_failures: report.cleanup_failures,
+            trashed_original_files: report.trashed_original_files,
+            original_file_failures: report.original_file_failures,
+            archive_rows_skipped: report.archive_rows_skipped,
+        })
+        .map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn restore_mutable_row_states(
+    states: Vec<MutableRowState>,
+    runtime: State<'_, AppRuntime>,
+) -> Result<u64, String> {
+    runtime.restore_mutable_row_states(&states).map_err(error_text)
 }
 
 #[tauri::command]

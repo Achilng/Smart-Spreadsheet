@@ -1,5 +1,6 @@
 import { deleteRows, type RowSelection } from "../api";
 import { app, bumpDataVersion, errorText, formatCount, setNotice } from "./app-state.svelte";
+import { clearHistory } from "./history.svelte";
 
 export const deletion = $state({
   open: false,
@@ -42,6 +43,7 @@ export async function confirmDelete(): Promise<void> {
     app.snapshot = result.snapshot;
     deletion.open = false;
     deletion.selection = null;
+    clearHistory();
     bumpDataVersion({ preserveScroll: true });
 
     const parts = [`已删除 ${formatCount(result.deletedRows)} 行`];

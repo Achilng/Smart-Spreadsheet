@@ -8,15 +8,17 @@
     updateNegativePrompt,
     updateNote,
     updatePositivePrompt,
+    mutableRowState,
   } from "../../api";
   import { binaryBuffer } from "../../images/image-loader";
-  import { app, errorText } from "../../stores/app-state.svelte";
+  import { app, errorText, setNotice } from "../../stores/app-state.svelte";
   import { beginFileDrag } from "../../stores/file-drag";
   import { requestDelete } from "../../stores/delete-actions.svelte";
   import { removeFromGroup } from "../../stores/group-store.svelte";
   import { patchRowFields, patchRowTags, resetRows, rowStore } from "../../stores/row-store.svelte";
   import { loadTags, tagStore } from "../../stores/tag-store.svelte";
   import { thumbnails } from "../../images/thumbnails";
+  import { recordRowStateChange } from "../../stores/history-actions";
 
   const row = $derived(rowStore.activeRow);
   const hasImage = $derived(
@@ -35,7 +37,19 @@
   let copiedField = $state<string | null>(null);
   let copyTimer = 0;
 
+  async function recordOrWarn(label: string, before: ReturnType<typeof mutableRowState>[]): Promise<void> {
+    try {
+      await recordRowStateChange(label, before);
+    } catch (historyError) {
+      setNotice({
+        tone: "error",
+        text: `操作已完成，但未能记录撤销历史：${errorText(historyError)}`,
+      });
+    }
+  }
+
   function createPromptEditor(
+    label: string,
     getField: () => string | null | undefined,
     saveFn: (rowId: number, value: string) => Promise<any>,
     patchField: (rowId: number, value: string, result: any) => void,
@@ -62,10 +76,12 @@
       if (!current || saving) return;
       saving = true;
       error = null;
+      const before = mutableRowState(current);
       try {
         const result = await saveFn(current.id, value);
         editing = false;
         patchField(current.id, value, result);
+        await recordOrWarn(label, [before]);
       } catch (e) {
         error = errorText(e);
       } finally {
@@ -92,18 +108,21 @@
   }
 
   const promptEditor = createPromptEditor(
+    "编辑正向提示词",
     () => row?.positivePrompt,
     updatePositivePrompt,
     (id, value, result) => patchRowFields(id, { positivePrompt: value, artists: result.newArtists }),
   );
 
   const negPromptEditor = createPromptEditor(
+    "编辑负向提示词",
     () => row?.negativePrompt,
     updateNegativePrompt,
     (id, value) => patchRowFields(id, { negativePrompt: value }),
   );
 
   const characterPromptEditor = createPromptEditor(
+    "编辑角色提示词",
     () => row?.characterPrompt,
     updateCharacterPrompt,
     (id, value, result) =>
@@ -111,6 +130,7 @@
   );
 
   const noteEditor = createPromptEditor(
+    "编辑备注",
     () => row?.note,
     updateNote,
     (id, value) => patchRowFields(id, { note: value.trim() || null }),
@@ -198,10 +218,12 @@
     }
     saving = true;
     saveError = null;
+    const before = mutableRowState(current);
     try {
       await setTagsForRow(current.id, next);
       patchRowTags(current.id, next);
       await loadTags();
+      await recordOrWarn("编辑 Tag", [before]);
     } catch (error) {
       saveError = errorText(error);
     } finally {
@@ -218,6 +240,7 @@
     tagQuery = "";
     saving = true;
     saveError = null;
+    const before = mutableRowState(current);
     try {
       if (!tagStore.list.some(tag => tag.name === normalized)) {
         await createTag(normalized);
@@ -226,6 +249,7 @@
       await setTagsForRow(current.id, next);
       patchRowTags(current.id, next);
       await loadTags();
+      await recordOrWarn("添加 Tag", [before]);
     } catch (error) {
       saveError = errorText(error);
     } finally {
@@ -237,6 +261,15 @@
     if (row) {
       void applyTags(row.tags.filter(tag => tag !== name));
     }
+  }
+
+  async function ungroupCurrent(): Promise<void> {
+    const current = row;
+    if (!current) return;
+    const before = mutableRowState(current);
+    await removeFromGroup({ kind: "explicit", rowIds: [current.id] });
+    resetRows();
+    await recordOrWarn("取消分组", [before]);
   }
 
   function onTagInputKeydown(event: KeyboardEvent): void {
@@ -420,10 +453,7 @@
         <div class="group-info">
           {#if row.groupName}
             <span class="group-badge">{row.groupName}</span>
-            <button type="button" class="copy-btn" onclick={async () => {
-              await removeFromGroup({ kind: "explicit", rowIds: [row.id] });
-              resetRows();
-            }}>取消分组</button>
+            <button type="button" class="copy-btn" onclick={() => void ungroupCurrent()}>取消分组</button>
           {:else}
             <span class="faint-text">未分组</span>
           {/if}

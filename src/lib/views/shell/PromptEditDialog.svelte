@@ -2,6 +2,7 @@
   import { findReplacePrompt, prefixArtistTag, type RowSelection } from "../../api";
   import Modal from "../../ui/Modal.svelte";
   import { errorText } from "../../stores/app-state.svelte";
+  import { captureSelectionStates, recordRowStateChange } from "../../stores/history-actions";
   import { resetRows } from "../../stores/row-store.svelte";
 
   interface Props {
@@ -26,9 +27,15 @@
     error = null;
     result = null;
     try {
+      const before = await captureSelectionStates(selection);
       const r = await findReplacePrompt(selection, findText, replaceText);
       result = `已替换 ${r.affectedRows} 行`;
       resetRows();
+      try {
+        await recordRowStateChange("批量替换提示词", before);
+      } catch (historyError) {
+        error = `替换已完成，但未能记录撤销历史：${errorText(historyError)}`;
+      }
     } catch (e) {
       error = errorText(e);
     } finally {
@@ -42,9 +49,15 @@
     error = null;
     result = null;
     try {
+      const before = await captureSelectionStates(selection);
       const r = await prefixArtistTag(selection, artistName.trim());
       result = `已修正 ${r.affectedRows} 行画师前缀`;
       resetRows();
+      try {
+        await recordRowStateChange("批量修正画师前缀", before);
+      } catch (historyError) {
+        error = `修正已完成，但未能记录撤销历史：${errorText(historyError)}`;
+      }
     } catch (e) {
       error = errorText(e);
     } finally {

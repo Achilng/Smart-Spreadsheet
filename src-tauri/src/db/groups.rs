@@ -1,10 +1,10 @@
 use rusqlite::{OptionalExtension, TransactionBehavior, params};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::tags::{RowSelection, TagMutationError, create_selection_rows, drop_selection_tables};
 use super::{Database, DatabaseError};
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GroupSummary {
     pub id: i64,
@@ -36,6 +36,18 @@ impl Database {
             member_count: 0,
             created_at,
         })
+    }
+
+    pub fn restore_group(&mut self, group: &GroupSummary) -> Result<GroupSummary, DatabaseError> {
+        let name = group.name.trim();
+        if name.is_empty() {
+            return Err(DatabaseError::EmptyGroupName);
+        }
+        self.connection.execute(
+            "INSERT INTO groups(id, name, created_at) VALUES (?1, ?2, ?3)",
+            params![group.id, name, group.created_at],
+        )?;
+        query_single_group(&self.connection, group.id)
     }
 
     pub fn rename_group(&mut self, group_id: i64, new_name: &str) -> Result<GroupSummary, DatabaseError> {
@@ -224,6 +236,19 @@ mod tests {
 
         assert_eq!(renamed.name, "new");
         assert_eq!(renamed.id, group.id);
+    }
+
+    #[test]
+    fn restores_deleted_group_with_original_identity() {
+        let mut db = database_with_rows(1);
+        let group = db.create_group("restorable").unwrap();
+        db.delete_group(group.id).unwrap();
+
+        let restored = db.restore_group(&group).unwrap();
+
+        assert_eq!(restored.id, group.id);
+        assert_eq!(restored.name, group.name);
+        assert_eq!(restored.created_at, group.created_at);
     }
 
     #[test]

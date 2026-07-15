@@ -3,10 +3,13 @@ import { open } from "@tauri-apps/plugin-dialog";
 
 import {
   importImages,
+  undoImportBatch,
   updateExistingImages,
+  type ImageImportResult,
   type ImageImportProgress,
 } from "../api";
 import { app, bumpDataVersion, formatCount, runAction, setNotice } from "./app-state.svelte";
+import { clearHistory, recordHistory } from "./history.svelte";
 
 export async function chooseImageFolder(): Promise<void> {
   const selection = await open({
@@ -35,18 +38,49 @@ export async function chooseImageArchive(): Promise<void> {
 
 export async function runImageImport(path: string): Promise<void> {
   await runAction(async () => {
-    const unlisten = await listen<ImageImportProgress>(
-      "import-images://progress",
-      event => {
-        app.importProgress = event.payload;
+    let batchId = 0;
+    const initial = await performImageImport(path, true);
+    if (initial.added === 0) {
+      return;
+    }
+    batchId = initial.batchId;
+    recordHistory({
+      label: `导入 ${formatCount(initial.added)} 张图片`,
+      undo: async () => {
+        const result = await undoImportBatch(batchId);
+        app.snapshot = result.snapshot;
+        bumpDataVersion({ preserveScroll: true });
       },
-    );
-    try {
-      const result = await importImages(path);
-      app.snapshot = result.snapshot;
-      if (result.added > 0) {
-        bumpDataVersion();
-      }
+      redo: async () => {
+        const result = await performImageImport(path, false);
+        if (result.added !== initial.added) {
+          const cleanup = await undoImportBatch(result.batchId);
+          app.snapshot = cleanup.snapshot;
+          bumpDataVersion({ preserveScroll: true });
+          throw new Error(
+            `来源已变化：原操作导入 ${formatCount(initial.added)} 张，本次只能导入 ${formatCount(result.added)} 张`,
+          );
+        }
+        batchId = result.batchId;
+      },
+    });
+  });
+}
+
+async function performImageImport(path: string, showResult: boolean): Promise<ImageImportResult> {
+  const unlisten = await listen<ImageImportProgress>(
+    "import-images://progress",
+    event => {
+      app.importProgress = event.payload;
+    },
+  );
+  try {
+    const result = await importImages(path);
+    app.snapshot = result.snapshot;
+    if (result.added > 0) {
+      bumpDataVersion();
+    }
+    if (showResult) {
       const parts = [`新增 ${formatCount(result.added)} 行`];
       if (result.skippedExisting > 0) {
         parts.push(`跳过 ${formatCount(result.skippedExisting)} 张已入库`);
@@ -55,9 +89,7 @@ export async function runImageImport(path: string): Promise<void> {
         parts.push(`内容重复跳过 ${formatCount(result.skippedContent)} 张`);
       }
       if (result.changedExisting > 0) {
-        parts.push(
-          `其中 ${formatCount(result.changedExisting)} 张源文件有变化（未改动库内数据）`,
-        );
+        parts.push(`其中 ${formatCount(result.changedExisting)} 张源文件有变化（未改动库内数据）`);
       }
       if (result.metadataRejected > 0) {
         parts.push(`${formatCount(result.metadataRejected)} 张无 metadata、不入库`);
@@ -72,11 +104,12 @@ export async function runImageImport(path: string): Promise<void> {
         tone: "success",
         text: `导入完成（共发现 ${formatCount(result.totalFound)} 张）：${parts.join("，")}。`,
       });
-    } finally {
-      unlisten();
-      app.importProgress = null;
     }
-  });
+    return result;
+  } finally {
+    unlisten();
+    app.importProgress = null;
+  }
 }
 
 export async function runExistingImageUpdate(path: string): Promise<void> {
@@ -91,9 +124,13 @@ export async function runExistingImageUpdate(path: string): Promise<void> {
       const result = await updateExistingImages(path);
       app.snapshot = result.snapshot;
       if (result.updated > 0) {
+        clearHistory();
         bumpDataVersion();
       }
       const parts = [`更新 ${formatCount(result.updated)} 张`];
+      if (result.updated > 0) {
+        parts.push("已清空撤销/重做记录");
+      }
       if (result.unmatched > 0) {
         parts.push(`忽略 ${formatCount(result.unmatched)} 张未入库图片（未新增）`);
       }

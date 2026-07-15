@@ -63,6 +63,12 @@ export const app = $state({
 });
 
 let noticeTimer = 0;
+let clearHistoryCallback: () => void = () => {};
+
+/** 由历史模块在加载时注册，避免 app-state 反向依赖历史执行器。 */
+export function registerHistoryClearer(clearer: () => void): void {
+  clearHistoryCallback = clearer;
+}
 
 export function setNotice(notice: Notice | null): void {
   app.notice = notice;
@@ -98,6 +104,7 @@ export async function refreshSnapshot(): Promise<void> {
 export async function resetAndReconfigure(): Promise<void> {
   await runAction(async () => {
     app.snapshot = await resetConfiguration();
+    clearOperationHistory();
   });
 }
 
@@ -109,6 +116,7 @@ export async function resetDataWithConfirmation(): Promise<void> {
   if (!confirmed) return;
   await runAction(async () => {
     app.snapshot = await apiResetData();
+    clearOperationHistory();
     bumpDataVersion();
     setNotice({ tone: "success", text: "表格已重置，请重新导入数据。" });
   });
@@ -137,6 +145,7 @@ export async function chooseDirectory(mode: "initialize" | "open"): Promise<void
         app.hashProgress = null;
       }
     }
+    clearOperationHistory();
     setNotice({ tone: "success", text: "数据目录已连接。" });
   });
 }
@@ -218,6 +227,7 @@ export async function chooseMigration(): Promise<void> {
   await runAction(async () => {
     const result = await migrateDataDirectory(selection);
     app.snapshot = result.snapshot;
+    clearOperationHistory();
     setNotice(
       result.retiredSource
         ? { tone: "error", text: `迁移成功，但旧目录未能自动清理：${result.retiredSource}` }
@@ -236,6 +246,10 @@ export async function runAction(action: () => Promise<void>): Promise<void> {
   } finally {
     app.busy = false;
   }
+}
+
+function clearOperationHistory(): void {
+  clearHistoryCallback();
 }
 
 export function formatCount(value: number): string {

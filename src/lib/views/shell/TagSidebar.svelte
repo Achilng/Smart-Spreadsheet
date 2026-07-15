@@ -1,6 +1,7 @@
 <script lang="ts">
   import {
     addTagsToSelection,
+    createTag,
     deleteTag,
     listSelectionTags,
     removeTagsFromSelection,
@@ -10,7 +11,9 @@
   } from "../../api";
   import ContextMenuShell from "../../ui/ContextMenuShell.svelte";
   import Modal from "../../ui/Modal.svelte";
-  import { app, errorText, formatCount } from "../../stores/app-state.svelte";
+  import { app, bumpDataVersion, errorText, formatCount } from "../../stores/app-state.svelte";
+  import { captureSelectionStates, recordRowStateChange, restoreRowStates } from "../../stores/history-actions";
+  import { recordHistory } from "../../stores/history.svelte";
   import { resetRows, rowStore, setDedupe, setFilter, setHideGrouped, setSingleArtistOnly } from "../../stores/row-store.svelte";
   import {
     clearSelection,
@@ -139,6 +142,7 @@
     tagging = true;
     status = null;
     try {
+      const before = await captureSelectionStates(selectionDto());
       const remove = tagCoverage(name) === "all";
       const result = remove
         ? await removeTagsFromSelection(selectionDto(), [name])
@@ -149,6 +153,7 @@
       };
       resetRows();
       await loadTags();
+      await recordRowStateChange(`${remove ? "移除" : "添加"} Tag「${name}」`, before);
       await refreshCoverage();
     } catch (error) {
       status = { text: `打标失败：${errorText(error)}`, isError: true };
@@ -171,6 +176,7 @@
     tagging = true;
     status = null;
     try {
+      const before = await captureSelectionStates(selectionDto());
       const result = await addTagsToSelection(selectionDto(), [name]);
       newTagName = "";
       status = {
@@ -179,6 +185,7 @@
       };
       resetRows();
       await loadTags();
+      await recordRowStateChange(`添加 Tag「${name}」`, before);
       await refreshCoverage();
     } catch (error) {
       status = { text: `即建即贴失败：${errorText(error)}`, isError: true };
@@ -209,6 +216,15 @@
     if (!name) return;
     confirmingDelete = null;
     try {
+      const before = await captureSelectionStates({
+        kind: "filtered",
+        tags: [name],
+        tagMode: "and",
+        dedupe: "none",
+        singleArtistOnly: false,
+        search: "",
+        excludedRowIds: [],
+      });
       const deleted = await deleteTag(name);
       if (deleted) {
         if (activeTags.includes(name)) {
@@ -221,6 +237,22 @@
         resetRows();
         await loadTags();
         status = { text: `已删除 Tag"${name}"。`, isError: false };
+        recordHistory({
+          label: `删除 Tag「${name}」`,
+          undo: async () => {
+            await createTag(name);
+            if (before.length > 0) {
+              await restoreRowStates(before);
+            } else {
+              await loadTags();
+            }
+          },
+          redo: async () => {
+            await deleteTag(name);
+            await loadTags();
+            bumpDataVersion({ preserveScroll: true });
+          },
+        });
       } else {
         status = { text: `Tag"${name}"不存在。`, isError: true };
       }

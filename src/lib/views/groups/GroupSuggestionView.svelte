@@ -1,8 +1,10 @@
 <script lang="ts">
-  import { suggestGroups, assignRowsToGroup, createGroup, type SimilarityMode, type SuggestedGroup } from "../../api";
+  import { suggestGroups, assignRowsToGroup, type SimilarityMode, type SuggestedGroup } from "../../api";
   import { app, errorText } from "../../stores/app-state.svelte";
-  import { bumpGroupMembership, loadGroups } from "../../stores/group-store.svelte";
+  import { bumpGroupMembership, createNewGroup, loadGroups } from "../../stores/group-store.svelte";
   import { resetRows } from "../../stores/row-store.svelte";
+  import { captureRowStates, recordRowStateChange } from "../../stores/history-actions";
+  import { beginHistoryGroup, commitHistoryGroup } from "../../stores/history.svelte";
 
   let mode = $state<SimilarityMode>("artists");
   let threshold = $state(0.85);
@@ -60,10 +62,19 @@
     applyResult = null;
     let created = 0;
     let totalAssigned = 0;
+    let before = [] as Awaited<ReturnType<typeof captureRowStates>>;
+    let historyGroupStarted = false;
     try {
+      const affectedRowIds = [...selected]
+        .flatMap(index => suggestions[index].rowIds);
+      before = await captureRowStates(affectedRowIds);
+      historyGroupStarted = beginHistoryGroup("应用建议分组");
       for (const idx of selected) {
         const sg = suggestions[idx];
-        const group = await createGroup(sg.name);
+        const group = await createNewGroup(sg.name);
+        if (!group) {
+          throw new Error(`创建分组「${sg.name}」失败`);
+        }
         await assignRowsToGroup(
           { kind: "explicit", rowIds: sg.rowIds },
           group.id,
@@ -76,9 +87,20 @@
       bumpGroupMembership();
       await loadGroups();
       resetRows();
+      await recordRowStateChange("分配建议分组成员", before);
     } catch (e) {
       error = errorText(e);
+      if (totalAssigned > 0 && before.length > 0) {
+        try {
+          await recordRowStateChange("分配建议分组成员（部分完成）", before);
+        } catch (historyError) {
+          error += `；部分变更未能记录撤销历史：${errorText(historyError)}`;
+        }
+      }
     } finally {
+      if (historyGroupStarted) {
+        commitHistoryGroup();
+      }
       running = false;
     }
   }

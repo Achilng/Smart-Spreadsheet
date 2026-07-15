@@ -1,4 +1,4 @@
-import { app, errorText, setNotice } from "./app-state.svelte";
+import { app, errorText, registerHistoryClearer, setNotice } from "./app-state.svelte";
 
 const HISTORY_LIMIT = 50;
 
@@ -11,6 +11,7 @@ export interface HistoryAction {
 
 const undoStack: HistoryAction[] = [];
 const redoStack: HistoryAction[] = [];
+let activeGroup: { label: string; actions: HistoryAction[] } | null = null;
 
 export const history = $state({
   undoCount: 0,
@@ -32,6 +33,11 @@ export function recordHistory(action: HistoryAction): void {
   if (history.busy) {
     return;
   }
+  if (activeGroup) {
+    activeGroup.actions.push(action);
+    redoStack.length = 0;
+    return;
+  }
   undoStack.push(action);
   if (undoStack.length > HISTORY_LIMIT) {
     undoStack.shift();
@@ -40,15 +46,54 @@ export function recordHistory(action: HistoryAction): void {
   syncState();
 }
 
+/** 在一个用户操作内收集多个子操作，提交后只占一步历史。 */
+export function beginHistoryGroup(label: string): boolean {
+  if (history.busy || activeGroup) {
+    return false;
+  }
+  activeGroup = { label, actions: [] };
+  return true;
+}
+
+export function commitHistoryGroup(): boolean {
+  const group = activeGroup;
+  activeGroup = null;
+  if (!group || group.actions.length === 0) {
+    return false;
+  }
+  const groupedAction: HistoryAction = {
+    label: group.label,
+    undo: async () => {
+      for (const action of [...group.actions].reverse()) {
+        await action.undo();
+      }
+    },
+    redo: async () => {
+      for (const action of group.actions) {
+        await action.redo();
+      }
+    },
+  };
+  undoStack.push(group.actions.length === 1 ? { ...group.actions[0], label: group.label } : groupedAction);
+  if (undoStack.length > HISTORY_LIMIT) {
+    undoStack.shift();
+  }
+  syncState();
+  return true;
+}
+
 /** 换库、重置等让历史上下文失效的操作必须清空会话历史。 */
 export function clearHistory(): void {
+  activeGroup = null;
   undoStack.length = 0;
   redoStack.length = 0;
   syncState();
 }
 
+registerHistoryClearer(clearHistory);
+
 export async function undoLastAction(): Promise<void> {
-  if (history.busy || app.busy) {
+  if (history.busy || app.busy || activeGroup) {
     return;
   }
   const action = undoStack.pop();
@@ -73,7 +118,7 @@ export async function undoLastAction(): Promise<void> {
 }
 
 export async function redoLastAction(): Promise<void> {
-  if (history.busy || app.busy) {
+  if (history.busy || app.busy || activeGroup) {
     return;
   }
   const action = redoStack.pop();

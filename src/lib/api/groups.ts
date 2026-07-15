@@ -14,6 +14,10 @@ export function createGroup(name: string): Promise<GroupSummary> {
   return invoke<GroupSummary>("create_group", { name });
 }
 
+export function restoreGroup(group: GroupSummary): Promise<GroupSummary> {
+  return invoke<GroupSummary>("restore_group", { group });
+}
+
 export function renameGroup(groupId: number, newName: string): Promise<GroupSummary> {
   return invoke<GroupSummary>("rename_group", { groupId, newName });
 }

@@ -5,6 +5,7 @@ import type { DedupeMode, RowSelection, SourceType, TagMatchMode } from "./types
 
 export interface ImageImportResult {
   snapshot: AppSnapshot;
+  batchId: number;
   sourceType: SourceType;
   totalFound: number;
   added: number;
@@ -82,6 +83,30 @@ export interface RowRecord {
   groupName: string | null;
 }
 
+export interface MutableRowState {
+  rowId: number;
+  positivePrompt: string | null;
+  characterPrompt: string | null;
+  negativePrompt: string | null;
+  note: string | null;
+  artists: string | null;
+  tags: string[];
+  groupId: number | null;
+}
+
+export function mutableRowState(row: RowRecord): MutableRowState {
+  return {
+    rowId: row.id,
+    positivePrompt: row.positivePrompt,
+    characterPrompt: row.characterPrompt,
+    negativePrompt: row.negativePrompt,
+    note: row.note,
+    artists: row.artists,
+    tags: [...row.tags],
+    groupId: row.groupId,
+  };
+}
+
 export interface RowPage {
   rows: RowRecord[];
   totalCount: number;
@@ -100,6 +125,14 @@ export function updateExistingImages(path: string): Promise<ExistingImageUpdateR
 
 export function deleteRows(selection: RowSelection, trashOriginals: boolean): Promise<DeleteResult> {
   return invoke<DeleteResult>("delete_rows", { selection, trashOriginals });
+}
+
+export function undoImportBatch(batchId: number): Promise<DeleteResult> {
+  return invoke<DeleteResult>("undo_import_batch", { batchId });
+}
+
+export function restoreMutableRowStates(states: MutableRowState[]): Promise<number> {
+  return invoke<number>("restore_mutable_row_states", { states });
 }
 
 export function queryRows(query: RowQuery): Promise<RowPage> {

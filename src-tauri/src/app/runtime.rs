@@ -7,8 +7,8 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::db::{
-    BatchSummary, DedupeCluster, DedupeMode, GroupSummary, LibrarySummary, RowPage, RowQuery,
-    RowSelection, TagMatchMode, TagMutationError, TagMutationResult, TagSelectionSummary,
+    BatchSummary, DedupeCluster, DedupeMode, GroupSummary, LibrarySummary, MutableRowState,
+    RowPage, RowQuery, RowSelection, TagMatchMode, TagMutationError, TagMutationResult, TagSelectionSummary,
     TagSummary,
 };
 use crate::images::{ImageVariant, RowImageError};
@@ -314,12 +314,43 @@ impl AppRuntime {
         Ok((self.snapshot()?, report))
     }
 
+    pub(crate) fn undo_import_batch(
+        &self,
+        batch_id: i64,
+    ) -> Result<(RuntimeSnapshot, RowDeletionReport), AppRuntimeError> {
+        let row_ids = self.with_database(|db| db.row_ids_for_batch(batch_id))?;
+        let (_, report) = self.delete_rows(
+            &RowSelection::Explicit { row_ids },
+            false,
+        )?;
+        let removed = self.with_database_mut(|db| db.delete_batch_if_empty(batch_id))?;
+        if !removed {
+            return Err(crate::db::DatabaseError::BatchNotFound(batch_id).into());
+        }
+        // delete_rows 后的快照仍包含空批次，删除批次后重新取摘要。
+        Ok((self.snapshot()?, report))
+    }
+
+    pub(crate) fn restore_mutable_row_states(
+        &self,
+        states: &[MutableRowState],
+    ) -> Result<u64, AppRuntimeError> {
+        self.with_database_mut(|db| db.restore_mutable_row_states(states))
+    }
+
     pub(crate) fn list_batches(&self) -> Result<Vec<BatchSummary>, AppRuntimeError> {
         self.with_database(|db| db.list_batches())
     }
 
     pub(crate) fn create_group(&self, name: &str) -> Result<GroupSummary, AppRuntimeError> {
         self.with_database_mut(|db| db.create_group(name))
+    }
+
+    pub(crate) fn restore_group(
+        &self,
+        group: &GroupSummary,
+    ) -> Result<GroupSummary, AppRuntimeError> {
+        self.with_database_mut(|db| db.restore_group(group))
     }
 
     pub(crate) fn rename_group(
@@ -937,6 +968,31 @@ mod tests {
         let last_batch = library.last_batch.unwrap();
         assert!(last_batch.source_path.contains("sample-images"));
         assert_eq!(last_batch.added_count, 5);
+    }
+
+    #[test]
+    fn undo_import_batch_removes_only_library_copies_and_batch_record() {
+        let temporary = TemporaryRuntime::new();
+        let runtime = AppRuntime::load(temporary.locator.clone(), temporary.data.clone());
+        let folder = crate::storage::test_fixtures::sample_image_folder(&temporary.root, 3);
+        let original = folder.join("sample-1.png");
+
+        let (_, outcome) = runtime.import_images(&folder, |_| {}).unwrap();
+        let (snapshot, report) = runtime.undo_import_batch(outcome.batch_id).unwrap();
+
+        assert_eq!(report.deleted_rows, 3);
+        assert_eq!(report.trashed_original_files, 0);
+        assert!(original.is_file());
+        let library = snapshot.library.unwrap();
+        assert_eq!(library.row_count, 0);
+        assert_eq!(library.batch_count, 0);
+        assert!(library.last_batch.is_none());
+
+        let (redone, outcome) = runtime.import_images(&folder, |_| {}).unwrap();
+        assert_eq!(outcome.added, 3);
+        let library = redone.library.unwrap();
+        assert_eq!(library.row_count, 3);
+        assert_eq!(library.batch_count, 1);
     }
 
     #[test]

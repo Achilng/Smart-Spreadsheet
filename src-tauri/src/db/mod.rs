@@ -3,6 +3,7 @@ mod delete;
 mod export;
 mod groups;
 mod hashes;
+mod history;
 mod image_updates;
 pub mod identity;
 mod images;
@@ -28,6 +29,7 @@ use thiserror::Error;
 
 pub use export::ExportRow;
 pub use hashes::ContentHashCandidate;
+pub use history::MutableRowState;
 pub use image_updates::{ExistingImageTarget, ExistingImageUpdate};
 pub use images::RowImageLocator;
 pub use migrations::CURRENT_SCHEMA_VERSION;
@@ -54,6 +56,8 @@ pub enum DatabaseError {
     CountOverflow,
     #[error("不存在的行 ID: {0}")]
     RowNotFound(i64),
+    #[error("不存在的导入批次 ID: {0}")]
+    BatchNotFound(i64),
     #[error("导入批次包含重复的行身份键: {0}")]
     DuplicateIdentityInBatch(String),
     #[error("导入批次包含空的行身份键")]
