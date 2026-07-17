@@ -480,23 +480,6 @@ pub(crate) fn prepend_artist(
 }
 
 #[tauri::command]
-pub(crate) async fn suggest_groups(
-    mode: crate::pipeline::similarity::SimilarityMode,
-    threshold: f64,
-    app: tauri::AppHandle,
-) -> Result<Vec<crate::pipeline::similarity::SuggestedGroup>, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        let runtime = app.state::<AppRuntime>();
-        let rows = runtime.ungrouped_keys(mode).map_err(error_text)?;
-        Ok(crate::pipeline::similarity::suggest_groups(rows, mode, threshold, |progress| {
-            let _ = app.emit("group-suggest://progress", progress);
-        }))
-    })
-    .await
-    .map_err(|error| format!("分组建议任务异常中止: {error}"))?
-}
-
-#[tauri::command]
 pub(crate) fn get_group_members(
     group_id: i64,
     offset: u64,

@@ -25,7 +25,6 @@
   import GalleryView from "../gallery/GalleryView.svelte";
   import GroupBrowseView from "../groups/GroupBrowseView.svelte";
   import GroupManageView from "../groups/GroupManageView.svelte";
-  import GroupSuggestionView from "../groups/GroupSuggestionView.svelte";
   import JsonDedupeView from "../tools/JsonDedupeView.svelte";
   import NavRail from "./NavRail.svelte";
   import PromptDocsView from "../prompt-docs/PromptDocsView.svelte";
@@ -219,10 +218,6 @@
 
 {#if app.artistGenOpen}
   <ArtistGeneratorView />
-{/if}
-
-{#if app.groupSuggestOpen}
-  <GroupSuggestionView />
 {/if}
 
 {#if app.groupManageOpen}

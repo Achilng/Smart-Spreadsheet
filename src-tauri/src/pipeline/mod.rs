@@ -10,7 +10,6 @@ mod metadata_fingerprint;
 pub mod parallel;
 pub mod png_text;
 pub mod scan;
-pub mod similarity;
 
 pub use artist::extract_artist_tags;
 pub use metadata::{NovelAiMetadata, parse_novelai_metadata};

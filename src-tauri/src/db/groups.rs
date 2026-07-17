@@ -152,22 +152,6 @@ impl Database {
         Ok(affected as u64)
     }
 
-    pub fn ungrouped_keys(
-        &self,
-        mode: crate::pipeline::similarity::SimilarityMode,
-    ) -> Result<Vec<(i64, String)>, DatabaseError> {
-        let column = match mode {
-            crate::pipeline::similarity::SimilarityMode::Artists => "artists",
-            crate::pipeline::similarity::SimilarityMode::PositivePrompt => "positive_prompt",
-        };
-        let mut stmt = self.connection.prepare(&format!(
-            "SELECT id, {column} FROM rows WHERE group_id IS NULL AND {column} IS NOT NULL AND TRIM({column}) != ''"
-        ))?;
-        let rows = stmt
-            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
-            .collect::<Result<Vec<(i64, String)>, _>>()?;
-        Ok(rows)
-    }
 }
 
 fn query_single_group(

@@ -166,7 +166,7 @@
   {:else if groupStore.error}
     <div class="status empty-state"><p class="muted">加载失败：{groupStore.error}</p></div>
   {:else if groupStore.list.length === 0 && !groupBrowse.ungroupedExpanded}
-    <div class="status empty-state"><p class="muted">暂无分组。可通过工具菜单「建议分组」创建。</p></div>
+    <div class="status empty-state"><p class="muted">暂无分组。可选择图片后创建分组。</p></div>
   {:else}
     <div class="group-list" bind:this={listEl} onscroll={onScroll}>
       {#each sortedGroups as group (group.id)}

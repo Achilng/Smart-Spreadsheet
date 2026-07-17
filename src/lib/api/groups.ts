@@ -45,20 +45,6 @@ export function ungroupRows(selection: RowSelection): Promise<number> {
   return invoke<number>("ungroup_rows", { selection });
 }
 
-export type SimilarityMode = "artists" | "positivePrompt";
-
-export interface SuggestedGroup {
-  name: string;
-  rowIds: number[];
-}
-
-export function suggestGroups(
-  mode: SimilarityMode,
-  threshold: number,
-): Promise<SuggestedGroup[]> {
-  return invoke<SuggestedGroup[]>("suggest_groups", { mode, threshold });
-}
-
 export function getGroupMembers(
   groupId: number,
   offset: number,

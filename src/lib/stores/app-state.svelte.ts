@@ -56,8 +56,6 @@ export const app = $state({
   searchResults: null as SimilarImageMatch[] | null,
   /** 以图搜图的查询图片路径 */
   searchQueryPath: null as string | null,
-  /** 建议分组视图是否打开 */
-  groupSuggestOpen: false,
   /** 分组管理视图是否打开 */
   groupManageOpen: false,
 });

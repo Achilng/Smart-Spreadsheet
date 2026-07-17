@@ -55,7 +55,6 @@ pub fn run() {
             app::commands::delete_prompt_doc,
             app::commands::import_prompt_doc_image_from_path,
             app::commands::import_prompt_doc_image_bytes,
-            app::commands::suggest_groups,
             app::commands::update_positive_prompt,
             app::commands::update_character_prompt,
             app::commands::update_negative_prompt,

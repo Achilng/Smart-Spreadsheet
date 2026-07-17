@@ -23,7 +23,6 @@ serde = { version = "1.0.228", features = ["derive"] }
 serde_json = { version = "1.0.150", features = ["preserve_order"] }
 sevenz-rust = "0.6.1"
 sha2 = "0.10.9"
-strsim = "0.11"
 tauri = { version = "2.11.2", features = [] }
 tauri-plugin-dialog = "2.7.1"
 tauri-plugin-drag = "2.1.1"
