@@ -778,7 +778,7 @@ pub(crate) async fn open_toolbox_window(app: tauri::AppHandle) -> Result<(), Str
         "toolbox",
         WebviewUrl::App("index.html?window=toolbox".into()),
     )
-    .title("智能表格 · 工具箱")
+    .title("工具箱")
     .inner_size(960.0, 680.0)
     .min_inner_size(760.0, 520.0)
     .center()

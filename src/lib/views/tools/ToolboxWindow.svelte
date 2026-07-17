@@ -114,7 +114,7 @@
   <header class="titlebar" data-tauri-drag-region>
     <div class="brand" data-tauri-drag-region>
       <span class="brand-mark">S</span>
-      <span data-tauri-drag-region>智能表格 · 工具箱</span>
+      <span data-tauri-drag-region>工具箱</span>
     </div>
     <WindowControls />
   </header>
