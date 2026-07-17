@@ -207,7 +207,6 @@
     return tagStore.list
       .filter(tag => !existing.has(tag.name))
       .filter(tag => query === "" || tag.name.toLocaleLowerCase().includes(query))
-      .slice(0, 8)
       .map(tag => tag.name);
   });
 
@@ -719,12 +718,15 @@
     border: 1px solid var(--border);
     border-radius: var(--radius-s);
     box-shadow: var(--shadow-2);
-    overflow: hidden;
+    max-height: 240px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
     display: flex;
     flex-direction: column;
   }
 
   .suggestions button {
+    flex: none;
     border: none;
     background: none;
     text-align: left;
