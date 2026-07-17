@@ -6,7 +6,8 @@ use super::{Database, DatabaseError};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SourceType {
-    Xlsx,
+    /// 只用于展示历史批次；当前版本不会产生新的 legacy 批次。
+    Legacy,
     Folder,
     Archive,
 }
@@ -14,7 +15,7 @@ pub enum SourceType {
 impl SourceType {
     pub fn as_str(self) -> &'static str {
         match self {
-            Self::Xlsx => "xlsx",
+            Self::Legacy => "legacy",
             Self::Folder => "folder",
             Self::Archive => "archive",
         }
@@ -22,7 +23,7 @@ impl SourceType {
 
     pub(crate) fn from_str(value: &str) -> Result<Self, DatabaseError> {
         match value {
-            "xlsx" => Ok(Self::Xlsx),
+            "legacy" => Ok(Self::Legacy),
             "folder" => Ok(Self::Folder),
             "archive" => Ok(Self::Archive),
             other => Err(DatabaseError::IntegrityCheckFailed(format!(
@@ -193,7 +194,7 @@ impl Database {
                     row.content_hash,
                     row.perceptual_hash,
                     row.metadata_fingerprint,
-                    stored_image_path.is_some() && source_type != SourceType::Xlsx,
+                    stored_image_path.is_some() && source_type != SourceType::Legacy,
                 ])?;
                 added += 1;
             }
@@ -605,9 +606,9 @@ mod tests {
         append_rows(&mut database, &test_rows(2));
         database
             .append_batch(
-                SourceType::Xlsx,
-                r"D:\legacy.xlsx",
-                &[row("xlsxrow:legacy.xlsx!2", 2)],
+                SourceType::Legacy,
+                "旧版导入来源",
+                &[row("legacy-row:2", 2)],
                 |_| Ok(()),
             )
             .unwrap();
@@ -615,7 +616,7 @@ mod tests {
         let batches = database.list_batches().unwrap();
 
         assert_eq!(batches.len(), 2);
-        assert_eq!(batches[0].source_type, SourceType::Xlsx);
+        assert_eq!(batches[0].source_type, SourceType::Legacy);
         assert_eq!(batches[1].source_type, SourceType::Folder);
     }
 }

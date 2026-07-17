@@ -1,39 +1,26 @@
 use rusqlite::params;
 
-use super::{Database, DatabaseError, RowImageLocator, SourceType};
+use super::{Database, DatabaseError, RowImageLocator};
 
 impl Database {
     pub fn missing_metadata_fingerprints(&self) -> Result<Vec<RowImageLocator>, DatabaseError> {
         let mut statement = self.connection.prepare(
-            "SELECT rows.id, rows.image_path, rows.stored_image_path,
-                    rows.stored_image_is_original, batches.source_type
+            "SELECT id, image_path, stored_image_path, stored_image_is_original
              FROM rows
-             JOIN import_batches AS batches ON batches.id = rows.batch_id
-             WHERE rows.metadata_fingerprint IS NULL
-             ORDER BY rows.id",
+             WHERE metadata_fingerprint IS NULL
+             ORDER BY id",
         )?;
         let stored = statement
             .query_map([], |row| {
-                Ok((
-                    RowImageLocator {
-                        row_id: row.get(0)?,
-                        image_path: row.get(1)?,
-                        stored_image_path: row.get(2)?,
-                        stored_image_is_original: row.get(3)?,
-                        source_type: SourceType::Folder,
-                    },
-                    row.get::<_, String>(4)?,
-                ))
+                Ok(RowImageLocator {
+                    row_id: row.get(0)?,
+                    image_path: row.get(1)?,
+                    stored_image_path: row.get(2)?,
+                    stored_image_is_original: row.get(3)?,
+                })
             })?
             .collect::<Result<Vec<_>, _>>()?;
-
-        stored
-            .into_iter()
-            .map(|(mut locator, source_type)| {
-                locator.source_type = SourceType::from_str(&source_type)?;
-                Ok(locator)
-            })
-            .collect()
+        Ok(stored)
     }
 
     pub fn update_metadata_fingerprints(

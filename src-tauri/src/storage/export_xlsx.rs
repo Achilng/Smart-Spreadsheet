@@ -68,10 +68,7 @@ impl DataDirectory {
             return Err(XlsxExportError::EmptySelection);
         }
         let total = rows.len();
-        progress(ExportProgress {
-            processed: 0,
-            total,
-        });
+        progress(ExportProgress { processed: 0, total });
 
         let mut workbook = Workbook::new();
         let mut images_embedded = 0;
@@ -123,8 +120,8 @@ impl DataDirectory {
 
                 match self.load_row_image(row.id, ImageVariant::Thumbnail) {
                     Ok(payload) => {
-                        let image = Image::new_from_buffer(&payload.png_bytes)?
-                            .set_alt_text(display_text(&row.image_path));
+                        let image =
+                            Image::new_from_buffer(&payload.png_bytes)?.set_alt_text(display_text(&row.image_path));
                         worksheet.insert_image_fit_to_cell_centered(row_number, 0, &image)?;
                         images_embedded += 1;
                     }
@@ -192,9 +189,11 @@ fn truncate_for_excel(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::fs::File;
+    use std::io::Read;
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    use calamine::{Data, Reader, Xlsx, open_workbook};
+    use zip::ZipArchive;
 
     use super::*;
     use crate::db::TagMatchMode;
@@ -237,23 +236,54 @@ mod tests {
         assert_eq!(outcome.image_failures, 0);
         assert_eq!(events.last().unwrap().processed, 5);
 
-        let mut workbook: Xlsx<_> = open_workbook(&temporary.destination).unwrap();
-        let range = workbook.worksheet_range_at(0).unwrap().unwrap();
-        assert_eq!(
-            range.get_value((0, 3)),
-            Some(&Data::String("角色提示词".into()))
-        );
-        assert_eq!(range.get_value((0, 8)), Some(&Data::String("备注".into())));
-        assert_eq!(range.get_value((1, 8)), Some(&Data::String("首个预设".into())));
-        assert_eq!(range.get_value((0, 9)), Some(&Data::String("Tags".into())));
-        assert_eq!(
-            range.get_value((1, 9)),
-            Some(&Data::String("Landscape, landscape".into()))
-        );
-        assert_eq!(range.get_value((5, 9)), Some(&Data::String("中文".into())));
-        // 重新解析固定结构成功 → 7 个必需表头完整。
-        let parsed = crate::excel::read_fixed_workbook(&temporary.destination).unwrap();
-        assert_eq!(parsed.rows.len(), 5);
+        let package = inspect_xlsx(&temporary.destination);
+        assert_eq!(package.sheet_rows, 6);
+        assert!(package.media_files >= 1);
+        assert_eq!(package.drawing_images, 5);
+        for expected in [
+            "NovelAI Metadata",
+            "角色提示词",
+            "备注",
+            "首个预设",
+            "Tags",
+            "Landscape, landscape",
+            "中文",
+        ] {
+            assert!(package.xml.contains(expected), "missing exported value: {expected}");
+        }
+    }
+
+    #[test]
+    fn exports_text_when_image_is_missing() {
+        let temporary = TemporaryXlsxExport::new();
+        let directory = DataDirectory::initialize(&temporary.data).unwrap();
+        let folder = test_fixtures::sample_image_folder(&temporary.root, 1);
+        directory.import_images(&folder, |_| {}).unwrap();
+
+        let locator = directory.open_database().unwrap().row_image_locator(1).unwrap();
+        if let Some(path) = locator.image_path {
+            fs::remove_file(path).unwrap();
+        }
+        if let Some(path) = locator.stored_image_path {
+            fs::remove_file(directory.root().join(path)).unwrap();
+        }
+
+        let outcome = directory
+            .export_xlsx(
+                &RowSelection::Explicit { row_ids: vec![1] },
+                &temporary.destination,
+                |_| {},
+            )
+            .unwrap();
+
+        assert_eq!(outcome.row_count, 1);
+        assert_eq!(outcome.images_embedded, 0);
+        assert_eq!(outcome.image_failures, 1);
+        let package = inspect_xlsx(&temporary.destination);
+        assert_eq!(package.sheet_rows, 2);
+        assert_eq!(package.media_files, 0);
+        assert_eq!(package.drawing_images, 0);
+        assert!(package.xml.contains("正向提示词"));
     }
 
     #[test]
@@ -293,6 +323,47 @@ mod tests {
         assert!(!other.exists());
     }
 
+    struct XlsxPackage {
+        xml: String,
+        sheet_rows: usize,
+        media_files: usize,
+        drawing_images: usize,
+    }
+
+    fn inspect_xlsx(path: &Path) -> XlsxPackage {
+        let mut archive = ZipArchive::new(File::open(path).unwrap()).unwrap();
+        for required in ["[Content_Types].xml", "xl/workbook.xml", "xl/worksheets/sheet1.xml"] {
+            archive.by_name(required).unwrap();
+        }
+
+        let mut xml = String::new();
+        let mut sheet = String::new();
+        let mut media_files = 0;
+        for index in 0..archive.len() {
+            let mut entry = archive.by_index(index).unwrap();
+            let name = entry.name().to_owned();
+            if name.starts_with("xl/media/") && !name.ends_with('/') {
+                media_files += 1;
+            }
+            if name.ends_with(".xml") {
+                let mut contents = String::new();
+                entry.read_to_string(&mut contents).unwrap();
+                if name == "xl/worksheets/sheet1.xml" {
+                    sheet = contents.clone();
+                }
+                xml.push_str(&contents);
+            }
+        }
+
+        let drawing_images = xml.matches("<xdr:pic>").count();
+        XlsxPackage {
+            sheet_rows: sheet.matches("<row ").count(),
+            xml,
+            media_files,
+            drawing_images,
+        }
+    }
+
     struct TemporaryXlsxExport {
         root: PathBuf,
         data: PathBuf,
@@ -311,10 +382,7 @@ mod tests {
                 .duration_since(UNIX_EPOCH)
                 .expect("system clock should be valid")
                 .as_nanos();
-            let root = parent.join(format!(
-                "smart-spreadsheet-export-xlsx-{}-{nonce}",
-                std::process::id()
-            ));
+            let root = parent.join(format!("smart-spreadsheet-export-xlsx-{}-{nonce}", std::process::id()));
             fs::create_dir_all(&root).unwrap();
             Self {
                 data: root.join("data"),

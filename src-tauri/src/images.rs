@@ -33,7 +33,7 @@ impl ImageVariant {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ImageOrigin {
     ExternalPath,
-    /// 受管数据目录中的提取副本（压缩包图片或 xlsx 嵌入图）。
+    /// 受管数据目录中的图片副本。
     StoredCopy,
 }
 
@@ -332,7 +332,6 @@ mod tests {
             ),
             stored_image_path: Some("files/1/embedded/row-1.png".into()),
             stored_image_is_original: false,
-            source_type: crate::db::SourceType::Xlsx,
         };
 
         let first = load_row_image(&directory, &locator, ImageVariant::Thumbnail).unwrap();
@@ -366,7 +365,6 @@ mod tests {
             image_path: Some(external.to_string_lossy().into_owned()),
             stored_image_path: Some("files/1/missing.png".into()),
             stored_image_is_original: true,
-            source_type: crate::db::SourceType::Archive,
         };
 
         let payload = load_row_image(&directory, &locator, ImageVariant::Preview).unwrap();

@@ -171,7 +171,7 @@ pub fn resolve_locator_source(
 }
 
 /// 只解析"完整原件"：外部原图，或明确标记为完整原件的受管副本。
-/// 旧 xlsx 嵌入图是 Excel 压缩过的无元数据缩略图，不算原件——拖出这种副本
+/// 历史导入产生的无元数据缩略图不算原件——拖出这种副本
 /// 会让 NovelAI 等下游丢失全部元数据，宁可报错也不静默降级。
 pub fn resolve_original_source(
     directory: &DataDirectory,

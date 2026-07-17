@@ -1,4 +1,4 @@
-export type SourceType = "xlsx" | "folder" | "archive";
+export type SourceType = "legacy" | "folder" | "archive";
 
 export type TagMatchMode = "and" | "or";
 export type DedupeMode = "none" | "positivePrompt" | "artists";

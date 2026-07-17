@@ -13,11 +13,9 @@ tauri-build = { version = "2.6.2", features = [] }
 
 [dependencies]
 anyhow = "1.0"
-calamine = "0.35.0"
 chrono = { version = "0.4.44", default-features = false, features = ["clock"] }
 flate2 = "1.1"
 image = { version = "0.25.10", default-features = false, features = ["bmp", "gif", "ico", "jpeg", "png", "tiff", "webp"] }
-quick-xml = "0.39.4"
 rusqlite = { version = "0.39.0", default-features = false, features = ["backup", "bundled"] }
 rust_xlsxwriter = "0.95.0"
 serde = { version = "1.0.228", features = ["derive"] }

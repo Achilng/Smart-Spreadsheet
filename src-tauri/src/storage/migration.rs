@@ -371,14 +371,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn migrates_database_workbook_and_cache_then_removes_source() {
+    fn migrates_database_files_and_cache_then_removes_source() {
         let temporary = TemporaryMigration::new();
         let source = DataDirectory::initialize(&temporary.source).unwrap();
-        let sample = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("..")
-            .join("Examples")
-            .join("novelai_metadata.xlsx");
-        fs::copy(&sample, source.source_workbook_path()).unwrap();
+        let managed_file = source.files_path().join("1").join("image.png");
+        fs::create_dir_all(managed_file.parent().unwrap()).unwrap();
+        fs::write(&managed_file, b"managed image").unwrap();
         fs::write(source.thumbnail_cache_path().join("2.webp"), b"thumbnail").unwrap();
         let connection = Connection::open(source.database_path()).unwrap();
         connection
@@ -400,8 +398,15 @@ mod tests {
             b"thumbnail"
         );
         assert_eq!(
-            fs::read(outcome.data_directory.source_workbook_path()).unwrap(),
-            fs::read(sample).unwrap()
+            fs::read(
+                outcome
+                    .data_directory
+                    .files_path()
+                    .join("1")
+                    .join("image.png")
+            )
+            .unwrap(),
+            b"managed image"
         );
         let migrated = Connection::open(outcome.data_directory.database_path()).unwrap();
         let value: String = migrated

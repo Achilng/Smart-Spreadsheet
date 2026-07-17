@@ -1,5 +1,5 @@
-mod delete;
 mod content_hash;
+mod delete;
 mod export_images;
 mod export_json;
 mod export_xlsx;
@@ -19,24 +19,20 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::db::{Database, DatabaseError};
-use crate::excel::EmbeddedImageRef;
 
-pub use delete::{RowDeletionError, RowDeletionReport};
 pub use content_hash::{ContentHashBackfillOutcome, ContentHashProgress};
+pub use delete::{RowDeletionError, RowDeletionReport};
 pub use export_images::{
-    ImageFileExportMode, ImageFilesExportError, ImageFilesExportOutcome, ImageFilesProgress,
-    OriginalSourceError, resolve_locator_source as resolve_image_source, resolve_original_source,
+    ImageFileExportMode, ImageFilesExportError, ImageFilesExportOutcome, ImageFilesProgress, OriginalSourceError,
+    resolve_locator_source as resolve_image_source, resolve_original_source,
 };
 pub use export_json::{JsonExportError, JsonExportOutcome, JsonExportProgress};
 pub use export_xlsx::{ExportProgress, XlsxExportError, XlsxExportOutcome};
 pub use import_images::{
-    ExistingImageUpdateOutcome, ImageImportError, ImageImportOutcome, ImageImportProgress,
-    ImageImportStage,
+    ExistingImageUpdateOutcome, ImageImportError, ImageImportOutcome, ImageImportProgress, ImageImportStage,
 };
 pub use migration::{MigrationOutcome, PreparedMigration};
-pub use perceptual_hash::{
-    PerceptualHashBackfillOutcome, PerceptualHashProgress, SimilarImageMatch,
-};
+pub use perceptual_hash::{PerceptualHashBackfillOutcome, PerceptualHashProgress, SimilarImageMatch};
 pub use prompt_docs::{PromptDocAsset, PromptDocDetail, PromptDocError, PromptDocSummary};
 
 pub(super) const FORMAT_VERSION: u32 = 1;
@@ -104,7 +100,6 @@ impl DataDirectory {
         }
 
         fs::create_dir_all(root)?;
-        fs::create_dir_all(root.join("workbook"))?;
         fs::create_dir_all(root.join("files"))?;
         fs::create_dir_all(root.join("prompt-docs"))?;
         fs::create_dir_all(root.join("cache").join("thumbnails"))?;
@@ -140,11 +135,7 @@ impl DataDirectory {
             });
         }
 
-        for required_path in [
-            root.join("workbook"),
-            root.join("cache").join("thumbnails"),
-            root.join("migration"),
-        ] {
+        for required_path in [root.join("cache").join("thumbnails"), root.join("migration")] {
             if !required_path.is_dir() {
                 return Err(StorageError::MissingRequiredPath(required_path));
             }
@@ -160,10 +151,7 @@ impl DataDirectory {
         // 提示词文档是文件夹资产，不提升目录格式版本，旧目录打开时补建。
         fs::create_dir_all(root.join("prompt-docs"))?;
 
-        let directory = Self {
-            root: root.to_owned(),
-        };
-        directory.process_pending_embedded_extractions()?;
+        let directory = Self { root: root.to_owned() };
         directory.backfill_content_hashes(progress)?;
         directory.backfill_metadata_fingerprints()?;
         Ok(directory)
@@ -175,10 +163,6 @@ impl DataDirectory {
 
     pub fn database_path(&self) -> PathBuf {
         self.root.join(DATABASE_FILE)
-    }
-
-    pub fn source_workbook_path(&self) -> PathBuf {
-        self.root.join("workbook").join("source.xlsx")
     }
 
     pub fn files_path(&self) -> PathBuf {
@@ -208,10 +192,7 @@ impl DataDirectory {
         self.root.join("rejected")
     }
 
-    pub fn set_rejected_images_directory(
-        &self,
-        path: impl AsRef<Path>,
-    ) -> Result<PathBuf, StorageError> {
+    pub fn set_rejected_images_directory(&self, path: impl AsRef<Path>) -> Result<PathBuf, StorageError> {
         let path = path.as_ref();
         if path.exists() && !path.is_dir() {
             return Err(StorageError::RejectedImagesPathNotDirectory(path.to_owned()));
@@ -237,12 +218,6 @@ impl DataDirectory {
             fs::create_dir_all(&cache_dir)?;
         }
 
-        let workbook_dir = self.root.join("workbook");
-        if workbook_dir.is_dir() {
-            fs::remove_dir_all(&workbook_dir)?;
-            fs::create_dir_all(&workbook_dir)?;
-        }
-
         let db_path = self.database_path();
         let wal = db_path.with_extension("sqlite3-wal");
         let shm = db_path.with_extension("sqlite3-shm");
@@ -253,57 +228,6 @@ impl DataDirectory {
 
         self.set_rejected_images_directory(self.default_rejected_images_directory())?;
 
-        Ok(())
-    }
-
-    /// 处理 v1→v2 迁移遗留的嵌入图提取：从旧工作簿副本批量读出嵌入图，
-    /// 写入 `files/1/embedded/`（迁移产生的行固定属于批次 1）并更新行记录。
-    /// 工作簿副本缺失或读取失败时清空待提取项，相关行失去嵌入图回退但不阻塞打开。
-    fn process_pending_embedded_extractions(&self) -> Result<(), StorageError> {
-        let mut database = self.open_database()?;
-        let pending = database.pending_embedded_extractions()?;
-        if pending.is_empty() {
-            return Ok(());
-        }
-
-        let workbook = self.source_workbook_path();
-        let mut results: Vec<(i64, Option<String>)> =
-            pending.iter().map(|(row_id, _)| (*row_id, None)).collect();
-
-        if workbook.is_file() {
-            let target_dir = self.files_path().join("1").join("embedded");
-            fs::create_dir_all(&target_dir)?;
-            let references = pending
-                .iter()
-                .map(|(_, media_path)| EmbeddedImageRef {
-                    source_row: 0,
-                    source_column: 0,
-                    media_path: media_path.clone(),
-                })
-                .collect::<Vec<_>>();
-            let extraction = crate::excel::extract_embedded_images(
-                &workbook,
-                &references,
-                |index, image, bytes| {
-                    let row_id = pending[index].0;
-                    let extension = media_extension(&image.media_path);
-                    let file_name = format!("row-{row_id}.{extension}");
-                    fs::write(target_dir.join(&file_name), bytes)?;
-                    results[index].1 = Some(format!("files/1/embedded/{file_name}"));
-                    Ok(())
-                },
-            );
-            // 工作簿副本损坏时按“无嵌入图”降级处理，不阻塞数据目录打开。
-            if extraction.is_err() {
-                for result in &mut results {
-                    if let Some(stored) = result.1.take() {
-                        let _ = fs::remove_file(self.root.join(stored));
-                    }
-                }
-            }
-        }
-
-        database.resolve_pending_embedded_extractions(&results)?;
         Ok(())
     }
 }
@@ -343,19 +267,6 @@ impl Drop for StagingDir {
     }
 }
 
-pub(super) fn media_extension(media_path: &str) -> String {
-    let extension = media_path
-        .rsplit('.')
-        .next()
-        .filter(|extension| {
-            !extension.is_empty()
-                && extension.len() <= 8
-                && extension.chars().all(|c| c.is_ascii_alphanumeric())
-        })
-        .unwrap_or("png");
-    extension.to_ascii_lowercase()
-}
-
 fn write_marker(path: &Path) -> Result<(), StorageError> {
     let marker = DataDirectoryMarker {
         format_version: FORMAT_VERSION,
@@ -383,21 +294,11 @@ mod tests {
 
         assert_eq!(initialized, reopened);
         assert!(initialized.database_path().is_file());
-        assert!(
-            initialized
-                .source_workbook_path()
-                .parent()
-                .unwrap()
-                .is_dir()
-        );
+        assert!(initialized.files_path().is_dir());
         assert!(initialized.thumbnail_cache_path().is_dir());
         assert!(initialized.migration_path().is_dir());
         assert_eq!(
-            initialized
-                .open_database()
-                .unwrap()
-                .schema_version()
-                .unwrap(),
+            initialized.open_database().unwrap().schema_version().unwrap(),
             crate::db::CURRENT_SCHEMA_VERSION
         );
     }
@@ -411,21 +312,14 @@ mod tests {
         let error = DataDirectory::initialize(&temporary.path).unwrap_err();
 
         assert!(matches!(error, StorageError::UnmanagedDirectory(path) if path == temporary.path));
-        assert_eq!(
-            fs::read(temporary.path.join("unrelated.txt")).unwrap(),
-            b"keep"
-        );
+        assert_eq!(fs::read(temporary.path.join("unrelated.txt")).unwrap(), b"keep");
     }
 
     #[test]
     fn rejects_newer_data_directory_format() {
         let temporary = TemporaryDirectory::new("future-format");
         let directory = DataDirectory::initialize(&temporary.path).unwrap();
-        fs::write(
-            directory.root().join(MARKER_FILE),
-            br#"{"format_version":999}"#,
-        )
-        .unwrap();
+        fs::write(directory.root().join(MARKER_FILE), br#"{"format_version":999}"#).unwrap();
 
         let error = DataDirectory::open(&temporary.path).unwrap_err();
 

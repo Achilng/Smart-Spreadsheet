@@ -4,8 +4,8 @@ mod export;
 mod groups;
 mod hashes;
 mod history;
-mod image_updates;
 pub mod identity;
+mod image_updates;
 mod images;
 mod metadata_fingerprints;
 mod migrations;
@@ -17,7 +17,13 @@ mod tags;
 
 pub use batches::{AppendOutcome, BatchSummary, LibrarySummary, NewRow, SourceType};
 pub use delete::DeleteOutcome;
+pub use export::ExportRow;
 pub use groups::GroupSummary;
+pub use hashes::ContentHashCandidate;
+pub use history::MutableRowState;
+pub use image_updates::{ExistingImageTarget, ExistingImageUpdate};
+pub use images::RowImageLocator;
+pub use migrations::CURRENT_SCHEMA_VERSION;
 pub use prompt_edit::{PromptEditResult, SinglePromptEditResult};
 pub use query::{DedupeCluster, DedupeMode, MAX_PAGE_SIZE, RowPage, RowQuery, RowRecord, TagMatchMode, TagSummary};
 pub use tags::{RowSelection, TagMutationError, TagMutationResult, TagSelectionSummary};
@@ -25,19 +31,9 @@ pub use tags::{RowSelection, TagMutationError, TagMutationResult, TagSelectionSu
 use std::path::Path;
 use std::time::Duration;
 
+use migrations::{MIGRATION_9, MIGRATION_10, MINIMUM_UPGRADABLE_SCHEMA_VERSION, SCHEMA_10};
 use rusqlite::{Connection, MAIN_DB, TransactionBehavior};
 use thiserror::Error;
-
-pub use export::ExportRow;
-pub use hashes::ContentHashCandidate;
-pub use history::MutableRowState;
-pub use image_updates::{ExistingImageTarget, ExistingImageUpdate};
-pub use images::RowImageLocator;
-pub use migrations::CURRENT_SCHEMA_VERSION;
-use migrations::{
-    MIGRATION_1, MIGRATION_2, MIGRATION_3, MIGRATION_4, MIGRATION_5, MIGRATION_6, MIGRATION_7,
-    MIGRATION_8, MIGRATION_9,
-};
 
 #[derive(Debug, Error)]
 pub enum DatabaseError {
@@ -45,6 +41,8 @@ pub enum DatabaseError {
     Sqlite(#[from] rusqlite::Error),
     #[error("数据库版本 {found} 高于当前支持版本 {supported}")]
     UnsupportedSchemaVersion { found: u32, supported: u32 },
+    #[error("数据库版本 {found} 过旧；当前版本只支持从 v{minimum} 及以上升级，请先使用旧版应用升级数据库")]
+    LegacySchemaVersion { found: u32, minimum: u32 },
     #[error("数据库完整性检查失败: {0}")]
     IntegrityCheckFailed(String),
     #[error("导入行数超出 SQLite 可表示范围")]
@@ -144,9 +142,15 @@ fn migrate(connection: &mut Connection) -> Result<(), DatabaseError> {
     if version == CURRENT_SCHEMA_VERSION {
         return Ok(());
     }
+    if version != 0 && version < MINIMUM_UPGRADABLE_SCHEMA_VERSION {
+        return Err(DatabaseError::LegacySchemaVersion {
+            found: version,
+            minimum: MINIMUM_UPGRADABLE_SCHEMA_VERSION,
+        });
+    }
 
-    // v2 迁移需要重建 rows 表。按 SQLite 文档要求在事务外关闭外键约束，
-    // 否则 DROP 旧表会触发 row_tags 的级联删除。
+    // v10 会重建 import_batches。必须在事务外关闭外键约束，
+    // 避免 DROP 旧表影响 rows 中保留的外键引用。
     connection.pragma_update(None, "foreign_keys", false)?;
     let migration_result = apply_pending_migrations(connection, version);
     let restore_result = connection.pragma_update(None, "foreign_keys", true);
@@ -155,47 +159,20 @@ fn migrate(connection: &mut Connection) -> Result<(), DatabaseError> {
     verify_foreign_keys(connection)
 }
 
-fn apply_pending_migrations(
-    connection: &mut Connection,
-    from_version: u32,
-) -> Result<(), DatabaseError> {
+fn apply_pending_migrations(connection: &mut Connection, from_version: u32) -> Result<(), DatabaseError> {
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let mut version = from_version;
     if version == 0 {
-        transaction.execute_batch(MIGRATION_1)?;
-        version = 1;
-    }
-    if version == 1 {
-        transaction.execute_batch(MIGRATION_2)?;
-        version = 2;
-    }
-    if version == 2 {
-        transaction.execute_batch(MIGRATION_3)?;
-        version = 3;
-    }
-    if version == 3 {
-        transaction.execute_batch(MIGRATION_4)?;
-        version = 4;
-    }
-    if version == 4 {
-        transaction.execute_batch(MIGRATION_5)?;
-        version = 5;
-    }
-    if version == 5 {
-        transaction.execute_batch(MIGRATION_6)?;
-        version = 6;
-    }
-    if version == 6 {
-        transaction.execute_batch(MIGRATION_7)?;
-        version = 7;
-    }
-    if version == 7 {
-        transaction.execute_batch(MIGRATION_8)?;
-        version = 8;
+        transaction.execute_batch(SCHEMA_10)?;
+        version = 10;
     }
     if version == 8 {
         transaction.execute_batch(MIGRATION_9)?;
         version = 9;
+    }
+    if version == 9 {
+        transaction.execute_batch(MIGRATION_10)?;
+        version = 10;
     }
     debug_assert_eq!(version, CURRENT_SCHEMA_VERSION);
     transaction.pragma_update(None, "user_version", version)?;
@@ -216,8 +193,8 @@ fn verify_foreign_keys(connection: &Connection) -> Result<(), DatabaseError> {
 
 #[cfg(test)]
 pub(crate) mod test_support {
-    use super::batches::{NewRow, SourceType};
     use super::Database;
+    use super::batches::{NewRow, SourceType};
 
     /// 构造 `count` 行测试数据：身份键为 file:d:\test\<编号>.png，
     /// source_ordinal 与正向提示词按编号递增。
@@ -258,7 +235,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn initializes_current_schema_and_foreign_keys() {
+    fn initializes_current_schema_without_legacy_tables() {
         let database = Database::open_in_memory().unwrap();
 
         assert_eq!(database.schema_version().unwrap(), CURRENT_SCHEMA_VERSION);
@@ -268,11 +245,10 @@ mod tests {
             .unwrap();
         assert_eq!(foreign_keys, 1);
 
-        let mut tables = database
+        let tables = database
             .connection
             .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
-            .unwrap();
-        let tables = tables
+            .unwrap()
             .query_map([], |row| row.get::<_, String>(0))
             .unwrap()
             .collect::<Result<Vec<_>, _>>()
@@ -283,118 +259,35 @@ mod tests {
                 "dedupe_aliases",
                 "groups",
                 "import_batches",
-                "pending_embedded_extractions",
                 "row_tags",
                 "rows",
                 "settings",
                 "tags"
             ]
         );
-
-        let content_hash_column: (String, String, i64) = database
-            .connection
-            .query_row(
-                "SELECT name, type, \"notnull\" FROM pragma_table_info('rows') WHERE name = 'content_hash'",
-                [],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-            )
-            .unwrap();
-        assert_eq!(
-            content_hash_column,
-            ("content_hash".into(), "TEXT".into(), 0)
-        );
-
-        let content_hash_index: (String, i64, i64) = database
-            .connection
-            .query_row(
-                "SELECT name, \"unique\", partial FROM pragma_index_list('rows') WHERE name = 'idx_rows_content_hash'",
-                [],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-            )
-            .unwrap();
-        assert_eq!(content_hash_index, ("idx_rows_content_hash".into(), 0, 1));
-
-        let phash_column: (String, String, i64) = database
-            .connection
-            .query_row(
-                "SELECT name, type, \"notnull\" FROM pragma_table_info('rows') WHERE name = 'perceptual_hash'",
-                [],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-            )
-            .unwrap();
-        assert_eq!(
-            phash_column,
-            ("perceptual_hash".into(), "TEXT".into(), 0)
-        );
-
-        let phash_index: (String, i64, i64) = database
-            .connection
-            .query_row(
-                "SELECT name, \"unique\", partial FROM pragma_index_list('rows') WHERE name = 'idx_rows_perceptual_hash'",
-                [],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-            )
-            .unwrap();
-        assert_eq!(phash_index, ("idx_rows_perceptual_hash".into(), 0, 1));
-
-        let note_column: (String, String, i64) = database
-            .connection
-            .query_row(
-                "SELECT name, type, \"notnull\" FROM pragma_table_info('rows') WHERE name = 'note'",
-                [],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-            )
-            .unwrap();
-        assert_eq!(note_column, ("note".into(), "TEXT".into(), 0));
-
-        let metadata_column: (String, String, i64) = database
-            .connection
-            .query_row(
-                "SELECT name, type, \"notnull\" FROM pragma_table_info('rows')
-                 WHERE name = 'metadata_fingerprint'",
-                [],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-            )
-            .unwrap();
-        assert_eq!(
-            metadata_column,
-            ("metadata_fingerprint".into(), "TEXT".into(), 0)
-        );
-        let managed_original_column: (String, String, i64) = database
-            .connection
-            .query_row(
-                "SELECT name, type, \"notnull\" FROM pragma_table_info('rows')
-                 WHERE name = 'stored_image_is_original'",
-                [],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-            )
-            .unwrap();
-        assert_eq!(
-            managed_original_column,
-            ("stored_image_is_original".into(), "INTEGER".into(), 1)
-        );
     }
 
     #[test]
-    fn tag_names_are_case_sensitive_and_exact_duplicates_fail() {
+    fn source_types_only_accept_current_runtime_and_legacy_values() {
         let database = Database::open_in_memory().unwrap();
-
         database
             .connection
             .execute(
-                "INSERT INTO tags(name) VALUES (?1), (?2)",
-                ["Landscape", "landscape"],
+                "INSERT INTO import_batches
+                 (source_type, source_path, imported_at, added_count, skipped_count)
+                 VALUES ('legacy', 'old source', '2026-07-17T00:00:00Z', 0, 0)",
+                [],
             )
             .unwrap();
-        let count: u32 = database
-            .connection
-            .query_row("SELECT COUNT(*) FROM tags", [], |row| row.get(0))
-            .unwrap();
-        assert_eq!(count, 2);
 
         let error = database
             .connection
-            .execute("INSERT INTO tags(name) VALUES (?1)", ["Landscape"])
+            .execute(
+                "INSERT INTO import_batches
+                 (source_type, source_path, imported_at, added_count, skipped_count)
+                 VALUES ('xlsx', 'removed', '2026-07-17T00:00:00Z', 0, 0)",
+                [],
+            )
             .unwrap_err();
         assert!(matches!(
             error,
@@ -404,27 +297,37 @@ mod tests {
     }
 
     #[test]
+    fn tag_names_are_case_sensitive_and_exact_duplicates_fail() {
+        let database = Database::open_in_memory().unwrap();
+        database
+            .connection
+            .execute("INSERT INTO tags(name) VALUES (?1), (?2)", ["Landscape", "landscape"])
+            .unwrap();
+
+        let count: u32 = database
+            .connection
+            .query_row("SELECT COUNT(*) FROM tags", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 2);
+    }
+
+    #[test]
     fn persisted_database_reopens_without_reapplying_migration() {
         let temporary = TemporaryDatabase::new();
         {
             let database = Database::open(&temporary.path).unwrap();
             database
                 .connection
-                .execute(
-                    "INSERT INTO settings(key, value) VALUES ('theme', 'dark')",
-                    [],
-                )
+                .execute("INSERT INTO settings(key, value) VALUES ('theme', 'dark')", [])
                 .unwrap();
         }
 
         let database = Database::open(&temporary.path).unwrap();
         let value: String = database
             .connection
-            .query_row(
-                "SELECT value FROM settings WHERE key = ?1",
-                params!["theme"],
-                |row| row.get(0),
-            )
+            .query_row("SELECT value FROM settings WHERE key = ?1", params!["theme"], |row| {
+                row.get(0)
+            })
             .unwrap();
         assert_eq!(database.schema_version().unwrap(), CURRENT_SCHEMA_VERSION);
         assert_eq!(value, "dark");
@@ -436,7 +339,6 @@ mod tests {
         connection.pragma_update(None, "user_version", 99).unwrap();
 
         let error = migrate(&mut connection).unwrap_err();
-
         assert!(matches!(
             error,
             DatabaseError::UnsupportedSchemaVersion {
@@ -447,310 +349,138 @@ mod tests {
     }
 
     #[test]
-    fn upgrades_v1_database_preserving_rows_tags_and_order() {
-        let temporary = TemporaryDatabase::new();
-        create_v1_database(&temporary.path);
-
-        let database = Database::open(&temporary.path).unwrap();
-
-        assert_eq!(database.schema_version().unwrap(), CURRENT_SCHEMA_VERSION);
-        // 批次：旧工作簿转为唯一的 xlsx 批次。
-        let batch: (String, String, i64) = database
-            .connection
-            .query_row(
-                "SELECT source_type, source_path, added_count FROM import_batches",
-                [],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-            )
-            .unwrap();
-        assert_eq!(batch, ("xlsx".into(), "legacy.xlsx".into(), 3));
-
-        // 行：ID 保持不变，唯一图片路径转为 file: 身份键，
-        // 空路径与重复路径行退化为 xlsxrow: 身份键。
-        let mut statement = database
-            .connection
-            .prepare(
-                "SELECT id, source_ordinal, identity, positive_prompt
-                 FROM rows ORDER BY id",
-            )
-            .unwrap();
-        let rows = statement
-            .query_map([], |row| {
-                Ok((
-                    row.get::<_, i64>(0)?,
-                    row.get::<_, u32>(1)?,
-                    row.get::<_, String>(2)?,
-                    row.get::<_, Option<String>>(3)?,
-                ))
-            })
-            .unwrap()
-            .collect::<Result<Vec<_>, _>>()
-            .unwrap();
-        assert_eq!(
-            rows,
-            vec![
-                (
-                    1,
-                    2,
-                    r"file:d:\images\one.png".to_owned(),
-                    Some("first".to_owned())
-                ),
-                (2, 3, "xlsxrow:legacy.xlsx!3".to_owned(), None),
-                (3, 4, "xlsxrow:legacy.xlsx!4".to_owned(), None),
-            ]
-        );
-
-        // Tag 关联原样保留（行 ID 不变）。
-        let tagged: i64 = database
-            .connection
-            .query_row(
-                "SELECT row_tags.row_id FROM row_tags
-                 JOIN tags ON tags.id = row_tags.tag_id
-                 WHERE tags.name = 'keep'",
-                [],
-                |row| row.get(0),
-            )
-            .unwrap();
-        assert_eq!(tagged, 2);
-
-        // 嵌入图引用进入待提取表。
-        let pending: Vec<(i64, String)> = database
-            .pending_embedded_extractions()
-            .unwrap();
-        assert_eq!(pending, vec![(1, "xl/media/image1.png".to_owned())]);
-    }
-
-    #[test]
-    fn upgrades_v2_database_preserving_rows_and_tags_with_null_hash() {
-        let temporary = TemporaryDatabase::new();
-        create_v2_database(&temporary.path);
-
-        let database = Database::open(&temporary.path).unwrap();
-
-        assert_eq!(database.schema_version().unwrap(), CURRENT_SCHEMA_VERSION);
-        let row: (i64, String, Option<String>, Option<i64>) = database
-            .connection
-            .query_row(
-                "SELECT id, positive_prompt, content_hash, group_id FROM rows",
-                [],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
-            )
-            .unwrap();
-        assert_eq!(row, (7, "keep prompt".into(), None, None));
-
-        let tag_name: String = database
-            .connection
-            .query_row(
-                "SELECT tags.name FROM row_tags JOIN tags ON tags.id = row_tags.tag_id WHERE row_tags.row_id = 7",
-                [],
-                |row| row.get(0),
-            )
-            .unwrap();
-        assert_eq!(tag_name, "keep tag");
-    }
-
-    #[test]
-    fn upgrades_v3_database_adding_perceptual_hash_column() {
-        let temporary = TemporaryDatabase::new();
-        create_v3_database(&temporary.path);
-
-        let database = Database::open(&temporary.path).unwrap();
-
-        assert_eq!(database.schema_version().unwrap(), CURRENT_SCHEMA_VERSION);
-        let row: (i64, Option<String>, Option<String>) = database
-            .connection
-            .query_row(
-                "SELECT id, content_hash, perceptual_hash FROM rows",
-                [],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-            )
-            .unwrap();
-        assert_eq!(row, (1, Some("abc123".into()), None));
-    }
-
-    #[test]
-    fn upgrades_v4_database_adding_groups_table_and_group_id_column() {
-        let temporary = TemporaryDatabase::new();
-        create_v4_database(&temporary.path);
-
-        let database = Database::open(&temporary.path).unwrap();
-
-        assert_eq!(database.schema_version().unwrap(), CURRENT_SCHEMA_VERSION);
-
-        let tables: Vec<String> = database
-            .connection
-            .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
-            .unwrap()
-            .query_map([], |row| row.get(0))
-            .unwrap()
-            .collect::<Result<Vec<_>, _>>()
-            .unwrap();
-        assert!(tables.contains(&"groups".to_owned()));
-
-        let row: (i64, String, Option<String>, Option<i64>) = database
-            .connection
-            .query_row(
-                "SELECT id, positive_prompt, character_prompt, group_id FROM rows",
-                [],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
-            )
-            .unwrap();
-        assert_eq!(row, (1, "test prompt".into(), None, None));
-
-        let tag_name: String = database
-            .connection
-            .query_row(
-                "SELECT tags.name FROM row_tags JOIN tags ON tags.id = row_tags.tag_id WHERE row_tags.row_id = 1",
-                [],
-                |row| row.get(0),
-            )
-            .unwrap();
-        assert_eq!(tag_name, "v4 tag");
-    }
-
-    #[test]
-    fn upgrades_v7_database_adding_nullable_note() {
-        let connection = Connection::open_in_memory().unwrap();
-        for migration in [
-            MIGRATION_1,
-            MIGRATION_2,
-            MIGRATION_3,
-            MIGRATION_4,
-            MIGRATION_5,
-            MIGRATION_6,
-            MIGRATION_7,
-        ] {
-            connection.execute_batch(migration).unwrap();
-        }
+    fn rejects_pre_v8_database_with_upgrade_guidance() {
+        let mut connection = Connection::open_in_memory().unwrap();
         connection.pragma_update(None, "user_version", 7).unwrap();
-        connection
-            .execute(
-                "INSERT INTO import_batches
-                    (id, source_type, source_path, imported_at, added_count, skipped_count)
-                 VALUES (1, 'folder', 'D:\\test', '2026-07-14T00:00:00Z', 1, 0)",
-                [],
-            )
-            .unwrap();
-        connection
-            .execute(
-                "INSERT INTO rows (id, batch_id, source_ordinal, identity, positive_prompt)
-                 VALUES (1, 1, 1, 'file:d:\\test\\one.png', 'keep prompt')",
-                [],
-            )
-            .unwrap();
 
-        let database = Database::initialize(connection).unwrap();
+        let error = migrate(&mut connection).unwrap_err();
+        assert!(matches!(
+            error,
+            DatabaseError::LegacySchemaVersion {
+                found: 7,
+                minimum: MINIMUM_UPGRADABLE_SCHEMA_VERSION
+            }
+        ));
+        assert!(error.to_string().contains("请先使用旧版应用升级数据库"));
+    }
 
-        assert_eq!(database.schema_version().unwrap(), CURRENT_SCHEMA_VERSION);
-        let row: (String, Option<String>, Option<String>, bool) = database
-            .connection
+    #[test]
+    fn upgrades_v9_preserving_rows_tags_and_archiving_old_source_type() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        create_v9_fixture(&connection);
+
+        migrate(&mut connection).unwrap();
+
+        let batch: (String, String) = connection
             .query_row(
-                "SELECT positive_prompt, note, metadata_fingerprint,
-                        stored_image_is_original
-                 FROM rows WHERE id = 1",
+                "SELECT source_type, source_path FROM import_batches WHERE id = 1",
                 [],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+                |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .unwrap();
-        assert_eq!(row, ("keep prompt".into(), None, None, false));
+        assert_eq!(batch, ("legacy".into(), "legacy source".into()));
+
+        let tagged: String = connection
+            .query_row(
+                "SELECT tags.name FROM row_tags
+                 JOIN tags ON tags.id = row_tags.tag_id
+                 WHERE row_tags.row_id = 7",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(tagged, "keep");
+        assert!(!table_exists(&connection, "pending_embedded_extractions"));
+        verify_foreign_keys(&connection).unwrap();
     }
 
-    /// 手工构造 v1 库：3 行数据。第 2、3 行 image_path 重复（必须退化为
-    /// xlsxrow 身份键），第 1 行带嵌入图引用，第 2 行带 Tag。
-    fn create_v1_database(path: &Path) {
-        let connection = Connection::open(path).unwrap();
-        connection
-            .execute_batch(
-                "PRAGMA journal_mode = WAL;
-                 BEGIN;
-                 PRAGMA user_version = 0;
-                 COMMIT;",
+    #[test]
+    fn upgrades_v8_through_v10_and_marks_folder_copy_as_original() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        create_v8_fixture(&connection);
+
+        migrate(&mut connection).unwrap();
+
+        let row: (String, bool, Option<String>) = connection
+            .query_row(
+                "SELECT import_batches.source_type, rows.stored_image_is_original,
+                        rows.metadata_fingerprint
+                 FROM rows JOIN import_batches ON import_batches.id = rows.batch_id
+                 WHERE rows.id = 7",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
             .unwrap();
-        connection.execute_batch(MIGRATION_1).unwrap();
-        connection
-            .pragma_update(None, "user_version", 1)
-            .unwrap();
-        connection
-            .execute_batch(
-                r#"
-                INSERT INTO workbook (id, imported_name, imported_at, sheet_name, row_count)
-                VALUES (1, 'legacy.xlsx', '2026-06-01T00:00:00Z', 'NovelAI Metadata', 3);
-                INSERT INTO rows (workbook_id, source_row, positive_prompt, image_path, embedded_image_ref)
-                VALUES (1, 2, 'first', 'D:/Images/One.PNG', 'xl/media/image1.png');
-                INSERT INTO rows (workbook_id, source_row, image_path)
-                VALUES (1, 3, 'D:\images\dup.png');
-                INSERT INTO rows (workbook_id, source_row, image_path)
-                VALUES (1, 4, 'D:\images\dup.png');
-                INSERT INTO tags (name) VALUES ('keep');
-                INSERT INTO row_tags (row_id, tag_id) VALUES (2, 1);
-                "#,
-            )
-            .unwrap();
+        assert_eq!(row, ("folder".into(), true, None));
+        verify_foreign_keys(&connection).unwrap();
     }
 
-    fn create_v2_database(path: &Path) {
-        let connection = Connection::open(path).unwrap();
-        connection.execute_batch(MIGRATION_1).unwrap();
-        connection.execute_batch(MIGRATION_2).unwrap();
-        connection.pragma_update(None, "user_version", 2).unwrap();
+    fn create_v9_fixture(connection: &Connection) {
+        let schema = SCHEMA_10.replace("('legacy', 'folder', 'archive')", "('xlsx', 'folder', 'archive')");
+        connection.execute_batch(&schema).unwrap();
         connection
             .execute_batch(
-                r#"
-                INSERT INTO import_batches
+                "CREATE TABLE pending_embedded_extractions (
+                    row_id INTEGER PRIMARY KEY,
+                    media_path TEXT NOT NULL
+                 ) STRICT, WITHOUT ROWID;
+                 INSERT INTO import_batches
                     (id, source_type, source_path, imported_at, added_count, skipped_count)
-                VALUES (1, 'folder', 'D:\legacy', '2026-06-12T00:00:00Z', 1, 0);
-                INSERT INTO rows
-                    (id, batch_id, source_ordinal, identity, positive_prompt, image_path)
-                VALUES (7, 1, 1, 'file:d:\legacy\one.png', 'keep prompt', 'D:\legacy\one.png');
-                INSERT INTO tags (id, name) VALUES (3, 'keep tag');
-                INSERT INTO row_tags (row_id, tag_id) VALUES (7, 3);
-                "#,
-            )
-            .unwrap();
-    }
-
-    fn create_v3_database(path: &Path) {
-        let connection = Connection::open(path).unwrap();
-        connection.execute_batch(MIGRATION_1).unwrap();
-        connection.execute_batch(MIGRATION_2).unwrap();
-        connection.execute_batch(MIGRATION_3).unwrap();
-        connection.pragma_update(None, "user_version", 3).unwrap();
-        connection
-            .execute_batch(
-                r#"
-                INSERT INTO import_batches
-                    (id, source_type, source_path, imported_at, added_count, skipped_count)
-                VALUES (1, 'folder', 'D:\test', '2026-06-14T00:00:00Z', 1, 0);
-                INSERT INTO rows
-                    (id, batch_id, source_ordinal, identity, positive_prompt, content_hash)
-                VALUES (1, 1, 1, 'file:d:\test\one.png', 'test prompt', 'abc123');
-                "#,
-            )
-            .unwrap();
-    }
-
-    fn create_v4_database(path: &Path) {
-        let connection = Connection::open(path).unwrap();
-        connection.execute_batch(MIGRATION_1).unwrap();
-        connection.execute_batch(MIGRATION_2).unwrap();
-        connection.execute_batch(MIGRATION_3).unwrap();
-        connection.execute_batch(MIGRATION_4).unwrap();
-        connection.pragma_update(None, "user_version", 4).unwrap();
-        connection
-            .execute_batch(
-                r#"
-                INSERT INTO import_batches
-                    (id, source_type, source_path, imported_at, added_count, skipped_count)
-                VALUES (1, 'folder', 'D:\test', '2026-06-15T00:00:00Z', 1, 0);
-                INSERT INTO rows
+                 VALUES (1, 'xlsx', 'legacy source', '2026-07-01T00:00:00Z', 1, 0);
+                 INSERT INTO rows
                     (id, batch_id, source_ordinal, identity, positive_prompt)
-                VALUES (1, 1, 1, 'file:d:\test\one.png', 'test prompt');
-                INSERT INTO tags (id, name) VALUES (1, 'v4 tag');
-                INSERT INTO row_tags (row_id, tag_id) VALUES (1, 1);
-                "#,
+                 VALUES (7, 1, 2, 'legacy-row:7', 'keep prompt');
+                 INSERT INTO tags (id, name) VALUES (3, 'keep');
+                 INSERT INTO row_tags (row_id, tag_id) VALUES (7, 3);
+                 INSERT INTO pending_embedded_extractions (row_id, media_path)
+                 VALUES (7, 'old-media.png');",
             )
             .unwrap();
+        connection.pragma_update(None, "user_version", 9).unwrap();
+    }
+
+    fn create_v8_fixture(connection: &Connection) {
+        let schema = SCHEMA_10
+            .replace(
+                "('legacy', 'folder', 'archive')",
+                "('xlsx', 'folder', 'archive')",
+            )
+            .replace(
+                "    note TEXT,\n    metadata_fingerprint TEXT,\n    stored_image_is_original INTEGER NOT NULL DEFAULT 0\n        CHECK (stored_image_is_original IN (0, 1))\n",
+                "    note TEXT\n",
+            )
+            .replace(
+                "CREATE INDEX idx_rows_metadata_fingerprint ON rows(metadata_fingerprint)\nWHERE metadata_fingerprint IS NOT NULL;\n",
+                "",
+            );
+        connection.execute_batch(&schema).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE pending_embedded_extractions (
+                    row_id INTEGER PRIMARY KEY,
+                    media_path TEXT NOT NULL
+                 ) STRICT, WITHOUT ROWID;
+                 INSERT INTO import_batches
+                    (id, source_type, source_path, imported_at, added_count, skipped_count)
+                 VALUES (1, 'folder', 'D:\\images', '2026-07-01T00:00:00Z', 1, 0);
+                 INSERT INTO rows
+                    (id, batch_id, source_ordinal, identity, stored_image_path)
+                 VALUES (7, 1, 1, 'file:d:\\images\\one.png', 'files/1/one.png');",
+            )
+            .unwrap();
+        connection.pragma_update(None, "user_version", 8).unwrap();
+    }
+
+    fn table_exists(connection: &Connection, table: &str) -> bool {
+        connection
+            .query_row(
+                "SELECT EXISTS(
+                    SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1
+                 )",
+                [table],
+                |row| row.get(0),
+            )
+            .unwrap()
     }
 
     struct TemporaryDatabase {
@@ -770,10 +500,7 @@ mod tests {
                 .expect("system clock should be valid")
                 .as_nanos();
             Self {
-                path: directory.join(format!(
-                    "smart-spreadsheet-db-{}-{nonce}.sqlite3",
-                    std::process::id()
-                )),
+                path: directory.join(format!("smart-spreadsheet-db-{}-{nonce}.sqlite3", std::process::id())),
             }
         }
     }

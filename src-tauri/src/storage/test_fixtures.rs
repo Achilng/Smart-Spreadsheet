@@ -1,5 +1,5 @@
 //! 测试共用的图片夹具：生成可解码、带 NovelAI 风格文本元数据的真实 PNG。
-//! 原 xlsx 导入的示例工作簿夹具退役后，各模块测试统一从这里取样例图。
+//! 各模块测试统一从这里取带 NovelAI 元数据的样例图。
 
 use std::fs;
 use std::path::{Path, PathBuf};

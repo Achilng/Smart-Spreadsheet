@@ -62,13 +62,6 @@ impl Database {
             }
         }
 
-        transaction.execute(
-            &format!(
-                "DELETE FROM pending_embedded_extractions
-                 WHERE row_id IN (SELECT id FROM {TARGET_ROWS_TABLE})"
-            ),
-            [],
-        )?;
         let deleted = transaction.execute(
             &format!("DELETE FROM rows WHERE id IN (SELECT id FROM {TARGET_ROWS_TABLE})"),
             [],

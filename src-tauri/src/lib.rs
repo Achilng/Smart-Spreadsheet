@@ -2,7 +2,6 @@ mod app;
 mod images;
 
 pub mod db;
-pub mod excel;
 pub mod fsx;
 pub mod pipeline;
 pub mod storage;

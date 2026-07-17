@@ -1012,7 +1012,7 @@ pub(crate) fn prepare_file_drag(
         .row_image_locator(row_id)
         .map_err(error_text)?;
     // 拖出的文件会被下游（如 NovelAI）读取元数据，必须是完整原件，
-    // 不能静默回退到无元数据的 xlsx 嵌入缩略图。
+    // 不能静默回退到不可信的历史缩略图副本。
     let file_path = crate::storage::resolve_original_source(&directory, &locator)
         .map_err(|error| format!("第 {row_id} 行无法拖出：{error}"))?;
 

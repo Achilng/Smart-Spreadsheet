@@ -4,7 +4,7 @@ use crate::pipeline::{metadata_fingerprint, png_text};
 impl DataDirectory {
     /// 为仍可读取完整原件的历史行回填 NovelAI 完整元数据指纹。
     ///
-    /// 旧 xlsx 缩略图未标记为完整原件，因此不会被误用于回填。
+    /// 历史缩略图未标记为完整原件，因此不会被误用于回填。
     pub fn backfill_metadata_fingerprints(&self) -> Result<usize, StorageError> {
         let mut database = self.open_database()?;
         let candidates = database.missing_metadata_fingerprints()?;
@@ -37,7 +37,7 @@ mod tests {
     use crate::storage::test_fixtures::metadata_png_bytes;
 
     #[test]
-    fn backfills_from_managed_original_but_not_xlsx_thumbnail() {
+    fn backfills_from_managed_original_but_not_legacy_thumbnail() {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
@@ -78,11 +78,11 @@ mod tests {
             .unwrap();
         database
             .append_batch(
-                SourceType::Xlsx,
-                "legacy.xlsx",
+                SourceType::Legacy,
+                "旧版导入来源",
                 &[NewRow {
                     source_ordinal: 1,
-                    identity: "xlsxrow:legacy.xlsx!1".into(),
+                    identity: "legacy-row:1".into(),
                     image_path: Some(r"D:\missing\legacy.png".into()),
                     stored_image_rel: Some("thumbnail.png".into()),
                     ..NewRow::default()

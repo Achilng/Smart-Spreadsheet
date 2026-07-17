@@ -11,7 +11,7 @@
     <h2>导入第一批数据</h2>
     <p class="muted">
       资料库为追加式：可多次导入，已入库的图片自动跳过。支持 NovelAI PNG
-      文件夹、zip/7z/rar 压缩包，以及固定 NovelAI Metadata 结构的 xlsx。无 metadata
+      文件夹、单张 PNG，以及 zip/7z/rar 压缩包。无 metadata
       图片不会入库，会自动移到异常图片目录。
     </p>
     <p class="directory" title={app.snapshot?.dataDirectory}>
