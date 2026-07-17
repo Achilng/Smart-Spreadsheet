@@ -765,7 +765,7 @@ pub(crate) async fn open_toolbox_window(app: tauri::AppHandle) -> Result<(), Str
         return Ok(());
     }
 
-    let mut builder = WebviewWindowBuilder::new(
+    WebviewWindowBuilder::new(
         &app,
         "toolbox",
         WebviewUrl::App("index.html?window=toolbox".into()),
@@ -775,13 +775,10 @@ pub(crate) async fn open_toolbox_window(app: tauri::AppHandle) -> Result<(), Str
     .min_inner_size(760.0, 520.0)
     .center()
     .resizable(true)
-    .decorations(false);
-
-    if let Some(main) = app.get_webview_window("main") {
-        builder = builder.parent(&main).map_err(error_text)?;
-    }
-
-    builder.build().map_err(error_text)?;
+    .decorations(false)
+    .skip_taskbar(false)
+    .build()
+    .map_err(error_text)?;
     Ok(())
 }
 
