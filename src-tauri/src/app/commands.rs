@@ -1,7 +1,9 @@
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
-use tauri::{Emitter, Manager, State, ipc::Response};
+use tauri::{
+    Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder, ipc::Response,
+};
 
 use super::runtime::{AppRuntime, RuntimeSnapshot};
 use crate::db::{
@@ -749,6 +751,38 @@ pub(crate) async fn get_row_thumbnail(
     })
     .await
     .map_err(|e| format!("缩略图加载异常: {e}"))?
+}
+
+/// 打开应用内部的单实例工具箱窗口。
+///
+/// 使用 `WebviewUrl::App` 明确加载内置前端资源，避免动态 URL 被系统浏览器接管。
+#[tauri::command]
+pub(crate) async fn open_toolbox_window(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(toolbox) = app.get_webview_window("toolbox") {
+        toolbox.show().map_err(error_text)?;
+        toolbox.unminimize().map_err(error_text)?;
+        toolbox.set_focus().map_err(error_text)?;
+        return Ok(());
+    }
+
+    let mut builder = WebviewWindowBuilder::new(
+        &app,
+        "toolbox",
+        WebviewUrl::App("index.html?window=toolbox".into()),
+    )
+    .title("智能表格 · 工具箱")
+    .inner_size(960.0, 680.0)
+    .min_inner_size(760.0, 520.0)
+    .center()
+    .resizable(true)
+    .decorations(false);
+
+    if let Some(main) = app.get_webview_window("main") {
+        builder = builder.parent(&main).map_err(error_text)?;
+    }
+
+    builder.build().map_err(error_text)?;
+    Ok(())
 }
 
 #[tauri::command]

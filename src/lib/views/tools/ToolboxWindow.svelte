@@ -299,6 +299,7 @@
   }
 
   .nav-group button {
+    position: relative;
     width: 100%;
     min-height: 52px;
     display: flex;
@@ -316,8 +317,20 @@
   }
 
   .nav-group button.is-active {
-    border-color: var(--accent-soft-border);
-    background: var(--accent-soft);
+    border-color: transparent;
+    background: transparent;
+    color: var(--accent);
+  }
+
+  .nav-group button.is-active::before {
+    content: "";
+    position: absolute;
+    top: 10px;
+    bottom: 10px;
+    left: 1px;
+    width: 3px;
+    border-radius: var(--radius-full);
+    background: var(--accent);
   }
 
   .tool-icon {
@@ -334,8 +347,8 @@
   }
 
   button.is-active .tool-icon {
-    background: var(--accent);
-    color: white;
+    background: var(--accent-soft);
+    color: var(--accent);
   }
 
   .tool-label {
