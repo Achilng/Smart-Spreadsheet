@@ -22,6 +22,18 @@
   let enhancedReady = $state(false);
   let failed = $state(false);
 
+  function revealEnhancedImage(event: Event): void {
+    const image = event.currentTarget as HTMLImageElement;
+    const expectedUrl = enhancedUrl;
+    void image.decode().catch(() => {}).then(() => {
+      requestAnimationFrame(() => {
+        if (image.isConnected && enhancedUrl === expectedUrl) {
+          enhancedReady = true;
+        }
+      });
+    });
+  }
+
   $effect(() => {
     url = null;
     enhancedUrl = null;
@@ -75,7 +87,6 @@
   <span class="thumbnail-stack">
     <img
       class="base"
-      class:is-replaced={enhancedReady}
       src={url}
       {alt}
       loading="lazy"
@@ -91,7 +102,7 @@
         aria-hidden="true"
         decoding="async"
         draggable="false"
-        onload={() => (enhancedReady = true)}
+        onload={revealEnhancedImage}
         onmousedown={(e) => { if (hasImage) beginFileDrag(e, rowId); }}
       />
     {/if}
@@ -101,7 +112,7 @@
 {:else if failed}
   <span class="note">不可用</span>
 {:else}
-  <span class="loading shimmer" aria-hidden="true"></span>
+  <span class="loading" aria-hidden="true"></span>
 {/if}
 
 <style>
@@ -124,20 +135,12 @@
     border-radius: var(--radius-s);
   }
 
-  .base {
-    opacity: 1;
-  }
-
-  .base.is-replaced {
-    opacity: 0;
-  }
-
   .enhanced {
-    opacity: 0;
+    visibility: hidden;
   }
 
   .enhanced.is-ready {
-    opacity: 1;
+    visibility: visible;
   }
 
   .note {
@@ -150,5 +153,6 @@
     width: 100%;
     height: 100%;
     border-radius: var(--radius-s);
+    background: var(--surface-2);
   }
 </style>
