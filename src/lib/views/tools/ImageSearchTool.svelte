@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { emitTo } from "@tauri-apps/api/event";
   import { open } from "@tauri-apps/plugin-dialog";
 
   import {
@@ -7,8 +8,13 @@
     type RowRecord,
     type SimilarImageMatch,
   } from "../../api";
-  import { errorText, formatCount } from "../../stores/app-state.svelte";
+  import { errorText, formatCount, setNotice } from "../../stores/app-state.svelte";
   import Thumbnail from "../../ui/Thumbnail.svelte";
+  import {
+    focusMainWindow,
+    type ToolboxRowAction,
+    type ToolboxRowRequest,
+  } from "../../windows/toolbox";
 
   let queryPath = $state<string | null>(null);
   let matches = $state<SimilarImageMatch[]>([]);
@@ -16,6 +22,7 @@
   let searching = $state(false);
   let searched = $state(false);
   let error = $state<string | null>(null);
+  let openingRowId = $state<number | null>(null);
 
   const queryName = $derived(queryPath?.split(/[\\/]/).pop() ?? null);
 
@@ -66,6 +73,22 @@
     const path = row?.imagePath ?? row?.storedImagePath;
     return path?.split(/[\\/]/).pop() ?? `图片 #${rowId}`;
   }
+
+  async function openInMain(rowId: number, action: ToolboxRowAction): Promise<void> {
+    openingRowId = rowId;
+    try {
+      const request: ToolboxRowRequest = { rowId, action };
+      await emitTo("main", "toolbox://open-row", request);
+      await focusMainWindow();
+    } catch (cause) {
+      setNotice({
+        tone: "error",
+        text: `无法在主窗口打开图片：${errorText(cause)}`,
+      });
+    } finally {
+      openingRowId = null;
+    }
+  }
 </script>
 
 <div class="tool-page">
@@ -106,14 +129,36 @@
     <div class="results-grid">
       {#each matches as match (match.rowId)}
         <article class="result-card">
-          <div class="thumbnail">
+          <button
+            type="button"
+            class="thumbnail"
+            title="在主窗口查看详情"
+            disabled={openingRowId !== null}
+            onclick={() => void openInMain(match.rowId, "detail")}
+          >
             <Thumbnail rowId={match.rowId} hasImage={true} alt={rowName(match.rowId)} />
-          </div>
+          </button>
           <div class="card-info">
             <strong title={rowName(match.rowId)}>{rowName(match.rowId)}</strong>
             <span class:exact={match.distance === 0}>
               {distanceLabel(match.distance)} · 距离 {match.distance}
             </span>
+          </div>
+          <div class="card-actions">
+            <button
+              type="button"
+              disabled={openingRowId !== null}
+              onclick={() => void openInMain(match.rowId, "detail")}
+            >
+              查看详情
+            </button>
+            <button
+              type="button"
+              disabled={openingRowId !== null}
+              onclick={() => void openInMain(match.rowId, "table")}
+            >
+              表格定位
+            </button>
           </div>
         </article>
       {/each}
@@ -221,8 +266,18 @@
   }
 
   .thumbnail {
+    display: block;
+    width: 100%;
+    padding: 0;
     aspect-ratio: 1;
+    overflow: hidden;
+    border: 0;
     background: var(--surface-2);
+    cursor: pointer;
+  }
+
+  .thumbnail:disabled {
+    cursor: wait;
   }
 
   .thumbnail :global(.thumbnail-stack),
@@ -257,5 +312,36 @@
 
   .card-info span.exact {
     color: var(--success);
+  }
+
+  .card-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    border-top: 1px solid var(--border);
+  }
+
+  .card-actions button {
+    min-width: 0;
+    padding: 8px 5px;
+    border: 0;
+    background: transparent;
+    color: var(--text-2);
+    font: inherit;
+    font-size: var(--font-xs);
+    cursor: pointer;
+  }
+
+  .card-actions button + button {
+    border-left: 1px solid var(--border);
+  }
+
+  .card-actions button:hover:not(:disabled) {
+    background: var(--surface-2);
+    color: var(--accent);
+  }
+
+  .card-actions button:disabled {
+    cursor: wait;
+    opacity: 0.55;
   }
 </style>

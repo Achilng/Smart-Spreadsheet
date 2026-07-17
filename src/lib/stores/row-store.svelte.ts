@@ -29,6 +29,9 @@ export const rowStore = $state({
   /** 结果集语义变化（筛选/搜索/数据变更）完成时 +1，视图据此回到顶部 */
   resetToken: 0,
   activeRow: null as RowRecord | null,
+  /** 工具箱等外部入口请求表格定位的真实行序号。 */
+  revealIndex: null as number | null,
+  revealToken: 0,
 });
 
 let pages = new Map<number, RowRecord[]>();
@@ -182,6 +185,21 @@ export function setSearch(value: string): void {
     rowStore.search = value;
     resetRows({ keepStale: true, resetScroll: true });
   }
+}
+
+/** 清除可能隐藏目标行的筛选，并请求表格在数据就绪后滚动到指定行。 */
+export function revealRowInTable(row: RowRecord, index: number): void {
+  rowStore.tags = [];
+  rowStore.tagMode = "and";
+  rowStore.dedupe = "none";
+  rowStore.singleArtistOnly = false;
+  rowStore.groupView = false;
+  rowStore.hideGrouped = false;
+  rowStore.search = "";
+  resetRows({ keepStale: true, resetScroll: true });
+  rowStore.activeRow = row;
+  rowStore.revealIndex = index;
+  rowStore.revealToken += 1;
 }
 
 /** 单行字段编辑后原位更新缓存，避免整表重载丢失滚动位置和活动行。 */

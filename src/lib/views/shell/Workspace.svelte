@@ -1,7 +1,9 @@
 <script lang="ts">
+  import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { onMount, untrack } from "svelte";
 
-  import { app, type ViewMode } from "../../stores/app-state.svelte";
+  import { getRowIndex, getRowsByIds } from "../../api";
+  import { app, errorText, setNotice, type ViewMode } from "../../stores/app-state.svelte";
   import { deletion, requestDelete } from "../../stores/delete-actions.svelte";
   import { dropState, listenDragDrop } from "../../stores/drop-import.svelte";
   import { redoLastAction, undoLastAction } from "../../stores/history.svelte";
@@ -11,11 +13,16 @@
     selectAllFiltered,
     selectionDto,
   } from "../../stores/selection-store.svelte";
-  import { resetRows, rowStore } from "../../stores/row-store.svelte";
+  import {
+    resetRows,
+    revealRowInTable,
+    rowStore,
+  } from "../../stores/row-store.svelte";
   import { loadTags } from "../../stores/tag-store.svelte";
   import { thumbnails } from "../../images/thumbnails";
   import { clearProgressiveImages } from "../../images/progressive-images";
   import { vibeStatuses } from "../../images/vibe-statuses";
+  import type { ToolboxRowRequest } from "../../windows/toolbox";
   import ContextMenu from "./ContextMenu.svelte";
   import DetailPanel from "./DetailPanel.svelte";
   import DeleteDialog from "./DeleteDialog.svelte";
@@ -70,7 +77,55 @@
     });
   });
 
-  onMount(() => listenDragDrop());
+  async function openToolboxRow(request: ToolboxRowRequest): Promise<void> {
+    try {
+      const [row] = await getRowsByIds([request.rowId]);
+      if (!row) {
+        throw new Error("图片记录已不存在");
+      }
+
+      if (request.action === "detail") {
+        if (app.viewMode === "promptDocs") {
+          app.viewMode = "gallery";
+        }
+        rowStore.activeRow = row;
+        app.detailOpen = true;
+        return;
+      }
+
+      const index = await getRowIndex(request.rowId);
+      revealRowInTable(row, index);
+      app.viewMode = "table";
+      app.detailOpen = true;
+      clearSelection();
+    } catch (error) {
+      setNotice({
+        tone: "error",
+        text: `无法打开搜索结果：${errorText(error)}`,
+      });
+    }
+  }
+
+  onMount(() => {
+    const stopDragDrop = listenDragDrop();
+    let disposed = false;
+    let unlistenNavigation: UnlistenFn | null = null;
+    void listen<ToolboxRowRequest>("toolbox://open-row", event => {
+      void openToolboxRow(event.payload);
+    }).then(unlisten => {
+      if (disposed) {
+        unlisten();
+      } else {
+        unlistenNavigation = unlisten;
+      }
+    });
+
+    return () => {
+      disposed = true;
+      stopDragDrop();
+      unlistenNavigation?.();
+    };
+  });
 
   function onKeydown(event: KeyboardEvent): void {
     const target = event.target;

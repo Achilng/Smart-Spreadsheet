@@ -664,6 +664,14 @@ pub(crate) fn get_rows_by_ids(
 }
 
 #[tauri::command]
+pub(crate) fn get_row_index(
+    row_id: i64,
+    runtime: State<'_, AppRuntime>,
+) -> Result<u64, String> {
+    runtime.row_index_by_id(row_id).map_err(error_text)
+}
+
+#[tauri::command]
 pub(crate) fn list_tags(runtime: State<'_, AppRuntime>) -> Result<Vec<TagSummary>, String> {
     runtime.list_tags().map_err(error_text)
 }
@@ -780,6 +788,16 @@ pub(crate) async fn open_toolbox_window(app: tauri::AppHandle) -> Result<(), Str
     .build()
     .map_err(error_text)?;
     Ok(())
+}
+
+#[tauri::command]
+pub(crate) fn focus_main_window(app: tauri::AppHandle) -> Result<(), String> {
+    let main = app
+        .get_webview_window("main")
+        .ok_or_else(|| "找不到主窗口".to_owned())?;
+    main.show().map_err(error_text)?;
+    main.unminimize().map_err(error_text)?;
+    main.set_focus().map_err(error_text)
 }
 
 #[tauri::command]

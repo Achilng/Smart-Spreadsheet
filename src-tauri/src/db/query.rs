@@ -191,6 +191,25 @@ impl Database {
         Ok(rows)
     }
 
+    /// 返回未筛选资料库中指定行的零基序号。按主查询一致的 ID 升序计算，
+    /// 即使中间删除过记录也能得到准确的表格位置。
+    pub fn row_index_by_id(&self, row_id: i64) -> Result<u64, DatabaseError> {
+        let exists: bool = self.connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM rows WHERE id = ?1)",
+            [row_id],
+            |row| row.get(0),
+        )?;
+        if !exists {
+            return Err(DatabaseError::RowNotFound(row_id));
+        }
+        let index: i64 = self.connection.query_row(
+            "SELECT COUNT(*) FROM rows WHERE id < ?1",
+            [row_id],
+            |row| row.get(0),
+        )?;
+        u64::try_from(index).map_err(|_| DatabaseError::CountOverflow)
+    }
+
     pub fn get_group_members(
         &mut self,
         group_id: i64,
@@ -1269,6 +1288,23 @@ mod tests {
                 .unwrap()
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn row_index_by_id_uses_current_library_order_and_handles_gaps() {
+        let database = database_with_rows(5);
+        database
+            .connection
+            .execute("DELETE FROM rows WHERE id = 2", [])
+            .unwrap();
+
+        assert_eq!(database.row_index_by_id(1).unwrap(), 0);
+        assert_eq!(database.row_index_by_id(3).unwrap(), 1);
+        assert_eq!(database.row_index_by_id(5).unwrap(), 3);
+        assert!(matches!(
+            database.row_index_by_id(2),
+            Err(DatabaseError::RowNotFound(2))
+        ));
     }
 
     #[test]

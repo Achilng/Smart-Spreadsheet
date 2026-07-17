@@ -136,6 +136,41 @@
     }
   });
 
+  // 工具箱等外部入口可以按资料库真实序号定位。筛选重置完成后再滚动，
+  // 并预取目标所在页，让虚拟表格随后渲染出准确行。
+  // 表格首次因定位请求而挂载时，也必须处理挂载前已经递增的 token。
+  let seenReveal = 0;
+  $effect(() => {
+    void rowStore.pagesVersion;
+    const revealToken = rowStore.revealToken;
+    const index = rowStore.revealIndex;
+    if (
+      revealToken === seenReveal ||
+      index === null ||
+      !active ||
+      !viewport ||
+      rowStore.initialLoading ||
+      rowStore.refreshing ||
+      viewportHeight <= 0
+    ) {
+      return;
+    }
+
+    ensurePage(Math.floor(index / PAGE_SIZE));
+    const centeredTop = Math.max(
+      0,
+      HEADER_HEIGHT + index * rowHeight - Math.max(0, (viewportHeight - rowHeight) / 2),
+    );
+    restored = true;
+    pendingReset = false;
+    restoring = false;
+    scrollTop = centeredTop;
+    viewport.scrollTop = centeredTop;
+    saveTableScroll(centeredTop);
+    seenReveal = revealToken;
+    rowStore.revealIndex = null;
+  });
+
   function onScroll(): void {
     scrollTop = viewport?.scrollTop ?? 0;
     // 恢复期间的钳制事件和隐藏状态下的读数不代表用户位置，不能写入记忆

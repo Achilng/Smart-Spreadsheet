@@ -21,6 +21,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             app::commands::open_toolbox_window,
+            app::commands::focus_main_window,
             app::commands::get_app_snapshot,
             app::commands::reset_configuration,
             app::commands::reset_data,
@@ -64,6 +65,7 @@ pub fn run() {
             app::commands::prepend_artist,
             app::commands::query_rows,
             app::commands::get_rows_by_ids,
+            app::commands::get_row_index,
             app::commands::list_tags,
             app::commands::create_tag,
             app::commands::delete_tag,

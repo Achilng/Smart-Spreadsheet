@@ -238,6 +238,10 @@ impl AppRuntime {
         self.with_database(|db| db.get_rows_by_ids(ids))
     }
 
+    pub(crate) fn row_index_by_id(&self, row_id: i64) -> Result<u64, AppRuntimeError> {
+        self.with_database(|db| db.row_index_by_id(row_id))
+    }
+
     pub(crate) fn list_tags(&self) -> Result<Vec<TagSummary>, AppRuntimeError> {
         self.with_database(|db| db.list_tags())
     }

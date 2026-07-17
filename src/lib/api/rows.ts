@@ -147,6 +147,10 @@ export function getRowsByIds(rowIds: number[]): Promise<RowRecord[]> {
   return invoke<RowRecord[]>("get_rows_by_ids", { rowIds });
 }
 
+export function getRowIndex(rowId: number): Promise<number> {
+  return invoke<number>("get_row_index", { rowId });
+}
+
 export function countSelectedRows(selection: RowSelection): Promise<number> {
   return invoke<number>("count_selected_rows", { selection });
 }
