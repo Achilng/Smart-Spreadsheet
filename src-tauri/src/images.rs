@@ -331,6 +331,7 @@ mod tests {
                     .into_owned(),
             ),
             stored_image_path: Some("files/1/embedded/row-1.png".into()),
+            stored_image_is_original: false,
             source_type: crate::db::SourceType::Xlsx,
         };
 
@@ -364,6 +365,7 @@ mod tests {
             row_id: 7,
             image_path: Some(external.to_string_lossy().into_owned()),
             stored_image_path: Some("files/1/missing.png".into()),
+            stored_image_is_original: true,
             source_type: crate::db::SourceType::Archive,
         };
 

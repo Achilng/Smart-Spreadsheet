@@ -170,9 +170,9 @@ pub fn resolve_locator_source(
     None
 }
 
-/// 只解析"完整原件"：外部原图，或压缩包批次提取的副本（与包内原件字节一致）。
-/// xlsx 批次的嵌入图是 Excel 压缩过的无元数据缩略图，不算原件——拖出或导出
-/// 这种副本会让 NovelAI 等下游丢失全部元数据，宁可报错也不静默降级。
+/// 只解析"完整原件"：外部原图，或明确标记为完整原件的受管副本。
+/// 旧 xlsx 嵌入图是 Excel 压缩过的无元数据缩略图，不算原件——拖出这种副本
+/// 会让 NovelAI 等下游丢失全部元数据，宁可报错也不静默降级。
 pub fn resolve_original_source(
     directory: &DataDirectory,
     locator: &crate::db::RowImageLocator,
@@ -187,11 +187,11 @@ pub fn resolve_original_source(
         if path.is_file() {
             return Ok(path.to_owned());
         }
-        if locator.source_type != crate::db::SourceType::Archive {
+        if !locator.stored_image_is_original {
             return Err(OriginalSourceError::OriginalMissing(path.to_owned()));
         }
     }
-    if locator.source_type == crate::db::SourceType::Archive
+    if locator.stored_image_is_original
         && let Some(stored) = locator
             .stored_image_path
             .as_deref()
@@ -208,9 +208,9 @@ pub fn resolve_original_source(
 
 #[derive(Debug, Error)]
 pub enum OriginalSourceError {
-    #[error("原图文件不存在或已移动: {0}（表格里的缩略图副本不含元数据，已阻止使用）")]
+    #[error("原图文件不存在或已移动: {0}（没有可用的完整受管原图副本）")]
     OriginalMissing(PathBuf),
-    #[error("该行没有可用的原图文件（仅存的表格内嵌副本不含元数据，已阻止使用）")]
+    #[error("该行没有可用的完整原图文件（旧表格内嵌缩略图不含元数据，已阻止使用）")]
     NoOriginal,
 }
 
@@ -353,6 +353,43 @@ mod tests {
             .unwrap();
         assert_ne!(second.directory, outcome.directory);
         assert!(second.directory.join("00001_图片 A.png").is_file());
+    }
+
+    #[test]
+    fn resolves_folder_managed_original_when_external_path_moved() {
+        let temporary = TemporaryImageFilesExport::new();
+        let directory = DataDirectory::initialize(&temporary.data).unwrap();
+        let managed = directory.files_path().join("1").join("original.png");
+        fs::create_dir_all(managed.parent().unwrap()).unwrap();
+        fs::write(&managed, b"complete-original").unwrap();
+        directory
+            .open_database()
+            .unwrap()
+            .append_batch(
+                SourceType::Folder,
+                r"D:\old",
+                &[NewRow {
+                    source_ordinal: 1,
+                    identity: r"file:d:\old\original.png".into(),
+                    image_path: Some(r"D:\old\original.png".into()),
+                    stored_image_rel: Some("original.png".into()),
+                    ..NewRow::default()
+                }],
+                |_| Ok(()),
+            )
+            .unwrap();
+
+        let locator = directory
+            .open_database()
+            .unwrap()
+            .row_image_locator(1)
+            .unwrap();
+
+        assert!(locator.stored_image_is_original);
+        assert_eq!(
+            resolve_original_source(&directory, &locator).unwrap(),
+            managed
+        );
     }
 
     struct TemporaryImageFilesExport {

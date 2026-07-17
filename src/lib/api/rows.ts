@@ -23,6 +23,10 @@ export interface ExistingImageUpdateResult {
   totalFound: number;
   matched: number;
   updated: number;
+  matchedByIdentity: number;
+  relinkedByContent: number;
+  relinkedByMetadata: number;
+  ambiguous: number;
   unmatched: number;
   metadataRejected: number;
   copyFailures: number;

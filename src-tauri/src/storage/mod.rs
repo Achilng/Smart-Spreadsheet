@@ -4,6 +4,7 @@ mod export_images;
 mod export_json;
 mod export_xlsx;
 mod import_images;
+mod metadata_fingerprint;
 mod migration;
 mod perceptual_hash;
 mod prompt_docs;
@@ -164,6 +165,7 @@ impl DataDirectory {
         };
         directory.process_pending_embedded_extractions()?;
         directory.backfill_content_hashes(progress)?;
+        directory.backfill_metadata_fingerprints()?;
         Ok(directory)
     }
 

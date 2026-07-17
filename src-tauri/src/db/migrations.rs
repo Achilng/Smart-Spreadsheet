@@ -1,4 +1,4 @@
-pub const CURRENT_SCHEMA_VERSION: u32 = 8;
+pub const CURRENT_SCHEMA_VERSION: u32 = 9;
 
 pub(super) const MIGRATION_1: &str = r#"
 CREATE TABLE workbook (
@@ -172,4 +172,21 @@ ALTER TABLE rows ADD COLUMN character_prompt TEXT;
 // v8：为每张图片增加用户可编辑的备注；智绘姬 JSON 导出使用备注作为 preset 键。
 pub(super) const MIGRATION_8: &str = r#"
 ALTER TABLE rows ADD COLUMN note TEXT;
+"#;
+
+// v9：为原图搬家后的安全重新关联增加完整 NovelAI 元数据指纹，并明确记录受管副本
+// 是否为可供拖出/导出的完整原件。旧 xlsx 嵌入图只是缩略图，不能标记为原件。
+pub(super) const MIGRATION_9: &str = r#"
+ALTER TABLE rows ADD COLUMN metadata_fingerprint TEXT;
+CREATE INDEX idx_rows_metadata_fingerprint ON rows(metadata_fingerprint)
+WHERE metadata_fingerprint IS NOT NULL;
+
+ALTER TABLE rows ADD COLUMN stored_image_is_original INTEGER NOT NULL DEFAULT 0
+CHECK (stored_image_is_original IN (0, 1));
+UPDATE rows
+SET stored_image_is_original = 1
+WHERE stored_image_path IS NOT NULL
+  AND batch_id IN (
+      SELECT id FROM import_batches WHERE source_type IN ('folder', 'archive')
+  );
 "#;

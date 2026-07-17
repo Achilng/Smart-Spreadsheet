@@ -6,6 +6,7 @@ pub mod archive;
 mod artist;
 pub mod json_dedupe;
 mod metadata;
+mod metadata_fingerprint;
 pub mod parallel;
 pub mod png_text;
 pub mod scan;
@@ -13,3 +14,4 @@ pub mod similarity;
 
 pub use artist::extract_artist_tags;
 pub use metadata::{NovelAiMetadata, parse_novelai_metadata};
+pub use metadata_fingerprint::metadata_fingerprint;

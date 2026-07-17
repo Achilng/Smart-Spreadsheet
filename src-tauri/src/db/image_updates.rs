@@ -14,6 +14,8 @@ pub struct ExistingImageTarget {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExistingImageUpdate {
     pub row_id: i64,
+    pub identity: String,
+    pub image_path: String,
     pub source_size: Option<i64>,
     pub source_mtime: Option<i64>,
     pub positive_prompt: Option<String>,
@@ -22,6 +24,9 @@ pub struct ExistingImageUpdate {
     pub artists: Option<String>,
     pub content_hash: Option<String>,
     pub perceptual_hash: Option<String>,
+    pub metadata_fingerprint: Option<String>,
+    pub stored_image_path: Option<String>,
+    pub stored_image_is_original: bool,
 }
 
 impl Database {
@@ -68,6 +73,81 @@ impl Database {
         Ok(targets)
     }
 
+    pub fn existing_image_targets_by_content_hash(
+        &mut self,
+        hashes: &[String],
+    ) -> Result<HashMap<String, Vec<ExistingImageTarget>>, DatabaseError> {
+        self.existing_image_targets_by_value(
+            hashes,
+            "temp.image_update_hash_candidates",
+            "content_hash",
+        )
+    }
+
+    pub fn existing_image_targets_by_metadata_fingerprint(
+        &mut self,
+        fingerprints: &[String],
+    ) -> Result<HashMap<String, Vec<ExistingImageTarget>>, DatabaseError> {
+        self.existing_image_targets_by_value(
+            fingerprints,
+            "temp.image_update_metadata_candidates",
+            "metadata_fingerprint",
+        )
+    }
+
+    fn existing_image_targets_by_value(
+        &mut self,
+        values: &[String],
+        candidates_table: &str,
+        column: &str,
+    ) -> Result<HashMap<String, Vec<ExistingImageTarget>>, DatabaseError> {
+        debug_assert!(matches!(column, "content_hash" | "metadata_fingerprint"));
+        let transaction = self.connection.transaction()?;
+        transaction.execute_batch(&format!(
+            "DROP TABLE IF EXISTS {candidates_table};
+             CREATE TEMP TABLE {candidates_table} (
+                 value TEXT PRIMARY KEY
+             ) STRICT, WITHOUT ROWID;"
+        ))?;
+        {
+            let mut insert = transaction.prepare(&format!(
+                "INSERT OR IGNORE INTO {candidates_table}(value) VALUES (?1)"
+            ))?;
+            for value in values {
+                insert.execute([value])?;
+            }
+        }
+        let pairs = {
+            let mut statement = transaction.prepare(&format!(
+                "SELECT rows.{column}, rows.id, rows.identity, rows.stored_image_path
+                 FROM rows
+                 JOIN {candidates_table} AS candidates
+                   ON candidates.value = rows.{column}
+                 ORDER BY rows.id"
+            ))?;
+            statement
+                .query_map([], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        ExistingImageTarget {
+                            row_id: row.get(1)?,
+                            identity: row.get(2)?,
+                            stored_image_path: row.get(3)?,
+                        },
+                    ))
+                })?
+                .collect::<Result<Vec<_>, _>>()?
+        };
+        transaction.execute_batch(&format!("DROP TABLE {candidates_table};"))?;
+        transaction.commit()?;
+
+        let mut targets: HashMap<String, Vec<ExistingImageTarget>> = HashMap::new();
+        for (value, target) in pairs {
+            targets.entry(value).or_default().push(target);
+        }
+        Ok(targets)
+    }
+
     pub fn update_existing_images(
         &mut self,
         updates: &[ExistingImageUpdate],
@@ -79,20 +159,27 @@ impl Database {
         {
             let mut statement = transaction.prepare(
                 "UPDATE rows SET
-                    source_size = ?2,
-                    source_mtime = ?3,
-                    positive_prompt = ?4,
-                    character_prompt = ?5,
-                    negative_prompt = ?6,
-                    artists = ?7,
+                    identity = ?2,
+                    image_path = ?3,
+                    source_size = ?4,
+                    source_mtime = ?5,
+                    positive_prompt = ?6,
+                    character_prompt = ?7,
+                    negative_prompt = ?8,
+                    artists = ?9,
                     metadata_failed = 0,
-                    content_hash = ?8,
-                    perceptual_hash = ?9
+                    content_hash = ?10,
+                    perceptual_hash = ?11,
+                    metadata_fingerprint = ?12,
+                    stored_image_path = ?13,
+                    stored_image_is_original = ?14
                  WHERE id = ?1",
             )?;
             for update in updates {
                 updated += statement.execute(params![
                     update.row_id,
+                    update.identity,
+                    update.image_path,
                     update.source_size,
                     update.source_mtime,
                     update.positive_prompt,
@@ -101,6 +188,9 @@ impl Database {
                     update.artists,
                     update.content_hash,
                     update.perceptual_hash,
+                    update.metadata_fingerprint,
+                    update.stored_image_path,
+                    update.stored_image_is_original,
                 ])? as u64;
             }
         }
@@ -142,6 +232,8 @@ mod tests {
         let updated = database
             .update_existing_images(&[ExistingImageUpdate {
                 row_id: 1,
+                identity: r"file:d:\moved\one.png".into(),
+                image_path: r"D:\moved\one.png".into(),
                 source_size: Some(100),
                 source_mtime: Some(200),
                 positive_prompt: Some("new prompt".into()),
@@ -150,6 +242,9 @@ mod tests {
                 artists: Some("artist:new".into()),
                 content_hash: Some("content".into()),
                 perceptual_hash: Some("perceptual".into()),
+                metadata_fingerprint: Some("metadata".into()),
+                stored_image_path: None,
+                stored_image_is_original: true,
             }])
             .unwrap();
 

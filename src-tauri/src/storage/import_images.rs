@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -16,7 +16,7 @@ use crate::db::{DatabaseError, ExistingImageUpdate, NewRow, SourceType};
 use crate::fsx::{replace_output_file, unique_sibling_path};
 use crate::pipeline::archive::{ArchiveError, archive_extension, extract_archive};
 use crate::pipeline::scan::{ScanError, SourceImage, collect_png_files};
-use crate::pipeline::{parallel, parse_novelai_metadata, png_text};
+use crate::pipeline::{metadata_fingerprint, parallel, parse_novelai_metadata, png_text};
 
 const PROGRESS_INTERVAL: Duration = Duration::from_millis(100);
 
@@ -78,12 +78,27 @@ pub struct ExistingImageUpdateOutcome {
     pub total_found: usize,
     pub matched: u64,
     pub updated: u64,
+    /// 由原路径身份键精确匹配的图片数。
+    pub matched_by_identity: u64,
+    /// 原路径失效后，由完整文件 SHA-256 唯一匹配并重新关联的图片数。
+    pub relinked_by_content: u64,
+    /// 文件字节变化后，由完整 NovelAI 元数据指纹唯一匹配并重新关联的图片数。
+    pub relinked_by_metadata: u64,
+    /// SHA 或元数据指向多条旧记录，未自动覆盖的图片数。
+    pub ambiguous: u64,
     /// 来源中没有对应资料库身份键的图片；更新模式明确忽略，不追加。
     pub unmatched: u64,
     /// 已匹配但 PNG 元数据读取失败或正负提示词均为空；保留原行。
     pub metadata_rejected: u64,
     /// 已匹配且元数据有效，但受管原图副本刷新失败；保留原行。
     pub copy_failures: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ExistingImageMatchKind {
+    Identity,
+    ContentHash,
+    Metadata,
 }
 
 #[derive(Debug, Error)]
@@ -173,10 +188,7 @@ impl DataDirectory {
                 SourceType::Archive => {
                     archive_member_identity(&input_display, &image.relative_path)
                 }
-                _ => file_identity(&format!(
-                    "{scan_root_display}\\{}",
-                    image.relative_path
-                )),
+                _ => file_identity(&format!("{scan_root_display}\\{}", image.relative_path)),
             }
         };
         let identities: Vec<String> = images.iter().map(identity_for).collect();
@@ -190,13 +202,16 @@ impl DataDirectory {
         for (index, (image, identity)) in images.iter().zip(&identities).enumerate() {
             let ordinal = u32::try_from(index + 1).map_err(|_| DatabaseError::RowCountOverflow)?;
             if existing.contains(identity) {
-                indexed_rows.push((index, NewRow {
-                    source_ordinal: ordinal,
-                    identity: identity.clone(),
-                    source_size: i64::try_from(image.size).ok(),
-                    source_mtime: image.modified_nanos,
-                    ..NewRow::default()
-                }));
+                indexed_rows.push((
+                    index,
+                    NewRow {
+                        source_ordinal: ordinal,
+                        identity: identity.clone(),
+                        source_size: i64::try_from(image.size).ok(),
+                        source_mtime: image.modified_nanos,
+                        ..NewRow::default()
+                    },
+                ));
             } else {
                 metadata_jobs.push((index, image.clone()));
             }
@@ -259,15 +274,18 @@ impl DataDirectory {
                 .as_ref()
                 .is_some_and(|hash| !seen_content.insert(hash.clone()));
             if duplicate {
-                indexed_rows.push((index, NewRow {
-                    source_ordinal: u32::try_from(index + 1)
-                        .map_err(|_| DatabaseError::RowCountOverflow)?,
-                    identity: identities[index].clone(),
-                    source_size: i64::try_from(image.source.size).ok(),
-                    source_mtime: image.source.modified_nanos,
-                    content_hash,
-                    ..NewRow::default()
-                }));
+                indexed_rows.push((
+                    index,
+                    NewRow {
+                        source_ordinal: u32::try_from(index + 1)
+                            .map_err(|_| DatabaseError::RowCountOverflow)?,
+                        identity: identities[index].clone(),
+                        source_size: i64::try_from(image.source.size).ok(),
+                        source_mtime: image.source.modified_nanos,
+                        content_hash,
+                        ..NewRow::default()
+                    },
+                ));
             } else {
                 new_jobs.push((index, image, content_hash));
             }
@@ -301,9 +319,7 @@ impl DataDirectory {
             scan_root_display: &scan_root_display,
             staging_root: staging.path(),
         };
-        for ((index, image, content_hash), perceptual_hash) in
-            new_jobs.into_iter().zip(phashes)
-        {
+        for ((index, image, content_hash), perceptual_hash) in new_jobs.into_iter().zip(phashes) {
             let row = build_new_row(
                 image,
                 &identities[index],
@@ -405,35 +421,39 @@ impl DataDirectory {
                 SourceType::Archive => {
                     archive_member_identity(&input_display, &image.relative_path)
                 }
-                _ => file_identity(&format!(
-                    "{scan_root_display}\\{}",
-                    image.relative_path
-                )),
+                _ => file_identity(&format!("{scan_root_display}\\{}", image.relative_path)),
+            })
+            .collect::<Vec<_>>();
+        let image_paths = images
+            .iter()
+            .map(|image| match source_type {
+                SourceType::Archive => {
+                    format!("{input_display} > {}", image.relative_path)
+                }
+                _ => format!("{scan_root_display}\\{}", image.relative_path),
             })
             .collect::<Vec<_>>();
 
         let mut database = self.open_database()?;
-        let targets = database.existing_image_targets(&identities)?;
-        let matched = u64::try_from(targets.len()).unwrap_or(u64::MAX);
-        let unmatched = u64::try_from(total_found.saturating_sub(targets.len()))
-            .unwrap_or(u64::MAX);
-        let jobs = images
-            .into_iter()
-            .zip(identities)
-            .filter_map(|(image, identity)| {
-                targets
-                    .get(&identity)
-                    .cloned()
-                    .map(|target| (image, target))
-            })
-            .collect::<Vec<_>>();
+        let exact_targets = database.existing_image_targets(&identities)?;
+        let mut assignments = HashMap::new();
+        let mut assigned_rows = HashSet::new();
+        for (index, identity) in identities.iter().enumerate() {
+            if let Some(target) = exact_targets.get(identity).cloned() {
+                assigned_rows.insert(target.row_id);
+                assignments.insert(index, (target, ExistingImageMatchKind::Identity));
+            }
+        }
+        let matched_by_identity = u64::try_from(assignments.len()).unwrap_or(u64::MAX);
 
-        let processing_total = jobs.len();
+        // 路径匹配优先；为支持原图搬家，未命中路径的正常图片还会继续参与
+        // 完整文件 SHA-256 和完整 NovelAI 元数据指纹匹配。
+        let processing_total = images.len();
         reporter.emit(ImageImportStage::Processing, 0, processing_total, true);
         let inspected = parallel::parallel_map(
-            jobs,
+            images.into_iter().enumerate().collect::<Vec<_>>(),
             parallel::worker_count(processing_total),
-            |_, (image, target)| (inspect_metadata(image), target),
+            |_, (index, image)| (index, inspect_metadata(image)),
             |completed| {
                 reporter.emit(
                     ImageImportStage::Processing,
@@ -446,10 +466,12 @@ impl DataDirectory {
         let mut metadata_rejected = 0_u64;
         let valid = inspected
             .into_iter()
-            .filter_map(|(inspection, target)| match inspection {
-                MetadataInspection::Valid(image) => Some((image, target)),
+            .filter_map(|(index, inspection)| match inspection {
+                MetadataInspection::Valid(image) => Some((index, image)),
                 MetadataInspection::Rejected(_) => {
-                    metadata_rejected += 1;
+                    if assignments.contains_key(&index) {
+                        metadata_rejected += 1;
+                    }
                     None
                 }
             })
@@ -460,9 +482,9 @@ impl DataDirectory {
         let hashed = parallel::parallel_map(
             valid,
             parallel::worker_count(hash_total),
-            |_, (image, target)| {
+            |_, (index, image)| {
                 let content_hash = sha256_file(&image.source.absolute_path).ok();
-                (image, target, content_hash)
+                (index, image, content_hash)
             },
             |completed| {
                 reporter.emit(
@@ -474,14 +496,98 @@ impl DataDirectory {
             },
         );
 
-        let phash_total = hashed.len();
+        let content_candidates = hashed
+            .iter()
+            .filter(|(index, _, _)| !assignments.contains_key(index))
+            .filter_map(|(_, _, hash)| hash.clone())
+            .collect::<Vec<_>>();
+        let targets_by_content =
+            database.existing_image_targets_by_content_hash(&content_candidates)?;
+        let mut ambiguous_indices = HashSet::new();
+        for (index, _, content_hash) in &hashed {
+            if assignments.contains_key(index) {
+                continue;
+            }
+            let Some(hash) = content_hash.as_ref() else {
+                continue;
+            };
+            let Some(candidates) = targets_by_content.get(hash) else {
+                continue;
+            };
+            if candidates.len() == 1 && !assigned_rows.contains(&candidates[0].row_id) {
+                let target = candidates[0].clone();
+                assigned_rows.insert(target.row_id);
+                assignments.insert(*index, (target, ExistingImageMatchKind::ContentHash));
+            } else {
+                ambiguous_indices.insert(*index);
+            }
+        }
+
+        let metadata_candidates = hashed
+            .iter()
+            .filter(|(index, _, _)| {
+                !assignments.contains_key(index) && !ambiguous_indices.contains(index)
+            })
+            .filter_map(|(_, image, _)| image.metadata_fingerprint.clone())
+            .collect::<Vec<_>>();
+        let targets_by_metadata =
+            database.existing_image_targets_by_metadata_fingerprint(&metadata_candidates)?;
+        for (index, image, _) in &hashed {
+            if assignments.contains_key(index) || ambiguous_indices.contains(index) {
+                continue;
+            }
+            let Some(fingerprint) = image.metadata_fingerprint.as_ref() else {
+                continue;
+            };
+            let Some(candidates) = targets_by_metadata.get(fingerprint) else {
+                continue;
+            };
+            if candidates.len() == 1 && !assigned_rows.contains(&candidates[0].row_id) {
+                let target = candidates[0].clone();
+                assigned_rows.insert(target.row_id);
+                assignments.insert(*index, (target, ExistingImageMatchKind::Metadata));
+            } else {
+                ambiguous_indices.insert(*index);
+            }
+        }
+
+        let relinked_by_content = assignments
+            .values()
+            .filter(|(_, kind)| *kind == ExistingImageMatchKind::ContentHash)
+            .count();
+        let relinked_by_metadata = assignments
+            .values()
+            .filter(|(_, kind)| *kind == ExistingImageMatchKind::Metadata)
+            .count();
+        let prepared_jobs = hashed
+            .into_iter()
+            .filter_map(|(index, image, content_hash)| {
+                let (target, _) = assignments.get(&index)?.clone();
+                Some((
+                    image,
+                    target,
+                    content_hash,
+                    identities[index].clone(),
+                    image_paths[index].clone(),
+                ))
+            })
+            .collect::<Vec<_>>();
+
+        let phash_total = prepared_jobs.len();
         reporter.emit(ImageImportStage::PerceptualHashing, 0, phash_total, true);
         let prepared = parallel::parallel_map(
-            hashed,
+            prepared_jobs,
             parallel::worker_count(phash_total),
-            |_, (image, target, content_hash)| {
+            |_, (image, target, content_hash, identity, image_path)| {
                 let perceptual_hash = compute_phash(&image.source.absolute_path).ok();
-                (image, target, content_hash, perceptual_hash)
+                (
+                    image,
+                    target,
+                    content_hash,
+                    perceptual_hash,
+                    identity,
+                    image_path,
+                )
             },
             |completed| {
                 reporter.emit(
@@ -495,10 +601,12 @@ impl DataDirectory {
 
         let mut copy_failures = 0_u64;
         let mut updates = Vec::with_capacity(prepared.len());
-        for (image, target, content_hash, perceptual_hash) in prepared {
-            if let Some(relative) = target.stored_image_path.as_deref()
-                && refresh_stored_copy(self, &image.source.absolute_path, relative).is_err()
-            {
+        for (image, target, content_hash, perceptual_hash, identity, image_path) in prepared {
+            let stored_image_path = target
+                .stored_image_path
+                .clone()
+                .unwrap_or_else(|| format!("files/relinked/row-{}.png", target.row_id));
+            if refresh_stored_copy(self, &image.source.absolute_path, &stored_image_path).is_err() {
                 copy_failures += 1;
                 continue;
             }
@@ -506,6 +614,8 @@ impl DataDirectory {
             let _ = remove_row_thumbnail_cache(self, target.row_id);
             updates.push(ExistingImageUpdate {
                 row_id: target.row_id,
+                identity,
+                image_path,
                 source_size: i64::try_from(image.source.size).ok(),
                 source_mtime: image.source.modified_nanos,
                 positive_prompt: image.positive_prompt,
@@ -514,9 +624,21 @@ impl DataDirectory {
                 artists: image.artists,
                 content_hash,
                 perceptual_hash,
+                metadata_fingerprint: image.metadata_fingerprint,
+                stored_image_path: Some(stored_image_path),
+                stored_image_is_original: true,
             });
         }
         let updated = database.update_existing_images(&updates)?;
+
+        let matched = u64::try_from(assignments.len()).unwrap_or(u64::MAX);
+        let ambiguous = u64::try_from(ambiguous_indices.len()).unwrap_or(u64::MAX);
+        let unmatched = u64::try_from(
+            total_found
+                .saturating_sub(assignments.len())
+                .saturating_sub(ambiguous_indices.len()),
+        )
+        .unwrap_or(u64::MAX);
 
         drop(run_temp);
         Ok(ExistingImageUpdateOutcome {
@@ -524,6 +646,10 @@ impl DataDirectory {
             total_found,
             matched,
             updated,
+            matched_by_identity,
+            relinked_by_content: u64::try_from(relinked_by_content).unwrap_or(u64::MAX),
+            relinked_by_metadata: u64::try_from(relinked_by_metadata).unwrap_or(u64::MAX),
+            ambiguous,
             unmatched,
             metadata_rejected,
             copy_failures,
@@ -576,6 +702,7 @@ struct ParsedImage {
     character_prompt: Option<String>,
     negative_prompt: Option<String>,
     artists: Option<String>,
+    metadata_fingerprint: Option<String>,
 }
 
 enum MetadataInspection {
@@ -588,6 +715,7 @@ fn inspect_metadata(image: SourceImage) -> MetadataInspection {
         return MetadataInspection::Rejected(image);
     };
     let metadata = parse_novelai_metadata(&chunks);
+    let metadata_fingerprint = metadata_fingerprint(&chunks);
     let positive_prompt = nonempty_string(metadata.positive_prompt);
     let character_prompt = nonempty_string(metadata.character_prompt);
     let negative_prompt = nonempty_string(metadata.negative_prompt);
@@ -600,6 +728,7 @@ fn inspect_metadata(image: SourceImage) -> MetadataInspection {
         character_prompt,
         negative_prompt,
         artists: nonempty_string(metadata.artist_tags.join("\n")),
+        metadata_fingerprint,
     })
 }
 
@@ -622,10 +751,7 @@ fn build_new_row(
                 fs::copy(&image.source.absolute_path, &staged)?;
             }
             (
-                format!(
-                    "{} > {}",
-                    context.input_display, image.source.relative_path
-                ),
+                format!("{} > {}", context.input_display, image.source.relative_path),
                 Some(image.source.relative_path.replace('\\', "/")),
             )
         }
@@ -652,6 +778,7 @@ fn build_new_row(
         source_mtime: image.source.modified_nanos,
         content_hash,
         perceptual_hash,
+        metadata_fingerprint: image.metadata_fingerprint,
         time: image.source.created.map(format_local_time),
         positive_prompt: image.positive_prompt,
         character_prompt: image.character_prompt,
@@ -679,7 +806,9 @@ fn validate_rejected_directory(
     } else {
         input
     };
-    let input_root = input_root.canonicalize().unwrap_or_else(|_| input_root.to_owned());
+    let input_root = input_root
+        .canonicalize()
+        .unwrap_or_else(|_| input_root.to_owned());
     let rejected_root = rejected_root
         .canonicalize()
         .unwrap_or_else(|_| rejected_root.to_owned());
@@ -689,12 +818,17 @@ fn validate_rejected_directory(
         rejected_root == input_root || rejected_root.starts_with(&input_root)
     };
     if overlaps_input {
-        return Err(ImageImportError::RejectedDirectoryInsideInput(rejected_root));
+        return Err(ImageImportError::RejectedDirectoryInsideInput(
+            rejected_root,
+        ));
     }
     Ok(())
 }
 
-fn move_rejected_image(image: &SourceImage, rejected_root: &Path) -> Result<PathBuf, std::io::Error> {
+fn move_rejected_image(
+    image: &SourceImage,
+    rejected_root: &Path,
+) -> Result<PathBuf, std::io::Error> {
     let desired = rejected_root.join(&image.relative_path);
     if let Some(parent) = desired.parent() {
         fs::create_dir_all(parent)?;
@@ -937,15 +1071,10 @@ mod tests {
 
         let mut database = directory.open_database().unwrap();
         database.create_tag("保留标签").unwrap();
-        database
-            .set_tags_for_row(1, &["保留标签".into()])
-            .unwrap();
+        database.set_tags_for_row(1, &["保留标签".into()]).unwrap();
         let group = database.create_group("保留分组").unwrap();
         database
-            .assign_rows_to_group(
-                &RowSelection::Explicit { row_ids: vec![1] },
-                group.id,
-            )
+            .assign_rows_to_group(&RowSelection::Explicit { row_ids: vec![1] }, group.id)
             .unwrap();
         let stored_path = database
             .row_image_locator(1)
@@ -972,6 +1101,10 @@ mod tests {
         assert_eq!(outcome.total_found, 3);
         assert_eq!(outcome.matched, 2);
         assert_eq!(outcome.updated, 1);
+        assert_eq!(outcome.matched_by_identity, 2);
+        assert_eq!(outcome.relinked_by_content, 0);
+        assert_eq!(outcome.relinked_by_metadata, 0);
+        assert_eq!(outcome.ambiguous, 0);
         assert_eq!(outcome.unmatched, 1);
         assert_eq!(outcome.metadata_rejected, 1);
         assert_eq!(outcome.copy_failures, 0);
@@ -993,10 +1126,161 @@ mod tests {
         assert_eq!(rows[0].tags, vec!["保留标签"]);
         assert_eq!(rows[0].group_id, Some(group.id));
         assert_eq!(rows[0].group_name.as_deref(), Some("保留分组"));
-        assert_eq!(rows[1].positive_prompt.as_deref(), Some("keep this old prompt"));
+        assert_eq!(
+            rows[1].positive_prompt.as_deref(),
+            Some("keep this old prompt")
+        );
         assert_eq!(
             fs::read(directory.root().join(stored_path)).unwrap(),
             fs::read(existing).unwrap()
+        );
+    }
+
+    #[test]
+    fn update_import_relinks_moved_original_by_content_hash() {
+        let temporary = TemporaryImageImport::new();
+        let original_dir = temporary.root.join("original");
+        let moved_dir = temporary.root.join("moved");
+        fs::create_dir_all(&original_dir).unwrap();
+        fs::create_dir_all(&moved_dir).unwrap();
+        let original = original_dir.join("same.png");
+        let moved = moved_dir.join("renamed.png");
+        fs::write(
+            &original,
+            metadata_png_bytes("artist:moved", Some(r#"{"seed":123,"steps":28}"#)),
+        )
+        .unwrap();
+        let directory = temporary.initialize_directory();
+        directory.import_images(&original_dir, |_| {}).unwrap();
+        fs::rename(&original, &moved).unwrap();
+
+        let outcome = directory
+            .update_existing_images(&moved_dir, |_| {})
+            .unwrap();
+
+        assert_eq!(outcome.matched, 1);
+        assert_eq!(outcome.updated, 1);
+        assert_eq!(outcome.matched_by_identity, 0);
+        assert_eq!(outcome.relinked_by_content, 1);
+        assert_eq!(outcome.relinked_by_metadata, 0);
+        assert_eq!(outcome.ambiguous, 0);
+        assert_eq!(outcome.unmatched, 0);
+        let locator = directory
+            .open_database()
+            .unwrap()
+            .row_image_locator(1)
+            .unwrap();
+        assert_eq!(
+            locator.image_path.as_deref(),
+            Some(moved.to_string_lossy().as_ref())
+        );
+        assert!(locator.stored_image_is_original);
+        assert_eq!(
+            fs::read(directory.root().join(locator.stored_image_path.unwrap())).unwrap(),
+            fs::read(moved).unwrap()
+        );
+    }
+
+    #[test]
+    fn update_import_relinks_reencoded_original_by_complete_metadata() {
+        let temporary = TemporaryImageImport::new();
+        let original_dir = temporary.root.join("metadata-original");
+        let moved_dir = temporary.root.join("metadata-moved");
+        fs::create_dir_all(&original_dir).unwrap();
+        fs::create_dir_all(&moved_dir).unwrap();
+        let original = original_dir.join("old.png");
+        let moved = moved_dir.join("new.png");
+        let bytes = metadata_png_bytes(
+            "artist:metadata",
+            Some(r#"{"seed":987654,"steps":28,"sampler":"k_euler"}"#),
+        );
+        fs::write(&original, &bytes).unwrap();
+        let directory = temporary.initialize_directory();
+        directory.import_images(&original_dir, |_| {}).unwrap();
+
+        let mut reencoded = bytes;
+        reencoded.extend_from_slice(b"harmless trailing bytes");
+        fs::write(&moved, reencoded).unwrap();
+        fs::remove_file(&original).unwrap();
+
+        let outcome = directory
+            .update_existing_images(&moved_dir, |_| {})
+            .unwrap();
+
+        assert_eq!(outcome.matched, 1);
+        assert_eq!(outcome.updated, 1);
+        assert_eq!(outcome.relinked_by_content, 0);
+        assert_eq!(outcome.relinked_by_metadata, 1);
+        assert_eq!(outcome.ambiguous, 0);
+        assert_eq!(outcome.unmatched, 0);
+        assert_eq!(
+            directory
+                .open_database()
+                .unwrap()
+                .row_image_locator(1)
+                .unwrap()
+                .image_path
+                .as_deref(),
+            Some(moved.to_string_lossy().as_ref())
+        );
+    }
+
+    #[test]
+    fn update_import_does_not_choose_between_duplicate_metadata_candidates() {
+        let temporary = TemporaryImageImport::new();
+        let input = temporary.root.join("ambiguous");
+        fs::create_dir_all(&input).unwrap();
+        let candidate = input.join("candidate.png");
+        fs::write(
+            &candidate,
+            metadata_png_bytes("artist:ambiguous", Some(r#"{"seed":42}"#)),
+        )
+        .unwrap();
+        let chunks = png_text::read_png_text_chunks(&candidate).unwrap();
+        let fingerprint = metadata_fingerprint(&chunks).unwrap();
+        let directory = temporary.initialize_directory();
+        directory
+            .open_database()
+            .unwrap()
+            .append_batch(
+                SourceType::Folder,
+                r"D:\old",
+                &[
+                    NewRow {
+                        source_ordinal: 1,
+                        identity: r"file:d:\old\a.png".into(),
+                        content_hash: Some("old-content-a".into()),
+                        metadata_fingerprint: Some(fingerprint.clone()),
+                        image_path: Some(r"D:\old\a.png".into()),
+                        ..NewRow::default()
+                    },
+                    NewRow {
+                        source_ordinal: 2,
+                        identity: r"file:d:\old\b.png".into(),
+                        content_hash: Some("old-content-b".into()),
+                        metadata_fingerprint: Some(fingerprint),
+                        image_path: Some(r"D:\old\b.png".into()),
+                        ..NewRow::default()
+                    },
+                ],
+                |_| Ok(()),
+            )
+            .unwrap();
+
+        let outcome = directory.update_existing_images(&input, |_| {}).unwrap();
+
+        assert_eq!(outcome.matched, 0);
+        assert_eq!(outcome.updated, 0);
+        assert_eq!(outcome.ambiguous, 1);
+        assert_eq!(outcome.unmatched, 0);
+        assert_eq!(
+            directory
+                .open_database()
+                .unwrap()
+                .library_summary()
+                .unwrap()
+                .row_count,
+            2
         );
     }
 
@@ -1070,7 +1354,10 @@ mod tests {
             let file = fs::File::create(&archive_path).unwrap();
             let mut writer = zip::ZipWriter::new(file);
             writer
-                .start_file("nested/existing.png", zip::write::SimpleFileOptions::default())
+                .start_file(
+                    "nested/existing.png",
+                    zip::write::SimpleFileOptions::default(),
+                )
                 .unwrap();
             writer.write_all(&fs::read(&existing_png).unwrap()).unwrap();
             writer.finish().unwrap();
@@ -1181,7 +1468,11 @@ mod tests {
         assert_eq!(outcome.added, 5);
         assert_eq!(outcome.skipped_existing, 0);
 
-        let summary = directory.open_database().unwrap().library_summary().unwrap();
+        let summary = directory
+            .open_database()
+            .unwrap()
+            .library_summary()
+            .unwrap();
         assert_eq!(summary.row_count, 10_005);
 
         let repeat = directory.import_images(&input, |_| {}).unwrap();
@@ -1288,7 +1579,11 @@ mod tests {
         fs::create_dir_all(input.join("nested")).unwrap();
         fs::write(input.join("nested").join("broken.png"), b"not a png").unwrap();
         let directory = temporary.initialize_directory();
-        fs::write(temporary.rejected.join("nested"), b"blocks directory creation").unwrap();
+        fs::write(
+            temporary.rejected.join("nested"),
+            b"blocks directory creation",
+        )
+        .unwrap();
 
         let outcome = directory.import_images(&input, |_| {}).unwrap();
 

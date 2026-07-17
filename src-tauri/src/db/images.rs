@@ -8,7 +8,9 @@ pub struct RowImageLocator {
     pub image_path: Option<String>,
     /// 受管副本相对数据目录根的路径（压缩包提取副本或 xlsx 嵌入图）。
     pub stored_image_path: Option<String>,
-    /// 所属批次的来源类型：压缩包副本是完整原件，xlsx 嵌入图只是无元数据缩略图。
+    /// 该受管副本是否为完整原件；旧 xlsx 嵌入图为 false。
+    pub stored_image_is_original: bool,
+    /// 所属批次的来源类型，仅用于溯源和错误说明。
     pub source_type: SourceType,
 }
 
@@ -16,7 +18,8 @@ impl Database {
     pub fn row_image_locator(&self, row_id: i64) -> Result<RowImageLocator, DatabaseError> {
         self.connection
             .query_row(
-                "SELECT rows.id, rows.image_path, rows.stored_image_path, batches.source_type
+                "SELECT rows.id, rows.image_path, rows.stored_image_path,
+                        rows.stored_image_is_original, batches.source_type
                  FROM rows JOIN import_batches AS batches ON batches.id = rows.batch_id
                  WHERE rows.id = ?1",
                 [row_id],
@@ -26,9 +29,10 @@ impl Database {
                             row_id: row.get(0)?,
                             image_path: row.get(1)?,
                             stored_image_path: row.get(2)?,
+                            stored_image_is_original: row.get(3)?,
                             source_type: SourceType::Folder,
                         },
-                        row.get::<_, String>(3)?,
+                        row.get::<_, String>(4)?,
                     ))
                 },
             )
@@ -77,7 +81,6 @@ impl Database {
 
 #[cfg(test)]
 mod tests {
-    use super::super::test_support::append_rows;
     use super::super::{NewRow, SourceType};
     use super::*;
 
@@ -101,6 +104,7 @@ mod tests {
                 row_id: 1,
                 image_path: Some(r"D:\Packs\pack.zip > sample.png".into()),
                 stored_image_path: Some("files/1/sample.png".into()),
+                stored_image_is_original: true,
                 source_type: SourceType::Archive,
             }
         );

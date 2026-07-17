@@ -131,6 +131,15 @@ export async function runExistingImageUpdate(path: string): Promise<void> {
       if (result.updated > 0) {
         parts.push("已清空撤销/重做记录");
       }
+      if (result.relinkedByContent > 0) {
+        parts.push(`按文件内容重新关联 ${formatCount(result.relinkedByContent)} 张`);
+      }
+      if (result.relinkedByMetadata > 0) {
+        parts.push(`按完整元数据重新关联 ${formatCount(result.relinkedByMetadata)} 张`);
+      }
+      if (result.ambiguous > 0) {
+        parts.push(`${formatCount(result.ambiguous)} 张匹配到多条记录（为安全起见未覆盖）`);
+      }
       if (result.unmatched > 0) {
         parts.push(`忽略 ${formatCount(result.unmatched)} 张未入库图片（未新增）`);
       }

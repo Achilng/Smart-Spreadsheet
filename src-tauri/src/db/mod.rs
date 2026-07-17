@@ -7,6 +7,7 @@ mod history;
 mod image_updates;
 pub mod identity;
 mod images;
+mod metadata_fingerprints;
 mod migrations;
 mod notes;
 mod prompt_edit;
@@ -35,7 +36,7 @@ pub use images::RowImageLocator;
 pub use migrations::CURRENT_SCHEMA_VERSION;
 use migrations::{
     MIGRATION_1, MIGRATION_2, MIGRATION_3, MIGRATION_4, MIGRATION_5, MIGRATION_6, MIGRATION_7,
-    MIGRATION_8,
+    MIGRATION_8, MIGRATION_9,
 };
 
 #[derive(Debug, Error)]
@@ -192,6 +193,10 @@ fn apply_pending_migrations(
         transaction.execute_batch(MIGRATION_8)?;
         version = 8;
     }
+    if version == 8 {
+        transaction.execute_batch(MIGRATION_9)?;
+        version = 9;
+    }
     debug_assert_eq!(version, CURRENT_SCHEMA_VERSION);
     transaction.pragma_update(None, "user_version", version)?;
     transaction.commit()?;
@@ -341,6 +346,33 @@ mod tests {
             )
             .unwrap();
         assert_eq!(note_column, ("note".into(), "TEXT".into(), 0));
+
+        let metadata_column: (String, String, i64) = database
+            .connection
+            .query_row(
+                "SELECT name, type, \"notnull\" FROM pragma_table_info('rows')
+                 WHERE name = 'metadata_fingerprint'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            metadata_column,
+            ("metadata_fingerprint".into(), "TEXT".into(), 0)
+        );
+        let managed_original_column: (String, String, i64) = database
+            .connection
+            .query_row(
+                "SELECT name, type, \"notnull\" FROM pragma_table_info('rows')
+                 WHERE name = 'stored_image_is_original'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            managed_original_column,
+            ("stored_image_is_original".into(), "INTEGER".into(), 1)
+        );
     }
 
     #[test]
@@ -610,13 +642,17 @@ mod tests {
         let database = Database::initialize(connection).unwrap();
 
         assert_eq!(database.schema_version().unwrap(), CURRENT_SCHEMA_VERSION);
-        let row: (String, Option<String>) = database
+        let row: (String, Option<String>, Option<String>, bool) = database
             .connection
-            .query_row("SELECT positive_prompt, note FROM rows WHERE id = 1", [], |row| {
-                Ok((row.get(0)?, row.get(1)?))
-            })
+            .query_row(
+                "SELECT positive_prompt, note, metadata_fingerprint,
+                        stored_image_is_original
+                 FROM rows WHERE id = 1",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
             .unwrap();
-        assert_eq!(row, ("keep prompt".into(), None));
+        assert_eq!(row, ("keep prompt".into(), None, None, false));
     }
 
     /// 手工构造 v1 库：3 行数据。第 2、3 行 image_path 重复（必须退化为

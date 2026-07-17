@@ -58,6 +58,7 @@ pub struct NewRow {
     pub source_mtime: Option<i64>,
     pub content_hash: Option<String>,
     pub perceptual_hash: Option<String>,
+    pub metadata_fingerprint: Option<String>,
     pub time: Option<String>,
     pub positive_prompt: Option<String>,
     pub character_prompt: Option<String>,
@@ -133,8 +134,12 @@ impl Database {
                     batch_id, source_ordinal, identity, source_size, source_mtime,
                     time, positive_prompt, character_prompt, negative_prompt, note, artists,
                     image_folder, image_path, stored_image_path, metadata_failed,
-                    content_hash, perceptual_hash
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
+                    content_hash, perceptual_hash, metadata_fingerprint,
+                    stored_image_is_original
+                 ) VALUES (
+                    ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
+                    ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19
+                 )",
             )?;
             for row in rows {
                 let existing = find_existing
@@ -187,6 +192,8 @@ impl Database {
                     row.metadata_failed,
                     row.content_hash,
                     row.perceptual_hash,
+                    row.metadata_fingerprint,
+                    stored_image_path.is_some() && source_type != SourceType::Xlsx,
                 ])?;
                 added += 1;
             }
