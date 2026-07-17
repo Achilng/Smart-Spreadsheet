@@ -5,6 +5,7 @@
   import { app } from "../../stores/app-state.svelte";
   import { PAGE_SIZE, ensurePage, getRow, resetRows, rowStore } from "../../stores/row-store.svelte";
   import { thumbnails } from "../../images/thumbnails";
+  import { vibeStatuses } from "../../images/vibe-statuses";
   import { restoreScrollPosition, saveScrollPosition, scrollPositionVersion } from "../../stores/view-state";
   import GalleryCard from "./GalleryCard.svelte";
 
@@ -100,6 +101,7 @@
       }
     }
     thumbnails.retain(visibleRowIds);
+    vibeStatuses.retain(visibleRowIds);
     for (const pageIndex of missingPages) {
       ensurePage(pageIndex);
     }

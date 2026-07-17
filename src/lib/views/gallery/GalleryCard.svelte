@@ -5,6 +5,7 @@
   import { rowStore } from "../../stores/row-store.svelte";
   import { getSelectedCount, isRowSelected, toggleRow } from "../../stores/selection-store.svelte";
   import Thumbnail from "../../ui/Thumbnail.svelte";
+  import { vibeStatuses } from "../../images/vibe-statuses";
 
   let {
     row,
@@ -33,6 +34,27 @@
   const extraTagCount = $derived(Math.max(0, (row?.tags.length ?? 0) - 3));
 
   let dragging = $state(false);
+  let vibeRefs = $state<number | null>(null);
+
+  $effect(() => {
+    vibeRefs = null;
+    const current = row;
+    if (!current || !hasImage) {
+      return;
+    }
+    let cancelled = false;
+    void vibeStatuses.load(current.id).then(
+      count => {
+        if (!cancelled) {
+          vibeRefs = count;
+        }
+      },
+      () => {},
+    );
+    return () => {
+      cancelled = true;
+    };
+  });
 
   function onContextMenu(event: MouseEvent): void {
     if (!row) return;
@@ -84,6 +106,12 @@
       }}
     >
       <Thumbnail rowId={row.id} {hasImage} alt="第 {row.sourceOrdinal} 行缩略图" />
+      {#if vibeRefs}
+        <span
+          class="vibe-badge"
+          title="原图元数据包含 {vibeRefs} 个 vibe 引用"
+        >VIBE ×{vibeRefs}</span>
+      {/if}
     </button>
     <div class="footer">
       <span class="row-no faint">#{row.sourceOrdinal}</span>
@@ -156,6 +184,7 @@
   }
 
   .thumb {
+    position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -164,6 +193,23 @@
     padding: 0;
     background: var(--surface-2);
     overflow: hidden;
+  }
+
+  .vibe-badge {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 1;
+    padding: 2px 7px;
+    border-radius: var(--radius-m);
+    background: rgba(90, 60, 160, 0.88);
+    box-shadow: 0 1px 3px rgb(25 18 45 / 24%);
+    color: #fff;
+    font-size: var(--font-xs);
+    font-weight: 600;
+    line-height: 1.4;
+    letter-spacing: 0.3px;
+    pointer-events: none;
   }
 
   .footer {

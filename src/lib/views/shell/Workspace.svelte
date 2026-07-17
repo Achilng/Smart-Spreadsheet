@@ -14,6 +14,7 @@
   import { resetRows, rowStore } from "../../stores/row-store.svelte";
   import { loadTags } from "../../stores/tag-store.svelte";
   import { thumbnails } from "../../images/thumbnails";
+  import { vibeStatuses } from "../../images/vibe-statuses";
   import ContextMenu from "./ContextMenu.svelte";
   import DetailPanel from "./DetailPanel.svelte";
   import DeleteDialog from "./DeleteDialog.svelte";
@@ -64,6 +65,7 @@
     const preserveScroll = app.preserveScrollOnDataChange;
     untrack(() => {
       thumbnails.clear();
+      vibeStatuses.clear();
       resetRows({ keepStale: preserveScroll, resetScroll: !preserveScroll });
       clearSelection();
       void loadTags();

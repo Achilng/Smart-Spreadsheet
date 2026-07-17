@@ -2,7 +2,6 @@
   import {
     createTag,
     getRowPreview,
-    getRowVibeStatus,
     setTagsForRow,
     updateCharacterPrompt,
     updateNegativePrompt,
@@ -18,6 +17,7 @@
   import { patchRowFields, patchRowTags, resetRows, rowStore } from "../../stores/row-store.svelte";
   import { loadTags, tagStore } from "../../stores/tag-store.svelte";
   import { thumbnails } from "../../images/thumbnails";
+  import { vibeStatuses } from "../../images/vibe-statuses";
   import { recordRowStateChange } from "../../stores/history-actions";
 
   const row = $derived(rowStore.activeRow);
@@ -164,7 +164,7 @@
       },
       () => {},
     );
-    void getRowVibeStatus(rowId).then(
+    void vibeStatuses.load(rowId).then(
       count => {
         if (!cancelled) {
           vibeRefs = count;
