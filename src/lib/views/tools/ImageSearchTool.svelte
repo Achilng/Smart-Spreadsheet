@@ -10,11 +10,7 @@
   } from "../../api";
   import { errorText, formatCount, setNotice } from "../../stores/app-state.svelte";
   import Thumbnail from "../../ui/Thumbnail.svelte";
-  import {
-    focusMainWindow,
-    type ToolboxRowAction,
-    type ToolboxRowRequest,
-  } from "../../windows/toolbox";
+  import { focusMainWindow, type ToolboxRowRequest } from "../../windows/toolbox";
 
   let queryPath = $state<string | null>(null);
   let matches = $state<SimilarImageMatch[]>([]);
@@ -74,10 +70,10 @@
     return path?.split(/[\\/]/).pop() ?? `图片 #${rowId}`;
   }
 
-  async function openInMain(rowId: number, action: ToolboxRowAction): Promise<void> {
+  async function openInMain(rowId: number): Promise<void> {
     openingRowId = rowId;
     try {
-      const request: ToolboxRowRequest = { rowId, action };
+      const request: ToolboxRowRequest = { rowId };
       await emitTo("main", "toolbox://open-row", request);
       await focusMainWindow();
     } catch (cause) {
@@ -128,39 +124,23 @@
     </div>
     <div class="results-grid">
       {#each matches as match (match.rowId)}
-        <article class="result-card">
-          <button
-            type="button"
-            class="thumbnail"
-            title="在主窗口查看详情"
-            disabled={openingRowId !== null}
-            onclick={() => void openInMain(match.rowId, "detail")}
-          >
+        <button
+          type="button"
+          class="result-card"
+          title="在主窗口画廊中定位"
+          disabled={openingRowId !== null}
+          onclick={() => void openInMain(match.rowId)}
+        >
+          <span class="thumbnail">
             <Thumbnail rowId={match.rowId} hasImage={true} alt={rowName(match.rowId)} />
-          </button>
-          <div class="card-info">
+          </span>
+          <span class="card-info">
             <strong title={rowName(match.rowId)}>{rowName(match.rowId)}</strong>
             <span class:exact={match.distance === 0}>
               {distanceLabel(match.distance)} · 距离 {match.distance}
             </span>
-          </div>
-          <div class="card-actions">
-            <button
-              type="button"
-              disabled={openingRowId !== null}
-              onclick={() => void openInMain(match.rowId, "detail")}
-            >
-              查看详情
-            </button>
-            <button
-              type="button"
-              disabled={openingRowId !== null}
-              onclick={() => void openInMain(match.rowId, "table")}
-            >
-              表格定位
-            </button>
-          </div>
-        </article>
+          </span>
+        </button>
       {/each}
     </div>
   {/if}
@@ -257,27 +237,35 @@
   }
 
   .result-card {
+    padding: 0;
     min-width: 0;
     overflow: hidden;
     border: 1px solid var(--border);
     border-radius: var(--radius-m);
     background: var(--surface);
+    color: inherit;
+    font: inherit;
+    text-align: left;
     box-shadow: var(--shadow-1);
+    cursor: pointer;
+    transition: border-color 120ms ease;
+  }
+
+  .result-card:hover:not(:disabled) {
+    border-color: var(--accent);
+  }
+
+  .result-card:disabled {
+    cursor: wait;
+    opacity: 0.65;
   }
 
   .thumbnail {
     display: block;
     width: 100%;
-    padding: 0;
     aspect-ratio: 1;
     overflow: hidden;
-    border: 0;
     background: var(--surface-2);
-    cursor: pointer;
-  }
-
-  .thumbnail:disabled {
-    cursor: wait;
   }
 
   .thumbnail :global(.thumbnail-stack),
@@ -312,36 +300,5 @@
 
   .card-info span.exact {
     color: var(--success);
-  }
-
-  .card-actions {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    border-top: 1px solid var(--border);
-  }
-
-  .card-actions button {
-    min-width: 0;
-    padding: 8px 5px;
-    border: 0;
-    background: transparent;
-    color: var(--text-2);
-    font: inherit;
-    font-size: var(--font-xs);
-    cursor: pointer;
-  }
-
-  .card-actions button + button {
-    border-left: 1px solid var(--border);
-  }
-
-  .card-actions button:hover:not(:disabled) {
-    background: var(--surface-2);
-    color: var(--accent);
-  }
-
-  .card-actions button:disabled {
-    cursor: wait;
-    opacity: 0.55;
   }
 </style>

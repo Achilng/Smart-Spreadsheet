@@ -238,6 +238,45 @@
     }
   });
 
+  // 以图搜图等外部入口按资料库真实序号定位。等待筛选重置结束后，
+  // 根据当前响应式列数计算图片坐标并把目标卡片滚到视区中央。
+  let seenReveal = 0;
+  $effect(() => {
+    void rowStore.pagesVersion;
+    const revealToken = rowStore.revealToken;
+    const index = rowStore.revealIndex;
+    if (
+      revealToken === seenReveal ||
+      index === null ||
+      !active ||
+      !viewport ||
+      rowStore.initialLoading ||
+      rowStore.refreshing ||
+      measuredWidth <= 0 ||
+      measuredHeight <= 0 ||
+      viewportWidth <= 0 ||
+      viewportHeight <= 0
+    ) {
+      return;
+    }
+
+    ensurePage(Math.floor(index / PAGE_SIZE));
+    const gridRow = Math.floor(index / columns);
+    const cardHeight = cellHeight - GAP;
+    const centeredTop = Math.max(
+      0,
+      PADDING + gridRow * cellHeight - Math.max(0, (viewportHeight - cardHeight) / 2),
+    );
+    restored = true;
+    pendingReset = false;
+    restoring = false;
+    scrollTop = centeredTop;
+    viewport.scrollTop = centeredTop;
+    saveGalleryScroll(centeredTop);
+    seenReveal = revealToken;
+    rowStore.revealIndex = null;
+  });
+
   function onScroll(): void {
     scrollTop = viewport?.scrollTop ?? 0;
     pauseProgressiveLoading();

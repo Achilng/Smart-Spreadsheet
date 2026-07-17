@@ -15,7 +15,7 @@
   } from "../../stores/selection-store.svelte";
   import {
     resetRows,
-    revealRowInTable,
+    revealRowInGallery,
     rowStore,
   } from "../../stores/row-store.svelte";
   import { loadTags } from "../../stores/tag-store.svelte";
@@ -84,19 +84,9 @@
         throw new Error("图片记录已不存在");
       }
 
-      if (request.action === "detail") {
-        if (app.viewMode === "promptDocs") {
-          app.viewMode = "gallery";
-        }
-        rowStore.activeRow = row;
-        app.detailOpen = true;
-        return;
-      }
-
       const index = await getRowIndex(request.rowId);
-      revealRowInTable(row, index);
-      app.viewMode = "table";
-      app.detailOpen = true;
+      revealRowInGallery(row, index);
+      app.viewMode = "gallery";
       clearSelection();
     } catch (error) {
       setNotice({

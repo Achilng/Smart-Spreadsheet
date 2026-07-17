@@ -2,11 +2,8 @@ import { invoke } from "@tauri-apps/api/core";
 
 let opening: Promise<void> | null = null;
 
-export type ToolboxRowAction = "detail" | "table";
-
 export interface ToolboxRowRequest {
   rowId: number;
-  action: ToolboxRowAction;
 }
 
 /**
