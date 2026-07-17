@@ -113,7 +113,6 @@
 <div class="toolbox">
   <header class="titlebar" data-tauri-drag-region>
     <div class="brand" data-tauri-drag-region>
-      <span class="brand-mark">S</span>
       <span data-tauri-drag-region>工具箱</span>
     </div>
     <WindowControls />
@@ -218,23 +217,10 @@
   .brand {
     display: flex;
     align-items: center;
-    gap: 8px;
     color: var(--text-2);
     font-size: var(--font-sm);
     font-weight: 600;
     letter-spacing: 0.02em;
-  }
-
-  .brand-mark {
-    width: 20px;
-    height: 20px;
-    display: grid;
-    place-items: center;
-    border-radius: 6px;
-    background: var(--accent);
-    color: white;
-    font-size: var(--font-xs);
-    font-weight: 700;
   }
 
   .toolbox-body {
