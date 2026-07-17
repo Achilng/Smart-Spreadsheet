@@ -1,4 +1,4 @@
-import { listen } from "@tauri-apps/api/event";
+import { emitTo, listen } from "@tauri-apps/api/event";
 import { confirm as confirmDialog, open } from "@tauri-apps/plugin-dialog";
 
 import {
@@ -9,13 +9,11 @@ import {
   openDataDirectory,
   resetConfiguration,
   resetData as apiResetData,
-  searchSimilarImages,
   type AppSnapshot,
   type ContentHashProgress,
   type ExportProgress,
   type ImageImportProgress,
   type PerceptualHashProgress,
-  type SimilarImageMatch,
 } from "../api";
 
 export type ViewMode = "group" | "gallery" | "table" | "duplicates" | "promptDocs";
@@ -46,16 +44,8 @@ export const app = $state({
   hashProgress: null as ContentHashProgress | null,
   /** 导出（xlsx / JSON / 图片文件）进行中的进度，空闲时为 null */
   exportProgress: null as ExportProgress | null,
-  /** 智绘姬 JSON 去重工具是否打开 */
-  jsonDedupeOpen: false,
-  /** 随机画师串生成器是否打开 */
-  artistGenOpen: false,
   /** 感知哈希补算进度，空闲时为 null */
   phashProgress: null as PerceptualHashProgress | null,
-  /** 以图搜图结果，空闲时为 null */
-  searchResults: null as SimilarImageMatch[] | null,
-  /** 以图搜图的查询图片路径 */
-  searchQueryPath: null as string | null,
   /** 分组管理视图是否打开 */
   groupManageOpen: false,
 });
@@ -116,6 +106,7 @@ export async function resetDataWithConfirmation(): Promise<void> {
     app.snapshot = await apiResetData();
     clearOperationHistory();
     bumpDataVersion();
+    await notifyMainStateChanged("reset");
     setNotice({ tone: "success", text: "表格已重置，请重新导入数据。" });
   });
 }
@@ -173,36 +164,6 @@ export async function runPhashBackfill(): Promise<void> {
   });
 }
 
-export async function chooseSearchImage(): Promise<void> {
-  const selection = await open({
-    multiple: false,
-    directory: false,
-    title: "选择用于搜索的图片",
-    filters: [{ name: "图片", extensions: ["png", "jpg", "jpeg", "bmp", "gif", "webp", "tiff"] }],
-  });
-  if (typeof selection !== "string") {
-    return;
-  }
-  await runAction(async () => {
-    const matches = await searchSimilarImages(selection, 10);
-    app.searchQueryPath = selection;
-    app.searchResults = matches;
-    if (matches.length === 0) {
-      setNotice({ tone: "success", text: "未找到相似图片。请先刷新感知哈希后再试。" });
-    } else {
-      setNotice({
-        tone: "success",
-        text: `找到 ${formatCount(matches.length)} 张相似图片。`,
-      });
-    }
-  });
-}
-
-export function closeSearchResults(): void {
-  app.searchResults = null;
-  app.searchQueryPath = null;
-}
-
 export async function chooseMigration(): Promise<void> {
   if (!app.snapshot?.dataDirectory) {
     return;
@@ -226,12 +187,23 @@ export async function chooseMigration(): Promise<void> {
     const result = await migrateDataDirectory(selection);
     app.snapshot = result.snapshot;
     clearOperationHistory();
+    await notifyMainStateChanged("migrated");
     setNotice(
       result.retiredSource
         ? { tone: "error", text: `迁移成功，但旧目录未能自动清理：${result.retiredSource}` }
         : { tone: "success", text: `数据目录已迁移到 ${selection}` },
     );
   });
+}
+
+export type MainStateChange = "migrated" | "reset";
+
+async function notifyMainStateChanged(kind: MainStateChange): Promise<void> {
+  try {
+    await emitTo("main", "toolbox://app-state-changed", kind);
+  } catch {
+    // 主窗口可能已经关闭；数据操作本身已经成功，不应被通知失败反向判为失败。
+  }
 }
 
 export async function runAction(action: () => Promise<void>): Promise<void> {

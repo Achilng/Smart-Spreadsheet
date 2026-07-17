@@ -1,11 +1,44 @@
 <script lang="ts">
-  import { app, refreshSnapshot, resetAndReconfigure } from "./lib/stores/app-state.svelte";
+  import { listen } from "@tauri-apps/api/event";
+  import { onMount } from "svelte";
+
+  import {
+    app,
+    bumpDataVersion,
+    refreshSnapshot,
+    resetAndReconfigure,
+    setNotice,
+    type MainStateChange,
+  } from "./lib/stores/app-state.svelte";
   import ImportScreen from "./lib/views/shell/ImportScreen.svelte";
   import Notice from "./lib/ui/Notice.svelte";
   import WindowControls from "./lib/ui/WindowControls.svelte";
   import Workspace from "./lib/views/shell/Workspace.svelte";
 
   void refreshSnapshot();
+
+  onMount(() => {
+    let disposed = false;
+    let unlisten: (() => void) | null = null;
+    void listen<MainStateChange>("toolbox://app-state-changed", event => {
+      void refreshSnapshot().then(() => {
+        bumpDataVersion();
+        setNotice({
+          tone: "success",
+          text: event.payload === "reset"
+            ? "表格已重置，请重新导入数据。"
+            : "数据目录已迁移，主窗口已重新连接。",
+        });
+      });
+    }).then(fn => {
+      if (disposed) fn();
+      else unlisten = fn;
+    });
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  });
 
   const inWorkspace = $derived(
     Boolean(

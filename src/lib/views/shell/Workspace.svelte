@@ -20,15 +20,12 @@
   import DetailPanel from "./DetailPanel.svelte";
   import DeleteDialog from "./DeleteDialog.svelte";
   import DropConfirmDialog from "./DropConfirmDialog.svelte";
-  import ArtistGeneratorView from "../tools/ArtistGeneratorView.svelte";
   import DuplicateBrowseView from "../duplicates/DuplicateBrowseView.svelte";
   import GalleryView from "../gallery/GalleryView.svelte";
   import GroupBrowseView from "../groups/GroupBrowseView.svelte";
   import GroupManageView from "../groups/GroupManageView.svelte";
-  import JsonDedupeView from "../tools/JsonDedupeView.svelte";
   import NavRail from "./NavRail.svelte";
   import PromptDocsView from "../prompt-docs/PromptDocsView.svelte";
-  import SearchResultsView from "../search/SearchResultsView.svelte";
   import SectionContextMenu from "./SectionContextMenu.svelte";
   import SelectionBar from "./SelectionBar.svelte";
   import TableView from "../table/TableView.svelte";
@@ -212,19 +209,10 @@
   </div>
 </div>
 
-{#if app.jsonDedupeOpen}
-  <JsonDedupeView />
-{/if}
-
-{#if app.artistGenOpen}
-  <ArtistGeneratorView />
-{/if}
-
 {#if app.groupManageOpen}
   <GroupManageView />
 {/if}
 
-<SearchResultsView />
 <ContextMenu />
 <SectionContextMenu />
 <DeleteDialog />

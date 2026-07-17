@@ -9,7 +9,7 @@
     type JsonDedupeProgress,
     type JsonDedupeSummary,
   } from "../../api";
-  import { app, errorText, formatCount } from "../../stores/app-state.svelte";
+  import { errorText, formatCount } from "../../stores/app-state.svelte";
 
   let inputPath = $state<string | null>(null);
   let inspection = $state<JsonDedupeInspection | null>(null);
@@ -76,28 +76,8 @@
   }
 </script>
 
-<svelte:window
-  onkeydown={event => {
-    if (event.key === "Escape" && !working) {
-      app.jsonDedupeOpen = false;
-    }
-  }}
-/>
-
-<div class="json-overlay">
-  <div class="json-panel">
-    <header class="json-header">
-      <h3>智绘姬 JSON 去重</h3>
-      <button
-        type="button"
-        class="btn"
-        disabled={working}
-        onclick={() => (app.jsonDedupeOpen = false)}
-      >
-        关闭
-      </button>
-    </header>
-
+<div class="json-page">
+  <div class="json-shell">
     <div class="json-body">
       <p class="faint">
         按 fixedPrompt 去除重复预设并重新连续编号，原文件不会被修改。
@@ -187,47 +167,25 @@
 </div>
 
 <style>
-  .json-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: var(--z-overlay);
-    background: rgb(0 0 0 / 35%);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 40px;
+  .json-page {
+    min-height: 100%;
+    padding: 24px 28px 32px;
   }
 
-  .json-panel {
-    width: min(560px, 100%);
-    max-height: 100%;
-    background: var(--bg);
-    border: 1px solid var(--border-strong);
+  .json-shell {
+    width: min(680px, 100%);
+    overflow: hidden;
+    background: var(--surface);
+    border: 1px solid var(--border);
     border-radius: var(--radius-m);
-    box-shadow: var(--shadow-2);
+    box-shadow: var(--shadow-1);
     display: flex;
     flex-direction: column;
     min-height: 0;
   }
 
-  .json-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    padding: 12px 16px;
-    border-bottom: 1px solid var(--border);
-    background: var(--surface);
-    border-radius: var(--radius-m) var(--radius-m) 0 0;
-  }
-
-  .json-header h3 {
-    font-size: var(--font-lg);
-    margin: 0;
-  }
-
   .json-body {
-    padding: 16px;
+    padding: 20px;
     display: flex;
     flex-direction: column;
     gap: 12px;
@@ -309,10 +267,9 @@
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    padding: 10px 16px;
+    padding: 12px 20px;
     border-top: 1px solid var(--border);
-    background: var(--surface);
-    border-radius: 0 0 var(--radius-m) var(--radius-m);
+    background: var(--surface-2);
     font-size: var(--font-md);
   }
 

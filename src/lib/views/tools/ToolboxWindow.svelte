@@ -1,0 +1,437 @@
+<script lang="ts">
+  import { onMount } from "svelte";
+
+  import { app, refreshSnapshot } from "../../stores/app-state.svelte";
+  import Notice from "../../ui/Notice.svelte";
+  import WindowControls from "../../ui/WindowControls.svelte";
+  import ArtistGeneratorView from "./ArtistGeneratorView.svelte";
+  import DataManagementTool from "./DataManagementTool.svelte";
+  import ImageSearchTool from "./ImageSearchTool.svelte";
+  import JsonDedupeView from "./JsonDedupeView.svelte";
+  import LibraryMaintenanceTool from "./LibraryMaintenanceTool.svelte";
+
+  type ToolId = "artist" | "imageSearch" | "jsonDedupe" | "maintenance" | "data";
+
+  interface ToolDefinition {
+    id: ToolId;
+    label: string;
+    description: string;
+    group: "常用工具" | "文件处理" | "资料库维护";
+    requiresLibrary: boolean;
+    icon: string;
+  }
+
+  const tools: ToolDefinition[] = [
+    {
+      id: "artist",
+      label: "随机画师串",
+      description: "从画师池随机生成 NovelAI 提示词",
+      group: "常用工具",
+      requiresLibrary: true,
+      icon: "✦",
+    },
+    {
+      id: "imageSearch",
+      label: "以图搜图",
+      description: "使用感知哈希查找库内相似图片",
+      group: "常用工具",
+      requiresLibrary: true,
+      icon: "◉",
+    },
+    {
+      id: "jsonDedupe",
+      label: "智绘姬 JSON 去重",
+      description: "检查并清理重复预设",
+      group: "文件处理",
+      requiresLibrary: false,
+      icon: "{}",
+    },
+    {
+      id: "maintenance",
+      label: "资料库维护",
+      description: "感知哈希与失败图片目录",
+      group: "资料库维护",
+      requiresLibrary: true,
+      icon: "↻",
+    },
+    {
+      id: "data",
+      label: "数据管理",
+      description: "迁移数据目录或重置资料库",
+      group: "资料库维护",
+      requiresLibrary: true,
+      icon: "▣",
+    },
+  ];
+
+  const groups = ["常用工具", "文件处理", "资料库维护"] as const;
+
+  let activeTool = $state<ToolId>("artist");
+  const visited = $state<Record<ToolId, boolean>>({
+    artist: false,
+    imageSearch: false,
+    jsonDedupe: false,
+    maintenance: false,
+    data: false,
+  });
+
+  const hasLibrary = $derived(
+    Boolean(
+      app.snapshot?.dataDirectory &&
+        !app.snapshot.startupError &&
+        (app.snapshot.library?.rowCount ?? 0) > 0,
+    ),
+  );
+  const activeDefinition = $derived(
+    tools.find(tool => tool.id === activeTool) ?? tools[0],
+  );
+
+  onMount(() => {
+    void refreshSnapshot();
+  });
+
+  $effect(() => {
+    if (!app.loaded) return;
+    const selected = tools.find(tool => tool.id === activeTool);
+    if (selected?.requiresLibrary && !hasLibrary) {
+      activeTool = "jsonDedupe";
+      visited.jsonDedupe = true;
+    } else {
+      visited[activeTool] = true;
+    }
+  });
+
+  function selectTool(tool: ToolDefinition): void {
+    if (tool.requiresLibrary && !hasLibrary) return;
+    activeTool = tool.id;
+    visited[tool.id] = true;
+  }
+</script>
+
+<svelte:window oncontextmenu={event => event.preventDefault()} />
+
+<div class="toolbox">
+  <header class="titlebar" data-tauri-drag-region>
+    <div class="brand" data-tauri-drag-region>
+      <span class="brand-mark">S</span>
+      <span data-tauri-drag-region>智能表格 · 工具箱</span>
+    </div>
+    <WindowControls />
+  </header>
+
+  <div class="toolbox-body">
+    <aside class="tool-nav">
+      <div class="nav-intro">
+        <h1>工具箱</h1>
+        <p>独立运行的小工具与资料库维护功能</p>
+      </div>
+
+      <nav aria-label="工具列表">
+        {#each groups as group}
+          <section class="nav-group">
+            <h2>{group}</h2>
+            {#each tools.filter(tool => tool.group === group) as tool (tool.id)}
+              <button
+                type="button"
+                class:is-active={activeTool === tool.id}
+                disabled={tool.requiresLibrary && !hasLibrary}
+                title={tool.requiresLibrary && !hasLibrary ? "需要先在主窗口导入资料库" : tool.description}
+                onclick={() => selectTool(tool)}
+              >
+                <span class="tool-icon" aria-hidden="true">{tool.icon}</span>
+                <span class="tool-label">
+                  <strong>{tool.label}</strong>
+                  <small>{tool.description}</small>
+                </span>
+              </button>
+            {/each}
+          </section>
+        {/each}
+      </nav>
+
+      <div class="library-status">
+        <span class:connected={hasLibrary}></span>
+        {#if !app.loaded}
+          正在连接资料库…
+        {:else if hasLibrary}
+          已连接 · {app.snapshot?.library?.rowCount.toLocaleString("zh-CN")} 张图片
+        {:else}
+          未连接资料库
+        {/if}
+      </div>
+    </aside>
+
+    <main class="tool-content">
+      <header class="content-header">
+        <div>
+          <h2>{activeDefinition.label}</h2>
+          <p>{activeDefinition.description}</p>
+        </div>
+      </header>
+
+      <div class="tool-stack">
+        {#if !app.loaded}
+          <div class="loading-state">正在读取应用状态…</div>
+        {:else}
+          {#if visited.artist}
+            <section class="tool-panel" class:is-active={activeTool === "artist"}>
+              <ArtistGeneratorView />
+            </section>
+          {/if}
+          {#if visited.imageSearch}
+            <section class="tool-panel" class:is-active={activeTool === "imageSearch"}>
+              <ImageSearchTool />
+            </section>
+          {/if}
+          {#if visited.jsonDedupe}
+            <section class="tool-panel" class:is-active={activeTool === "jsonDedupe"}>
+              <JsonDedupeView />
+            </section>
+          {/if}
+          {#if visited.maintenance}
+            <section class="tool-panel" class:is-active={activeTool === "maintenance"}>
+              <LibraryMaintenanceTool />
+            </section>
+          {/if}
+          {#if visited.data}
+            <section class="tool-panel" class:is-active={activeTool === "data"}>
+              <DataManagementTool />
+            </section>
+          {/if}
+        {/if}
+      </div>
+    </main>
+  </div>
+</div>
+
+<Notice />
+
+<style>
+  .toolbox {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg);
+  }
+
+  .titlebar {
+    height: 40px;
+    display: flex;
+    align-items: stretch;
+    justify-content: space-between;
+    flex: none;
+    padding-left: 14px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-2);
+    font-size: var(--font-sm);
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+
+  .brand-mark {
+    width: 20px;
+    height: 20px;
+    display: grid;
+    place-items: center;
+    border-radius: 6px;
+    background: var(--accent);
+    color: white;
+    font-size: var(--font-xs);
+    font-weight: 700;
+  }
+
+  .toolbox-body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+  }
+
+  .tool-nav {
+    width: 240px;
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    padding: 22px 12px 14px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+  }
+
+  .nav-intro {
+    padding: 0 10px 18px;
+  }
+
+  .nav-intro h1 {
+    font-size: 22px;
+    line-height: 1.25;
+  }
+
+  .nav-intro p {
+    margin-top: 5px;
+    color: var(--text-3);
+    font-size: var(--font-sm);
+    line-height: 1.5;
+  }
+
+  nav {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  .nav-group + .nav-group {
+    margin-top: 16px;
+  }
+
+  .nav-group h2 {
+    padding: 0 10px 5px;
+    color: var(--text-3);
+    font-size: var(--font-xs);
+    font-weight: 600;
+    letter-spacing: 0.08em;
+  }
+
+  .nav-group button {
+    width: 100%;
+    min-height: 52px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 10px;
+    border: 1px solid transparent;
+    border-radius: var(--radius-s);
+    background: transparent;
+    text-align: left;
+  }
+
+  .nav-group button:hover:not(:disabled) {
+    background: var(--surface-2);
+  }
+
+  .nav-group button.is-active {
+    border-color: var(--accent-soft-border);
+    background: var(--accent-soft);
+  }
+
+  .tool-icon {
+    width: 28px;
+    height: 28px;
+    display: grid;
+    place-items: center;
+    flex: none;
+    border-radius: 8px;
+    background: var(--surface-3);
+    color: var(--text-2);
+    font-size: var(--font-sm);
+    font-weight: 700;
+  }
+
+  button.is-active .tool-icon {
+    background: var(--accent);
+    color: white;
+  }
+
+  .tool-label {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .tool-label strong {
+    font-size: var(--font-md);
+    font-weight: 600;
+  }
+
+  .tool-label small {
+    overflow: hidden;
+    color: var(--text-3);
+    font-size: var(--font-xs);
+    font-weight: 400;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .library-status {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 12px 10px 0;
+    border-top: 1px solid var(--border);
+    color: var(--text-3);
+    font-size: var(--font-xs);
+  }
+
+  .library-status > span {
+    width: 7px;
+    height: 7px;
+    flex: none;
+    border-radius: 50%;
+    background: var(--text-3);
+  }
+
+  .library-status > span.connected {
+    background: var(--success);
+    box-shadow: 0 0 0 3px var(--success-soft);
+  }
+
+  .tool-content {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .content-header {
+    min-height: 82px;
+    display: flex;
+    align-items: center;
+    flex: none;
+    padding: 18px 28px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .content-header h2 {
+    font-size: var(--font-xl);
+    font-weight: 650;
+  }
+
+  .content-header p {
+    margin-top: 2px;
+    color: var(--text-3);
+    font-size: var(--font-md);
+  }
+
+  .tool-stack {
+    flex: 1;
+    min-height: 0;
+    position: relative;
+  }
+
+  .tool-panel {
+    position: absolute;
+    inset: 0;
+    display: none;
+    overflow: auto;
+  }
+
+  .tool-panel.is-active {
+    display: block;
+  }
+
+  .loading-state {
+    height: 100%;
+    display: grid;
+    place-items: center;
+    color: var(--text-3);
+    font-size: var(--font-md);
+  }
+</style>

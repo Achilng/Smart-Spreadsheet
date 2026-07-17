@@ -1,12 +1,5 @@
 <script lang="ts">
-  import {
-    app,
-    chooseMigration,
-    chooseSearchImage,
-    resetDataWithConfirmation,
-    runPhashBackfill,
-  } from "../../stores/app-state.svelte";
-  import { openRejectedImagesDirectory } from "../../api";
+  import { app, errorText, setNotice } from "../../stores/app-state.svelte";
   import {
     chooseImageArchive,
     chooseImageFolder,
@@ -20,6 +13,7 @@
   import { clearSelection } from "../../stores/selection-store.svelte";
   import { setSearch } from "../../stores/row-store.svelte";
   import Dropdown, { type DropdownItem } from "../../ui/Dropdown.svelte";
+  import { openToolboxWindow } from "../../windows/toolbox";
   import SizeSlider from "./SizeSlider.svelte";
   import WindowControls from "../../ui/WindowControls.svelte";
 
@@ -44,17 +38,6 @@
   }
 
   const library = $derived(app.snapshot?.library ?? null);
-
-  const toolItems = $derived<DropdownItem[]>([
-    { label: "管理分组", action: () => (app.groupManageOpen = true) },
-    { label: "随机画师串", hint: "随机抽画师拼成提示词", action: () => (app.artistGenOpen = true) },
-    { label: "以图搜图", action: () => void chooseSearchImage() },
-    { label: "刷新感知哈希", action: () => void runPhashBackfill() },
-    { label: "打开失败图片目录", action: () => void openRejectedImagesDirectory() },
-    { label: "智绘姬 JSON 去重", action: () => (app.jsonDedupeOpen = true) },
-    { label: "迁移数据目录", action: () => void chooseMigration() },
-    { label: "重置表格", hint: "清空数据重新开始", action: () => void resetDataWithConfirmation() },
-  ]);
 
   const importItems = $derived<DropdownItem[]>([
     { label: "导入文件夹", action: () => void chooseImageFolder() },
@@ -83,6 +66,14 @@
   ]);
 
   const exportDisabled = $derived(app.busy || !library || library.rowCount === 0);
+
+  async function openToolbox(): Promise<void> {
+    try {
+      await openToolboxWindow();
+    } catch (error) {
+      setNotice({ tone: "error", text: errorText(error) });
+    }
+  }
 </script>
 
 <header class="topbar" data-tauri-drag-region>
@@ -106,7 +97,14 @@
   <div class="topbar-right" data-tauri-drag-region>
     <SizeSlider />
     <div class="actions">
-      <Dropdown label="工具" items={toolItems} disabled={app.busy} />
+      <button
+        type="button"
+        class="toolbox-button"
+        disabled={app.busy}
+        onclick={() => void openToolbox()}
+      >
+        工具箱
+      </button>
       <Dropdown label="导入" items={importItems} disabled={app.busy} />
       <Dropdown label="导出" items={exportItems} disabled={exportDisabled} primary />
     </div>
@@ -191,5 +189,21 @@
     gap: 8px;
     flex: none;
     margin-right: 4px;
+  }
+
+  .toolbox-button {
+    height: 28px;
+    padding: 0 10px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-s);
+    background: var(--surface);
+    color: var(--text-2);
+    font-size: var(--font-sm);
+  }
+
+  .toolbox-button:hover:not(:disabled) {
+    border-color: var(--text-3);
+    background: var(--surface-2);
+    color: var(--text);
   }
 </style>

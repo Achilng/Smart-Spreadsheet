@@ -159,6 +159,11 @@
       class:is-active={groupBrowse.sortByCount}
       onclick={() => (groupBrowse.sortByCount = true)}
     >按数量</button>
+    <button
+      type="button"
+      class="manage-button"
+      onclick={() => (app.groupManageOpen = true)}
+    >管理分组</button>
   </div>
 
   {#if groupStore.loading && groupStore.list.length === 0}
@@ -300,6 +305,10 @@
     background: var(--surface-2);
     color: var(--text);
     border-color: var(--border-strong);
+  }
+
+  .group-toolbar .manage-button {
+    margin-left: auto;
   }
 
   .group-list {

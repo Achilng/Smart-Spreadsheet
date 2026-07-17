@@ -6,7 +6,7 @@
     listDistinctArtists,
     setCustomArtists,
   } from "../../api";
-  import { app, errorText, formatCount, setNotice } from "../../stores/app-state.svelte";
+  import { errorText, formatCount, setNotice } from "../../stores/app-state.svelte";
 
   let libraryArtists = $state<string[]>([]);
   let customText = $state("");
@@ -113,26 +113,9 @@
     }
   }
 
-  function close(): void {
-    clearTimeout(saveTimer);
-    void flushSave();
-    app.artistGenOpen = false;
-  }
 </script>
 
-<svelte:window
-  onkeydown={event => {
-    if (event.key === "Escape") close();
-  }}
-/>
-
-<div class="ag-overlay">
-  <div class="ag-panel">
-    <header class="ag-header">
-      <h3>随机画师串</h3>
-      <button type="button" class="btn" onclick={close}>关闭</button>
-    </header>
-
+<div class="ag-page">
     <div class="ag-body">
       {#if loading}
         <p class="faint">正在加载画师池…</p>
@@ -198,54 +181,23 @@
       {/if}
     </div>
   </div>
-</div>
 
 <style>
-  .ag-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: var(--z-overlay);
-    background: rgb(0 0 0 / 35%);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 40px;
-  }
-
-  .ag-panel {
-    width: min(560px, 100%);
-    max-height: 100%;
-    background: var(--bg);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-m);
-    box-shadow: var(--shadow-2);
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-  }
-
-  .ag-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    padding: 12px 16px;
-    border-bottom: 1px solid var(--border);
-    background: var(--surface);
-    border-radius: var(--radius-m) var(--radius-m) 0 0;
-  }
-
-  .ag-header h3 {
-    font-size: var(--font-lg);
-    margin: 0;
+  .ag-page {
+    min-height: 100%;
+    padding: 24px 28px 32px;
   }
 
   .ag-body {
-    padding: 16px;
+    width: min(680px, 100%);
+    padding: 20px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-m);
+    box-shadow: var(--shadow-1);
     display: flex;
     flex-direction: column;
-    gap: 14px;
-    overflow-y: auto;
+    gap: 16px;
     font-size: var(--font-md);
   }
 
