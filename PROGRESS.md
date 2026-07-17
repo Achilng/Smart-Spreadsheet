@@ -17,6 +17,8 @@
 - 左侧工具选中态取消整块浅蓝背景和边框，仅保留蓝色指示线、文字及轻量图标强调。
 - 工具箱从主窗口的 owned/parent 子窗口改为独立顶层应用窗口，并明确设置
   `skip_taskbar(false)`；任务栏拥有单独入口，可独立切换、最小化和恢复。
+- 删除工具箱左下角的连接绿点、「已连接」状态和资料库图片数量，减少无操作价值的
+  常驻信息。
 - 验证：`cargo check --workspace --lib`、Clippy workspace lib `-D warnings`、
   `svelte-check` 和使用独立临时 target 的 Tauri debug `--no-bundle` 构建通过；
   Playwright 在 760×520 下复核新选中态。

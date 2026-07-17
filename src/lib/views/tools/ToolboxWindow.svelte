@@ -149,16 +149,6 @@
         {/each}
       </nav>
 
-      <div class="library-status">
-        <span class:connected={hasLibrary}></span>
-        {#if !app.loaded}
-          正在连接资料库…
-        {:else if hasLibrary}
-          已连接 · {app.snapshot?.library?.rowCount.toLocaleString("zh-CN")} 张图片
-        {:else}
-          未连接资料库
-        {/if}
-      </div>
     </aside>
 
     <main class="tool-content">
@@ -369,29 +359,6 @@
     font-weight: 400;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  .library-status {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    padding: 12px 10px 0;
-    border-top: 1px solid var(--border);
-    color: var(--text-3);
-    font-size: var(--font-xs);
-  }
-
-  .library-status > span {
-    width: 7px;
-    height: 7px;
-    flex: none;
-    border-radius: 50%;
-    background: var(--text-3);
-  }
-
-  .library-status > span.connected {
-    background: var(--success);
-    box-shadow: 0 0 0 3px var(--success-soft);
   }
 
   .tool-content {
