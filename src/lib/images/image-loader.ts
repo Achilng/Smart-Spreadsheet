@@ -84,6 +84,12 @@ export class ImageLoader {
   }
 
   retain(rowIds: ReadonlySet<number>): void {
+    for (const rowId of rowIds) {
+      const cached = this.#cache.get(rowId);
+      if (cached) {
+        cached.lastUsed = ++this.#clock;
+      }
+    }
     const retained: QueuedRequest[] = [];
     for (const request of this.#queue.splice(0)) {
       if (rowIds.has(request.rowId)) {

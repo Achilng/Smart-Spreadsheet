@@ -31,6 +31,7 @@
     if (!hasImage) {
       return;
     }
+    enhancedUrl = galleryPreviews.cached(id);
     let cancelled = false;
     thumbnails.load(id).then(
       loaded => {
@@ -125,7 +126,6 @@
 
   .base {
     opacity: 1;
-    transition: opacity 180ms ease;
   }
 
   .base.is-replaced {
@@ -134,7 +134,6 @@
 
   .enhanced {
     opacity: 0;
-    transition: opacity 180ms ease;
   }
 
   .enhanced.is-ready {
