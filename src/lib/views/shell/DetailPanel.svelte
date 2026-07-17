@@ -616,7 +616,8 @@
     background: var(--surface-2);
     border: 1px solid var(--border);
     border-radius: var(--radius-m);
-    min-height: 180px;
+    height: clamp(180px, 36vh, 320px);
+    flex: none;
     overflow: hidden;
   }
 
@@ -625,9 +626,12 @@
     padding: 0;
     background: none;
     width: 100%;
+    height: 100%;
     display: flex;
+    align-items: center;
     justify-content: center;
     position: relative;
+    overflow: hidden;
   }
 
   .vibe-badge {
@@ -645,8 +649,10 @@
   }
 
   .preview-btn img {
-    width: 100%;
-    max-height: 320px;
+    width: auto;
+    height: auto;
+    max-width: 100%;
+    max-height: 100%;
     object-fit: contain;
     display: block;
   }
