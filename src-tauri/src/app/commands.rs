@@ -769,6 +769,22 @@ pub(crate) async fn get_row_thumbnail(
 }
 
 #[tauri::command]
+pub(crate) async fn get_row_gallery_preview(
+    row_id: i64,
+    app: tauri::AppHandle,
+) -> Result<Response, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let runtime = app.state::<AppRuntime>();
+        runtime
+            .row_gallery_preview(row_id)
+            .map(Response::new)
+            .map_err(error_text)
+    })
+    .await
+    .map_err(|e| format!("画廊高清图加载异常: {e}"))?
+}
+
+#[tauri::command]
 pub(crate) async fn get_row_preview(
     row_id: i64,
     app: tauri::AppHandle,
@@ -782,6 +798,22 @@ pub(crate) async fn get_row_preview(
     })
     .await
     .map_err(|e| format!("预览图加载异常: {e}"))?
+}
+
+#[tauri::command]
+pub(crate) async fn get_row_original(
+    row_id: i64,
+    app: tauri::AppHandle,
+) -> Result<Response, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let runtime = app.state::<AppRuntime>();
+        runtime
+            .row_original(row_id)
+            .map(Response::new)
+            .map_err(error_text)
+    })
+    .await
+    .map_err(|e| format!("原图加载异常: {e}"))?
 }
 
 #[tauri::command]
@@ -1017,13 +1049,29 @@ pub(crate) fn prepare_file_drag(
         .map_err(|error| format!("第 {row_id} 行无法拖出：{error}"))?;
 
     let thumb_dir = directory.thumbnail_cache_path();
-    let prefix = format!("row-{row_id}-");
+    let thumbnail_prefix = format!("row-{row_id}-thumb-");
+    let legacy_prefix = format!("row-{row_id}-");
     let find_icon = || -> Option<PathBuf> {
-        std::fs::read_dir(&thumb_dir)
-            .ok()?
-            .filter_map(|e| e.ok())
-            .find(|e| e.file_name().to_string_lossy().starts_with(&prefix))
-            .map(|e| e.path())
+        let mut legacy = None;
+        for entry in std::fs::read_dir(&thumb_dir).ok()?.filter_map(Result::ok) {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if name.starts_with(&thumbnail_prefix) {
+                return Some(entry.path());
+            }
+            if name.starts_with(&legacy_prefix) {
+                let suffix = name.strip_prefix(&legacy_prefix)?;
+                if suffix
+                    .strip_suffix(".png")
+                    .is_some_and(|hash| {
+                        hash.len() == 16 && hash.chars().all(|c| c.is_ascii_hexdigit())
+                    })
+                {
+                    legacy = Some(entry.path());
+                }
+            }
+        }
+        legacy
     };
     let icon_path = find_icon().unwrap_or_else(|| {
         let _ = directory.load_row_image(row_id, crate::images::ImageVariant::Thumbnail);

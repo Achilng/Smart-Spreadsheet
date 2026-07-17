@@ -159,8 +159,16 @@ export function getRowThumbnail(rowId: number): Promise<ArrayBuffer> {
   return invoke<ArrayBuffer>("get_row_thumbnail", { rowId });
 }
 
+export function getRowGalleryPreview(rowId: number): Promise<ArrayBuffer> {
+  return invoke<ArrayBuffer>("get_row_gallery_preview", { rowId });
+}
+
 export function getRowPreview(rowId: number): Promise<ArrayBuffer> {
   return invoke<ArrayBuffer>("get_row_preview", { rowId });
+}
+
+export function getRowOriginal(rowId: number): Promise<ArrayBuffer> {
+  return invoke<ArrayBuffer>("get_row_original", { rowId });
 }
 
 export function exportRowImage(rowId: number, destination: string): Promise<void> {

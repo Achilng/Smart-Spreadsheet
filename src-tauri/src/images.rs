@@ -3,6 +3,7 @@ use std::fs::{self, File, OpenOptions};
 use std::hash::{Hash, Hasher};
 use std::io::{Cursor, Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use image::{DynamicImage, ImageFormat, ImageReader};
@@ -12,20 +13,38 @@ use crate::db::{DatabaseError, RowImageLocator};
 use crate::storage::{DataDirectory, StorageError};
 
 const THUMBNAIL_MAX_EDGE: u32 = 256;
+const GALLERY_PREVIEW_MAX_EDGE: u32 = 1024;
 const PREVIEW_MAX_EDGE: u32 = 2048;
+const DERIVED_CACHE_MAX_BYTES: u64 = 512 * 1024 * 1024;
+const DERIVED_CACHE_TARGET_BYTES: u64 = 448 * 1024 * 1024;
+const CACHE_PRUNE_INTERVAL: usize = 32;
 const PNG_SIGNATURE: &[u8] = b"\x89PNG\r\n\x1a\n";
+static CACHE_WRITES: AtomicUsize = AtomicUsize::new(0);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ImageVariant {
     Thumbnail,
+    GalleryPreview,
     Preview,
+    Original,
 }
 
 impl ImageVariant {
-    fn max_edge(self) -> u32 {
+    fn max_edge(self) -> Option<u32> {
         match self {
-            Self::Thumbnail => THUMBNAIL_MAX_EDGE,
-            Self::Preview => PREVIEW_MAX_EDGE,
+            Self::Thumbnail => Some(THUMBNAIL_MAX_EDGE),
+            Self::GalleryPreview => Some(GALLERY_PREVIEW_MAX_EDGE),
+            Self::Preview => Some(PREVIEW_MAX_EDGE),
+            Self::Original => None,
+        }
+    }
+
+    fn cache_label(self) -> Option<&'static str> {
+        match self {
+            Self::Thumbnail => Some("thumb"),
+            Self::GalleryPreview => Some("gallery"),
+            Self::Preview => Some("preview"),
+            Self::Original => None,
         }
     }
 }
@@ -115,31 +134,36 @@ fn load_external(
     variant: ImageVariant,
 ) -> Result<ImagePayload, RowImageError> {
     let metadata = fs::metadata(path)?;
-    if variant == ImageVariant::Thumbnail {
-        let cache_path = thumbnail_cache_path(
+    if let Some(cache_label) = variant.cache_label() {
+        let cache_path = image_cache_path(
             directory,
             row_id,
+            cache_label,
             &(
                 "external",
                 path.to_string_lossy().as_ref(),
                 metadata_signature(&metadata),
+                variant.max_edge(),
             ),
         );
-        if let Some(payload) = read_cached_thumbnail(&cache_path, ImageOrigin::ExternalPath)? {
+        if let Some(payload) = read_cached_image(&cache_path, ImageOrigin::ExternalPath)? {
             return Ok(payload);
         }
         let image = ImageReader::open(path)?.with_guessed_format()?.decode()?;
-        return encode_and_cache_thumbnail(
+        return encode_and_cache_image(
             directory,
             row_id,
+            cache_label,
             cache_path,
             image,
+            variant
+                .max_edge()
+                .expect("cached image variants always have a maximum edge"),
             ImageOrigin::ExternalPath,
         );
     }
 
-    let image = ImageReader::open(path)?.with_guessed_format()?.decode()?;
-    encode_resized(image, variant.max_edge(), ImageOrigin::ExternalPath, false)
+    load_original(path, ImageOrigin::ExternalPath)
 }
 
 fn load_stored(
@@ -150,39 +174,62 @@ fn load_stored(
 ) -> Result<ImagePayload, RowImageError> {
     let path = directory.root().join(relative);
     let metadata = fs::metadata(&path)?;
-    if variant == ImageVariant::Thumbnail {
-        let cache_path = thumbnail_cache_path(
+    if let Some(cache_label) = variant.cache_label() {
+        let cache_path = image_cache_path(
             directory,
             row_id,
-            &("stored", relative, metadata_signature(&metadata)),
+            cache_label,
+            &(
+                "stored",
+                relative,
+                metadata_signature(&metadata),
+                variant.max_edge(),
+            ),
         );
-        if let Some(payload) = read_cached_thumbnail(&cache_path, ImageOrigin::StoredCopy)? {
+        if let Some(payload) = read_cached_image(&cache_path, ImageOrigin::StoredCopy)? {
             return Ok(payload);
         }
         let image = ImageReader::open(&path)?.with_guessed_format()?.decode()?;
-        return encode_and_cache_thumbnail(
+        return encode_and_cache_image(
             directory,
             row_id,
+            cache_label,
             cache_path,
             image,
+            variant
+                .max_edge()
+                .expect("cached image variants always have a maximum edge"),
             ImageOrigin::StoredCopy,
         );
     }
 
-    let image = ImageReader::open(&path)?.with_guessed_format()?.decode()?;
-    encode_resized(image, variant.max_edge(), ImageOrigin::StoredCopy, false)
+    load_original(&path, ImageOrigin::StoredCopy)
 }
 
-fn encode_and_cache_thumbnail(
+fn load_original(path: &Path, origin: ImageOrigin) -> Result<ImagePayload, RowImageError> {
+    let dimensions = image::image_dimensions(path)?;
+    Ok(ImagePayload {
+        png_bytes: fs::read(path)?,
+        width: dimensions.0,
+        height: dimensions.1,
+        origin,
+        cache_hit: false,
+    })
+}
+
+fn encode_and_cache_image(
     directory: &DataDirectory,
     row_id: i64,
+    cache_label: &str,
     cache_path: PathBuf,
     image: DynamicImage,
+    max_edge: u32,
     origin: ImageOrigin,
 ) -> Result<ImagePayload, RowImageError> {
-    let payload = encode_resized(image, THUMBNAIL_MAX_EDGE, origin, false)?;
+    let payload = encode_resized(image, max_edge, origin, false)?;
     write_cache_atomically(&cache_path, &payload.png_bytes)?;
-    remove_stale_row_thumbnails(directory, row_id, &cache_path)?;
+    remove_stale_row_variant_cache(directory, row_id, cache_label, &cache_path)?;
+    prune_derived_cache_if_needed(directory, &cache_path);
     Ok(payload)
 }
 
@@ -210,7 +257,7 @@ fn encode_resized(
     })
 }
 
-fn read_cached_thumbnail(
+fn read_cached_image(
     path: &Path,
     origin: ImageOrigin,
 ) -> Result<Option<ImagePayload>, RowImageError> {
@@ -233,12 +280,18 @@ fn read_cached_thumbnail(
     }))
 }
 
-fn thumbnail_cache_path<T: Hash>(directory: &DataDirectory, row_id: i64, signature: &T) -> PathBuf {
+fn image_cache_path<T: Hash>(
+    directory: &DataDirectory,
+    row_id: i64,
+    cache_label: &str,
+    signature: &T,
+) -> PathBuf {
     let mut hasher = DefaultHasher::new();
     signature.hash(&mut hasher);
-    directory
-        .thumbnail_cache_path()
-        .join(format!("row-{row_id}-{:016x}.png", hasher.finish()))
+    directory.thumbnail_cache_path().join(format!(
+        "row-{row_id}-{cache_label}-{:016x}.png",
+        hasher.finish()
+    ))
 }
 
 fn metadata_signature(metadata: &fs::Metadata) -> (u64, u128) {
@@ -278,23 +331,80 @@ fn write_cache_atomically(path: &Path, bytes: &[u8]) -> Result<(), RowImageError
     Ok(())
 }
 
-fn remove_stale_row_thumbnails(
+fn remove_stale_row_variant_cache(
     directory: &DataDirectory,
     row_id: i64,
+    cache_label: &str,
     current: &Path,
 ) -> Result<(), RowImageError> {
-    let prefix = format!("row-{row_id}-");
+    let prefix = format!("row-{row_id}-{cache_label}-");
+    let legacy_prefix = format!("row-{row_id}-");
     for entry in fs::read_dir(directory.thumbnail_cache_path())? {
         let entry = entry?;
         let path = entry.path();
-        if path != current
-            && path.is_file()
-            && entry.file_name().to_string_lossy().starts_with(&prefix)
-        {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        let is_legacy_thumbnail = cache_label == "thumb"
+            && name.starts_with(&legacy_prefix)
+            && !name.starts_with(&prefix)
+            && name.strip_prefix(&legacy_prefix).is_some_and(|suffix| {
+                suffix.strip_suffix(".png").is_some_and(|hash| {
+                    hash.len() == 16 && hash.chars().all(|c| c.is_ascii_hexdigit())
+                })
+            });
+        if path != current && path.is_file() && (name.starts_with(&prefix) || is_legacy_thumbnail) {
             fs::remove_file(path)?;
         }
     }
     Ok(())
+}
+
+fn prune_derived_cache_if_needed(directory: &DataDirectory, protected_path: &Path) {
+    if !CACHE_WRITES
+        .fetch_add(1, Ordering::Relaxed)
+        .is_multiple_of(CACHE_PRUNE_INTERVAL)
+    {
+        return;
+    }
+
+    let Ok(entries) = fs::read_dir(directory.thumbnail_cache_path()) else {
+        return;
+    };
+    let mut total_bytes = 0_u64;
+    let mut cached_files = Vec::new();
+    for entry in entries.filter_map(Result::ok) {
+        let path = entry.path();
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if !path.is_file() || !name.starts_with("row-") || !name.ends_with(".png") {
+            continue;
+        }
+        let Ok(metadata) = entry.metadata() else {
+            continue;
+        };
+        total_bytes = total_bytes.saturating_add(metadata.len());
+        cached_files.push((
+            metadata.modified().unwrap_or(UNIX_EPOCH),
+            metadata.len(),
+            path,
+        ));
+    }
+    if total_bytes <= DERIVED_CACHE_MAX_BYTES {
+        return;
+    }
+
+    cached_files.sort_unstable_by_key(|(modified, _, _)| *modified);
+    for (_, bytes, path) in cached_files {
+        if path == protected_path {
+            continue;
+        }
+        if fs::remove_file(path).is_ok() {
+            total_bytes = total_bytes.saturating_sub(bytes);
+        }
+        if total_bytes <= DERIVED_CACHE_TARGET_BYTES {
+            break;
+        }
+    }
 }
 
 fn nonempty_path(value: Option<&str>) -> Option<&Path> {
@@ -372,6 +482,50 @@ mod tests {
         assert_eq!(payload.origin, ImageOrigin::ExternalPath);
         assert_eq!((payload.width, payload.height), (640, 320));
         assert!(!payload.cache_hit);
+    }
+
+    #[test]
+    fn caches_each_resized_tier_and_returns_original_bytes_unchanged() {
+        let temporary = TemporaryImageDirectory::new();
+        let directory = DataDirectory::initialize(&temporary.data).unwrap();
+        let external = temporary.root.join("large.png");
+        image::DynamicImage::new_rgb8(2_400, 1_200)
+            .save_with_format(&external, ImageFormat::Png)
+            .unwrap();
+        let locator = RowImageLocator {
+            row_id: 9,
+            image_path: Some(external.to_string_lossy().into_owned()),
+            stored_image_path: None,
+            stored_image_is_original: true,
+        };
+
+        let thumbnail = load_row_image(&directory, &locator, ImageVariant::Thumbnail).unwrap();
+        let gallery = load_row_image(&directory, &locator, ImageVariant::GalleryPreview).unwrap();
+        let preview = load_row_image(&directory, &locator, ImageVariant::Preview).unwrap();
+        let original = load_row_image(&directory, &locator, ImageVariant::Original).unwrap();
+
+        assert_eq!((thumbnail.width, thumbnail.height), (256, 128));
+        assert_eq!((gallery.width, gallery.height), (1_024, 512));
+        assert_eq!((preview.width, preview.height), (2_048, 1_024));
+        assert_eq!((original.width, original.height), (2_400, 1_200));
+        assert_eq!(original.png_bytes, fs::read(&external).unwrap());
+        assert_eq!(
+            fs::read_dir(directory.thumbnail_cache_path())
+                .unwrap()
+                .count(),
+            3
+        );
+
+        assert!(
+            load_row_image(&directory, &locator, ImageVariant::GalleryPreview)
+                .unwrap()
+                .cache_hit
+        );
+        assert!(
+            load_row_image(&directory, &locator, ImageVariant::Preview)
+                .unwrap()
+                .cache_hit
+        );
     }
 
     struct TemporaryImageDirectory {

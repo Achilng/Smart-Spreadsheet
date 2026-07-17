@@ -1,7 +1,6 @@
 <script lang="ts">
   import {
     createTag,
-    getRowPreview,
     setTagsForRow,
     updateCharacterPrompt,
     updateNegativePrompt,
@@ -9,7 +8,6 @@
     updatePositivePrompt,
     mutableRowState,
   } from "../../api";
-  import { binaryBuffer } from "../../images/image-loader";
   import { app, errorText, setNotice } from "../../stores/app-state.svelte";
   import { beginFileDrag } from "../../stores/file-drag";
   import { requestDelete } from "../../stores/delete-actions.svelte";
@@ -17,6 +15,11 @@
   import { patchRowFields, patchRowTags, resetRows, rowStore } from "../../stores/row-store.svelte";
   import { loadTags, tagStore } from "../../stores/tag-store.svelte";
   import { thumbnails } from "../../images/thumbnails";
+  import {
+    detailPreviews,
+    galleryPreviews,
+    originalImages,
+  } from "../../images/progressive-images";
   import { vibeStatuses } from "../../images/vibe-statuses";
   import { recordRowStateChange } from "../../stores/history-actions";
 
@@ -26,8 +29,11 @@
   );
 
   let thumbUrl = $state<string | null>(null);
+  let galleryUrl = $state<string | null>(null);
   let previewUrl = $state<string | null>(null);
+  let originalUrl = $state<string | null>(null);
   let previewError = $state<string | null>(null);
+  let originalError = $state<string | null>(null);
   let vibeRefs = $state<number | null>(null);
   let lightboxOpen = $state(false);
   let saving = $state(false);
@@ -139,8 +145,11 @@
   // 切换行时重置并加载图片：先用缓存缩略图占位，大图就绪后替换
   $effect(() => {
     thumbUrl = null;
+    galleryUrl = null;
     previewUrl = null;
+    originalUrl = null;
     previewError = null;
+    originalError = null;
     vibeRefs = null;
     lightboxOpen = false;
     tagQuery = "";
@@ -151,11 +160,13 @@
     noteEditor.reset();
     const current = row;
     if (!current || !hasImage) {
+      detailPreviews.retain(new Set());
       return;
     }
     const rowId = current.id;
+    detailPreviews.retain(new Set([rowId]));
     let cancelled = false;
-    let createdUrl: string | null = null;
+    galleryUrl = galleryPreviews.cached(rowId);
     void thumbnails.load(rowId).then(
       url => {
         if (!cancelled) {
@@ -172,15 +183,11 @@
       },
       () => {},
     );
-    void getRowPreview(rowId).then(
-      bytes => {
-        const url = URL.createObjectURL(new Blob([binaryBuffer(bytes)], { type: "image/png" }));
-        if (cancelled) {
-          URL.revokeObjectURL(url);
-          return;
+    void detailPreviews.load(rowId, true).then(
+      url => {
+        if (!cancelled) {
+          previewUrl = url;
         }
-        createdUrl = url;
-        previewUrl = url;
       },
       error => {
         if (!cancelled) {
@@ -190,13 +197,40 @@
     );
     return () => {
       cancelled = true;
-      if (createdUrl) {
-        URL.revokeObjectURL(createdUrl);
-      }
+      detailPreviews.retain(new Set());
     };
   });
 
-  const displayUrl = $derived(previewUrl ?? thumbUrl);
+  $effect(() => {
+    const current = row;
+    if (!lightboxOpen || !current || !hasImage) {
+      originalImages.retain(new Set());
+      return;
+    }
+    const rowId = current.id;
+    originalImages.retain(new Set([rowId]));
+    let cancelled = false;
+    originalError = null;
+    void originalImages.load(rowId, true).then(
+      url => {
+        if (!cancelled) {
+          originalUrl = url;
+        }
+      },
+      error => {
+        if (!cancelled) {
+          originalError = errorText(error);
+        }
+      },
+    );
+    return () => {
+      cancelled = true;
+      originalImages.retain(new Set());
+    };
+  });
+
+  const displayUrl = $derived(previewUrl ?? galleryUrl ?? thumbUrl);
+  const lightboxUrl = $derived(originalUrl ?? displayUrl);
 
   const suggestions = $derived.by(() => {
     if (!row) {
@@ -531,7 +565,7 @@
   {/if}
 </div>
 
-{#if lightboxOpen && displayUrl && row}
+{#if lightboxOpen && lightboxUrl && row}
   <div
     class="lightbox"
     role="dialog"
@@ -546,8 +580,9 @@
     }}
   >
     <img
-      src={displayUrl}
+      src={lightboxUrl}
       alt="第 {row.sourceOrdinal} 行大图"
+      title={originalError ?? (originalUrl ? "完整原图" : "正在加载完整原图…")}
       draggable="false"
       onmousedown={(e) => { if (row && hasImage) beginFileDrag(e, row.id); }}
     />

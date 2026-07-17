@@ -583,8 +583,16 @@ impl AppRuntime {
         self.row_image(row_id, ImageVariant::Thumbnail)
     }
 
+    pub(crate) fn row_gallery_preview(&self, row_id: i64) -> Result<Vec<u8>, AppRuntimeError> {
+        self.row_image(row_id, ImageVariant::GalleryPreview)
+    }
+
     pub(crate) fn row_preview(&self, row_id: i64) -> Result<Vec<u8>, AppRuntimeError> {
         self.row_image(row_id, ImageVariant::Preview)
+    }
+
+    pub(crate) fn row_original(&self, row_id: i64) -> Result<Vec<u8>, AppRuntimeError> {
+        self.row_image(row_id, ImageVariant::Original)
     }
 
     fn row_image(&self, row_id: i64, variant: ImageVariant) -> Result<Vec<u8>, AppRuntimeError> {
@@ -1051,17 +1059,21 @@ mod tests {
     }
 
     #[test]
-    fn loads_thumbnail_and_preview_for_imported_row() {
+    fn loads_all_image_tiers_for_imported_row() {
         let temporary = TemporaryRuntime::new();
         let runtime = AppRuntime::load(temporary.locator.clone(), temporary.data.clone());
         let folder = crate::storage::test_fixtures::sample_image_folder(&temporary.root, 1);
         runtime.import_images(&folder, |_| {}).unwrap();
 
         let thumbnail = runtime.row_thumbnail(1).unwrap();
+        let gallery = runtime.row_gallery_preview(1).unwrap();
         let preview = runtime.row_preview(1).unwrap();
+        let original = runtime.row_original(1).unwrap();
 
         assert!(thumbnail.starts_with(b"\x89PNG\r\n\x1a\n"));
+        assert!(gallery.starts_with(b"\x89PNG\r\n\x1a\n"));
         assert!(preview.starts_with(b"\x89PNG\r\n\x1a\n"));
+        assert!(original.starts_with(b"\x89PNG\r\n\x1a\n"));
         assert!(thumbnail.len() <= preview.len());
     }
 

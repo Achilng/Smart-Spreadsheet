@@ -14,6 +14,7 @@
     y,
     width,
     imageHeight,
+    enhance = false,
   }: {
     row: RowRecord | undefined;
     index: number;
@@ -21,6 +22,7 @@
     y: number;
     width: number;
     imageHeight: number;
+    enhance?: boolean;
   } = $props();
 
   const hasImage = $derived(
@@ -105,7 +107,13 @@
         rowStore.activeRow = row ?? null;
       }}
     >
-      <Thumbnail rowId={row.id} {hasImage} alt="第 {row.sourceOrdinal} 行缩略图" />
+      <Thumbnail
+        rowId={row.id}
+        {hasImage}
+        alt="第 {row.sourceOrdinal} 行缩略图"
+        {enhance}
+        highPriority={isActive}
+      />
       {#if vibeRefs}
         <span
           class="vibe-badge"

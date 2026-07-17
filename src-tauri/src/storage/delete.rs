@@ -78,7 +78,7 @@ impl DataDirectory {
             }
         }
 
-        // 缩略图缓存文件名形如 row-<行ID>-<哈希>.png，一次目录扫描按行 ID 清理。
+        // 派生图片缓存统一以 row-<行ID>- 开头，一次目录扫描按行 ID 清理。
         let deleted_ids: HashSet<i64> = outcome.deleted_row_ids.iter().copied().collect();
         if !deleted_ids.is_empty()
             && let Ok(entries) = fs::read_dir(self.thumbnail_cache_path())
