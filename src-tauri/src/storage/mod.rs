@@ -24,8 +24,9 @@ use crate::db::{Database, DatabaseError};
 pub use content_hash::{ContentHashBackfillOutcome, ContentHashProgress};
 pub use delete::{RowDeletionError, RowDeletionReport};
 pub use export_images::{
-    ImageFileExportMode, ImageFilesExportError, ImageFilesExportOutcome, ImageFilesProgress, OriginalSourceError,
-    resolve_locator_source as resolve_image_source, resolve_original_source,
+    ImageFileExportMode, ImageFileNaming, ImageFilesExportError, ImageFilesExportOutcome,
+    ImageFilesProgress, OriginalSourceError, resolve_locator_source as resolve_image_source,
+    resolve_original_source,
 };
 pub use export_json::{JsonExportError, JsonExportOutcome, JsonExportProgress};
 pub use export_xlsx::{ExportProgress, XlsxExportError, XlsxExportOutcome};

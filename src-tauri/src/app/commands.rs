@@ -1008,6 +1008,45 @@ pub(crate) async fn export_image_files(
     .map_err(|error| format!("导出任务异常中止: {error}"))?
 }
 
+#[tauri::command]
+pub(crate) async fn export_selected_images(
+    selection: RowSelection,
+    parent_dir: String,
+    rename_mode: String,
+    custom_name: Option<String>,
+    strip_metadata: bool,
+    app: tauri::AppHandle,
+) -> Result<ImageFilesExportResultDto, String> {
+    let naming = match rename_mode.as_str() {
+        "original" => crate::storage::ImageFileNaming::Original,
+        "random" => crate::storage::ImageFileNaming::Random,
+        "custom" => crate::storage::ImageFileNaming::Custom(custom_name.unwrap_or_default()),
+        _ => return Err(format!("未知的图片重命名方式: {rename_mode}")),
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        let runtime = app.state::<AppRuntime>();
+        runtime
+            .export_selected_images(
+                &selection,
+                PathBuf::from(parent_dir),
+                naming,
+                strip_metadata,
+                |progress| {
+                    emit_export_progress(&app, progress.processed, progress.total);
+                },
+            )
+            .map(|outcome| ImageFilesExportResultDto {
+                directory: outcome.directory.to_string_lossy().into_owned(),
+                exported: outcome.exported,
+                hardlink_fallbacks: 0,
+                missing: outcome.missing,
+            })
+            .map_err(error_text)
+    })
+    .await
+    .map_err(|error| format!("导出任务异常中止: {error}"))?
+}
+
 fn emit_export_progress(app: &tauri::AppHandle, processed: usize, total: usize) {
     let _ = app.emit("export://progress", ExportProgressDto { processed, total });
 }

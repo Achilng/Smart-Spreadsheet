@@ -2,6 +2,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
+use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use super::{DataDirectory, StorageError};
@@ -27,6 +28,16 @@ impl ImageFileExportMode {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ImageFileNaming {
+    /// 保留原文件名；同名时自动追加序号，绝不覆盖。
+    Original,
+    /// 使用不可读的随机式十六进制文件名。
+    Random,
+    /// 使用“自定义前缀_序号”。
+    Custom(String),
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ImageFilesProgress {
     pub processed: usize,
@@ -49,10 +60,14 @@ pub enum ImageFilesExportError {
     InvalidParent(PathBuf),
     #[error("没有可导出的行")]
     EmptySelection,
+    #[error("自定义文件名前缀不能为空或仅由文件名非法字符组成")]
+    EmptyCustomName,
     #[error("应用数据目录不可用: {0}")]
     Storage(#[from] StorageError),
     #[error("{0}")]
     Selection(#[from] TagMutationError),
+    #[error("导出副本重新编码失败: {0}")]
+    Image(#[from] image::ImageError),
     #[error("导出文件操作失败: {0}")]
     Io(#[from] std::io::Error),
 }
@@ -118,6 +133,66 @@ impl DataDirectory {
             directory: output_dir,
             exported,
             hardlink_fallbacks,
+            missing,
+        })
+    }
+
+    /// 按工具箱选项导出主窗口选中的图片。
+    ///
+    /// 始终在目标文件夹内创建独立输出目录，避免覆盖用户已有文件。
+    /// `strip_metadata` 只重新编码导出副本，来源文件和资料库均保持不变。
+    pub fn export_selected_images(
+        &self,
+        selection: &RowSelection,
+        parent_dir: impl AsRef<Path>,
+        naming: ImageFileNaming,
+        strip_metadata: bool,
+        progress: impl Fn(ImageFilesProgress) + Sync,
+    ) -> Result<ImageFilesExportOutcome, ImageFilesExportError> {
+        let parent_dir = parent_dir.as_ref();
+        if !parent_dir.is_dir() {
+            return Err(ImageFilesExportError::InvalidParent(parent_dir.to_owned()));
+        }
+        let naming = validate_naming(naming)?;
+        let rows = self.open_database()?.export_rows(selection)?;
+        if rows.is_empty() {
+            return Err(ImageFilesExportError::EmptySelection);
+        }
+
+        let total = rows.len();
+        progress(ImageFilesProgress {
+            processed: 0,
+            total,
+        });
+        let output_dir = create_unique_output_dir(parent_dir, "智能表格图片导出")?;
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let mut exported = 0;
+        let mut missing = 0;
+
+        for (index, row) in rows.iter().enumerate() {
+            match resolve_source(self, row) {
+                Some(source) => {
+                    let file_name =
+                        selected_output_file_name(&naming, exported + 1, nonce, row.id, &source);
+                    let target = unique_output_target(&output_dir, &file_name);
+                    write_exported_copy(&source, &target, strip_metadata)?;
+                    exported += 1;
+                }
+                None => missing += 1,
+            }
+            let processed = index + 1;
+            if processed % PROGRESS_EVERY_FILES == 0 || processed == total {
+                progress(ImageFilesProgress { processed, total });
+            }
+        }
+
+        Ok(ImageFilesExportOutcome {
+            directory: output_dir,
+            exported,
+            hardlink_fallbacks: 0,
             missing,
         })
     }
@@ -235,20 +310,157 @@ fn resolve_source(directory: &DataDirectory, row: &ExportRow) -> Option<PathBuf>
     None
 }
 
-fn output_file_name(ordinal: usize, source: &Path) -> String {
+fn validate_naming(naming: ImageFileNaming) -> Result<ImageFileNaming, ImageFilesExportError> {
+    match naming {
+        ImageFileNaming::Custom(prefix) => {
+            let prefix = sanitize_file_stem(prefix.trim());
+            if prefix.is_empty() {
+                Err(ImageFilesExportError::EmptyCustomName)
+            } else {
+                Ok(ImageFileNaming::Custom(prefix))
+            }
+        }
+        naming => Ok(naming),
+    }
+}
+
+fn selected_output_file_name(
+    naming: &ImageFileNaming,
+    ordinal: usize,
+    nonce: u128,
+    row_id: i64,
+    source: &Path,
+) -> String {
+    match naming {
+        ImageFileNaming::Original => sanitized_source_file_name(source),
+        ImageFileNaming::Random => {
+            let stem = random_file_stem(nonce, ordinal, row_id);
+            format!("{stem}{}", extension_suffix(source))
+        }
+        ImageFileNaming::Custom(prefix) => {
+            format!("{prefix}_{ordinal}{}", extension_suffix(source))
+        }
+    }
+}
+
+fn random_file_stem(nonce: u128, ordinal: usize, row_id: i64) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(nonce.to_le_bytes());
+    hasher.update(ordinal.to_le_bytes());
+    hasher.update(row_id.to_le_bytes());
+    let digest = hasher.finalize();
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut output = String::with_capacity(16);
+    for byte in &digest[..8] {
+        output.push(HEX[(byte >> 4) as usize] as char);
+        output.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    output
+}
+
+fn extension_suffix(source: &Path) -> String {
+    let extension = source
+        .extension()
+        .and_then(|value| value.to_str())
+        .filter(|value| {
+            !value.is_empty()
+                && value.len() <= 10
+                && value.chars().all(|character| character.is_ascii_alphanumeric())
+        })
+        .unwrap_or("png");
+    format!(".{}", extension.to_ascii_lowercase())
+}
+
+fn sanitized_source_file_name(source: &Path) -> String {
     let original = source
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_else(|| "image.png".to_owned());
-    let sanitized: String = original
+    let sanitized = sanitize_file_name(&original);
+    if sanitized.is_empty() {
+        format!("image{}", extension_suffix(source))
+    } else {
+        sanitized
+    }
+}
+
+fn sanitize_file_name(value: &str) -> String {
+    value
         .chars()
-        .map(|c| match c {
-            '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*' => '_',
-            c if (c as u32) < 0x20 => '_',
-            c => c,
-        })
-        .collect();
-    format!("{ordinal:05}_{sanitized}")
+        .take(180)
+        .map(sanitize_file_name_character)
+        .collect::<String>()
+        .trim_matches([' ', '.'])
+        .to_owned()
+}
+
+fn sanitize_file_stem(value: &str) -> String {
+    value
+        .chars()
+        .take(120)
+        .map(sanitize_file_name_character)
+        .collect::<String>()
+        .trim_matches([' ', '.', '_'])
+        .to_owned()
+}
+
+fn sanitize_file_name_character(character: char) -> char {
+    match character {
+        '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*' => '_',
+        character if (character as u32) < 0x20 => '_',
+        character => character,
+    }
+}
+
+fn unique_output_target(directory: &Path, file_name: &str) -> PathBuf {
+    let first = directory.join(file_name);
+    if !first.exists() {
+        return first;
+    }
+
+    let path = Path::new(file_name);
+    let stem = path
+        .file_stem()
+        .map(|value| value.to_string_lossy().into_owned())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "image".to_owned());
+    let suffix = path
+        .extension()
+        .map(|value| format!(".{}", value.to_string_lossy()))
+        .unwrap_or_default();
+    for index in 2_usize.. {
+        let candidate = directory.join(format!("{stem}_{index}{suffix}"));
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+    unreachable!("unbounded file numbering always finds a candidate")
+}
+
+fn write_exported_copy(
+    source: &Path,
+    target: &Path,
+    strip_metadata: bool,
+) -> Result<(), ImageFilesExportError> {
+    if !strip_metadata {
+        fs::copy(source, target)?;
+        return Ok(());
+    }
+
+    let reader = image::ImageReader::open(source)?.with_guessed_format()?;
+    let format = reader.format().ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("无法识别图片格式: {}", source.display()),
+        )
+    })?;
+    let image = reader.decode()?;
+    image.save_with_format(target, format)?;
+    Ok(())
+}
+
+fn output_file_name(ordinal: usize, source: &Path) -> String {
+    format!("{ordinal:05}_{}", sanitized_source_file_name(source))
 }
 
 fn create_unique_output_dir(parent_dir: &Path, base_name: &str) -> io::Result<PathBuf> {
@@ -274,6 +486,8 @@ mod tests {
 
     use super::*;
     use crate::db::{NewRow, SourceType, TagMatchMode};
+    use crate::pipeline::png_text::read_png_text_chunks;
+    use crate::storage::test_fixtures::metadata_png_bytes;
 
     #[test]
     fn exports_images_with_ordered_names_and_counts_missing() {
@@ -354,6 +568,126 @@ mod tests {
             .unwrap();
         assert_ne!(second.directory, outcome.directory);
         assert!(second.directory.join("00001_图片 A.png").is_file());
+    }
+
+    #[test]
+    fn selected_export_keeps_original_names_without_overwriting_duplicates() {
+        let temporary = TemporaryImageFilesExport::new();
+        let directory = DataDirectory::initialize(&temporary.data).unwrap();
+        let first_dir = temporary.root.join("first");
+        let second_dir = temporary.root.join("second");
+        fs::create_dir_all(&first_dir).unwrap();
+        fs::create_dir_all(&second_dir).unwrap();
+        let first = first_dir.join("same.png");
+        let second = second_dir.join("same.png");
+        let first_bytes = metadata_png_bytes("first", None);
+        let second_bytes = metadata_png_bytes("second", None);
+        fs::write(&first, &first_bytes).unwrap();
+        fs::write(&second, &second_bytes).unwrap();
+        directory
+            .open_database()
+            .unwrap()
+            .append_batch(
+                SourceType::Folder,
+                &temporary.root.to_string_lossy(),
+                &[
+                    NewRow {
+                        source_ordinal: 1,
+                        identity: "file:first".into(),
+                        image_path: Some(first.to_string_lossy().into_owned()),
+                        ..NewRow::default()
+                    },
+                    NewRow {
+                        source_ordinal: 2,
+                        identity: "file:second".into(),
+                        image_path: Some(second.to_string_lossy().into_owned()),
+                        ..NewRow::default()
+                    },
+                ],
+                |_| Ok(()),
+            )
+            .unwrap();
+
+        let outcome = directory
+            .export_selected_images(
+                &RowSelection::Explicit {
+                    row_ids: vec![1, 2],
+                },
+                &temporary.root,
+                ImageFileNaming::Original,
+                false,
+                |_| {},
+            )
+            .unwrap();
+
+        assert_eq!(fs::read(outcome.directory.join("same.png")).unwrap(), first_bytes);
+        assert_eq!(
+            fs::read(outcome.directory.join("same_2.png")).unwrap(),
+            second_bytes
+        );
+    }
+
+    #[test]
+    fn selected_export_custom_names_strip_only_exported_metadata() {
+        let temporary = TemporaryImageFilesExport::new();
+        let directory = DataDirectory::initialize(&temporary.data).unwrap();
+        let source = temporary.root.join("metadata.png");
+        fs::write(
+            &source,
+            metadata_png_bytes("artist:source", Some(r#"{"seed":42}"#)),
+        )
+        .unwrap();
+        directory
+            .open_database()
+            .unwrap()
+            .append_batch(
+                SourceType::Folder,
+                &temporary.root.to_string_lossy(),
+                &[NewRow {
+                    source_ordinal: 1,
+                    identity: "file:metadata".into(),
+                    image_path: Some(source.to_string_lossy().into_owned()),
+                    ..NewRow::default()
+                }],
+                |_| Ok(()),
+            )
+            .unwrap();
+
+        let outcome = directory
+            .export_selected_images(
+                &RowSelection::Explicit { row_ids: vec![1] },
+                &temporary.root,
+                ImageFileNaming::Custom(" 自定义命名 ".into()),
+                true,
+                |_| {},
+            )
+            .unwrap();
+        let exported = outcome.directory.join("自定义命名_1.png");
+
+        assert!(exported.is_file());
+        assert!(read_png_text_chunks(&exported).unwrap().is_empty());
+        assert_eq!(image::image_dimensions(&exported).unwrap(), (16, 16));
+        assert_eq!(
+            read_png_text_chunks(&source)
+                .unwrap()
+                .get("Description")
+                .map(String::as_str),
+            Some("artist:source")
+        );
+    }
+
+    #[test]
+    fn random_naming_is_opaque_and_keeps_the_extension() {
+        let source = Path::new("sample.PNG");
+        let first =
+            selected_output_file_name(&ImageFileNaming::Random, 1, 123, 10, source);
+        let second =
+            selected_output_file_name(&ImageFileNaming::Random, 2, 123, 11, source);
+
+        assert_eq!(first.len(), 20);
+        assert!(first.ends_with(".png"));
+        assert!(first[..16].chars().all(|character| character.is_ascii_hexdigit()));
+        assert_ne!(first, second);
     }
 
     #[test]

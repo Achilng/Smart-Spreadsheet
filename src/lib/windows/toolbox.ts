@@ -1,9 +1,16 @@
 import { invoke } from "@tauri-apps/api/core";
 
+import type { RowSelection } from "../api";
+
 let opening: Promise<void> | null = null;
 
 export interface ToolboxRowRequest {
   rowId: number;
+}
+
+export interface ToolboxSelectionSnapshot {
+  selection: RowSelection;
+  count: number;
 }
 
 /**

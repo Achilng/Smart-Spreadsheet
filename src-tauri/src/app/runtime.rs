@@ -14,7 +14,7 @@ use crate::db::{
 };
 use crate::images::{ImageVariant, RowImageError};
 use crate::storage::{
-    ContentHashProgress, DataDirectory, ExportProgress, ImageFileExportMode,
+    ContentHashProgress, DataDirectory, ExportProgress, ImageFileExportMode, ImageFileNaming,
     ExistingImageUpdateOutcome, ImageFilesExportError, ImageFilesExportOutcome,
     ImageFilesProgress, ImageImportError, ImageImportOutcome, ImageImportProgress, JsonExportError,
     JsonExportOutcome, JsonExportProgress, PerceptualHashProgress, PromptDocAsset, PromptDocDetail,
@@ -697,6 +697,24 @@ impl AppRuntime {
     ) -> Result<ImageFilesExportOutcome, AppRuntimeError> {
         let directory = self.active_directory()?;
         Ok(directory.export_image_files(selection, parent_dir, mode, progress)?)
+    }
+
+    pub(crate) fn export_selected_images(
+        &self,
+        selection: &RowSelection,
+        parent_dir: impl AsRef<Path>,
+        naming: ImageFileNaming,
+        strip_metadata: bool,
+        progress: impl Fn(ImageFilesProgress) + Sync,
+    ) -> Result<ImageFilesExportOutcome, AppRuntimeError> {
+        let directory = self.active_directory()?;
+        Ok(directory.export_selected_images(
+            selection,
+            parent_dir,
+            naming,
+            strip_metadata,
+            progress,
+        )?)
     }
 
     pub(crate) fn backfill_perceptual_hashes(

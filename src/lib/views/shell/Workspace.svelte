@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+  import { emitTo, listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { onMount, untrack } from "svelte";
 
   import { getRowIndex, getRowsByIds } from "../../api";
@@ -11,6 +11,7 @@
     clearSelection,
     getSelectedCount,
     selectAllFiltered,
+    selection,
     selectionDto,
   } from "../../stores/selection-store.svelte";
   import {
@@ -22,7 +23,10 @@
   import { thumbnails } from "../../images/thumbnails";
   import { clearProgressiveImages } from "../../images/progressive-images";
   import { vibeStatuses } from "../../images/vibe-statuses";
-  import type { ToolboxRowRequest } from "../../windows/toolbox";
+  import type {
+    ToolboxRowRequest,
+    ToolboxSelectionSnapshot,
+  } from "../../windows/toolbox";
   import ContextMenu from "./ContextMenu.svelte";
   import DetailPanel from "./DetailPanel.svelte";
   import DeleteDialog from "./DeleteDialog.svelte";
@@ -78,6 +82,25 @@
     });
   });
 
+  async function shareSelectionWithToolbox(): Promise<void> {
+    const snapshot: ToolboxSelectionSnapshot = {
+      selection: selectionDto(),
+      count: getSelectedCount(),
+    };
+    try {
+      await emitTo("toolbox", "main://selection-changed", snapshot);
+    } catch {
+      // 工具箱尚未打开时无需同步；打开后会主动请求一次最新选区。
+    }
+  }
+
+  $effect(() => {
+    void selection.version;
+    untrack(() => {
+      void shareSelectionWithToolbox();
+    });
+  });
+
   async function openToolboxRow(request: ToolboxRowRequest): Promise<void> {
     try {
       const [row] = await getRowsByIds([request.rowId]);
@@ -101,6 +124,7 @@
     const stopDragDrop = listenDragDrop();
     let disposed = false;
     let unlistenNavigation: UnlistenFn | null = null;
+    let unlistenSelectionRequest: UnlistenFn | null = null;
     void listen<ToolboxRowRequest>("toolbox://open-row", event => {
       void openToolboxRow(event.payload);
     }).then(unlisten => {
@@ -110,11 +134,21 @@
         unlistenNavigation = unlisten;
       }
     });
+    void listen("toolbox://request-selection", () => {
+      void shareSelectionWithToolbox();
+    }).then(unlisten => {
+      if (disposed) {
+        unlisten();
+      } else {
+        unlistenSelectionRequest = unlisten;
+      }
+    });
 
     return () => {
       disposed = true;
       stopDragDrop();
       unlistenNavigation?.();
+      unlistenSelectionRequest?.();
     };
   });
 

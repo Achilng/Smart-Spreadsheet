@@ -6,12 +6,20 @@
   import WindowControls from "../../ui/WindowControls.svelte";
   import ArtistGeneratorView from "./ArtistGeneratorView.svelte";
   import DataManagementTool from "./DataManagementTool.svelte";
+  import ImageExportTool from "./ImageExportTool.svelte";
   import ImageSearchTool from "./ImageSearchTool.svelte";
   import JsonDedupeView from "./JsonDedupeView.svelte";
   import LibraryMaintenanceTool from "./LibraryMaintenanceTool.svelte";
   import QuickEditTool from "./QuickEditTool.svelte";
 
-  type ToolId = "quickEdit" | "artist" | "imageSearch" | "jsonDedupe" | "maintenance" | "data";
+  type ToolId =
+    | "quickEdit"
+    | "artist"
+    | "imageSearch"
+    | "imageExport"
+    | "jsonDedupe"
+    | "maintenance"
+    | "data";
 
   interface ToolDefinition {
     id: ToolId;
@@ -48,6 +56,14 @@
       icon: "◉",
     },
     {
+      id: "imageExport",
+      label: "导出工具",
+      description: "导出主窗口选中的图片并按需清除元数据",
+      group: "文件处理",
+      requiresLibrary: true,
+      icon: "⇱",
+    },
+    {
       id: "jsonDedupe",
       label: "智绘姬 JSON 去重",
       description: "检查并清理重复预设",
@@ -80,6 +96,7 @@
     quickEdit: false,
     artist: false,
     imageSearch: false,
+    imageExport: false,
     jsonDedupe: false,
     maintenance: false,
     data: false,
@@ -184,6 +201,11 @@
           {#if visited.imageSearch}
             <section class="tool-panel" class:is-active={activeTool === "imageSearch"}>
               <ImageSearchTool />
+            </section>
+          {/if}
+          {#if visited.imageExport}
+            <section class="tool-panel" class:is-active={activeTool === "imageExport"}>
+              <ImageExportTool active={activeTool === "imageExport"} />
             </section>
           {/if}
           {#if visited.jsonDedupe}

@@ -26,6 +26,7 @@ export interface JsonExportNoteInspection {
 }
 
 export type ImageFileExportMode = "copy" | "hardlink";
+export type ImageFileRenameMode = "original" | "random" | "custom";
 
 export interface ImageFilesExportResult {
   directory: string;
@@ -68,6 +69,22 @@ export function exportImageFiles(
     selection,
     parentDir,
     mode,
+  });
+}
+
+export function exportSelectedImages(
+  selection: RowSelection,
+  parentDir: string,
+  renameMode: ImageFileRenameMode,
+  customName: string | null,
+  stripMetadata: boolean,
+): Promise<ImageFilesExportResult> {
+  return invoke<ImageFilesExportResult>("export_selected_images", {
+    selection,
+    parentDir,
+    renameMode,
+    customName,
+    stripMetadata,
   });
 }
 

@@ -88,6 +88,7 @@ pub fn run() {
             app::commands::inspect_zhihuiji_export_notes,
             app::commands::export_zhihuiji_json,
             app::commands::export_image_files,
+            app::commands::export_selected_images,
             app::commands::inspect_zhihuiji_json,
             app::commands::dedupe_zhihuiji_json,
             app::commands::migrate_data_directory,
