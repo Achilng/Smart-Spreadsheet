@@ -90,7 +90,7 @@
     const selected = await open({
       directory: true,
       multiple: false,
-      title: "选择图片导出位置（将在其中创建新的输出文件夹）",
+      title: "选择图片导出文件夹",
     });
     if (typeof selected !== "string") {
       return;
@@ -136,7 +136,7 @@
         : "";
       setNotice({
         tone: "success",
-        text: `已导出 ${formatCount(result.exported)} 张图片${missing}${stripMetadata ? "，已通过普通与隐写元数据复检" : ""}。`,
+        text: `已导出 ${formatCount(result.exported)} 张图片${missing}。`,
       });
       await requestSelection();
     } catch (cause) {
@@ -174,7 +174,7 @@
       <span class="step">2</span>
       <div>
         <h3>选择导出位置 <em>必选</em></h3>
-        <p>会在所选位置内创建独立的“智能表格图片导出”文件夹，不覆盖已有文件。</p>
+        <p>图片会直接写入所选文件夹；遇到同名文件时自动追加序号，不会覆盖已有文件。</p>
       </div>
     </div>
     <button

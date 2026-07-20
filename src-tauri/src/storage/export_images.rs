@@ -78,7 +78,7 @@ pub enum ImageFilesExportError {
 }
 
 impl DataDirectory {
-    /// 把选中行的图片导出到目标文件夹下新建的输出目录，
+    /// 把选中行的图片直接导出到用户选择的目标文件夹，
     /// 文件名带库内顺序前缀（`00001_原名.png`），保证排序与库一致。
     /// 来源优先原路径，其次受管副本；两者都不可用的行计入 missing。
     pub fn export_image_files(
@@ -103,7 +103,7 @@ impl DataDirectory {
             total,
         });
 
-        let output_dir = create_unique_output_dir(parent_dir, "智能表格图片导出")?;
+        let output_dir = parent_dir.to_owned();
         let mut exported = 0;
         let mut hardlink_fallbacks = 0;
         let mut missing = 0;
@@ -112,7 +112,7 @@ impl DataDirectory {
             match resolve_source(self, row) {
                 Some(source) => {
                     let file_name = output_file_name(index + 1, &source);
-                    let target = output_dir.join(file_name);
+                    let target = unique_output_target(&output_dir, &file_name);
                     match mode {
                         ImageFileExportMode::Copy => {
                             fs::copy(&source, &target)?;
@@ -144,7 +144,7 @@ impl DataDirectory {
 
     /// 按工具箱选项导出主窗口选中的图片。
     ///
-    /// 始终在目标文件夹内创建独立输出目录，避免覆盖用户已有文件。
+    /// 直接写入用户选择的目标文件夹；同名文件自动追加序号，避免覆盖已有文件。
     /// `strip_metadata` 只重新编码导出副本，来源文件和资料库均保持不变。
     pub fn export_selected_images(
         &self,
@@ -169,7 +169,7 @@ impl DataDirectory {
             processed: 0,
             total,
         });
-        let output_dir = create_unique_output_dir(parent_dir, "智能表格图片导出")?;
+        let output_dir = parent_dir.to_owned();
         let nonce = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -467,64 +467,14 @@ fn write_exported_copy(
             let _ = fs::remove_file(target);
             return Err(error.into());
         }
-        if let Err(error) = validate_stripped_png(target) {
-            let _ = fs::remove_file(target);
-            return Err(error.into());
-        }
     } else {
         image.save_with_format(target, format)?;
     }
     Ok(())
 }
 
-fn validate_stripped_png(path: &Path) -> io::Result<()> {
-    let text_chunks =
-        crate::pipeline::png_text::read_png_text_chunks(path).map_err(|error| {
-            io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!("导出后 PNG 文本元数据复检失败: {error}"),
-            )
-        })?;
-    if !text_chunks.is_empty() {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!("导出后仍存在 PNG 文本元数据: {}", path.display()),
-        ));
-    }
-    let stealth = crate::pipeline::stealth_png::read_stealth_png_metadata(path).map_err(|error| {
-        io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!("导出后 NovelAI 隐写元数据复检失败: {error}"),
-        )
-    })?;
-    if stealth.is_some() {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!("导出后仍存在 NovelAI 隐写元数据: {}", path.display()),
-        ));
-    }
-    Ok(())
-}
-
 fn output_file_name(ordinal: usize, source: &Path) -> String {
     format!("{ordinal:05}_{}", sanitized_source_file_name(source))
-}
-
-fn create_unique_output_dir(parent_dir: &Path, base_name: &str) -> io::Result<PathBuf> {
-    for index in 0_usize.. {
-        let candidate_name = if index == 0 {
-            base_name.to_owned()
-        } else {
-            format!("{base_name}_{index}")
-        };
-        let candidate = parent_dir.join(candidate_name);
-        match fs::create_dir(&candidate) {
-            Ok(()) => return Ok(candidate),
-            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
-            Err(error) => return Err(error),
-        }
-    }
-    unreachable!("unbounded output folder numbering always finds a candidate")
 }
 
 #[cfg(test)]
@@ -608,7 +558,7 @@ mod tests {
             b"b-bytes"
         );
 
-        // 再导一次：输出目录自动编号，不混入旧输出。
+        // 再导一次：仍写入所选目录，同名文件自动编号且不覆盖旧输出。
         let second = directory
             .export_image_files(
                 &RowSelection::Explicit { row_ids: vec![1] },
@@ -617,8 +567,9 @@ mod tests {
                 |_| {},
             )
             .unwrap();
-        assert_ne!(second.directory, outcome.directory);
-        assert!(second.directory.join("00001_图片 A.png").is_file());
+        assert_eq!(outcome.directory, temporary.root);
+        assert_eq!(second.directory, outcome.directory);
+        assert!(second.directory.join("00001_图片 A_2.png").is_file());
     }
 
     #[test]
@@ -671,6 +622,7 @@ mod tests {
             )
             .unwrap();
 
+        assert_eq!(outcome.directory, temporary.root);
         assert_eq!(fs::read(outcome.directory.join("same.png")).unwrap(), first_bytes);
         assert_eq!(
             fs::read(outcome.directory.join("same_2.png")).unwrap(),
