@@ -99,7 +99,7 @@
     <div class="actions">
       <button
         type="button"
-        class="toolbox-button"
+        class="btn"
         disabled={app.busy}
         onclick={() => void openToolbox()}
       >
@@ -191,19 +191,4 @@
     margin-right: 4px;
   }
 
-  .toolbox-button {
-    height: 28px;
-    padding: 0 10px;
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-s);
-    background: var(--surface);
-    color: var(--text-2);
-    font-size: var(--font-sm);
-  }
-
-  .toolbox-button:hover:not(:disabled) {
-    border-color: var(--text-3);
-    background: var(--surface-2);
-    color: var(--text);
-  }
 </style>
