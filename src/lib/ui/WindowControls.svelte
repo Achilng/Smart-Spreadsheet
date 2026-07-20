@@ -1,4 +1,8 @@
 <script lang="ts">
+  import Copy from "@lucide/svelte/icons/copy";
+  import Minus from "@lucide/svelte/icons/minus";
+  import Square from "@lucide/svelte/icons/square";
+  import X from "@lucide/svelte/icons/x";
   import { getCurrentWindow } from "@tauri-apps/api/window";
 
   const appWindow = getCurrentWindow();
@@ -32,9 +36,9 @@
 
 <div class="window-controls">
   <button type="button" title="最小化" aria-label="最小化" onclick={() => void appWindow.minimize()}>
-    <svg viewBox="0 0 10 10" aria-hidden="true">
-      <line x1="0.5" y1="5" x2="9.5" y2="5" />
-    </svg>
+    <span class="window-icon" aria-hidden="true">
+      <Minus size={16} strokeWidth={1.5} />
+    </span>
   </button>
   <button
     type="button"
@@ -42,22 +46,18 @@
     aria-label={maximized ? "还原" : "最大化"}
     onclick={() => void appWindow.toggleMaximize()}
   >
-    {#if maximized}
-      <svg viewBox="0 0 10 10" aria-hidden="true">
-        <rect x="0.5" y="2.5" width="7" height="7" fill="none" />
-        <path d="M 2.5 2.5 V 0.5 H 9.5 V 7.5 H 7.5" fill="none" />
-      </svg>
-    {:else}
-      <svg viewBox="0 0 10 10" aria-hidden="true">
-        <rect x="0.5" y="0.5" width="9" height="9" fill="none" />
-      </svg>
-    {/if}
+    <span class="window-icon" aria-hidden="true">
+      {#if maximized}
+        <Copy size={16} strokeWidth={1.5} />
+      {:else}
+        <Square size={16} strokeWidth={1.5} />
+      {/if}
+    </span>
   </button>
   <button type="button" class="close" title="关闭" aria-label="关闭" onclick={() => void appWindow.close()}>
-    <svg viewBox="0 0 10 10" aria-hidden="true">
-      <line x1="0.5" y1="0.5" x2="9.5" y2="9.5" />
-      <line x1="9.5" y1="0.5" x2="0.5" y2="9.5" />
-    </svg>
+    <span class="window-icon" aria-hidden="true">
+      <X size={16} strokeWidth={1.5} />
+    </span>
   </button>
 </div>
 
@@ -93,15 +93,16 @@
     color: #ffffff;
   }
 
-  .window-controls button:active svg {
-    transform: translateY(1px);
+  .window-icon {
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform var(--motion-press) var(--ease-responsive);
   }
 
-  .window-controls svg {
-    width: 10px;
-    height: 10px;
-    stroke: currentColor;
-    stroke-width: 1;
-    shape-rendering: crispEdges;
+  .window-controls button:active .window-icon {
+    transform: translateY(1px);
   }
 </style>

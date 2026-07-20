@@ -1,4 +1,12 @@
 <script lang="ts">
+  import type { LucideIcon } from "@lucide/svelte";
+  import Braces from "@lucide/svelte/icons/braces";
+  import Database from "@lucide/svelte/icons/database";
+  import ImageUp from "@lucide/svelte/icons/image-up";
+  import ScanSearch from "@lucide/svelte/icons/scan-search";
+  import Shuffle from "@lucide/svelte/icons/shuffle";
+  import WandSparkles from "@lucide/svelte/icons/wand-sparkles";
+  import Wrench from "@lucide/svelte/icons/wrench";
   import { onMount } from "svelte";
 
   import { app, refreshSnapshot } from "../../stores/app-state.svelte";
@@ -27,7 +35,7 @@
     description: string;
     group: "常用工具" | "文件处理" | "资料库维护";
     requiresLibrary: boolean;
-    icon: string;
+    icon: LucideIcon;
   }
 
   const tools: ToolDefinition[] = [
@@ -37,7 +45,7 @@
       description: "按提示词组合批量打 Tag 或分组",
       group: "常用工具",
       requiresLibrary: true,
-      icon: "✎",
+      icon: WandSparkles,
     },
     {
       id: "artist",
@@ -45,7 +53,7 @@
       description: "从画师池随机生成 NovelAI 提示词",
       group: "常用工具",
       requiresLibrary: true,
-      icon: "✦",
+      icon: Shuffle,
     },
     {
       id: "imageSearch",
@@ -53,7 +61,7 @@
       description: "使用感知哈希查找库内相似图片",
       group: "常用工具",
       requiresLibrary: true,
-      icon: "◉",
+      icon: ScanSearch,
     },
     {
       id: "imageExport",
@@ -61,7 +69,7 @@
       description: "导出主窗口选中的图片并按需清除元数据",
       group: "文件处理",
       requiresLibrary: true,
-      icon: "⇱",
+      icon: ImageUp,
     },
     {
       id: "jsonDedupe",
@@ -69,7 +77,7 @@
       description: "检查并清理重复预设",
       group: "文件处理",
       requiresLibrary: false,
-      icon: "{}",
+      icon: Braces,
     },
     {
       id: "maintenance",
@@ -77,7 +85,7 @@
       description: "感知哈希与失败图片目录",
       group: "资料库维护",
       requiresLibrary: true,
-      icon: "↻",
+      icon: Wrench,
     },
     {
       id: "data",
@@ -85,7 +93,7 @@
       description: "迁移数据目录或重置资料库",
       group: "资料库维护",
       requiresLibrary: true,
-      icon: "▣",
+      icon: Database,
     },
   ];
 
@@ -163,7 +171,9 @@
                 title={tool.requiresLibrary && !hasLibrary ? "需要先在主窗口导入资料库" : tool.description}
                 onclick={() => selectTool(tool)}
               >
-                <span class="tool-icon" aria-hidden="true">{tool.icon}</span>
+                <span class="tool-icon" aria-hidden="true">
+                  <tool.icon size={17} strokeWidth={1.75} />
+                </span>
                 <span class="tool-label">
                   <strong>{tool.label}</strong>
                   <small>{tool.description}</small>
