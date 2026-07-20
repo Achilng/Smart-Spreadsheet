@@ -1,0 +1,1930 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#9dc8e7" />
+    <link rel="icon" href="data:," />
+    <title>智能表格 · 概念 D 琉璃画廊</title>
+    <style>
+      :root {
+        --ink: #f9fbff;
+        --muted: rgba(248, 251, 255, 0.7);
+        --faint: rgba(248, 251, 255, 0.48);
+        --glass: rgba(255, 255, 255, 0.16);
+        --glass-strong: rgba(255, 255, 255, 0.23);
+        --glass-soft: rgba(255, 255, 255, 0.09);
+        --line: rgba(255, 255, 255, 0.28);
+        --line-soft: rgba(255, 255, 255, 0.16);
+        --shadow: rgba(49, 70, 122, 0.25);
+        --accent: #fff0a8;
+        --accent-2: #b8f0de;
+        --bg-a: #83bfe8;
+        --bg-b: #98a7e8;
+        --bg-c: #d4a6e8;
+        --mx: 50%;
+        --my: 50%;
+        --font:
+          "Segoe UI Variable Text", "Segoe UI", "PingFang SC",
+          "Microsoft YaHei UI", system-ui, sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+      }
+
+      body {
+        margin: 0;
+        min-width: 1160px;
+        min-height: 720px;
+        overflow: hidden;
+        color: var(--ink);
+        font: 13px/1.45 var(--font);
+        background:
+          radial-gradient(circle at 12% 10%, rgba(255, 255, 255, 0.64), transparent 24%),
+          radial-gradient(circle at 91% 83%, rgba(194, 113, 255, 0.42), transparent 32%),
+          radial-gradient(circle at 67% 16%, rgba(165, 246, 224, 0.28), transparent 29%),
+          linear-gradient(132deg, var(--bg-a), var(--bg-b) 54%, var(--bg-c));
+        transition: background 900ms ease, color 450ms ease;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      body[data-theme="sunset"] {
+        --bg-a: #efaa8f;
+        --bg-b: #c891c9;
+        --bg-c: #748fd0;
+        --accent: #fff0b4;
+        --accent-2: #ffd4c5;
+        --shadow: rgba(89, 52, 94, 0.3);
+      }
+
+      body[data-theme="night"] {
+        --bg-a: #172a55;
+        --bg-b: #334083;
+        --bg-c: #714e91;
+        --accent: #ffe99d;
+        --accent-2: #9ee8de;
+        --shadow: rgba(5, 12, 40, 0.5);
+      }
+
+      button,
+      input {
+        color: inherit;
+        font: inherit;
+      }
+
+      button {
+        border: 0;
+        padding: 0;
+        background: none;
+        cursor: pointer;
+      }
+
+      svg {
+        display: block;
+      }
+
+      ::selection {
+        color: #425174;
+        background: rgba(255, 244, 176, 0.82);
+      }
+
+      ::-webkit-scrollbar {
+        width: 7px;
+      }
+
+      ::-webkit-scrollbar-thumb {
+        border: 2px solid transparent;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.35);
+        background-clip: padding-box;
+      }
+
+      .aurora {
+        position: fixed;
+        inset: -35%;
+        pointer-events: none;
+        background:
+          conic-gradient(
+            from 100deg,
+            transparent 0 12%,
+            rgba(255, 255, 255, 0.12) 20%,
+            transparent 31% 61%,
+            rgba(187, 255, 235, 0.12) 72%,
+            transparent 84%
+          );
+        filter: blur(42px);
+        animation: aurora 18s linear infinite;
+      }
+
+      .botanical-haze {
+        position: fixed;
+        inset: -8%;
+        pointer-events: none;
+        opacity: 0.11;
+        background: url("./assets/soft-atelier-botanical.png") center / cover;
+        mix-blend-mode: soft-light;
+        filter: blur(2px) saturate(0.85);
+      }
+
+      .orb {
+        position: fixed;
+        border-radius: 50%;
+        pointer-events: none;
+        filter: blur(5px);
+        opacity: 0.56;
+        animation: drift 11s ease-in-out infinite alternate;
+      }
+
+      .orb-one {
+        width: 250px;
+        height: 250px;
+        left: 4vw;
+        top: 8vh;
+        background: rgba(255, 255, 255, 0.25);
+      }
+
+      .orb-two {
+        width: 310px;
+        height: 310px;
+        right: 5vw;
+        bottom: -8vh;
+        background: rgba(126, 102, 237, 0.22);
+        animation-delay: -4s;
+      }
+
+      .orb-three {
+        width: 150px;
+        height: 150px;
+        left: 43vw;
+        bottom: 7vh;
+        background: rgba(191, 255, 227, 0.18);
+        animation-delay: -7s;
+      }
+
+      .scene {
+        position: relative;
+        z-index: 2;
+        width: calc(100vw - 36px);
+        height: calc(100vh - 36px);
+        min-width: 1124px;
+        min-height: 684px;
+        margin: 18px;
+        perspective: 1800px;
+      }
+
+      .app-shell {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        display: grid;
+        grid-template-columns: 82px minmax(640px, 1fr) 350px;
+        gap: 16px;
+        padding: 16px;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.38);
+        border-radius: 34px;
+        background:
+          radial-gradient(
+            circle 520px at var(--mx) var(--my),
+            rgba(255, 255, 255, 0.2),
+            transparent 66%
+          ),
+          linear-gradient(145deg, rgba(255, 255, 255, 0.19), rgba(255, 255, 255, 0.07));
+        box-shadow:
+          0 34px 90px -30px var(--shadow),
+          inset 0 1px 0 rgba(255, 255, 255, 0.6);
+        backdrop-filter: blur(28px) saturate(128%);
+        -webkit-backdrop-filter: blur(28px) saturate(128%);
+        transform-style: preserve-3d;
+        transition:
+          transform 180ms ease-out,
+          background 900ms ease,
+          box-shadow 900ms ease;
+      }
+
+      .app-shell::after {
+        content: "";
+        position: absolute;
+        z-index: 20;
+        top: -45%;
+        left: -34%;
+        width: 18%;
+        height: 190%;
+        transform: rotate(17deg);
+        opacity: 0.54;
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.07), transparent);
+        animation: sheen 13s ease-in-out infinite;
+        pointer-events: none;
+      }
+
+      .glass {
+        border: 1px solid var(--line-soft);
+        background: linear-gradient(145deg, var(--glass), var(--glass-soft));
+        box-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.24),
+          0 18px 44px -28px var(--shadow);
+        backdrop-filter: blur(20px) saturate(125%);
+        -webkit-backdrop-filter: blur(20px) saturate(125%);
+      }
+
+      .rail {
+        position: relative;
+        z-index: 4;
+        padding: 12px 9px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        min-height: 0;
+        border-radius: 26px 18px 26px 26px;
+      }
+
+      .logo {
+        position: relative;
+        width: 46px;
+        height: 46px;
+        margin: 1px 0 26px;
+        display: grid;
+        place-items: center;
+        border: 1px solid rgba(255, 255, 255, 0.44);
+        border-radius: 16px 16px 16px 8px;
+        color: #53688f;
+        background:
+          radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.95), transparent 35%),
+          linear-gradient(145deg, rgba(255, 255, 255, 0.88), rgba(210, 241, 246, 0.62));
+        box-shadow:
+          0 12px 24px rgba(70, 86, 137, 0.2),
+          inset 0 1px rgba(255, 255, 255, 0.92);
+      }
+
+      .logo::after {
+        content: "";
+        position: absolute;
+        top: -3px;
+        right: -3px;
+        width: 11px;
+        height: 11px;
+        border: 2px solid rgba(235, 246, 255, 0.85);
+        border-radius: 50%;
+        background: var(--accent);
+        box-shadow: 0 0 12px rgba(255, 238, 154, 0.8);
+      }
+
+      .logo svg {
+        width: 23px;
+        height: 23px;
+        stroke: currentColor;
+        stroke-width: 1.7;
+        fill: none;
+      }
+
+      .rail-nav {
+        width: 100%;
+        display: grid;
+        gap: 9px;
+      }
+
+      .rail-item {
+        position: relative;
+        width: 54px;
+        height: 52px;
+        margin: auto;
+        display: grid;
+        place-items: center;
+        border: 1px solid transparent;
+        border-radius: 17px;
+        color: rgba(255, 255, 255, 0.63);
+        transition:
+          transform 180ms ease,
+          color 180ms ease,
+          background 180ms ease,
+          border-color 180ms ease;
+      }
+
+      .rail-item svg {
+        width: 21px;
+        height: 21px;
+        stroke: currentColor;
+        stroke-width: 1.65;
+        fill: none;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      .rail-item:hover {
+        transform: translateY(-2px);
+        color: white;
+        background: rgba(255, 255, 255, 0.09);
+      }
+
+      .rail-item.active {
+        color: white;
+        border-color: rgba(255, 255, 255, 0.3);
+        background: rgba(255, 255, 255, 0.18);
+        box-shadow:
+          inset 0 1px rgba(255, 255, 255, 0.3),
+          0 12px 24px rgba(55, 70, 120, 0.16);
+      }
+
+      .rail-item.active::before {
+        content: "";
+        position: absolute;
+        left: -10px;
+        width: 3px;
+        height: 18px;
+        border-radius: 999px;
+        background: var(--accent);
+        box-shadow: 0 0 11px var(--accent);
+      }
+
+      .rail-spacer {
+        flex: 1;
+      }
+
+      .avatar {
+        width: 42px;
+        height: 42px;
+        display: grid;
+        place-items: center;
+        border: 1px solid rgba(255, 255, 255, 0.34);
+        border-radius: 50%;
+        color: rgba(255, 255, 255, 0.88);
+        background:
+          linear-gradient(145deg, rgba(255, 234, 200, 0.54), rgba(192, 216, 255, 0.32));
+        box-shadow: inset 0 1px rgba(255, 255, 255, 0.28);
+        font-weight: 700;
+      }
+
+      .workspace {
+        position: relative;
+        z-index: 3;
+        min-width: 0;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        padding: 4px 2px 3px;
+      }
+
+      .topbar {
+        min-height: 58px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+
+      .headline {
+        min-width: 218px;
+      }
+
+      .eyebrow {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--muted);
+        font-size: 10px;
+        font-weight: 650;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+      }
+
+      .eyebrow::before {
+        content: "";
+        width: 18px;
+        height: 1px;
+        background: currentColor;
+      }
+
+      h1 {
+        margin: 2px 0 0;
+        font-size: 24px;
+        line-height: 1.15;
+        font-weight: 560;
+        letter-spacing: -0.035em;
+        text-shadow: 0 8px 20px rgba(46, 58, 101, 0.16);
+      }
+
+      .search {
+        height: 43px;
+        flex: 1;
+        max-width: 390px;
+        padding: 0 14px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        border-radius: 16px;
+      }
+
+      .search svg {
+        width: 17px;
+        height: 17px;
+        flex: 0 0 auto;
+        stroke: var(--muted);
+        stroke-width: 1.8;
+        fill: none;
+      }
+
+      .search input {
+        width: 100%;
+        border: 0;
+        outline: 0;
+        color: white;
+        background: transparent;
+      }
+
+      .search input::placeholder {
+        color: rgba(255, 255, 255, 0.5);
+      }
+
+      .shortcut {
+        padding: 3px 7px;
+        border: 1px solid rgba(255, 255, 255, 0.19);
+        border-radius: 7px;
+        color: rgba(255, 255, 255, 0.52);
+        font-size: 9px;
+      }
+
+      .top-actions {
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: 9px;
+      }
+
+      .icon-button,
+      .import-button {
+        height: 43px;
+        border: 1px solid var(--line-soft);
+        color: rgba(255, 255, 255, 0.8);
+        background: rgba(255, 255, 255, 0.1);
+        box-shadow: inset 0 1px rgba(255, 255, 255, 0.18);
+        transition:
+          transform 180ms ease,
+          background 180ms ease;
+      }
+
+      .icon-button {
+        width: 43px;
+        display: grid;
+        place-items: center;
+        border-radius: 15px;
+      }
+
+      .icon-button svg {
+        width: 18px;
+        height: 18px;
+        stroke: currentColor;
+        stroke-width: 1.7;
+        fill: none;
+      }
+
+      .icon-button:hover,
+      .import-button:hover {
+        transform: translateY(-2px);
+        background: rgba(255, 255, 255, 0.17);
+      }
+
+      .import-button {
+        padding: 0 17px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        border-radius: 15px;
+        color: #4e6486;
+        border-color: rgba(255, 255, 255, 0.45);
+        background:
+          linear-gradient(145deg, rgba(255, 255, 255, 0.9), rgba(220, 244, 241, 0.68));
+        font-weight: 680;
+      }
+
+      .import-button svg {
+        width: 16px;
+        height: 16px;
+        stroke: currentColor;
+        stroke-width: 1.8;
+        fill: none;
+      }
+
+      .collection-bar {
+        min-height: 77px;
+        margin-top: 12px;
+        padding: 14px 16px;
+        display: flex;
+        align-items: center;
+        border-radius: 22px;
+      }
+
+      .collection-copy {
+        min-width: 220px;
+      }
+
+      .collection-copy strong {
+        display: block;
+        font-size: 15px;
+        font-weight: 650;
+      }
+
+      .collection-copy span {
+        color: var(--muted);
+        font-size: 11px;
+      }
+
+      .chips {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+      }
+
+      .chip {
+        height: 31px;
+        padding: 0 12px;
+        border: 1px solid transparent;
+        border-radius: 999px;
+        color: rgba(255, 255, 255, 0.62);
+        transition:
+          color 180ms ease,
+          background 180ms ease,
+          border-color 180ms ease,
+          transform 180ms ease;
+      }
+
+      .chip:hover {
+        transform: translateY(-1px);
+        color: white;
+      }
+
+      .chip.active {
+        color: white;
+        border-color: rgba(255, 255, 255, 0.26);
+        background: rgba(255, 255, 255, 0.16);
+        box-shadow: inset 0 1px rgba(255, 255, 255, 0.2);
+      }
+
+      .collection-meta {
+        margin-left: auto;
+        padding-left: 18px;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        color: var(--muted);
+        font-size: 11px;
+      }
+
+      .view-switch {
+        padding: 3px;
+        display: flex;
+        gap: 2px;
+        border: 1px solid var(--line-soft);
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.08);
+      }
+
+      .view-button {
+        width: 29px;
+        height: 27px;
+        display: grid;
+        place-items: center;
+        border-radius: 9px;
+        color: rgba(255, 255, 255, 0.5);
+      }
+
+      .view-button.active {
+        color: white;
+        background: rgba(255, 255, 255, 0.16);
+      }
+
+      .view-button svg {
+        width: 14px;
+        height: 14px;
+        stroke: currentColor;
+        fill: none;
+        stroke-width: 1.7;
+      }
+
+      .gallery {
+        position: relative;
+        min-height: 0;
+        flex: 1;
+        margin-top: 14px;
+        padding-bottom: 58px;
+      }
+
+      .gallery-grid {
+        height: 100%;
+        min-height: 465px;
+        display: grid;
+        grid-template-columns: minmax(260px, 1.2fr) repeat(2, minmax(150px, 0.8fr));
+        grid-template-rows: minmax(205px, 1.08fr) minmax(190px, 0.92fr);
+        gap: 13px;
+      }
+
+      .art-card {
+        position: relative;
+        min-width: 0;
+        min-height: 0;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        border-radius: 23px;
+        background: rgba(255, 255, 255, 0.1);
+        box-shadow:
+          inset 0 1px rgba(255, 255, 255, 0.25),
+          0 18px 42px -30px rgba(39, 50, 98, 0.48);
+        cursor: pointer;
+        isolation: isolate;
+        transition:
+          transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
+          border-color 220ms ease,
+          box-shadow 220ms ease;
+      }
+
+      .art-card:hover {
+        z-index: 3;
+        transform: translateY(-5px) scale(1.008);
+        border-color: rgba(255, 255, 255, 0.5);
+        box-shadow:
+          inset 0 1px rgba(255, 255, 255, 0.4),
+          0 24px 48px -28px rgba(37, 48, 96, 0.55);
+      }
+
+      .art-card.focused {
+        border-color: rgba(255, 248, 187, 0.66);
+        box-shadow:
+          inset 0 1px rgba(255, 255, 255, 0.42),
+          0 0 0 1px rgba(255, 241, 161, 0.16),
+          0 24px 50px -28px rgba(47, 58, 110, 0.58);
+      }
+
+      .art-card.feature {
+        grid-row: 1 / 3;
+        border-radius: 28px 20px 28px 28px;
+      }
+
+      .art {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+      }
+
+      .art::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background:
+          linear-gradient(180deg, transparent 42%, rgba(37, 42, 74, 0.67)),
+          linear-gradient(120deg, rgba(255, 255, 255, 0.08), transparent 45%);
+      }
+
+      .art img {
+        width: 100%;
+        height: 100%;
+        display: block;
+        object-fit: cover;
+        transition: transform 700ms cubic-bezier(0.2, 0.8, 0.2, 1);
+      }
+
+      .art-card:hover .art img {
+        transform: scale(1.035);
+      }
+
+      .art-lavender {
+        background:
+          radial-gradient(ellipse at 30% 70%, rgba(198, 172, 223, 0.92) 0 8%, transparent 9%),
+          radial-gradient(ellipse at 49% 62%, rgba(252, 213, 225, 0.8) 0 11%, transparent 12%),
+          radial-gradient(circle at 70% 26%, rgba(255, 237, 174, 0.88) 0 12%, transparent 13%),
+          linear-gradient(155deg, #889ed2, #b6a7d4 52%, #e6bed0);
+      }
+
+      .art-lavender::before {
+        content: "";
+        position: absolute;
+        width: 52%;
+        height: 72%;
+        right: -8%;
+        bottom: -18%;
+        border-radius: 48% 52% 0 0;
+        background: rgba(109, 83, 151, 0.32);
+        transform: rotate(-17deg);
+        filter: blur(1px);
+      }
+
+      .art-citrus {
+        background:
+          radial-gradient(circle at 67% 44%, #fff8c9 0 9%, #f4c76a 10% 23%, transparent 24%),
+          radial-gradient(circle at 44% 68%, rgba(255, 255, 255, 0.45) 0 3%, transparent 4%),
+          linear-gradient(145deg, #7ec6bd, #9ed6bd 48%, #d7d69b);
+      }
+
+      .art-citrus::before {
+        content: "";
+        position: absolute;
+        left: 11%;
+        bottom: -14%;
+        width: 76%;
+        height: 52%;
+        border-radius: 50% 50% 0 0;
+        background:
+          repeating-linear-gradient(
+            80deg,
+            rgba(255, 255, 255, 0.15) 0 2px,
+            transparent 2px 14px
+          ),
+          rgba(69, 132, 122, 0.36);
+        transform: rotate(3deg);
+      }
+
+      .art-tide {
+        background:
+          radial-gradient(circle at 23% 22%, rgba(255, 241, 190, 0.78) 0 8%, transparent 9%),
+          linear-gradient(165deg, transparent 0 43%, rgba(205, 230, 233, 0.62) 44% 51%, transparent 52%),
+          linear-gradient(155deg, #7376ad, #648db4 48%, #76b7b6);
+      }
+
+      .art-tide::before {
+        content: "";
+        position: absolute;
+        inset: 51% -10% -20% -14%;
+        border-radius: 50% 46% 0 0;
+        background:
+          repeating-radial-gradient(
+            ellipse at 50% 0,
+            rgba(255, 255, 255, 0.2) 0 2px,
+            transparent 3px 18px
+          ),
+          rgba(53, 87, 135, 0.36);
+        transform: rotate(-4deg);
+      }
+
+      .art-map {
+        background:
+          linear-gradient(35deg, transparent 44%, rgba(255, 255, 255, 0.24) 45% 46%, transparent 47%),
+          linear-gradient(145deg, transparent 36%, rgba(255, 255, 255, 0.18) 37% 39%, transparent 40%),
+          radial-gradient(circle at 69% 30%, #ffddaf 0 3%, transparent 4%),
+          linear-gradient(145deg, #dba5a1, #c89db4 46%, #8da4c8);
+      }
+
+      .art-map::before {
+        content: "";
+        position: absolute;
+        left: 19%;
+        top: 18%;
+        width: 48%;
+        height: 55%;
+        border: 1px dashed rgba(255, 255, 255, 0.46);
+        border-radius: 50% 38% 48% 40%;
+        transform: rotate(-9deg);
+      }
+
+      .card-check {
+        position: absolute;
+        z-index: 6;
+        top: 13px;
+        left: 13px;
+        width: 27px;
+        height: 27px;
+        display: grid;
+        place-items: center;
+        border: 1px solid rgba(255, 255, 255, 0.42);
+        border-radius: 9px;
+        color: transparent;
+        background: rgba(33, 42, 77, 0.2);
+        backdrop-filter: blur(12px);
+        transition:
+          color 180ms ease,
+          background 180ms ease;
+      }
+
+      .card-check svg {
+        width: 14px;
+        height: 14px;
+        stroke: currentColor;
+        stroke-width: 2.2;
+        fill: none;
+      }
+
+      .card-check.checked {
+        color: #4b6381;
+        background: rgba(255, 245, 178, 0.92);
+      }
+
+      .favorite {
+        position: absolute;
+        z-index: 6;
+        top: 13px;
+        right: 13px;
+        width: 29px;
+        height: 29px;
+        display: grid;
+        place-items: center;
+        border: 1px solid rgba(255, 255, 255, 0.32);
+        border-radius: 50%;
+        color: rgba(255, 255, 255, 0.76);
+        background: rgba(33, 42, 77, 0.18);
+        backdrop-filter: blur(10px);
+      }
+
+      .favorite svg {
+        width: 14px;
+        height: 14px;
+        stroke: currentColor;
+        fill: none;
+        stroke-width: 1.8;
+      }
+
+      .favorite.on svg {
+        fill: #ffd3dc;
+        stroke: #ffd3dc;
+        filter: drop-shadow(0 0 8px rgba(255, 206, 217, 0.62));
+      }
+
+      .card-copy {
+        position: absolute;
+        z-index: 5;
+        right: 15px;
+        bottom: 14px;
+        left: 15px;
+        color: white;
+        pointer-events: none;
+      }
+
+      .card-copy small {
+        display: block;
+        margin-bottom: 3px;
+        color: rgba(255, 255, 255, 0.62);
+        font-size: 9px;
+        letter-spacing: 0.13em;
+        text-transform: uppercase;
+      }
+
+      .card-copy strong {
+        display: block;
+        overflow: hidden;
+        font-size: 14px;
+        font-weight: 650;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        text-shadow: 0 4px 12px rgba(29, 33, 63, 0.32);
+      }
+
+      .feature .card-copy {
+        right: 20px;
+        bottom: 20px;
+        left: 20px;
+      }
+
+      .feature .card-copy strong {
+        font-size: 19px;
+      }
+
+      .feature .card-copy p {
+        max-width: 82%;
+        margin: 5px 0 0;
+        color: rgba(255, 255, 255, 0.65);
+        font-size: 11px;
+      }
+
+      .selection-dock {
+        position: absolute;
+        z-index: 10;
+        left: 50%;
+        bottom: 0;
+        height: 48px;
+        min-width: 410px;
+        padding: 5px 7px 5px 15px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.32);
+        border-radius: 17px;
+        background:
+          linear-gradient(145deg, rgba(255, 255, 255, 0.25), rgba(255, 255, 255, 0.11));
+        box-shadow:
+          0 18px 36px -18px rgba(38, 47, 92, 0.48),
+          inset 0 1px rgba(255, 255, 255, 0.35);
+        backdrop-filter: blur(24px) saturate(135%);
+        transform: translateX(-50%);
+      }
+
+      .selected-badge {
+        width: 25px;
+        height: 25px;
+        display: grid;
+        place-items: center;
+        border-radius: 9px;
+        color: #526783;
+        background: var(--accent);
+        font-size: 11px;
+        font-weight: 800;
+        box-shadow: 0 0 15px rgba(255, 239, 164, 0.36);
+      }
+
+      .selection-dock > span {
+        color: rgba(255, 255, 255, 0.76);
+        font-size: 11px;
+      }
+
+      .dock-divider {
+        width: 1px;
+        height: 20px;
+        background: rgba(255, 255, 255, 0.18);
+      }
+
+      .dock-action {
+        padding: 7px 9px;
+        border-radius: 10px;
+        color: rgba(255, 255, 255, 0.68);
+        font-size: 11px;
+      }
+
+      .dock-action:hover {
+        color: white;
+        background: rgba(255, 255, 255, 0.1);
+      }
+
+      .dock-action.primary {
+        margin-left: auto;
+        padding: 8px 13px;
+        color: #506681;
+        background: rgba(255, 255, 255, 0.82);
+        font-weight: 700;
+      }
+
+      .inspector {
+        position: relative;
+        z-index: 4;
+        min-width: 0;
+        min-height: 0;
+        padding: 14px;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        border-radius: 20px 28px 28px 20px;
+      }
+
+      .inspector-head {
+        height: 45px;
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+      }
+
+      .inspector-head span {
+        color: var(--muted);
+        font-size: 10px;
+        font-weight: 650;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+
+      .inspector-head strong {
+        display: block;
+        margin-top: 3px;
+        font-size: 14px;
+        font-weight: 650;
+      }
+
+      .head-more {
+        width: 30px;
+        height: 30px;
+        display: grid;
+        place-items: center;
+        border: 1px solid var(--line-soft);
+        border-radius: 11px;
+        color: var(--muted);
+        background: rgba(255, 255, 255, 0.07);
+      }
+
+      .head-more svg {
+        width: 15px;
+        height: 15px;
+        fill: currentColor;
+      }
+
+      .preview {
+        position: relative;
+        height: 270px;
+        flex: 0 0 auto;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.28);
+        border-radius: 22px;
+        background: rgba(255, 255, 255, 0.1);
+        box-shadow:
+          inset 0 1px rgba(255, 255, 255, 0.28),
+          0 20px 42px -28px rgba(33, 43, 83, 0.58);
+      }
+
+      .preview-art {
+        position: absolute;
+        inset: 0;
+      }
+
+      .preview-art img {
+        width: 100%;
+        height: 100%;
+        display: block;
+        object-fit: cover;
+      }
+
+      .preview-art::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background:
+          linear-gradient(180deg, transparent 56%, rgba(37, 42, 72, 0.68)),
+          radial-gradient(circle at 24% 14%, rgba(255, 255, 255, 0.22), transparent 26%);
+      }
+
+      .preview-tools {
+        position: absolute;
+        z-index: 3;
+        right: 11px;
+        bottom: 11px;
+        padding: 4px;
+        display: flex;
+        gap: 3px;
+        border: 1px solid rgba(255, 255, 255, 0.24);
+        border-radius: 12px;
+        background: rgba(39, 47, 81, 0.22);
+        backdrop-filter: blur(14px);
+      }
+
+      .preview-tools button {
+        width: 30px;
+        height: 28px;
+        display: grid;
+        place-items: center;
+        border-radius: 9px;
+        color: rgba(255, 255, 255, 0.74);
+      }
+
+      .preview-tools button:hover {
+        color: white;
+        background: rgba(255, 255, 255, 0.13);
+      }
+
+      .preview-tools svg {
+        width: 15px;
+        height: 15px;
+        stroke: currentColor;
+        stroke-width: 1.7;
+        fill: none;
+      }
+
+      .detail-title {
+        padding: 15px 2px 12px;
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      .detail-title h2 {
+        margin: 0;
+        font-size: 19px;
+        font-weight: 600;
+        letter-spacing: -0.03em;
+      }
+
+      .detail-title p {
+        margin: 4px 0 0;
+        color: var(--muted);
+        font-size: 10px;
+      }
+
+      .detail-favorite {
+        width: 34px;
+        height: 34px;
+        flex: 0 0 auto;
+        display: grid;
+        place-items: center;
+        border: 1px solid var(--line-soft);
+        border-radius: 12px;
+        color: rgba(255, 255, 255, 0.75);
+        background: rgba(255, 255, 255, 0.08);
+      }
+
+      .detail-favorite.on {
+        color: #ffd3dc;
+        background: rgba(255, 219, 226, 0.13);
+      }
+
+      .detail-favorite svg {
+        width: 16px;
+        height: 16px;
+        stroke: currentColor;
+        fill: none;
+        stroke-width: 1.8;
+      }
+
+      .detail-favorite.on svg {
+        fill: currentColor;
+      }
+
+      .tag-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      .tag {
+        padding: 5px 9px;
+        border: 1px solid rgba(255, 255, 255, 0.17);
+        border-radius: 999px;
+        color: rgba(255, 255, 255, 0.72);
+        background: rgba(255, 255, 255, 0.08);
+        font-size: 10px;
+      }
+
+      .tag.accent {
+        color: #536b78;
+        border-color: rgba(207, 255, 239, 0.46);
+        background: rgba(196, 245, 228, 0.68);
+      }
+
+      .info-card {
+        margin-top: 12px;
+        padding: 11px 12px;
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.08);
+      }
+
+      .info-card summary {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        list-style: none;
+        color: rgba(255, 255, 255, 0.82);
+        font-size: 11px;
+        font-weight: 650;
+        cursor: pointer;
+      }
+
+      .info-card summary::-webkit-details-marker {
+        display: none;
+      }
+
+      .summary-icon {
+        width: 24px;
+        height: 24px;
+        display: grid;
+        place-items: center;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 8px;
+        color: var(--accent-2);
+        background: rgba(255, 255, 255, 0.08);
+      }
+
+      .summary-icon svg {
+        width: 13px;
+        height: 13px;
+        stroke: currentColor;
+        stroke-width: 1.8;
+        fill: none;
+      }
+
+      .info-card summary > span:nth-child(2) {
+        flex: 1;
+      }
+
+      .chevron {
+        width: 14px;
+        height: 14px;
+        stroke: var(--muted);
+        stroke-width: 1.8;
+        fill: none;
+        transition: transform 180ms ease;
+      }
+
+      details[open] .chevron {
+        transform: rotate(180deg);
+      }
+
+      .prompt {
+        position: relative;
+        margin: 10px 0 0;
+        padding: 10px 34px 0 1px;
+        color: var(--muted);
+        font-size: 10px;
+        line-height: 1.6;
+      }
+
+      .copy-button {
+        position: absolute;
+        top: 8px;
+        right: 0;
+        width: 29px;
+        height: 29px;
+        display: grid;
+        place-items: center;
+        border-radius: 9px;
+        color: var(--muted);
+      }
+
+      .copy-button:hover {
+        color: white;
+        background: rgba(255, 255, 255, 0.08);
+      }
+
+      .copy-button svg {
+        width: 13px;
+        height: 13px;
+        stroke: currentColor;
+        stroke-width: 1.8;
+        fill: none;
+      }
+
+      .meta-grid {
+        margin-top: 12px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 7px;
+      }
+
+      .meta-item {
+        padding: 9px 10px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 13px;
+        background: rgba(255, 255, 255, 0.055);
+      }
+
+      .meta-item span {
+        display: block;
+        color: var(--faint);
+        font-size: 9px;
+      }
+
+      .meta-item strong {
+        display: block;
+        margin-top: 3px;
+        overflow: hidden;
+        color: rgba(255, 255, 255, 0.82);
+        font-size: 10px;
+        font-weight: 600;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .inspector-foot {
+        margin-top: auto;
+        padding-top: 11px;
+        display: flex;
+        align-items: center;
+        gap: 9px;
+      }
+
+      .theme-switch {
+        padding: 3px;
+        display: flex;
+        gap: 2px;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.07);
+      }
+
+      .theme-button {
+        padding: 6px 8px;
+        border-radius: 9px;
+        color: rgba(255, 255, 255, 0.52);
+        font-size: 9px;
+      }
+
+      .theme-button.active {
+        color: white;
+        background: rgba(255, 255, 255, 0.15);
+      }
+
+      .storage {
+        margin-left: auto;
+        color: var(--faint);
+        font-size: 9px;
+        white-space: nowrap;
+      }
+
+      .toast {
+        position: fixed;
+        z-index: 50;
+        left: 50%;
+        bottom: 28px;
+        padding: 11px 16px;
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        border-radius: 14px;
+        color: white;
+        background: rgba(54, 65, 105, 0.38);
+        box-shadow: 0 18px 38px rgba(40, 47, 86, 0.22);
+        backdrop-filter: blur(20px);
+        opacity: 0;
+        pointer-events: none;
+        transform: translate(-50%, 14px);
+        transition:
+          opacity 220ms ease,
+          transform 220ms ease;
+      }
+
+      .toast.show {
+        opacity: 1;
+        transform: translate(-50%, 0);
+      }
+
+      .toast-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--accent);
+        box-shadow: 0 0 12px var(--accent);
+      }
+
+      @keyframes aurora {
+        to {
+          transform: rotate(360deg) scale(1.08);
+        }
+      }
+
+      @keyframes drift {
+        from {
+          transform: translate3d(-12px, -8px, 0) scale(0.96);
+        }
+        to {
+          transform: translate3d(24px, 17px, 0) scale(1.08);
+        }
+      }
+
+      @keyframes sheen {
+        0%,
+        64% {
+          left: -34%;
+        }
+        84%,
+        100% {
+          left: 125%;
+        }
+      }
+
+      @media (max-width: 1240px) {
+        .app-shell {
+          grid-template-columns: 72px minmax(610px, 1fr) 314px;
+          gap: 12px;
+          padding: 12px;
+        }
+
+        .scene {
+          margin: 12px;
+          width: calc(100vw - 24px);
+          height: calc(100vh - 24px);
+        }
+
+        .headline {
+          min-width: 190px;
+        }
+
+        .search {
+          max-width: 300px;
+        }
+
+        .collection-copy {
+          min-width: 190px;
+        }
+
+        .preview {
+          height: 240px;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          animation-duration: 0.001ms !important;
+          animation-iteration-count: 1 !important;
+          scroll-behavior: auto !important;
+        }
+
+        .app-shell {
+          transition: background 500ms ease;
+        }
+      }
+    </style>
+  </head>
+  <body data-theme="mist">
+    <div class="aurora" aria-hidden="true"></div>
+    <div class="botanical-haze" aria-hidden="true"></div>
+    <div class="orb orb-one" aria-hidden="true"></div>
+    <div class="orb orb-two" aria-hidden="true"></div>
+    <div class="orb orb-three" aria-hidden="true"></div>
+
+    <main class="scene" aria-label="智能表格玻璃拟态设计概念">
+      <section class="app-shell" id="appShell">
+        <aside class="rail glass" aria-label="主导航">
+          <button class="logo" aria-label="琉璃画廊首页">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="4" y="4" width="16" height="16" rx="5"></rect>
+              <path d="M8 15l2.7-2.9 2.4 2.2 2.2-2.4L18 15"></path>
+              <circle cx="15.7" cy="8.4" r="1.2"></circle>
+            </svg>
+          </button>
+
+          <nav class="rail-nav">
+            <button class="rail-item active" aria-label="画廊">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="3.5" y="3.5" width="7" height="7" rx="2"></rect>
+                <rect x="13.5" y="3.5" width="7" height="7" rx="2"></rect>
+                <rect x="3.5" y="13.5" width="7" height="7" rx="2"></rect>
+                <rect x="13.5" y="13.5" width="7" height="7" rx="2"></rect>
+              </svg>
+            </button>
+            <button class="rail-item" aria-label="收藏">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M20.2 5.7c-1.7-1.7-4.4-1.7-6.1 0L12 7.8 9.9 5.7a4.3 4.3 0 0 0-6.1 6.1L12 20l8.2-8.2a4.3 4.3 0 0 0 0-6.1Z"></path>
+              </svg>
+            </button>
+            <button class="rail-item" aria-label="标签">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 5.5V11l8.4 8.4a2.2 2.2 0 0 0 3.1 0l3.9-3.9a2.2 2.2 0 0 0 0-3.1L11 4H5.5A1.5 1.5 0 0 0 4 5.5Z"></path>
+                <circle cx="8.2" cy="8.2" r="1.2"></circle>
+              </svg>
+            </button>
+            <button class="rail-item" aria-label="表格">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="3.5" y="4.5" width="17" height="15" rx="3"></rect>
+                <path d="M3.5 9.5h17M9 4.5v15M15 4.5v15"></path>
+              </svg>
+            </button>
+            <button class="rail-item" aria-label="工具箱">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M9 5.5V4h6v1.5M4 9h16v10.5H4z"></path>
+                <path d="M3 9h18v3.5H3zM9.5 12.5h5"></path>
+              </svg>
+            </button>
+          </nav>
+
+          <div class="rail-spacer"></div>
+          <button class="rail-item" aria-label="设置">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"></path>
+            </svg>
+          </button>
+          <button class="avatar" aria-label="用户账户">A</button>
+        </aside>
+
+        <section class="workspace">
+          <header class="topbar">
+            <div class="headline">
+              <div class="eyebrow">Luminous archive</div>
+              <h1>琉璃画廊</h1>
+            </div>
+
+            <label class="search glass">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="11" cy="11" r="6.5"></circle>
+                <path d="m16 16 4 4"></path>
+              </svg>
+              <input id="searchInput" type="search" placeholder="搜索作品、提示词或标签…" />
+              <span class="shortcut">⌘ K</span>
+            </label>
+
+            <div class="top-actions">
+              <button class="icon-button" aria-label="通知">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 7h18s-3 0-3-7Z"></path>
+                  <path d="M10 20h4"></path>
+                </svg>
+              </button>
+              <button class="import-button" id="importButton">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 4v11m-4-4 4 4 4-4"></path>
+                  <path d="M5 19h14"></path>
+                </svg>
+                收录新作品
+              </button>
+            </div>
+          </header>
+
+          <section class="collection-bar glass" aria-label="画廊筛选">
+            <div class="collection-copy">
+              <strong>七月灵感集</strong>
+              <span>1,284 幅作品 · 今天新增 18 幅</span>
+            </div>
+            <div class="chips">
+              <button class="chip active">全部</button>
+              <button class="chip">喜欢</button>
+              <button class="chip">人物</button>
+              <button class="chip">风景</button>
+            </div>
+            <div class="collection-meta">
+              <span>按最近收录</span>
+              <div class="view-switch" aria-label="视图切换">
+                <button class="view-button active" aria-label="画廊视图">
+                  <svg viewBox="0 0 18 18" aria-hidden="true">
+                    <rect x="2" y="2" width="5" height="5" rx="1"></rect>
+                    <rect x="11" y="2" width="5" height="5" rx="1"></rect>
+                    <rect x="2" y="11" width="5" height="5" rx="1"></rect>
+                    <rect x="11" y="11" width="5" height="5" rx="1"></rect>
+                  </svg>
+                </button>
+                <button class="view-button" aria-label="紧凑视图">
+                  <svg viewBox="0 0 18 18" aria-hidden="true">
+                    <path d="M3 4h12M3 9h12M3 14h12"></path>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <section class="gallery" aria-label="作品画廊">
+            <div class="gallery-grid">
+              <article
+                class="art-card feature focused"
+                data-title="风从山谷来"
+                data-id="IMG · 0248"
+                data-size="832 × 1216"
+                data-art="image"
+              >
+                <div class="art">
+                  <img src="./assets/meadow-dream.png" alt="风从山谷来" />
+                </div>
+                <button class="card-check checked" aria-label="选择风从山谷来">
+                  <svg viewBox="0 0 18 18" aria-hidden="true"><path d="m4 9 3 3 7-7"></path></svg>
+                </button>
+                <button class="favorite on" aria-label="收藏风从山谷来">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M20.2 5.7c-1.7-1.7-4.4-1.7-6.1 0L12 7.8 9.9 5.7a4.3 4.3 0 0 0-6.1 6.1L12 20l8.2-8.2a4.3 4.3 0 0 0 0-6.1Z"></path>
+                  </svg>
+                </button>
+                <div class="card-copy">
+                  <small>今日拾取 · 16:42</small>
+                  <strong>风从山谷来</strong>
+                  <p>野花、薄暮与一阵刚好经过的风。</p>
+                </div>
+              </article>
+
+              <article
+                class="art-card"
+                data-title="紫罗兰来信"
+                data-id="IMG · 0247"
+                data-size="1024 × 1024"
+                data-art="art-lavender"
+              >
+                <div class="art art-lavender"></div>
+                <button class="card-check" aria-label="选择紫罗兰来信">
+                  <svg viewBox="0 0 18 18" aria-hidden="true"><path d="m4 9 3 3 7-7"></path></svg>
+                </button>
+                <button class="favorite" aria-label="收藏紫罗兰来信">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M20.2 5.7c-1.7-1.7-4.4-1.7-6.1 0L12 7.8 9.9 5.7a4.3 4.3 0 0 0-6.1 6.1L12 20l8.2-8.2a4.3 4.3 0 0 0 0-6.1Z"></path>
+                  </svg>
+                </button>
+                <div class="card-copy">
+                  <small>人物</small>
+                  <strong>紫罗兰来信</strong>
+                </div>
+              </article>
+
+              <article
+                class="art-card"
+                data-title="柚子汽水"
+                data-id="IMG · 0246"
+                data-size="832 × 1216"
+                data-art="art-citrus"
+              >
+                <div class="art art-citrus"></div>
+                <button class="card-check checked" aria-label="选择柚子汽水">
+                  <svg viewBox="0 0 18 18" aria-hidden="true"><path d="m4 9 3 3 7-7"></path></svg>
+                </button>
+                <button class="favorite" aria-label="收藏柚子汽水">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M20.2 5.7c-1.7-1.7-4.4-1.7-6.1 0L12 7.8 9.9 5.7a4.3 4.3 0 0 0-6.1 6.1L12 20l8.2-8.2a4.3 4.3 0 0 0 0-6.1Z"></path>
+                  </svg>
+                </button>
+                <div class="card-copy">
+                  <small>色彩练习</small>
+                  <strong>柚子汽水</strong>
+                </div>
+              </article>
+
+              <article
+                class="art-card"
+                data-title="潮汐梦境"
+                data-id="IMG · 0245"
+                data-size="1216 × 832"
+                data-art="art-tide"
+              >
+                <div class="art art-tide"></div>
+                <button class="card-check" aria-label="选择潮汐梦境">
+                  <svg viewBox="0 0 18 18" aria-hidden="true"><path d="m4 9 3 3 7-7"></path></svg>
+                </button>
+                <button class="favorite on" aria-label="收藏潮汐梦境">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M20.2 5.7c-1.7-1.7-4.4-1.7-6.1 0L12 7.8 9.9 5.7a4.3 4.3 0 0 0-6.1 6.1L12 20l8.2-8.2a4.3 4.3 0 0 0 0-6.1Z"></path>
+                  </svg>
+                </button>
+                <div class="card-copy">
+                  <small>风景</small>
+                  <strong>潮汐梦境</strong>
+                </div>
+              </article>
+
+              <article
+                class="art-card"
+                data-title="散步地图"
+                data-id="IMG · 0244"
+                data-size="1024 × 1024"
+                data-art="art-map"
+              >
+                <div class="art art-map"></div>
+                <button class="card-check" aria-label="选择散步地图">
+                  <svg viewBox="0 0 18 18" aria-hidden="true"><path d="m4 9 3 3 7-7"></path></svg>
+                </button>
+                <button class="favorite" aria-label="收藏散步地图">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M20.2 5.7c-1.7-1.7-4.4-1.7-6.1 0L12 7.8 9.9 5.7a4.3 4.3 0 0 0-6.1 6.1L12 20l8.2-8.2a4.3 4.3 0 0 0 0-6.1Z"></path>
+                  </svg>
+                </button>
+                <div class="card-copy">
+                  <small>随手记</small>
+                  <strong>散步地图</strong>
+                </div>
+              </article>
+            </div>
+
+            <div class="selection-dock">
+              <span class="selected-badge" id="selectedCount">2</span>
+              <span>已选择作品</span>
+              <span class="dock-divider"></span>
+              <button class="dock-action">添加标签</button>
+              <button class="dock-action">加入分组</button>
+              <button class="dock-action">导出</button>
+              <button class="dock-action primary">编辑提示词</button>
+            </div>
+          </section>
+        </section>
+
+        <aside class="inspector glass" aria-label="作品详情">
+          <header class="inspector-head">
+            <div>
+              <span>Selected piece</span>
+              <strong>作品一览</strong>
+            </div>
+            <button class="head-more" aria-label="更多操作">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="5" cy="12" r="1.5"></circle>
+                <circle cx="12" cy="12" r="1.5"></circle>
+                <circle cx="19" cy="12" r="1.5"></circle>
+              </svg>
+            </button>
+          </header>
+
+          <div class="preview">
+            <div class="preview-art" id="previewArt">
+              <img src="./assets/meadow-dream.png" alt="作品预览" />
+            </div>
+            <div class="preview-tools">
+              <button aria-label="放大预览">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <circle cx="11" cy="11" r="6"></circle>
+                  <path d="m16 16 4 4M11 8v6M8 11h6"></path>
+                </svg>
+              </button>
+              <button aria-label="定位文件">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M3.5 7.5h6l2-2h9v13h-17z"></path>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="detail-title">
+            <div>
+              <h2 id="detailTitle">风从山谷来</h2>
+              <p><span id="detailId">IMG · 0248</span> · <span id="detailSize">832 × 1216</span></p>
+            </div>
+            <button class="detail-favorite on" id="detailFavorite" aria-label="收藏当前作品">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M20.2 5.7c-1.7-1.7-4.4-1.7-6.1 0L12 7.8 9.9 5.7a4.3 4.3 0 0 0-6.1 6.1L12 20l8.2-8.2a4.3 4.3 0 0 0 0-6.1Z"></path>
+              </svg>
+            </button>
+          </div>
+
+          <div class="tag-row">
+            <span class="tag accent">原野</span>
+            <span class="tag">长发</span>
+            <span class="tag">薄暮</span>
+            <span class="tag">柔光</span>
+            <button class="tag" id="addTag">＋ 添加</button>
+          </div>
+
+          <details class="info-card" open>
+            <summary>
+              <span class="summary-icon">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M5 4h14v16H5zM8 8h8M8 12h6M8 16h4"></path>
+                </svg>
+              </span>
+              <span>正向提示词</span>
+              <svg class="chevron" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m6 9 6 6 6-6"></path>
+              </svg>
+            </summary>
+            <p class="prompt">
+              1girl, windswept long hair, ivory dress, standing in a meadow,
+              pale wildflowers, golden hour, soft gouache texture, muted colors…
+              <button class="copy-button" id="copyPrompt" aria-label="复制提示词">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <rect x="8" y="8" width="11" height="11" rx="2"></rect>
+                  <path d="M16 8V5H5v11h3"></path>
+                </svg>
+              </button>
+            </p>
+          </details>
+
+          <div class="meta-grid">
+            <div class="meta-item">
+              <span>模型</span>
+              <strong>NAI Diffusion V4</strong>
+            </div>
+            <div class="meta-item">
+              <span>种子</span>
+              <strong>33681702</strong>
+            </div>
+            <div class="meta-item">
+              <span>采样</span>
+              <strong>Euler Ancestral</strong>
+            </div>
+            <div class="meta-item">
+              <span>创建时间</span>
+              <strong>今天 16:42</strong>
+            </div>
+          </div>
+
+          <footer class="inspector-foot">
+            <div class="theme-switch" aria-label="环境光切换">
+              <button class="theme-button active" data-theme="mist">晨雾</button>
+              <button class="theme-button" data-theme="sunset">晚霞</button>
+              <button class="theme-button" data-theme="night">夜航</button>
+            </div>
+            <span class="storage">本地资料库 · 24.8 GB</span>
+          </footer>
+        </aside>
+      </section>
+    </main>
+
+    <div class="toast" id="toast" role="status">
+      <span class="toast-dot"></span>
+      <span id="toastText">操作完成</span>
+    </div>
+
+    <script>
+      const appShell = document.querySelector("#appShell");
+      const cards = [...document.querySelectorAll(".art-card")];
+      const selectedCount = document.querySelector("#selectedCount");
+      const previewArt = document.querySelector("#previewArt");
+      const detailTitle = document.querySelector("#detailTitle");
+      const detailId = document.querySelector("#detailId");
+      const detailSize = document.querySelector("#detailSize");
+      const detailFavorite = document.querySelector("#detailFavorite");
+      const toast = document.querySelector("#toast");
+      const toastText = document.querySelector("#toastText");
+      let toastTimer;
+
+      function showToast(message) {
+        toastText.textContent = message;
+        toast.classList.add("show");
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => toast.classList.remove("show"), 1800);
+      }
+
+      function syncSelection() {
+        selectedCount.textContent = document.querySelectorAll(".card-check.checked").length;
+      }
+
+      function setPreview(card) {
+        cards.forEach((item) => item.classList.toggle("focused", item === card));
+        detailTitle.textContent = card.dataset.title;
+        detailId.textContent = card.dataset.id;
+        detailSize.textContent = card.dataset.size;
+
+        const isImage = card.dataset.art === "image";
+        previewArt.className = "preview-art";
+        previewArt.innerHTML = isImage
+          ? '<img src="./assets/meadow-dream.png" alt="作品预览" />'
+          : "";
+
+        if (!isImage) {
+          previewArt.classList.add(card.dataset.art);
+        }
+
+        const favorite = card.querySelector(".favorite").classList.contains("on");
+        detailFavorite.classList.toggle("on", favorite);
+      }
+
+      cards.forEach((card) => {
+        card.addEventListener("click", () => setPreview(card));
+
+        card.querySelector(".card-check").addEventListener("click", (event) => {
+          event.stopPropagation();
+          event.currentTarget.classList.toggle("checked");
+          syncSelection();
+        });
+
+        card.querySelector(".favorite").addEventListener("click", (event) => {
+          event.stopPropagation();
+          event.currentTarget.classList.toggle("on");
+          if (card.classList.contains("focused")) {
+            detailFavorite.classList.toggle("on", event.currentTarget.classList.contains("on"));
+          }
+          showToast(event.currentTarget.classList.contains("on") ? "已加入喜欢" : "已取消喜欢");
+        });
+      });
+
+      document.querySelectorAll(".chip").forEach((chip) => {
+        chip.addEventListener("click", () => {
+          document.querySelectorAll(".chip").forEach((item) => item.classList.remove("active"));
+          chip.classList.add("active");
+          showToast(`正在查看：${chip.textContent}`);
+        });
+      });
+
+      document.querySelectorAll(".rail-item").forEach((item) => {
+        item.addEventListener("click", () => {
+          document.querySelectorAll(".rail-item").forEach((nav) => nav.classList.remove("active"));
+          item.classList.add("active");
+        });
+      });
+
+      document.querySelectorAll(".view-button").forEach((button) => {
+        button.addEventListener("click", () => {
+          document.querySelectorAll(".view-button").forEach((item) => item.classList.remove("active"));
+          button.classList.add("active");
+          showToast(button.getAttribute("aria-label"));
+        });
+      });
+
+      document.querySelectorAll(".theme-button").forEach((button) => {
+        button.addEventListener("click", () => {
+          document.body.dataset.theme = button.dataset.theme;
+          document.querySelectorAll(".theme-button").forEach((item) => item.classList.remove("active"));
+          button.classList.add("active");
+          showToast(`环境光已切换为${button.textContent}`);
+        });
+      });
+
+      document.querySelector("#importButton").addEventListener("click", () => {
+        showToast("可从 PNG、文件夹或压缩包收录");
+      });
+
+      document.querySelector("#addTag").addEventListener("click", () => {
+        showToast("标签编辑器已准备");
+      });
+
+      document.querySelector("#copyPrompt").addEventListener("click", async () => {
+        const text = document.querySelector(".prompt").childNodes[0].textContent.trim();
+        try {
+          await navigator.clipboard.writeText(text);
+        } catch {
+          // Local prototype may not receive clipboard permission.
+        }
+        showToast("提示词已复制");
+      });
+
+      detailFavorite.addEventListener("click", () => {
+        detailFavorite.classList.toggle("on");
+        const focused = document.querySelector(".art-card.focused .favorite");
+        focused?.classList.toggle("on", detailFavorite.classList.contains("on"));
+        showToast(detailFavorite.classList.contains("on") ? "已加入喜欢" : "已取消喜欢");
+      });
+
+      document.querySelector("#searchInput").addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          showToast(event.currentTarget.value.trim() ? `搜索：${event.currentTarget.value}` : "请输入搜索内容");
+        }
+      });
+
+      const finePointer = matchMedia("(pointer: fine)").matches;
+      const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+      if (finePointer && !reduceMotion) {
+        appShell.addEventListener("pointermove", (event) => {
+          const rect = appShell.getBoundingClientRect();
+          const x = (event.clientX - rect.left) / rect.width;
+          const y = (event.clientY - rect.top) / rect.height;
+          appShell.style.setProperty("--mx", `${x * 100}%`);
+          appShell.style.setProperty("--my", `${y * 100}%`);
+          appShell.style.transform =
+            `rotateX(${(0.5 - y) * 1.1}deg) rotateY(${(x - 0.5) * 1.2}deg)`;
+        });
+
+        appShell.addEventListener("pointerleave", () => {
+          appShell.style.setProperty("--mx", "50%");
+          appShell.style.setProperty("--my", "50%");
+          appShell.style.transform = "rotateX(0deg) rotateY(0deg)";
+        });
+      }
+    </script>
+  </body>
+</html>
