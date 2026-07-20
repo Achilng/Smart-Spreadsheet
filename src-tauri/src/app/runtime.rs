@@ -8,9 +8,9 @@ use thiserror::Error;
 
 use crate::db::{
     BatchSummary, DedupeCluster, DedupeMode, GroupSummary, LibrarySummary, MutableRowState,
-    QuickEditCondition, QuickEditError, QuickTagApplyResult, QuickTagAssociation, QuickTagPreview,
-    RowPage, RowQuery, RowSelection, TagMatchMode, TagMutationError, TagMutationResult, TagSelectionSummary,
-    TagSummary,
+    QuickEditCondition, QuickEditError, QuickGroupApplyResult, QuickGroupChange, QuickGroupPreview,
+    QuickTagApplyResult, QuickTagAssociation, QuickTagPreview, RowPage, RowQuery, RowSelection,
+    TagMatchMode, TagMutationError, TagMutationResult, TagSelectionSummary, TagSummary,
 };
 use crate::images::{ImageVariant, RowImageError};
 use crate::storage::{
@@ -60,7 +60,7 @@ pub(crate) enum AppRuntimeError {
     Database(#[from] crate::db::DatabaseError),
     #[error("Tag 操作失败: {0}")]
     TagMutation(#[from] TagMutationError),
-    #[error("快速编辑失败: {0}")]
+    #[error("快速整理失败: {0}")]
     QuickEdit(#[from] QuickEditError),
     #[error("删除行失败: {0}")]
     RowDeletion(#[from] RowDeletionError),
@@ -330,6 +330,36 @@ impl AppRuntime {
         changes: &[QuickTagAssociation],
     ) -> Result<u64, AppRuntimeError> {
         self.with_database_mut(|db| db.reapply_quick_tag_changes(changes))
+    }
+
+    pub(crate) fn preview_quick_group(
+        &self,
+        condition: &QuickEditCondition,
+        group_id: i64,
+    ) -> Result<QuickGroupPreview, AppRuntimeError> {
+        self.with_database(|db| db.preview_quick_group(condition, group_id))
+    }
+
+    pub(crate) fn apply_quick_group(
+        &self,
+        condition: &QuickEditCondition,
+        group_id: i64,
+    ) -> Result<QuickGroupApplyResult, AppRuntimeError> {
+        self.with_database_mut(|db| db.apply_quick_group(condition, group_id))
+    }
+
+    pub(crate) fn revert_quick_group_changes(
+        &self,
+        changes: &[QuickGroupChange],
+    ) -> Result<u64, AppRuntimeError> {
+        self.with_database_mut(|db| db.revert_quick_group_changes(changes))
+    }
+
+    pub(crate) fn reapply_quick_group_changes(
+        &self,
+        changes: &[QuickGroupChange],
+    ) -> Result<u64, AppRuntimeError> {
+        self.with_database_mut(|db| db.reapply_quick_group_changes(changes))
     }
 
     pub(crate) fn delete_rows(

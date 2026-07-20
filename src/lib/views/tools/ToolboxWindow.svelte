@@ -33,8 +33,8 @@
   const tools: ToolDefinition[] = [
     {
       id: "quickEdit",
-      label: "快速编辑",
-      description: "按提示词组合批量整理整个资料库",
+      label: "快速整理",
+      description: "按提示词组合批量打 Tag 或分组",
       group: "常用工具",
       requiresLibrary: true,
       icon: "✎",

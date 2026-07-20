@@ -9,7 +9,7 @@ use super::{Database, DatabaseError};
 
 const PREVIEW_SAMPLE_LIMIT: usize = 12;
 
-/// 快速编辑的文本匹配字段。当前前端固定使用全部资料文本区域，
+/// 快速整理的文本匹配字段。当前前端固定使用全部资料文本区域，
 /// 后续提示词替换等动作可以复用同一条件结构。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -58,6 +58,36 @@ pub struct QuickTagApplyResult {
     pub changes: Vec<QuickTagAssociation>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QuickGroupPreview {
+    pub scanned_rows: u64,
+    pub matched_rows: u64,
+    pub rows_needing_changes: u64,
+    pub already_in_group_rows: u64,
+    pub sample_row_ids: Vec<i64>,
+    pub normalized_tokens: Vec<String>,
+    pub target_group_id: i64,
+    pub target_group_name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QuickGroupChange {
+    pub row_id: i64,
+    pub previous_group_id: Option<i64>,
+    pub target_group_id: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QuickGroupApplyResult {
+    pub scanned_rows: u64,
+    pub matched_rows: u64,
+    pub changed_rows: u64,
+    pub changes: Vec<QuickGroupChange>,
+}
+
 #[derive(Debug, Error)]
 pub enum QuickEditError {
     #[error("数据库操作失败: {0}")]
@@ -76,6 +106,8 @@ pub enum QuickEditError {
     UnknownRow(i64),
     #[error("图片 ID 必须为正整数: {0}")]
     InvalidRowId(i64),
+    #[error("分组 ID 必须为正整数: {0}")]
+    InvalidGroupId(i64),
 }
 
 impl From<rusqlite::Error> for QuickEditError {
@@ -88,6 +120,12 @@ impl From<rusqlite::Error> for QuickEditError {
 struct EvaluatedCondition {
     fields: HashSet<QuickEditTextField>,
     tokens: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct MatchingRow {
+    id: i64,
+    group_id: Option<i64>,
 }
 
 impl EvaluatedCondition {
@@ -152,16 +190,16 @@ impl Database {
         let condition = EvaluatedCondition::new(condition)?;
         let tags = validated_tags(&self.connection, tags)?;
         let scanned_rows = row_count(&self.connection)?;
-        let matched_row_ids = matching_row_ids(&self.connection, &condition)?;
+        let matched_rows = matching_rows(&self.connection, &condition)?;
         let tag_ids = tag_ids(&self.connection, &tags)?;
         let existing = existing_associations(&self.connection, &tag_ids)?;
 
         let mut rows_needing_changes = 0_u64;
         let mut associations_to_add = 0_u64;
-        for row_id in &matched_row_ids {
+        for row in &matched_rows {
             let missing = tag_ids
                 .iter()
-                .filter(|tag_id| !existing.contains(&(*row_id, **tag_id)))
+                .filter(|tag_id| !existing.contains(&(row.id, **tag_id)))
                 .count();
             if missing > 0 {
                 rows_needing_changes += 1;
@@ -169,17 +207,18 @@ impl Database {
                     u64::try_from(missing).map_err(|_| DatabaseError::CountOverflow)?;
             }
         }
-        let matched_rows =
-            u64::try_from(matched_row_ids.len()).map_err(|_| DatabaseError::CountOverflow)?;
+        let matched_row_count =
+            u64::try_from(matched_rows.len()).map_err(|_| DatabaseError::CountOverflow)?;
 
         Ok(QuickTagPreview {
             scanned_rows,
-            matched_rows,
+            matched_rows: matched_row_count,
             rows_needing_changes,
-            already_tagged_rows: matched_rows - rows_needing_changes,
+            already_tagged_rows: matched_row_count - rows_needing_changes,
             associations_to_add,
-            sample_row_ids: matched_row_ids
+            sample_row_ids: matched_rows
                 .into_iter()
+                .map(|row| row.id)
                 .take(PREVIEW_SAMPLE_LIMIT)
                 .collect(),
             normalized_tokens: condition.tokens,
@@ -198,19 +237,19 @@ impl Database {
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         let tags = validated_tags(&transaction, tags)?;
         let scanned_rows = row_count(&transaction)?;
-        let matched_row_ids = matching_row_ids(&transaction, &condition)?;
+        let matched_rows = matching_rows(&transaction, &condition)?;
         let tag_ids = tag_ids(&transaction, &tags)?;
 
         let mut insert = transaction
             .prepare("INSERT OR IGNORE INTO row_tags(row_id, tag_id) VALUES (?1, ?2)")?;
         let mut changed_rows = HashSet::new();
         let mut changes = Vec::new();
-        for row_id in &matched_row_ids {
+        for row in &matched_rows {
             for (tag, tag_id) in tags.iter().zip(&tag_ids) {
-                if insert.execute(params![row_id, tag_id])? > 0 {
-                    changed_rows.insert(*row_id);
+                if insert.execute(params![row.id, tag_id])? > 0 {
+                    changed_rows.insert(row.id);
                     changes.push(QuickTagAssociation {
-                        row_id: *row_id,
+                        row_id: row.id,
                         tag: tag.clone(),
                     });
                 }
@@ -222,7 +261,7 @@ impl Database {
 
         Ok(QuickTagApplyResult {
             scanned_rows,
-            matched_rows: u64::try_from(matched_row_ids.len())
+            matched_rows: u64::try_from(matched_rows.len())
                 .map_err(|_| DatabaseError::CountOverflow)?,
             changed_rows: u64::try_from(changed_rows.len())
                 .map_err(|_| DatabaseError::CountOverflow)?,
@@ -244,6 +283,95 @@ impl Database {
         changes: &[QuickTagAssociation],
     ) -> Result<u64, QuickEditError> {
         self.mutate_quick_tag_changes(changes, true)
+    }
+
+    pub fn preview_quick_group(
+        &self,
+        condition: &QuickEditCondition,
+        group_id: i64,
+    ) -> Result<QuickGroupPreview, QuickEditError> {
+        let condition = EvaluatedCondition::new(condition)?;
+        let group_name = validated_group_name(&self.connection, group_id)?;
+        let scanned_rows = row_count(&self.connection)?;
+        let matched_rows = matching_rows(&self.connection, &condition)?;
+        let rows_needing_changes = u64::try_from(
+            matched_rows
+                .iter()
+                .filter(|row| row.group_id != Some(group_id))
+                .count(),
+        )
+        .map_err(|_| DatabaseError::CountOverflow)?;
+        let matched_row_count =
+            u64::try_from(matched_rows.len()).map_err(|_| DatabaseError::CountOverflow)?;
+
+        Ok(QuickGroupPreview {
+            scanned_rows,
+            matched_rows: matched_row_count,
+            rows_needing_changes,
+            already_in_group_rows: matched_row_count - rows_needing_changes,
+            sample_row_ids: matched_rows
+                .into_iter()
+                .map(|row| row.id)
+                .take(PREVIEW_SAMPLE_LIMIT)
+                .collect(),
+            normalized_tokens: condition.tokens,
+            target_group_id: group_id,
+            target_group_name: group_name,
+        })
+    }
+
+    pub fn apply_quick_group(
+        &mut self,
+        condition: &QuickEditCondition,
+        group_id: i64,
+    ) -> Result<QuickGroupApplyResult, QuickEditError> {
+        let condition = EvaluatedCondition::new(condition)?;
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        validated_group_name(&transaction, group_id)?;
+        let scanned_rows = row_count(&transaction)?;
+        let matched_rows = matching_rows(&transaction, &condition)?;
+        let changes = matched_rows
+            .iter()
+            .filter(|row| row.group_id != Some(group_id))
+            .map(|row| QuickGroupChange {
+                row_id: row.id,
+                previous_group_id: row.group_id,
+                target_group_id: group_id,
+            })
+            .collect::<Vec<_>>();
+
+        let mut update = transaction.prepare("UPDATE rows SET group_id = ?2 WHERE id = ?1")?;
+        for change in &changes {
+            update.execute(params![change.row_id, group_id])?;
+        }
+        drop(update);
+        transaction.commit()?;
+        self.bump_data_version();
+
+        Ok(QuickGroupApplyResult {
+            scanned_rows,
+            matched_rows: u64::try_from(matched_rows.len())
+                .map_err(|_| DatabaseError::CountOverflow)?,
+            changed_rows: u64::try_from(changes.len())
+                .map_err(|_| DatabaseError::CountOverflow)?,
+            changes,
+        })
+    }
+
+    pub fn revert_quick_group_changes(
+        &mut self,
+        changes: &[QuickGroupChange],
+    ) -> Result<u64, QuickEditError> {
+        self.mutate_quick_group_changes(changes, false)
+    }
+
+    pub fn reapply_quick_group_changes(
+        &mut self,
+        changes: &[QuickGroupChange],
+    ) -> Result<u64, QuickEditError> {
+        self.mutate_quick_group_changes(changes, true)
     }
 
     fn mutate_quick_tag_changes(
@@ -300,14 +428,67 @@ impl Database {
         self.bump_data_version();
         Ok(changed)
     }
+
+    fn mutate_quick_group_changes(
+        &mut self,
+        changes: &[QuickGroupChange],
+        reapply: bool,
+    ) -> Result<u64, QuickEditError> {
+        let changes = normalize_group_changes(changes)?;
+        if changes.is_empty() {
+            return Ok(0);
+        }
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+
+        let mut group_ids = HashSet::new();
+        for change in &changes {
+            if reapply {
+                group_ids.insert(change.target_group_id);
+            } else if let Some(group_id) = change.previous_group_id {
+                group_ids.insert(group_id);
+            }
+            let row_exists: bool = transaction.query_row(
+                "SELECT EXISTS(SELECT 1 FROM rows WHERE id = ?1)",
+                [change.row_id],
+                |row| row.get(0),
+            )?;
+            if !row_exists {
+                return Err(QuickEditError::UnknownRow(change.row_id));
+            }
+        }
+        for group_id in group_ids {
+            validated_group_name(&transaction, group_id)?;
+        }
+
+        let mut update = transaction.prepare(
+            "UPDATE rows SET group_id = ?2
+             WHERE id = ?1 AND group_id IS NOT ?2",
+        )?;
+        let mut changed = 0_u64;
+        for change in &changes {
+            let group_id = if reapply {
+                Some(change.target_group_id)
+            } else {
+                change.previous_group_id
+            };
+            changed += u64::try_from(update.execute(params![change.row_id, group_id])?)
+                .map_err(|_| DatabaseError::CountOverflow)?;
+        }
+        drop(update);
+        transaction.commit()?;
+        self.bump_data_version();
+        Ok(changed)
+    }
 }
 
-fn matching_row_ids(
+fn matching_rows(
     connection: &Connection,
     condition: &EvaluatedCondition,
-) -> Result<Vec<i64>, rusqlite::Error> {
+) -> Result<Vec<MatchingRow>, rusqlite::Error> {
     let mut statement = connection.prepare(
-        "SELECT id, positive_prompt, character_prompt, negative_prompt, artists, note
+        "SELECT id, positive_prompt, character_prompt, negative_prompt, artists, note, group_id
          FROM rows
          ORDER BY id",
     )?;
@@ -319,11 +500,12 @@ fn matching_row_ids(
             row.get::<_, Option<String>>(3)?,
             row.get::<_, Option<String>>(4)?,
             row.get::<_, Option<String>>(5)?,
+            row.get::<_, Option<i64>>(6)?,
         ))
     })?;
     let mut matched = Vec::new();
     for row in rows {
-        let (row_id, positive, character, negative, artists, note) = row?;
+        let (row_id, positive, character, negative, artists, note, group_id) = row?;
         if condition.matches(
             positive.as_deref(),
             character.as_deref(),
@@ -331,7 +513,10 @@ fn matching_row_ids(
             artists.as_deref(),
             note.as_deref(),
         ) {
-            matched.push(row_id);
+            matched.push(MatchingRow {
+                id: row_id,
+                group_id,
+            });
         }
     }
     Ok(matched)
@@ -365,6 +550,23 @@ fn validated_tags(connection: &Connection, tags: &[String]) -> Result<Vec<String
         return Err(QuickEditError::UnknownTags(unknown));
     }
     Ok(tags)
+}
+
+fn validated_group_name(
+    connection: &Connection,
+    group_id: i64,
+) -> Result<String, QuickEditError> {
+    if group_id <= 0 {
+        return Err(QuickEditError::InvalidGroupId(group_id));
+    }
+    connection
+        .query_row(
+            "SELECT name FROM groups WHERE id = ?1",
+            [group_id],
+            |row| row.get(0),
+        )
+        .optional()?
+        .ok_or_else(|| DatabaseError::GroupNotFound(group_id).into())
 }
 
 fn tag_ids(connection: &Connection, tags: &[String]) -> Result<Vec<i64>, rusqlite::Error> {
@@ -413,6 +615,30 @@ fn normalize_changes(
                 row_id: change.row_id,
                 tag: tag.to_owned(),
             });
+        }
+    }
+    Ok(normalized)
+}
+
+fn normalize_group_changes(
+    changes: &[QuickGroupChange],
+) -> Result<Vec<QuickGroupChange>, QuickEditError> {
+    let mut seen = HashSet::with_capacity(changes.len());
+    let mut normalized = Vec::with_capacity(changes.len());
+    for change in changes {
+        if change.row_id <= 0 {
+            return Err(QuickEditError::InvalidRowId(change.row_id));
+        }
+        if change.target_group_id <= 0 {
+            return Err(QuickEditError::InvalidGroupId(change.target_group_id));
+        }
+        if change.previous_group_id.is_some_and(|group_id| group_id <= 0) {
+            return Err(QuickEditError::InvalidGroupId(
+                change.previous_group_id.unwrap_or_default(),
+            ));
+        }
+        if seen.insert(change.row_id) {
+            normalized.push(change.clone());
         }
     }
     Ok(normalized)
@@ -651,6 +877,124 @@ mod tests {
 
         assert!(matches!(result, Err(QuickEditError::UnknownTags(_))));
         assert!(database.get_rows_by_ids(&[1]).unwrap()[0].tags.is_empty());
+    }
+
+    #[test]
+    fn preview_apply_revert_and_reapply_group_restore_each_previous_group() {
+        let mut database = database_with_rows(4);
+        let previous_group = database.create_group("原分组").unwrap();
+        let target_group = database.create_group("目标分组").unwrap();
+        database
+            .assign_rows_to_group(
+                &crate::db::RowSelection::Explicit { row_ids: vec![1] },
+                target_group.id,
+            )
+            .unwrap();
+        database
+            .assign_rows_to_group(
+                &crate::db::RowSelection::Explicit { row_ids: vec![2] },
+                previous_group.id,
+            )
+            .unwrap();
+        database
+            .connection
+            .execute(
+                "UPDATE rows SET positive_prompt = 'genshin, hutao' WHERE id IN (1, 2, 3)",
+                [],
+            )
+            .unwrap();
+
+        let condition = prompt_condition(&["genshin", "hutao"]);
+        let preview = database
+            .preview_quick_group(&condition, target_group.id)
+            .unwrap();
+        assert_eq!(preview.scanned_rows, 4);
+        assert_eq!(preview.matched_rows, 3);
+        assert_eq!(preview.rows_needing_changes, 2);
+        assert_eq!(preview.already_in_group_rows, 1);
+        assert_eq!(preview.sample_row_ids, vec![1, 2, 3]);
+
+        let applied = database
+            .apply_quick_group(&condition, target_group.id)
+            .unwrap();
+        assert_eq!(applied.changed_rows, 2);
+        assert_eq!(
+            applied.changes,
+            vec![
+                QuickGroupChange {
+                    row_id: 2,
+                    previous_group_id: Some(previous_group.id),
+                    target_group_id: target_group.id,
+                },
+                QuickGroupChange {
+                    row_id: 3,
+                    previous_group_id: None,
+                    target_group_id: target_group.id,
+                },
+            ]
+        );
+        assert_eq!(
+            database
+                .get_rows_by_ids(&[1, 2, 3])
+                .unwrap()
+                .iter()
+                .map(|row| row.group_id)
+                .collect::<Vec<_>>(),
+            vec![
+                Some(target_group.id),
+                Some(target_group.id),
+                Some(target_group.id)
+            ]
+        );
+
+        assert_eq!(
+            database
+                .revert_quick_group_changes(&applied.changes)
+                .unwrap(),
+            2
+        );
+        assert_eq!(
+            database
+                .get_rows_by_ids(&[1, 2, 3])
+                .unwrap()
+                .iter()
+                .map(|row| row.group_id)
+                .collect::<Vec<_>>(),
+            vec![Some(target_group.id), Some(previous_group.id), None]
+        );
+
+        assert_eq!(
+            database
+                .reapply_quick_group_changes(&applied.changes)
+                .unwrap(),
+            2
+        );
+        assert_eq!(
+            database
+                .get_rows_by_ids(&[2, 3])
+                .unwrap()
+                .iter()
+                .map(|row| row.group_id)
+                .collect::<Vec<_>>(),
+            vec![Some(target_group.id), Some(target_group.id)]
+        );
+    }
+
+    #[test]
+    fn quick_group_rejects_unknown_target_without_changes() {
+        let mut database = database_with_rows(1);
+        database
+            .connection
+            .execute("UPDATE rows SET positive_prompt = 'genshin, hutao'", [])
+            .unwrap();
+
+        let result = database.apply_quick_group(&prompt_condition(&["genshin"]), 999);
+
+        assert!(matches!(
+            result,
+            Err(QuickEditError::Database(DatabaseError::GroupNotFound(999)))
+        ));
+        assert_eq!(database.get_rows_by_ids(&[1]).unwrap()[0].group_id, None);
     }
 
     #[test]

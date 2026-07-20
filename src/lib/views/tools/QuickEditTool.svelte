@@ -3,13 +3,23 @@
   import { onMount } from "svelte";
 
   import {
+    applyQuickGroup,
     applyQuickTag,
+    createTag,
+    deleteTag,
     getRowsByIds,
+    listGroups,
     listTags,
+    previewQuickGroup,
     previewQuickTag,
+    reapplyQuickGroupChanges,
     reapplyQuickTagChanges,
+    revertQuickGroupChanges,
     revertQuickTagChanges,
+    type GroupSummary,
     type QuickEditCondition,
+    type QuickGroupApplyResult,
+    type QuickGroupPreview,
     type QuickTagApplyResult,
     type QuickTagPreview,
     type RowRecord,
@@ -32,16 +42,27 @@
 
   let { active = false }: { active?: boolean } = $props();
 
+  type Operation = "tag" | "group";
+  type ActivePreview = QuickTagPreview | QuickGroupPreview;
+  type ActiveResult = QuickTagApplyResult | QuickGroupApplyResult;
+
+  let operation = $state<Operation>("tag");
   let promptText = $state("");
   let tagSearch = $state("");
+  let newTagName = $state("");
   let tags = $state<TagSummary[]>([]);
   let selectedTags = $state<string[]>([]);
+  let groupSearch = $state("");
+  let groups = $state<GroupSummary[]>([]);
+  let selectedGroupId = $state<number | null>(null);
   let tagsLoading = $state(false);
+  let groupsLoading = $state(false);
+  let creatingTag = $state(false);
   let previewing = $state(false);
   let applying = $state(false);
-  let preview = $state<QuickTagPreview | null>(null);
+  let preview = $state<ActivePreview | null>(null);
   let sampleRows = $state<RowRecord[]>([]);
-  let lastResult = $state<QuickTagApplyResult | null>(null);
+  let lastResult = $state<ActiveResult | null>(null);
   let error = $state<string | null>(null);
   let openingRowId = $state<number | null>(null);
 
@@ -51,16 +72,27 @@
       ? tags.filter(tag => tag.name.toLocaleLowerCase().includes(tagSearch.trim().toLocaleLowerCase()))
       : tags,
   );
+  const visibleGroups = $derived(
+    groupSearch.trim()
+      ? groups.filter(group =>
+          group.name.toLocaleLowerCase().includes(groupSearch.trim().toLocaleLowerCase())
+        )
+      : groups,
+  );
+  const targetReady = $derived(
+    operation === "tag" ? selectedTags.length > 0 : selectedGroupId !== null,
+  );
   const canPreview = $derived(
     requiredTokens.length > 0 &&
-      selectedTags.length > 0 &&
+      targetReady &&
       !previewing &&
       !applying &&
+      !creatingTag &&
       !history.busy,
   );
 
   onMount(() => {
-    void refreshTags();
+    void Promise.all([refreshTags(), refreshGroups()]);
   });
 
   function condition(): QuickEditCondition {
@@ -91,6 +123,12 @@
     error = null;
   }
 
+  function setOperation(next: Operation): void {
+    if (operation === next) return;
+    operation = next;
+    invalidatePreview();
+  }
+
   function updatePromptText(event: Event): void {
     promptText = (event.currentTarget as HTMLTextAreaElement).value;
     invalidatePreview();
@@ -105,6 +143,12 @@
     invalidatePreview();
   }
 
+  function selectGroup(groupId: number): void {
+    if (selectedGroupId === groupId) return;
+    selectedGroupId = groupId;
+    invalidatePreview();
+  }
+
   async function refreshTags(): Promise<void> {
     tagsLoading = true;
     try {
@@ -116,13 +160,89 @@
     }
   }
 
+  async function refreshGroups(): Promise<void> {
+    groupsLoading = true;
+    try {
+      groups = await listGroups();
+      if (
+        selectedGroupId !== null &&
+        !groups.some(group => group.id === selectedGroupId)
+      ) {
+        selectedGroupId = null;
+        invalidatePreview();
+      }
+    } catch (cause) {
+      error = `无法读取分组：${errorText(cause)}`;
+    } finally {
+      groupsLoading = false;
+    }
+  }
+
+  async function createNewTag(event: SubmitEvent): Promise<void> {
+    event.preventDefault();
+    const name = newTagName.trim();
+    if (!name || creatingTag || history.busy) return;
+    creatingTag = true;
+    error = null;
+    try {
+      const created = await createTag(name);
+      await refreshTags();
+      if (created) {
+        await notifyMainStateChanged("libraryEdited");
+      }
+      if (!selectedTags.includes(name)) {
+        selectedTags = [...selectedTags, name];
+      }
+      newTagName = "";
+      tagSearch = "";
+      invalidatePreview();
+      if (created) {
+        recordHistory({
+          label: `新建 Tag「${name}」`,
+          undo: async () => {
+            await deleteTag(name);
+            selectedTags = selectedTags.filter(tag => tag !== name);
+            invalidatePreview();
+            await refreshAfterMutation();
+          },
+          redo: async () => {
+            await createTag(name);
+            if (!selectedTags.includes(name)) {
+              selectedTags = [...selectedTags, name];
+            }
+            invalidatePreview();
+            await refreshAfterMutation();
+          },
+        });
+      }
+      setNotice({
+        tone: "success",
+        text: created ? `已新建并选中 Tag「${name}」。` : `Tag「${name}」已存在，已为你选中。`,
+      });
+    } catch (cause) {
+      error = `新建 Tag 失败：${errorText(cause)}`;
+    } finally {
+      creatingTag = false;
+    }
+  }
+
+  function isTagPreview(value: ActivePreview): value is QuickTagPreview {
+    return "associationsToAdd" in value;
+  }
+
+  function isTagResult(value: ActiveResult): value is QuickTagApplyResult {
+    return "associationsChanged" in value;
+  }
+
   async function runPreview(): Promise<void> {
     if (!canPreview) return;
     previewing = true;
     error = null;
     lastResult = null;
     try {
-      const result = await previewQuickTag(condition(), selectedTags);
+      const result = operation === "tag"
+        ? await previewQuickTag(condition(), selectedTags)
+        : await previewQuickGroup(condition(), selectedGroupId!);
       const rows = result.sampleRowIds.length > 0
         ? await getRowsByIds(result.sampleRowIds)
         : [];
@@ -138,42 +258,75 @@
   }
 
   async function runApply(): Promise<void> {
-    if (!preview || preview.associationsToAdd === 0 || applying || history.busy) return;
+    if (!preview || preview.rowsNeedingChanges === 0 || applying || history.busy) return;
     applying = true;
     error = null;
     try {
-      const result = await applyQuickTag(condition(), selectedTags);
-      lastResult = result;
-      if (result.changes.length > 0) {
-        const changes = result.changes.map(change => ({ ...change }));
-        const label = `快速打 Tag（${formatCount(result.changedRows)} 张）`;
-        recordHistory({
-          label,
-          undo: async () => {
-            await revertQuickTagChanges(changes);
-            invalidatePreview();
-            await refreshAfterMutation();
-          },
-          redo: async () => {
-            await reapplyQuickTagChanges(changes);
-            invalidatePreview();
-            await refreshAfterMutation();
-          },
+      if (operation === "tag") {
+        const result = await applyQuickTag(condition(), selectedTags);
+        lastResult = result;
+        if (result.changes.length > 0) {
+          const changes = result.changes.map(change => ({ ...change }));
+          recordHistory({
+            label: `快速打 Tag（${formatCount(result.changedRows)} 张）`,
+            undo: async () => {
+              await revertQuickTagChanges(changes);
+              invalidatePreview();
+              await refreshAfterMutation();
+            },
+            redo: async () => {
+              await reapplyQuickTagChanges(changes);
+              invalidatePreview();
+              await refreshAfterMutation();
+            },
+          });
+        }
+        preview = {
+          ...(preview as QuickTagPreview),
+          rowsNeedingChanges: 0,
+          alreadyTaggedRows: preview.matchedRows,
+          associationsToAdd: 0,
+        };
+        setNotice({
+          tone: "success",
+          text: result.associationsChanged > 0
+            ? `快速打标完成：${formatCount(result.changedRows)} 张图片新增了 ${formatCount(result.associationsChanged)} 个 Tag 关联。`
+            : "所有命中图片已经拥有所选 Tag，没有产生修改。",
+        });
+      } else {
+        const groupId = selectedGroupId!;
+        const groupName = groups.find(group => group.id === groupId)?.name ?? "目标分组";
+        const result = await applyQuickGroup(condition(), groupId);
+        lastResult = result;
+        if (result.changes.length > 0) {
+          const changes = result.changes.map(change => ({ ...change }));
+          recordHistory({
+            label: `批量分组到「${groupName}」（${formatCount(result.changedRows)} 张）`,
+            undo: async () => {
+              await revertQuickGroupChanges(changes);
+              invalidatePreview();
+              await refreshAfterMutation();
+            },
+            redo: async () => {
+              await reapplyQuickGroupChanges(changes);
+              invalidatePreview();
+              await refreshAfterMutation();
+            },
+          });
+        }
+        preview = {
+          ...(preview as QuickGroupPreview),
+          rowsNeedingChanges: 0,
+          alreadyInGroupRows: preview.matchedRows,
+        };
+        setNotice({
+          tone: "success",
+          text: result.changedRows > 0
+            ? `批量分组完成：${formatCount(result.changedRows)} 张图片已分到「${groupName}」。`
+            : `所有命中图片已经位于「${groupName}」，没有产生修改。`,
         });
       }
-      preview = {
-        ...preview,
-        rowsNeedingChanges: 0,
-        alreadyTaggedRows: preview.matchedRows,
-        associationsToAdd: 0,
-      };
       await refreshAfterMutation();
-      setNotice({
-        tone: "success",
-        text: result.associationsChanged > 0
-          ? `快速打标完成：${formatCount(result.changedRows)} 张图片新增了 ${formatCount(result.associationsChanged)} 个 Tag 关联。`
-          : "所有命中图片已经拥有所选 Tag，没有产生修改。",
-      });
     } catch (cause) {
       error = errorText(cause);
     } finally {
@@ -182,7 +335,11 @@
   }
 
   async function refreshAfterMutation(): Promise<void> {
-    await Promise.all([refreshTags(), notifyMainStateChanged("libraryEdited")]);
+    await Promise.all([
+      refreshTags(),
+      refreshGroups(),
+      notifyMainStateChanged("libraryEdited"),
+    ]);
   }
 
   async function openInMain(rowId: number): Promise<void> {
@@ -234,8 +391,17 @@
 
 <div class="quick-edit-page">
   <div class="operation-bar">
-    <div class="operation-switcher" aria-label="快速编辑操作类型">
-      <button type="button" class="is-active">添加 Tag</button>
+    <div class="operation-switcher" aria-label="快速整理操作类型">
+      <button
+        type="button"
+        class:is-active={operation === "tag"}
+        onclick={() => setOperation("tag")}
+      >添加 Tag</button>
+      <button
+        type="button"
+        class:is-active={operation === "group"}
+        onclick={() => setOperation("group")}
+      >批量分组</button>
       <button type="button" disabled title="后续版本开放">提示词操作</button>
     </div>
     <div class="history-actions">
@@ -243,7 +409,7 @@
         type="button"
         class="btn btn-ghost"
         disabled={history.undoCount === 0 || history.busy || applying || previewing}
-        title={history.undoLabel ? `撤回：${history.undoLabel}` : "没有可撤回的快速编辑"}
+        title={history.undoLabel ? `撤回：${history.undoLabel}` : "没有可撤回的快速整理"}
         onclick={() => void undoLastAction()}
       >
         ↶ 撤回
@@ -252,7 +418,7 @@
         type="button"
         class="btn btn-ghost"
         disabled={history.redoCount === 0 || history.busy || applying || previewing}
-        title={history.redoLabel ? `重做：${history.redoLabel}` : "没有可重做的快速编辑"}
+        title={history.redoLabel ? `重做：${history.redoLabel}` : "没有可重做的快速整理"}
         onclick={() => void redoLastAction()}
       >
         ↷ 重做
@@ -293,52 +459,120 @@
         </div>
       </section>
 
-      <section class="rule-card tag-card">
-        <div class="step-heading">
-          <span>2</span>
-          <div>
-            <h3>选择要添加的 Tag</h3>
-            <p>可以多选；图片原有 Tag 不会被移除。</p>
+      {#if operation === "tag"}
+        <section class="rule-card tag-card">
+          <div class="step-heading">
+            <span>2</span>
+            <div>
+              <h3>选择要添加的 Tag</h3>
+              <p>可以多选；图片原有 Tag 不会被移除。</p>
+            </div>
           </div>
-        </div>
 
-        <input
-          class="tag-search"
-          type="search"
-          bind:value={tagSearch}
-          placeholder="搜索现有 Tag"
-          aria-label="搜索现有 Tag"
-        />
+          <form class="create-tag-row" onsubmit={createNewTag}>
+            <input
+              type="text"
+              bind:value={newTagName}
+              maxlength="120"
+              placeholder="输入名称，新建并选中 Tag"
+              aria-label="新建 Tag 名称"
+            />
+            <button
+              type="submit"
+              class="btn"
+              disabled={!newTagName.trim() || creatingTag || history.busy}
+            >
+              {creatingTag ? "新建中…" : "新建 Tag"}
+            </button>
+          </form>
 
-        <div class="tag-list" aria-label="现有 Tag 列表">
-          {#if tagsLoading}
-            <p class="list-state">正在读取 Tag 库…</p>
-          {:else if tags.length === 0}
-            <p class="list-state">Tag 库为空，请先在主窗口创建 Tag。</p>
-          {:else if visibleTags.length === 0}
-            <p class="list-state">没有匹配的 Tag。</p>
-          {:else}
-            {#each visibleTags as tag (tag.name)}
-              <button
-                type="button"
-                class:is-selected={selectedTags.includes(tag.name)}
-                aria-pressed={selectedTags.includes(tag.name)}
-                onclick={() => toggleTag(tag.name)}
-              >
-                <span class="check" aria-hidden="true">
-                  {selectedTags.includes(tag.name) ? "✓" : ""}
-                </span>
-                <strong title={tag.name}>{tag.name}</strong>
-                <small>{formatCount(tag.rowCount)}</small>
-              </button>
-            {/each}
+          <input
+            class="target-search"
+            type="search"
+            bind:value={tagSearch}
+            placeholder="搜索现有 Tag"
+            aria-label="搜索现有 Tag"
+          />
+
+          <div class="target-list tag-list" aria-label="现有 Tag 列表">
+            {#if tagsLoading}
+              <p class="list-state">正在读取 Tag 库…</p>
+            {:else if tags.length === 0}
+              <p class="list-state">Tag 库为空，可以在上方直接新建。</p>
+            {:else if visibleTags.length === 0}
+              <p class="list-state">没有匹配的 Tag。</p>
+            {:else}
+              {#each visibleTags as tag (tag.name)}
+                <button
+                  type="button"
+                  class:is-selected={selectedTags.includes(tag.name)}
+                  aria-pressed={selectedTags.includes(tag.name)}
+                  onclick={() => toggleTag(tag.name)}
+                >
+                  <span class="check" aria-hidden="true">
+                    {selectedTags.includes(tag.name) ? "✓" : ""}
+                  </span>
+                  <strong title={tag.name}>{tag.name}</strong>
+                  <small>{formatCount(tag.rowCount)}</small>
+                </button>
+              {/each}
+            {/if}
+          </div>
+
+          {#if selectedTags.length > 0}
+            <div class="selected-summary">已选择 {formatCount(selectedTags.length)} 个 Tag</div>
           {/if}
-        </div>
+        </section>
+      {:else}
+        <section class="rule-card group-card">
+          <div class="step-heading">
+            <span>2</span>
+            <div>
+              <h3>选择目标分组</h3>
+              <p>命中图片会统一移入这个分组；原分组关系将被替换。</p>
+            </div>
+          </div>
 
-        {#if selectedTags.length > 0}
-          <div class="selected-summary">已选择 {formatCount(selectedTags.length)} 个 Tag</div>
-        {/if}
-      </section>
+          <input
+            class="target-search"
+            type="search"
+            bind:value={groupSearch}
+            placeholder="搜索现有分组"
+            aria-label="搜索现有分组"
+          />
+
+          <div class="target-list group-list" aria-label="现有分组列表">
+            {#if groupsLoading}
+              <p class="list-state">正在读取分组…</p>
+            {:else if groups.length === 0}
+              <p class="list-state">还没有分组，请先在主窗口的分组视图中创建。</p>
+            {:else if visibleGroups.length === 0}
+              <p class="list-state">没有匹配的分组。</p>
+            {:else}
+              {#each visibleGroups as group (group.id)}
+                <button
+                  type="button"
+                  class:is-selected={selectedGroupId === group.id}
+                  aria-pressed={selectedGroupId === group.id}
+                  onclick={() => selectGroup(group.id)}
+                >
+                  <span class="radio" aria-hidden="true">
+                    {selectedGroupId === group.id ? "●" : ""}
+                  </span>
+                  <strong title={group.name}>{group.name}</strong>
+                  <small>{formatCount(group.memberCount)} 张</small>
+                </button>
+              {/each}
+            {/if}
+          </div>
+
+          {#if selectedGroupId !== null}
+            <div class="selected-summary">
+              目标：{groups.find(group => group.id === selectedGroupId)?.name ?? "已删除的分组"}
+            </div>
+          {/if}
+        </section>
+      {/if}
     </div>
 
     <section class="preview-card">
@@ -374,8 +608,14 @@
             <span>需要修改</span>
           </div>
           <div>
-            <strong>{formatCount(preview.alreadyTaggedRows)}</strong>
-            <span>已有全部 Tag</span>
+            <strong>
+              {formatCount(
+                isTagPreview(preview)
+                  ? preview.alreadyTaggedRows
+                  : preview.alreadyInGroupRows
+              )}
+            </strong>
+            <span>{isTagPreview(preview) ? "已有全部 Tag" : "已在目标分组"}</span>
           </div>
         </div>
 
@@ -412,36 +652,53 @@
 
         <div class="apply-panel">
           <div>
-            {#if preview.associationsToAdd > 0}
-              将为 {formatCount(preview.rowsNeedingChanges)} 张图片新增
-              {formatCount(preview.associationsToAdd)} 个 Tag 关联
-            {:else if preview.matchedRows > 0}
-              命中图片已经拥有所选 Tag
+            {#if isTagPreview(preview)}
+              {#if preview.associationsToAdd > 0}
+                将为 {formatCount(preview.rowsNeedingChanges)} 张图片新增
+                {formatCount(preview.associationsToAdd)} 个 Tag 关联
+              {:else if preview.matchedRows > 0}
+                命中图片已经拥有所选 Tag
+              {:else}
+                当前规则没有可执行的修改
+              {/if}
             {:else}
-              当前规则没有可执行的修改
+              {#if preview.rowsNeedingChanges > 0}
+                将把 {formatCount(preview.rowsNeedingChanges)} 张图片移入
+                「{preview.targetGroupName}」
+              {:else if preview.matchedRows > 0}
+                命中图片已经位于「{preview.targetGroupName}」
+              {:else}
+                当前规则没有可执行的修改
+              {/if}
             {/if}
           </div>
           <button
             type="button"
             class="btn btn-primary"
-            disabled={preview.associationsToAdd === 0 || applying || history.busy}
+            disabled={preview.rowsNeedingChanges === 0 || applying || history.busy}
             onclick={() => void runApply()}
           >
-            {applying ? "正在应用…" : "执行打标"}
+            {applying ? "正在应用…" : operation === "tag" ? "执行打标" : "执行分组"}
           </button>
         </div>
 
         {#if lastResult}
           <p class="result-message">
-            已修改 {formatCount(lastResult.changedRows)} 张图片，共新增
-            {formatCount(lastResult.associationsChanged)} 个 Tag 关联。
+            {#if isTagResult(lastResult)}
+              已修改 {formatCount(lastResult.changedRows)} 张图片，共新增
+              {formatCount(lastResult.associationsChanged)} 个 Tag 关联。
+            {:else}
+              已将 {formatCount(lastResult.changedRows)} 张图片移入目标分组。
+            {/if}
           </p>
         {/if}
       {:else}
         <div class="preview-placeholder">
           <span class="preview-icon">⌕</span>
           <strong>等待预览</strong>
-          <p>输入提示词组合并选择目标 Tag 后，扫描整个资料库。</p>
+          <p>{operation === "tag"
+            ? "输入提示词组合并选择目标 Tag 后，扫描整个资料库。"
+            : "输入提示词组合并选择目标分组后，扫描整个资料库。"}</p>
         </div>
       {/if}
     </section>
@@ -556,7 +813,8 @@
   }
 
   textarea,
-  .tag-search {
+  .target-search,
+  .create-tag-row input {
     width: 100%;
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-s);
@@ -572,7 +830,8 @@
   }
 
   textarea:focus,
-  .tag-search:focus {
+  .target-search:focus,
+  .create-tag-row input:focus {
     border-color: var(--accent);
     box-shadow: var(--focus-ring);
   }
@@ -611,12 +870,26 @@
     padding-bottom: 13px;
   }
 
-  .tag-search {
+  .create-tag-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 7px;
+    margin-bottom: 9px;
+  }
+
+  .create-tag-row input,
+  .target-search {
     height: 35px;
     padding: 0 10px;
   }
 
-  .tag-list {
+  .create-tag-row .btn {
+    min-width: 84px;
+    padding-inline: 11px;
+    font-size: var(--font-sm);
+  }
+
+  .target-list {
     max-height: 210px;
     min-height: 72px;
     margin-top: 9px;
@@ -625,7 +898,7 @@
     border-radius: var(--radius-s);
   }
 
-  .tag-list button {
+  .target-list button {
     width: 100%;
     min-height: 36px;
     display: grid;
@@ -639,20 +912,21 @@
     text-align: left;
   }
 
-  .tag-list button:last-child {
+  .target-list button:last-child {
     border-bottom: 0;
   }
 
-  .tag-list button:hover {
+  .target-list button:hover {
     background: var(--surface-2);
   }
 
-  .tag-list button.is-selected {
+  .target-list button.is-selected {
     background: var(--accent-soft);
     color: var(--accent);
   }
 
-  .tag-list .check {
+  .target-list .check,
+  .target-list .radio {
     width: 17px;
     height: 17px;
     display: grid;
@@ -664,13 +938,23 @@
     font-weight: 700;
   }
 
-  .tag-list button.is-selected .check {
+  .target-list button.is-selected .check {
     border-color: var(--accent);
     background: var(--accent);
     color: white;
   }
 
-  .tag-list strong {
+  .target-list .radio {
+    border-radius: 50%;
+    color: var(--accent);
+    font-size: 9px;
+  }
+
+  .target-list button.is-selected .radio {
+    border-color: var(--accent);
+  }
+
+  .target-list strong {
     overflow: hidden;
     font-size: var(--font-sm);
     font-weight: 550;
@@ -678,7 +962,7 @@
     white-space: nowrap;
   }
 
-  .tag-list small {
+  .target-list small {
     color: var(--text-3);
     font-size: var(--font-xs);
   }
