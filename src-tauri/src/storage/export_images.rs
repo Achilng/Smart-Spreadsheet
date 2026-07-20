@@ -1,14 +1,21 @@
-use std::fs;
-use std::io;
+use std::collections::HashSet;
+use std::fs::{self, File};
+use std::io::{self, BufWriter, Write};
 use std::path::{Path, PathBuf};
 
+use image::ImageEncoder;
+use image::codecs::png::{CompressionType, FilterType, PngEncoder};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use super::{DataDirectory, StorageError};
 use crate::db::{ExportRow, RowSelection, TagMutationError};
+use crate::pipeline::parallel;
 
 const PROGRESS_EVERY_FILES: usize = 20;
+const MAX_EXPORT_WORKERS: usize = 8;
+const MAX_COPY_WORKERS: usize = 4;
+const BYTES_PER_PIXEL_WORKING_SET: u64 = 8;
 #[cfg(test)]
 const PNG_SIGNATURE: [u8; 8] = [137, 80, 78, 71, 13, 10, 26, 10];
 #[cfg(test)]
@@ -174,24 +181,44 @@ impl DataDirectory {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_nanos();
-        let mut exported = 0;
+        let mut jobs = Vec::with_capacity(total);
+        let mut reserved_targets = HashSet::with_capacity(total);
         let mut missing = 0;
 
-        for (index, row) in rows.iter().enumerate() {
+        for row in &rows {
             match resolve_source(self, row) {
                 Some(source) => {
                     let file_name =
-                        selected_output_file_name(&naming, exported + 1, nonce, row.id, &source);
-                    let target = unique_output_target(&output_dir, &file_name);
-                    write_exported_copy(&source, &target, strip_metadata)?;
-                    exported += 1;
+                        selected_output_file_name(&naming, jobs.len() + 1, nonce, row.id, &source);
+                    let target =
+                        reserve_unique_output_target(&output_dir, &file_name, &mut reserved_targets);
+                    jobs.push((source, target));
                 }
                 None => missing += 1,
             }
-            let processed = index + 1;
-            if processed % PROGRESS_EVERY_FILES == 0 || processed == total {
-                progress(ImageFilesProgress { processed, total });
-            }
+        }
+
+        let exported = jobs.len();
+        let workers = adaptive_export_worker_count(&jobs, strip_metadata);
+        let results = parallel::parallel_map(
+            jobs,
+            workers,
+            |_, (source, target)| write_exported_copy(&source, &target, strip_metadata),
+            |completed| {
+                let processed = missing + completed;
+                if processed % PROGRESS_EVERY_FILES == 0 || processed == total {
+                    progress(ImageFilesProgress { processed, total });
+                }
+            },
+        );
+        if exported == 0 {
+            progress(ImageFilesProgress {
+                processed: total,
+                total,
+            });
+        }
+        for result in results {
+            result?;
         }
 
         Ok(ImageFilesExportOutcome {
@@ -442,6 +469,96 @@ fn unique_output_target(directory: &Path, file_name: &str) -> PathBuf {
     unreachable!("unbounded file numbering always finds a candidate")
 }
 
+fn reserve_unique_output_target(
+    directory: &Path,
+    file_name: &str,
+    reserved: &mut HashSet<PathBuf>,
+) -> PathBuf {
+    let path = Path::new(file_name);
+    let stem = path
+        .file_stem()
+        .map(|value| value.to_string_lossy().into_owned())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "image".to_owned());
+    let suffix = path
+        .extension()
+        .map(|value| format!(".{}", value.to_string_lossy()))
+        .unwrap_or_default();
+
+    for index in 1_usize.. {
+        let name = if index == 1 {
+            file_name.to_owned()
+        } else {
+            format!("{stem}_{index}{suffix}")
+        };
+        let candidate = directory.join(name);
+        if !candidate.exists() && reserved.insert(candidate.clone()) {
+            return candidate;
+        }
+    }
+    unreachable!("unbounded file numbering always finds a candidate")
+}
+
+fn adaptive_export_worker_count(jobs: &[(PathBuf, PathBuf)], strip_metadata: bool) -> usize {
+    if jobs.is_empty() {
+        return 0;
+    }
+    let logical_processors = std::thread::available_parallelism()
+        .map(|count| count.get())
+        .unwrap_or(1);
+    if !strip_metadata {
+        return export_worker_limit(logical_processors, jobs.len(), false, 1);
+    }
+    let largest_working_set = jobs
+        .iter()
+        .filter_map(|(source, _)| image::image_dimensions(source).ok())
+        .filter_map(|(width, height)| {
+            u64::from(width)
+                .checked_mul(u64::from(height))?
+                .checked_mul(BYTES_PER_PIXEL_WORKING_SET)
+        })
+        .max()
+        .unwrap_or(128 * 1024 * 1024)
+        .max(1);
+    export_worker_limit(
+        logical_processors,
+        jobs.len(),
+        strip_metadata,
+        largest_working_set,
+    )
+}
+
+fn export_worker_limit(
+    logical_processors: usize,
+    job_count: usize,
+    strip_metadata: bool,
+    largest_working_set: u64,
+) -> usize {
+    if job_count == 0 {
+        return 0;
+    }
+    let cpu_limit = logical_processors
+        .max(1)
+        .div_ceil(2)
+        .clamp(1, MAX_EXPORT_WORKERS)
+        .min(job_count);
+    if !strip_metadata {
+        return cpu_limit.min(MAX_COPY_WORKERS);
+    }
+
+    let memory_budget_mib = match logical_processors {
+        0..=2 => 192_u64,
+        3..=4 => 256,
+        5..=8 => 384,
+        _ => 512,
+    };
+    let memory_budget = memory_budget_mib * 1024 * 1024;
+    let memory_limit = usize::try_from(memory_budget / largest_working_set)
+        .unwrap_or(1)
+        .max(1);
+    cpu_limit.min(memory_limit)
+}
+
 fn write_exported_copy(
     source: &Path,
     target: &Path,
@@ -463,7 +580,20 @@ fn write_exported_copy(
     if format == image::ImageFormat::Png {
         let mut rgba = image.to_rgba8();
         crate::pipeline::stealth_png::scrub_stealth_alpha_lsb(&mut rgba);
-        if let Err(error) = rgba.save_with_format(target, image::ImageFormat::Png) {
+        let mut writer = BufWriter::new(File::create(target)?);
+        let encoder =
+            PngEncoder::new_with_quality(&mut writer, CompressionType::Fast, FilterType::Sub);
+        if let Err(error) = encoder.write_image(
+            rgba.as_raw(),
+            rgba.width(),
+            rgba.height(),
+            image::ExtendedColorType::Rgba8,
+        ) {
+            let _ = fs::remove_file(target);
+            return Err(error.into());
+        }
+        if let Err(error) = writer.flush() {
+            drop(writer);
             let _ = fs::remove_file(target);
             return Err(error.into());
         }
@@ -801,6 +931,19 @@ mod tests {
             }
         }
         chunks
+    }
+
+    #[test]
+    fn export_workers_adapt_to_cpu_memory_and_copy_workloads() {
+        let mib = 1024_u64 * 1024;
+
+        assert_eq!(export_worker_limit(2, 10_000, true, 128 * mib), 1);
+        assert_eq!(export_worker_limit(4, 10_000, true, 128 * mib), 2);
+        assert_eq!(export_worker_limit(8, 10_000, true, 128 * mib), 3);
+        assert_eq!(export_worker_limit(32, 10_000, true, 128 * mib), 4);
+        assert_eq!(export_worker_limit(32, 10_000, false, 1), 4);
+        assert_eq!(export_worker_limit(32, 2, true, 1), 2);
+        assert_eq!(export_worker_limit(32, 0, true, 1), 0);
     }
 
     #[test]
