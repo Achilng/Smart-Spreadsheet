@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Grid2x2 from "@lucide/svelte/icons/grid-2x2";
   import { app } from "../../stores/app-state.svelte";
 
   const GALLERY_MIN = 120;
@@ -30,12 +31,9 @@
   title={isGallery ? "卡片大小" : "行高"}
   aria-hidden={!visible}
 >
-    <svg class="icon" viewBox="0 0 16 16" width="14" height="14">
-      <rect x="3" y="3" width="4" height="4" rx="0.8" fill="currentColor" opacity="0.55" />
-      <rect x="9" y="3" width="4" height="4" rx="0.8" fill="currentColor" opacity="0.55" />
-      <rect x="3" y="9" width="4" height="4" rx="0.8" fill="currentColor" opacity="0.55" />
-      <rect x="9" y="9" width="4" height="4" rx="0.8" fill="currentColor" opacity="0.55" />
-    </svg>
+    <span class="icon" aria-hidden="true">
+      <Grid2x2 size={10} strokeWidth={2} />
+    </span>
     <input
       type="range"
       {min}
@@ -44,12 +42,9 @@
       step="1"
       oninput={onInput}
     />
-    <svg class="icon" viewBox="0 0 16 16" width="14" height="14">
-      <rect x="1" y="1" width="6" height="6" rx="1" fill="currentColor" opacity="0.55" />
-      <rect x="9" y="1" width="6" height="6" rx="1" fill="currentColor" opacity="0.55" />
-      <rect x="1" y="9" width="6" height="6" rx="1" fill="currentColor" opacity="0.55" />
-      <rect x="9" y="9" width="6" height="6" rx="1" fill="currentColor" opacity="0.55" />
-    </svg>
+    <span class="icon" aria-hidden="true">
+      <Grid2x2 size={14} strokeWidth={2} />
+    </span>
 </div>
 
 <style>
@@ -71,7 +66,13 @@
 
   .icon {
     color: var(--text-3);
+    width: 14px;
+    height: 14px;
     flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.55;
   }
 
   input[type="range"] {

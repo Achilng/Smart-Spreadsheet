@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@crabnebula/tauri-plugin-drag": "^2.1.0",
+    "@lucide/svelte": "^1.25.0",
     "@tauri-apps/api": "2.11.0",
     "@tauri-apps/plugin-dialog": "2.7.1",
     "@tiptap/core": "^3.27.1",
