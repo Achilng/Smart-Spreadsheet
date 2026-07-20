@@ -9,7 +9,7 @@ use super::{Database, DatabaseError};
 
 const PREVIEW_SAMPLE_LIMIT: usize = 12;
 
-/// 快速编辑的匹配字段。当前前端固定使用正向提示词和角色提示词，
+/// 快速编辑的匹配字段。当前前端固定使用正向、角色和负向提示词，
 /// 后续提示词替换等动作可以复用同一条件结构。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -469,6 +469,7 @@ mod tests {
             fields: vec![
                 QuickEditPromptField::PositivePrompt,
                 QuickEditPromptField::CharacterPrompt,
+                QuickEditPromptField::NegativePrompt,
             ],
             required_tokens: tokens.iter().map(|token| (*token).to_owned()).collect(),
         }
@@ -521,8 +522,8 @@ mod tests {
             .unwrap();
 
         assert_eq!(preview.scanned_rows, 5);
-        assert_eq!(preview.matched_rows, 2);
-        assert_eq!(preview.sample_row_ids, vec![1, 4]);
+        assert_eq!(preview.matched_rows, 3);
+        assert_eq!(preview.sample_row_ids, vec![1, 4, 5]);
         assert_eq!(preview.normalized_tokens, vec!["genshin", "hutao"]);
     }
 

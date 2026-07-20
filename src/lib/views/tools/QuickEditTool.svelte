@@ -65,7 +65,7 @@
 
   function condition(): QuickEditCondition {
     return {
-      fields: ["positivePrompt", "characterPrompt"],
+      fields: ["positivePrompt", "characterPrompt", "negativePrompt"],
       requiredTokens: [...requiredTokens],
     };
   }
@@ -289,7 +289,6 @@
 
         <div class="match-rules">
           <span>扫描范围：整个资料库</span>
-          <span>匹配字段：正向提示词 + 角色提示词</span>
           <span>严格匹配，仅忽略大小写与 NovelAI 权重语法</span>
         </div>
       </section>
