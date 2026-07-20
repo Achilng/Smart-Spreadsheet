@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { RowRecord } from "../../api";
+  import { vibeStatuses } from "../../images/vibe-statuses";
   import { rowStore } from "../../stores/row-store.svelte";
   import Thumbnail from "../../ui/Thumbnail.svelte";
 
@@ -20,6 +21,28 @@
   const label = $derived(
     row.artists?.split("\n")[0]?.trim() || `#${row.sourceOrdinal}`,
   );
+
+  let vibeRefs = $state<number | null>(null);
+
+  $effect(() => {
+    vibeRefs = null;
+    const rowId = row.id;
+    if (!hasImage) {
+      return;
+    }
+    let cancelled = false;
+    void vibeStatuses.load(rowId).then(
+      count => {
+        if (!cancelled) {
+          vibeRefs = count;
+        }
+      },
+      () => {},
+    );
+    return () => {
+      cancelled = true;
+    };
+  });
 </script>
 
 <button
@@ -32,6 +55,12 @@
 >
   <div class="thumb">
     <Thumbnail rowId={row.id} {hasImage} alt={label} />
+    {#if vibeRefs}
+      <span
+        class="vibe-badge"
+        title="原图元数据包含 {vibeRefs} 个 vibe 引用"
+      >VIBE ×{vibeRefs}</span>
+    {/if}
   </div>
   <span class="card-label">{label}</span>
 </button>
@@ -70,6 +99,7 @@
   }
 
   .thumb {
+    position: relative;
     width: 100%;
     height: 120px;
     display: flex;
@@ -77,6 +107,23 @@
     justify-content: center;
     background: var(--surface-2);
     overflow: hidden;
+  }
+
+  .vibe-badge {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    z-index: 1;
+    padding: 2px 6px;
+    border-radius: var(--radius-m);
+    background: rgba(90, 60, 160, 0.88);
+    box-shadow: 0 1px 3px rgb(25 18 45 / 24%);
+    color: #fff;
+    font-size: var(--font-xs);
+    font-weight: 600;
+    line-height: 1.4;
+    letter-spacing: 0.3px;
+    pointer-events: none;
   }
 
   .card-label {
