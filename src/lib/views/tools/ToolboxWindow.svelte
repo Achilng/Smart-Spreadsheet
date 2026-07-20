@@ -122,7 +122,6 @@
     <aside class="tool-nav">
       <div class="nav-intro">
         <h1>工具箱</h1>
-        <p>独立运行的小工具与资料库维护功能</p>
       </div>
 
       <nav aria-label="工具列表">
@@ -247,13 +246,6 @@
   .nav-intro h1 {
     font-size: 22px;
     line-height: 1.25;
-  }
-
-  .nav-intro p {
-    margin-top: 5px;
-    color: var(--text-3);
-    font-size: var(--font-sm);
-    line-height: 1.5;
   }
 
   nav {
