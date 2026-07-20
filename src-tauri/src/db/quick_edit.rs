@@ -4,6 +4,9 @@ use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use super::prompt_edit::{
+    combined_artists, normalize_artist_name, prefix_artist_tag_in_prompt,
+};
 use super::tags::normalize_tags;
 use super::{Database, DatabaseError};
 
@@ -88,6 +91,41 @@ pub struct QuickGroupApplyResult {
     pub changes: Vec<QuickGroupChange>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QuickArtistPrefixPreview {
+    pub scanned_rows: u64,
+    pub matched_rows: u64,
+    pub rows_needing_changes: u64,
+    pub prompt_fields_needing_changes: u64,
+    pub sample_row_ids: Vec<i64>,
+    pub artist_name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QuickArtistPrefixChange {
+    pub row_id: i64,
+    pub previous_positive_prompt: Option<String>,
+    pub new_positive_prompt: Option<String>,
+    pub previous_character_prompt: Option<String>,
+    pub new_character_prompt: Option<String>,
+    pub previous_negative_prompt: Option<String>,
+    pub new_negative_prompt: Option<String>,
+    pub previous_artists: Option<String>,
+    pub new_artists: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QuickArtistPrefixApplyResult {
+    pub scanned_rows: u64,
+    pub matched_rows: u64,
+    pub changed_rows: u64,
+    pub prompt_fields_changed: u64,
+    pub changes: Vec<QuickArtistPrefixChange>,
+}
+
 #[derive(Debug, Error)]
 pub enum QuickEditError {
     #[error("数据库操作失败: {0}")]
@@ -108,6 +146,10 @@ pub enum QuickEditError {
     InvalidRowId(i64),
     #[error("分组 ID 必须为正整数: {0}")]
     InvalidGroupId(i64),
+    #[error("请输入一个画师名")]
+    EmptyArtistName,
+    #[error("一次只能输入一个画师名，不能包含逗号或换行")]
+    InvalidArtistName,
 }
 
 impl From<rusqlite::Error> for QuickEditError {
@@ -126,6 +168,15 @@ struct EvaluatedCondition {
 struct MatchingRow {
     id: i64,
     group_id: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ArtistPromptRow {
+    id: i64,
+    positive_prompt: Option<String>,
+    character_prompt: Option<String>,
+    negative_prompt: Option<String>,
+    artists: Option<String>,
 }
 
 impl EvaluatedCondition {
@@ -374,6 +425,95 @@ impl Database {
         self.mutate_quick_group_changes(changes, true)
     }
 
+    pub fn preview_quick_artist_prefix(
+        &self,
+        artist_name: &str,
+    ) -> Result<QuickArtistPrefixPreview, QuickEditError> {
+        let artist_name = validated_artist_name(artist_name)?;
+        let scanned_rows = row_count(&self.connection)?;
+        let changes = artist_prefix_changes(&self.connection, &artist_name)?;
+        let changed_rows =
+            u64::try_from(changes.len()).map_err(|_| DatabaseError::CountOverflow)?;
+        let prompt_fields_needing_changes = changes
+            .iter()
+            .map(changed_prompt_field_count)
+            .sum::<u64>();
+
+        Ok(QuickArtistPrefixPreview {
+            scanned_rows,
+            matched_rows: changed_rows,
+            rows_needing_changes: changed_rows,
+            prompt_fields_needing_changes,
+            sample_row_ids: changes
+                .iter()
+                .map(|change| change.row_id)
+                .take(PREVIEW_SAMPLE_LIMIT)
+                .collect(),
+            artist_name,
+        })
+    }
+
+    pub fn apply_quick_artist_prefix(
+        &mut self,
+        artist_name: &str,
+    ) -> Result<QuickArtistPrefixApplyResult, QuickEditError> {
+        let artist_name = validated_artist_name(artist_name)?;
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let scanned_rows = row_count(&transaction)?;
+        let changes = artist_prefix_changes(&transaction, &artist_name)?;
+        let prompt_fields_changed = changes
+            .iter()
+            .map(changed_prompt_field_count)
+            .sum::<u64>();
+
+        let mut update = transaction.prepare(
+            "UPDATE rows
+             SET positive_prompt = ?2,
+                 character_prompt = ?3,
+                 negative_prompt = ?4,
+                 artists = ?5
+             WHERE id = ?1",
+        )?;
+        for change in &changes {
+            update.execute(params![
+                change.row_id,
+                &change.new_positive_prompt,
+                &change.new_character_prompt,
+                &change.new_negative_prompt,
+                &change.new_artists,
+            ])?;
+        }
+        drop(update);
+        transaction.commit()?;
+        self.bump_data_version();
+
+        let changed_rows =
+            u64::try_from(changes.len()).map_err(|_| DatabaseError::CountOverflow)?;
+        Ok(QuickArtistPrefixApplyResult {
+            scanned_rows,
+            matched_rows: changed_rows,
+            changed_rows,
+            prompt_fields_changed,
+            changes,
+        })
+    }
+
+    pub fn revert_quick_artist_prefix_changes(
+        &mut self,
+        changes: &[QuickArtistPrefixChange],
+    ) -> Result<u64, QuickEditError> {
+        self.mutate_quick_artist_prefix_changes(changes, false)
+    }
+
+    pub fn reapply_quick_artist_prefix_changes(
+        &mut self,
+        changes: &[QuickArtistPrefixChange],
+    ) -> Result<u64, QuickEditError> {
+        self.mutate_quick_artist_prefix_changes(changes, true)
+    }
+
     fn mutate_quick_tag_changes(
         &mut self,
         changes: &[QuickTagAssociation],
@@ -481,6 +621,157 @@ impl Database {
         self.bump_data_version();
         Ok(changed)
     }
+
+    fn mutate_quick_artist_prefix_changes(
+        &mut self,
+        changes: &[QuickArtistPrefixChange],
+        reapply: bool,
+    ) -> Result<u64, QuickEditError> {
+        let changes = normalize_artist_prefix_changes(changes)?;
+        if changes.is_empty() {
+            return Ok(0);
+        }
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let mut update = transaction.prepare(
+            "UPDATE rows
+             SET positive_prompt = ?2,
+                 character_prompt = ?3,
+                 negative_prompt = ?4,
+                 artists = ?5
+             WHERE id = ?1",
+        )?;
+        let mut changed = 0_u64;
+        for change in &changes {
+            let (positive, character, negative, artists) = if reapply {
+                (
+                    &change.new_positive_prompt,
+                    &change.new_character_prompt,
+                    &change.new_negative_prompt,
+                    &change.new_artists,
+                )
+            } else {
+                (
+                    &change.previous_positive_prompt,
+                    &change.previous_character_prompt,
+                    &change.previous_negative_prompt,
+                    &change.previous_artists,
+                )
+            };
+            let updated = update.execute(params![
+                change.row_id,
+                positive,
+                character,
+                negative,
+                artists,
+            ])?;
+            if updated == 0 {
+                return Err(QuickEditError::UnknownRow(change.row_id));
+            }
+            changed +=
+                u64::try_from(updated).map_err(|_| DatabaseError::CountOverflow)?;
+        }
+        drop(update);
+        transaction.commit()?;
+        self.bump_data_version();
+        Ok(changed)
+    }
+}
+
+fn validated_artist_name(artist_name: &str) -> Result<String, QuickEditError> {
+    let artist_name = normalize_artist_name(artist_name);
+    if artist_name.is_empty() {
+        return Err(QuickEditError::EmptyArtistName);
+    }
+    if artist_name.contains([',', '\n', '\r']) {
+        return Err(QuickEditError::InvalidArtistName);
+    }
+    Ok(artist_name.to_owned())
+}
+
+fn artist_prefix_changes(
+    connection: &Connection,
+    artist_name: &str,
+) -> Result<Vec<QuickArtistPrefixChange>, rusqlite::Error> {
+    let mut statement = connection.prepare(
+        "SELECT id, positive_prompt, character_prompt, negative_prompt, artists
+         FROM rows
+         ORDER BY id",
+    )?;
+    let rows = statement.query_map([], |row| {
+        Ok(ArtistPromptRow {
+            id: row.get(0)?,
+            positive_prompt: row.get(1)?,
+            character_prompt: row.get(2)?,
+            negative_prompt: row.get(3)?,
+            artists: row.get(4)?,
+        })
+    })?;
+    let mut changes = Vec::new();
+    for row in rows {
+        let row = row?;
+        if let Some(change) = artist_prefix_change(row, artist_name) {
+            changes.push(change);
+        }
+    }
+    Ok(changes)
+}
+
+fn artist_prefix_change(
+    row: ArtistPromptRow,
+    artist_name: &str,
+) -> Option<QuickArtistPrefixChange> {
+    let positive_rewrite = row
+        .positive_prompt
+        .as_deref()
+        .and_then(|prompt| prefix_artist_tag_in_prompt(prompt, artist_name));
+    let character_rewrite = row
+        .character_prompt
+        .as_deref()
+        .and_then(|prompt| prefix_artist_tag_in_prompt(prompt, artist_name));
+    let negative_rewrite = row
+        .negative_prompt
+        .as_deref()
+        .and_then(|prompt| prefix_artist_tag_in_prompt(prompt, artist_name));
+    let artist_source_changed = positive_rewrite.is_some() || character_rewrite.is_some();
+
+    if positive_rewrite.is_none() && character_rewrite.is_none() && negative_rewrite.is_none() {
+        return None;
+    }
+
+    let new_positive_prompt = positive_rewrite
+        .or_else(|| row.positive_prompt.clone());
+    let new_character_prompt = character_rewrite
+        .or_else(|| row.character_prompt.clone());
+    let new_negative_prompt = negative_rewrite
+        .or_else(|| row.negative_prompt.clone());
+    let new_artists = if artist_source_changed {
+        combined_artists(
+            new_positive_prompt.as_deref().unwrap_or(""),
+            new_character_prompt.as_deref(),
+        )
+    } else {
+        row.artists.clone()
+    };
+
+    Some(QuickArtistPrefixChange {
+        row_id: row.id,
+        previous_positive_prompt: row.positive_prompt,
+        new_positive_prompt,
+        previous_character_prompt: row.character_prompt,
+        new_character_prompt,
+        previous_negative_prompt: row.negative_prompt,
+        new_negative_prompt,
+        previous_artists: row.artists,
+        new_artists,
+    })
+}
+
+fn changed_prompt_field_count(change: &QuickArtistPrefixChange) -> u64 {
+    u64::from(change.previous_positive_prompt != change.new_positive_prompt)
+        + u64::from(change.previous_character_prompt != change.new_character_prompt)
+        + u64::from(change.previous_negative_prompt != change.new_negative_prompt)
 }
 
 fn matching_rows(
@@ -636,6 +927,22 @@ fn normalize_group_changes(
             return Err(QuickEditError::InvalidGroupId(
                 change.previous_group_id.unwrap_or_default(),
             ));
+        }
+        if seen.insert(change.row_id) {
+            normalized.push(change.clone());
+        }
+    }
+    Ok(normalized)
+}
+
+fn normalize_artist_prefix_changes(
+    changes: &[QuickArtistPrefixChange],
+) -> Result<Vec<QuickArtistPrefixChange>, QuickEditError> {
+    let mut seen = HashSet::with_capacity(changes.len());
+    let mut normalized = Vec::with_capacity(changes.len());
+    for change in changes {
+        if change.row_id <= 0 {
+            return Err(QuickEditError::InvalidRowId(change.row_id));
         }
         if seen.insert(change.row_id) {
             normalized.push(change.clone());
@@ -995,6 +1302,133 @@ mod tests {
             Err(QuickEditError::Database(DatabaseError::GroupNotFound(999)))
         ));
         assert_eq!(database.get_rows_by_ids(&[1]).unwrap()[0].group_id, None);
+    }
+
+    #[test]
+    fn quick_artist_prefix_covers_all_prompt_fields_and_supports_undo_redo() {
+        let mut database = Database::open_in_memory().unwrap();
+        append_rows(
+            &mut database,
+            &[
+                NewRow {
+                    source_ordinal: 2,
+                    identity: "all-fields".into(),
+                    positive_prompt: Some("best quality, parsley_f".into()),
+                    character_prompt: Some("(parsley_f:1.2), 1girl".into()),
+                    negative_prompt: Some("0.7::parsley_f::, lowres".into()),
+                    ..NewRow::default()
+                },
+                NewRow {
+                    source_ordinal: 3,
+                    identity: "negative-only".into(),
+                    positive_prompt: Some("artist:existing".into()),
+                    negative_prompt: Some("{parsley_f}".into()),
+                    artists: Some("artist:existing".into()),
+                    ..NewRow::default()
+                },
+                NewRow {
+                    source_ordinal: 4,
+                    identity: "already-or-similar".into(),
+                    positive_prompt: Some("artist:parsley_f, parsley_fx".into()),
+                    artists: Some("artist:parsley_f".into()),
+                    ..NewRow::default()
+                },
+            ],
+        );
+
+        let preview = database
+            .preview_quick_artist_prefix("artist:parsley_f")
+            .unwrap();
+        assert_eq!(preview.scanned_rows, 3);
+        assert_eq!(preview.matched_rows, 2);
+        assert_eq!(preview.rows_needing_changes, 2);
+        assert_eq!(preview.prompt_fields_needing_changes, 4);
+        assert_eq!(preview.sample_row_ids, vec![1, 2]);
+        assert_eq!(preview.artist_name, "parsley_f");
+
+        let applied = database.apply_quick_artist_prefix("parsley_f").unwrap();
+        assert_eq!(applied.changed_rows, 2);
+        assert_eq!(applied.prompt_fields_changed, 4);
+
+        let first: (String, String, String, String) = database
+            .connection
+            .query_row(
+                "SELECT positive_prompt, character_prompt, negative_prompt, artists
+                 FROM rows WHERE id = 1",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            first,
+            (
+                "best quality, artist:parsley_f".into(),
+                "(artist:parsley_f:1.2), 1girl".into(),
+                "0.7::artist:parsley_f::, lowres".into(),
+                "artist:parsley_f, (artist:parsley_f:1.2)".into(),
+            )
+        );
+
+        let second: (String, String) = database
+            .connection
+            .query_row(
+                "SELECT negative_prompt, artists FROM rows WHERE id = 2",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            second,
+            ("{artist:parsley_f}".into(), "artist:existing".into())
+        );
+
+        assert_eq!(
+            database
+                .revert_quick_artist_prefix_changes(&applied.changes)
+                .unwrap(),
+            2
+        );
+        let reverted: (String, String, String, Option<String>) = database
+            .connection
+            .query_row(
+                "SELECT positive_prompt, character_prompt, negative_prompt, artists
+                 FROM rows WHERE id = 1",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            reverted,
+            (
+                "best quality, parsley_f".into(),
+                "(parsley_f:1.2), 1girl".into(),
+                "0.7::parsley_f::, lowres".into(),
+                None,
+            )
+        );
+
+        assert_eq!(
+            database
+                .reapply_quick_artist_prefix_changes(&applied.changes)
+                .unwrap(),
+            2
+        );
+        let redone: String = database
+            .connection
+            .query_row("SELECT positive_prompt FROM rows WHERE id = 1", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(redone, "best quality, artist:parsley_f");
+    }
+
+    #[test]
+    fn quick_artist_prefix_rejects_multiple_names() {
+        let database = database_with_rows(1);
+        assert!(matches!(
+            database.preview_quick_artist_prefix("alice, bob"),
+            Err(QuickEditError::InvalidArtistName)
+        ));
     }
 
     #[test]

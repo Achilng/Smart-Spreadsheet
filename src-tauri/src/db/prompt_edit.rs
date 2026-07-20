@@ -18,7 +18,7 @@ pub struct SinglePromptEditResult {
     pub new_artists: Option<String>,
 }
 
-fn normalize_artist_name(artist_name: &str) -> &str {
+pub(super) fn normalize_artist_name(artist_name: &str) -> &str {
     artist_name
         .trim()
         .strip_prefix("artist:")
@@ -26,7 +26,7 @@ fn normalize_artist_name(artist_name: &str) -> &str {
         .trim()
 }
 
-fn prefix_artist_tag_in_prompt(prompt: &str, artist_name: &str) -> Option<String> {
+pub(super) fn prefix_artist_tag_in_prompt(prompt: &str, artist_name: &str) -> Option<String> {
     let mut changed = false;
     let mut result = String::with_capacity(prompt.len() + "artist:".len());
     let mut start = 0;
@@ -307,7 +307,10 @@ impl Database {
     }
 }
 
-fn combined_artists(positive_prompt: &str, character_prompt: Option<&str>) -> Option<String> {
+pub(super) fn combined_artists(
+    positive_prompt: &str,
+    character_prompt: Option<&str>,
+) -> Option<String> {
     let combined = match character_prompt.filter(|value| !value.trim().is_empty()) {
         Some(character) => format!("{positive_prompt}\n{character}"),
         None => positive_prompt.to_owned(),

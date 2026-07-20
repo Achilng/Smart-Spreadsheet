@@ -8,9 +8,11 @@ use thiserror::Error;
 
 use crate::db::{
     BatchSummary, DedupeCluster, DedupeMode, GroupSummary, LibrarySummary, MutableRowState,
-    QuickEditCondition, QuickEditError, QuickGroupApplyResult, QuickGroupChange, QuickGroupPreview,
-    QuickTagApplyResult, QuickTagAssociation, QuickTagPreview, RowPage, RowQuery, RowSelection,
-    TagMatchMode, TagMutationError, TagMutationResult, TagSelectionSummary, TagSummary,
+    QuickArtistPrefixApplyResult, QuickArtistPrefixChange, QuickArtistPrefixPreview,
+    QuickEditCondition, QuickEditError, QuickGroupApplyResult, QuickGroupChange,
+    QuickGroupPreview, QuickTagApplyResult, QuickTagAssociation, QuickTagPreview, RowPage,
+    RowQuery, RowSelection, TagMatchMode, TagMutationError, TagMutationResult,
+    TagSelectionSummary, TagSummary,
 };
 use crate::images::{ImageVariant, RowImageError};
 use crate::storage::{
@@ -360,6 +362,34 @@ impl AppRuntime {
         changes: &[QuickGroupChange],
     ) -> Result<u64, AppRuntimeError> {
         self.with_database_mut(|db| db.reapply_quick_group_changes(changes))
+    }
+
+    pub(crate) fn preview_quick_artist_prefix(
+        &self,
+        artist_name: &str,
+    ) -> Result<QuickArtistPrefixPreview, AppRuntimeError> {
+        self.with_database(|db| db.preview_quick_artist_prefix(artist_name))
+    }
+
+    pub(crate) fn apply_quick_artist_prefix(
+        &self,
+        artist_name: &str,
+    ) -> Result<QuickArtistPrefixApplyResult, AppRuntimeError> {
+        self.with_database_mut(|db| db.apply_quick_artist_prefix(artist_name))
+    }
+
+    pub(crate) fn revert_quick_artist_prefix_changes(
+        &self,
+        changes: &[QuickArtistPrefixChange],
+    ) -> Result<u64, AppRuntimeError> {
+        self.with_database_mut(|db| db.revert_quick_artist_prefix_changes(changes))
+    }
+
+    pub(crate) fn reapply_quick_artist_prefix_changes(
+        &self,
+        changes: &[QuickArtistPrefixChange],
+    ) -> Result<u64, AppRuntimeError> {
+        self.with_database_mut(|db| db.reapply_quick_artist_prefix_changes(changes))
     }
 
     pub(crate) fn delete_rows(

@@ -8,10 +8,11 @@ use tauri::{
 use super::runtime::{AppRuntime, RuntimeSnapshot};
 use crate::db::{
     BatchSummary, DedupeCluster, DedupeMode, GroupSummary, LibrarySummary, MutableRowState, PromptEditResult,
+    QuickArtistPrefixApplyResult, QuickArtistPrefixChange, QuickArtistPrefixPreview,
     QuickEditCondition, QuickGroupApplyResult, QuickGroupChange, QuickGroupPreview,
-    QuickTagApplyResult, QuickTagAssociation, QuickTagPreview, RowPage, RowQuery, RowRecord,
-    RowSelection, SinglePromptEditResult, TagMatchMode, TagMutationResult, TagSelectionSummary,
-    TagSummary,
+    QuickTagApplyResult, QuickTagAssociation, QuickTagPreview, RowPage, RowQuery,
+    RowRecord, RowSelection, SinglePromptEditResult, TagMatchMode, TagMutationResult,
+    TagSelectionSummary, TagSummary,
 };
 use crate::storage::{
     PerceptualHashProgress, PromptDocAsset, PromptDocDetail, PromptDocSummary, SimilarImageMatch,
@@ -838,6 +839,46 @@ pub(crate) fn reapply_quick_group_changes(
 ) -> Result<u64, String> {
     runtime
         .reapply_quick_group_changes(&changes)
+        .map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn preview_quick_artist_prefix(
+    artist_name: String,
+    runtime: State<'_, AppRuntime>,
+) -> Result<QuickArtistPrefixPreview, String> {
+    runtime
+        .preview_quick_artist_prefix(&artist_name)
+        .map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn apply_quick_artist_prefix(
+    artist_name: String,
+    runtime: State<'_, AppRuntime>,
+) -> Result<QuickArtistPrefixApplyResult, String> {
+    runtime
+        .apply_quick_artist_prefix(&artist_name)
+        .map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn revert_quick_artist_prefix_changes(
+    changes: Vec<QuickArtistPrefixChange>,
+    runtime: State<'_, AppRuntime>,
+) -> Result<u64, String> {
+    runtime
+        .revert_quick_artist_prefix_changes(&changes)
+        .map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn reapply_quick_artist_prefix_changes(
+    changes: Vec<QuickArtistPrefixChange>,
+    runtime: State<'_, AppRuntime>,
+) -> Result<u64, String> {
+    runtime
+        .reapply_quick_artist_prefix_changes(&changes)
         .map_err(error_text)
 }
 

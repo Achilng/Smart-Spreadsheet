@@ -3,6 +3,7 @@
   import { onMount } from "svelte";
 
   import {
+    applyQuickArtistPrefix,
     applyQuickGroup,
     applyQuickTag,
     createTag,
@@ -10,13 +11,18 @@
     getRowsByIds,
     listGroups,
     listTags,
+    previewQuickArtistPrefix,
     previewQuickGroup,
     previewQuickTag,
+    reapplyQuickArtistPrefixChanges,
     reapplyQuickGroupChanges,
     reapplyQuickTagChanges,
+    revertQuickArtistPrefixChanges,
     revertQuickGroupChanges,
     revertQuickTagChanges,
     type GroupSummary,
+    type QuickArtistPrefixApplyResult,
+    type QuickArtistPrefixPreview,
     type QuickEditCondition,
     type QuickGroupApplyResult,
     type QuickGroupPreview,
@@ -42,9 +48,12 @@
 
   let { active = false }: { active?: boolean } = $props();
 
-  type Operation = "tag" | "group";
-  type ActivePreview = QuickTagPreview | QuickGroupPreview;
-  type ActiveResult = QuickTagApplyResult | QuickGroupApplyResult;
+  type Operation = "tag" | "group" | "artist";
+  type ActivePreview = QuickTagPreview | QuickGroupPreview | QuickArtistPrefixPreview;
+  type ActiveResult =
+    | QuickTagApplyResult
+    | QuickGroupApplyResult
+    | QuickArtistPrefixApplyResult;
 
   let operation = $state<Operation>("tag");
   let promptText = $state("");
@@ -55,6 +64,7 @@
   let groupSearch = $state("");
   let groups = $state<GroupSummary[]>([]);
   let selectedGroupId = $state<number | null>(null);
+  let artistName = $state("");
   let tagsLoading = $state(false);
   let groupsLoading = $state(false);
   let creatingTag = $state(false);
@@ -80,10 +90,14 @@
       : groups,
   );
   const targetReady = $derived(
-    operation === "tag" ? selectedTags.length > 0 : selectedGroupId !== null,
+    operation === "tag"
+      ? selectedTags.length > 0
+      : operation === "group"
+        ? selectedGroupId !== null
+        : artistName.trim().length > 0,
   );
   const canPreview = $derived(
-    requiredTokens.length > 0 &&
+    (operation === "artist" || requiredTokens.length > 0) &&
       targetReady &&
       !previewing &&
       !applying &&
@@ -131,6 +145,11 @@
 
   function updatePromptText(event: Event): void {
     promptText = (event.currentTarget as HTMLTextAreaElement).value;
+    invalidatePreview();
+  }
+
+  function updateArtistName(event: Event): void {
+    artistName = (event.currentTarget as HTMLInputElement).value;
     invalidatePreview();
   }
 
@@ -230,8 +249,16 @@
     return "associationsToAdd" in value;
   }
 
+  function isArtistPreview(value: ActivePreview): value is QuickArtistPrefixPreview {
+    return "promptFieldsNeedingChanges" in value;
+  }
+
   function isTagResult(value: ActiveResult): value is QuickTagApplyResult {
     return "associationsChanged" in value;
+  }
+
+  function isArtistResult(value: ActiveResult): value is QuickArtistPrefixApplyResult {
+    return "promptFieldsChanged" in value;
   }
 
   async function runPreview(): Promise<void> {
@@ -242,7 +269,9 @@
     try {
       const result = operation === "tag"
         ? await previewQuickTag(condition(), selectedTags)
-        : await previewQuickGroup(condition(), selectedGroupId!);
+        : operation === "group"
+          ? await previewQuickGroup(condition(), selectedGroupId!)
+          : await previewQuickArtistPrefix(artistName.trim());
       const rows = result.sampleRowIds.length > 0
         ? await getRowsByIds(result.sampleRowIds)
         : [];
@@ -293,7 +322,7 @@
             ? `快速打标完成：${formatCount(result.changedRows)} 张图片新增了 ${formatCount(result.associationsChanged)} 个 Tag 关联。`
             : "所有命中图片已经拥有所选 Tag，没有产生修改。",
         });
-      } else {
+      } else if (operation === "group") {
         const groupId = selectedGroupId!;
         const groupName = groups.find(group => group.id === groupId)?.name ?? "目标分组";
         const result = await applyQuickGroup(condition(), groupId);
@@ -324,6 +353,39 @@
           text: result.changedRows > 0
             ? `批量分组完成：${formatCount(result.changedRows)} 张图片已分到「${groupName}」。`
             : `所有命中图片已经位于「${groupName}」，没有产生修改。`,
+        });
+      } else {
+        const result = await applyQuickArtistPrefix(artistName.trim());
+        lastResult = result;
+        if (result.changes.length > 0) {
+          const changes = result.changes.map(change => ({ ...change }));
+          recordHistory({
+            label: `修正画师前缀「${artistName.trim()}」（${formatCount(result.changedRows)} 张）`,
+            undo: async () => {
+              await revertQuickArtistPrefixChanges(changes);
+              invalidatePreview();
+              await refreshAfterMutation();
+            },
+            redo: async () => {
+              await reapplyQuickArtistPrefixChanges(changes);
+              invalidatePreview();
+              await refreshAfterMutation();
+            },
+          });
+        }
+        preview = {
+          ...(preview as QuickArtistPrefixPreview),
+          matchedRows: 0,
+          rowsNeedingChanges: 0,
+          promptFieldsNeedingChanges: 0,
+          sampleRowIds: [],
+        };
+        sampleRows = [];
+        setNotice({
+          tone: "success",
+          text: result.changedRows > 0
+            ? `画师前缀修正完成：${formatCount(result.changedRows)} 张图片的 ${formatCount(result.promptFieldsChanged)} 个提示词字段已更新。`
+            : "整个资料库中没有需要修正的对应画师 Tag。",
         });
       }
       await refreshAfterMutation();
@@ -402,7 +464,11 @@
         class:is-active={operation === "group"}
         onclick={() => setOperation("group")}
       >批量分组</button>
-      <button type="button" disabled title="后续版本开放">提示词操作</button>
+      <button
+        type="button"
+        class:is-active={operation === "artist"}
+        onclick={() => setOperation("artist")}
+      >提示词操作</button>
     </div>
     <div class="history-actions">
       <button
@@ -432,30 +498,49 @@
         <div class="step-heading">
           <span>1</span>
           <div>
-            <h3>输入提示词组合</h3>
-            <p>组合中的每一项都必须存在，顺序和位置不限。</p>
+            <h3>{operation === "artist" ? "输入需要修正的画师名" : "输入提示词组合"}</h3>
+            <p>{operation === "artist"
+              ? "一次处理一个画师名，不需要填写 artist: 前缀。"
+              : "组合中的每一项都必须存在，顺序和位置不限。"}</p>
           </div>
         </div>
 
-        <textarea
-          value={promptText}
-          rows="4"
-          placeholder="例如：genshin, hutao"
-          aria-label="必须同时存在的提示词组合"
-          oninput={updatePromptText}
-        ></textarea>
+        {#if operation === "artist"}
+          <input
+            class="artist-input"
+            type="text"
+            value={artistName}
+            maxlength="240"
+            placeholder="例如：parsley_f"
+            aria-label="需要添加 artist 前缀的画师名"
+            oninput={updateArtistName}
+          />
+        {:else}
+          <textarea
+            value={promptText}
+            rows="4"
+            placeholder="例如：genshin, hutao"
+            aria-label="必须同时存在的提示词组合"
+            oninput={updatePromptText}
+          ></textarea>
 
-        {#if requiredTokens.length > 0}
-          <div class="token-list" aria-label="已识别的提示词条件">
-            {#each requiredTokens as token (token)}
-              <span>{token}</span>
-            {/each}
-          </div>
+          {#if requiredTokens.length > 0}
+            <div class="token-list" aria-label="已识别的提示词条件">
+              {#each requiredTokens as token (token)}
+                <span>{token}</span>
+              {/each}
+            </div>
+          {/if}
         {/if}
 
         <div class="match-rules">
           <span>扫描范围：整个资料库</span>
-          <span>严格匹配，仅忽略大小写与 NovelAI 权重语法</span>
+          <span>{operation === "artist"
+            ? "处理正向、角色与负向提示词；严格匹配完整 Tag 并保留权重格式"
+            : "严格匹配，仅忽略大小写与 NovelAI 权重语法"}</span>
+          {#if operation === "artist"}
+            <span>已带 artist: 前缀或仅名称相似的 Tag 不会修改</span>
+          {/if}
         </div>
       </section>
 
@@ -523,7 +608,7 @@
             <div class="selected-summary">已选择 {formatCount(selectedTags.length)} 个 Tag</div>
           {/if}
         </section>
-      {:else}
+      {:else if operation === "group"}
         <section class="rule-card group-card">
           <div class="step-heading">
             <span>2</span>
@@ -594,29 +679,44 @@
       {#if error}
         <p class="error-message">{error}</p>
       {:else if preview}
-        <div class="metrics">
-          <div>
-            <strong>{formatCount(preview.scannedRows)}</strong>
-            <span>扫描图片</span>
-          </div>
-          <div>
-            <strong>{formatCount(preview.matchedRows)}</strong>
-            <span>命中组合</span>
-          </div>
-          <div class:is-highlight={preview.rowsNeedingChanges > 0}>
-            <strong>{formatCount(preview.rowsNeedingChanges)}</strong>
-            <span>需要修改</span>
-          </div>
-          <div>
-            <strong>
-              {formatCount(
-                isTagPreview(preview)
-                  ? preview.alreadyTaggedRows
-                  : preview.alreadyInGroupRows
-              )}
-            </strong>
-            <span>{isTagPreview(preview) ? "已有全部 Tag" : "已在目标分组"}</span>
-          </div>
+        <div class="metrics" class:is-artist={isArtistPreview(preview)}>
+          {#if isArtistPreview(preview)}
+            <div>
+              <strong>{formatCount(preview.scannedRows)}</strong>
+              <span>扫描图片</span>
+            </div>
+            <div class:is-highlight={preview.rowsNeedingChanges > 0}>
+              <strong>{formatCount(preview.rowsNeedingChanges)}</strong>
+              <span>需要修正</span>
+            </div>
+            <div>
+              <strong>{formatCount(preview.promptFieldsNeedingChanges)}</strong>
+              <span>涉及提示词字段</span>
+            </div>
+          {:else}
+            <div>
+              <strong>{formatCount(preview.scannedRows)}</strong>
+              <span>扫描图片</span>
+            </div>
+            <div>
+              <strong>{formatCount(preview.matchedRows)}</strong>
+              <span>命中组合</span>
+            </div>
+            <div class:is-highlight={preview.rowsNeedingChanges > 0}>
+              <strong>{formatCount(preview.rowsNeedingChanges)}</strong>
+              <span>需要修改</span>
+            </div>
+            <div>
+              <strong>
+                {formatCount(
+                  isTagPreview(preview)
+                    ? preview.alreadyTaggedRows
+                    : preview.alreadyInGroupRows
+                )}
+              </strong>
+              <span>{isTagPreview(preview) ? "已有全部 Tag" : "已在目标分组"}</span>
+            </div>
+          {/if}
         </div>
 
         {#if sampleRows.length > 0}
@@ -645,14 +745,25 @@
           </div>
         {:else}
           <div class="empty-preview">
-            <strong>没有图片命中这个提示词组合</strong>
-            <span>请检查拼写；空格和下划线会被严格区分。</span>
+            <strong>{isArtistPreview(preview)
+              ? "没有找到需要修正的画师 Tag"
+              : "没有图片命中这个提示词组合"}</strong>
+            <span>{isArtistPreview(preview)
+              ? "已带 artist: 前缀的 Tag 会自动跳过。"
+              : "请检查拼写；空格和下划线会被严格区分。"}</span>
           </div>
         {/if}
 
         <div class="apply-panel">
           <div>
-            {#if isTagPreview(preview)}
+            {#if isArtistPreview(preview)}
+              {#if preview.rowsNeedingChanges > 0}
+                将修正 {formatCount(preview.rowsNeedingChanges)} 张图片中的
+                {formatCount(preview.promptFieldsNeedingChanges)} 个提示词字段
+              {:else}
+                整个资料库中没有需要修正的对应画师 Tag
+              {/if}
+            {:else if isTagPreview(preview)}
               {#if preview.associationsToAdd > 0}
                 将为 {formatCount(preview.rowsNeedingChanges)} 张图片新增
                 {formatCount(preview.associationsToAdd)} 个 Tag 关联
@@ -678,13 +789,22 @@
             disabled={preview.rowsNeedingChanges === 0 || applying || history.busy}
             onclick={() => void runApply()}
           >
-            {applying ? "正在应用…" : operation === "tag" ? "执行打标" : "执行分组"}
+            {applying
+              ? "正在应用…"
+              : operation === "tag"
+                ? "执行打标"
+                : operation === "group"
+                  ? "执行分组"
+                  : "修正前缀"}
           </button>
         </div>
 
         {#if lastResult}
           <p class="result-message">
-            {#if isTagResult(lastResult)}
+            {#if isArtistResult(lastResult)}
+              已修正 {formatCount(lastResult.changedRows)} 张图片中的
+              {formatCount(lastResult.promptFieldsChanged)} 个提示词字段。
+            {:else if isTagResult(lastResult)}
               已修改 {formatCount(lastResult.changedRows)} 张图片，共新增
               {formatCount(lastResult.associationsChanged)} 个 Tag 关联。
             {:else}
@@ -698,7 +818,9 @@
           <strong>等待预览</strong>
           <p>{operation === "tag"
             ? "输入提示词组合并选择目标 Tag 后，扫描整个资料库。"
-            : "输入提示词组合并选择目标分组后，扫描整个资料库。"}</p>
+            : operation === "group"
+              ? "输入提示词组合并选择目标分组后，扫描整个资料库。"
+              : "输入一个画师名后，扫描整个资料库的三类提示词。"}</p>
         </div>
       {/if}
     </section>
@@ -813,6 +935,7 @@
   }
 
   textarea,
+  .artist-input,
   .target-search,
   .create-tag-row input {
     width: 100%;
@@ -830,6 +953,7 @@
   }
 
   textarea:focus,
+  .artist-input:focus,
   .target-search:focus,
   .create-tag-row input:focus {
     border-color: var(--accent);
@@ -841,6 +965,12 @@
     flex-wrap: wrap;
     gap: 6px;
     margin-top: 10px;
+  }
+
+  .artist-input {
+    width: 100%;
+    height: 39px;
+    padding: 0 11px;
   }
 
   .token-list span {
@@ -1007,6 +1137,10 @@
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 8px;
     margin-top: 17px;
+  }
+
+  .metrics.is-artist {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .metrics > div {
