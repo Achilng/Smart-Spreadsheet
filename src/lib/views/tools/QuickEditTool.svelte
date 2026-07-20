@@ -1,6 +1,6 @@
 <script lang="ts">
   import { emitTo } from "@tauri-apps/api/event";
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
 
   import {
     applyQuickArtistPrefix,
@@ -59,6 +59,8 @@
   let promptText = $state("");
   let tagSearch = $state("");
   let newTagName = $state("");
+  let tagCreatorOpen = $state(false);
+  let newTagInput = $state<HTMLInputElement | undefined>(undefined);
   let tags = $state<TagSummary[]>([]);
   let selectedTags = $state<string[]>([]);
   let groupSearch = $state("");
@@ -162,6 +164,18 @@
     invalidatePreview();
   }
 
+  async function openTagCreator(): Promise<void> {
+    tagCreatorOpen = true;
+    await tick();
+    newTagInput?.focus();
+  }
+
+  function closeTagCreator(): void {
+    if (creatingTag) return;
+    tagCreatorOpen = false;
+    newTagName = "";
+  }
+
   function selectGroup(groupId: number): void {
     if (selectedGroupId === groupId) return;
     selectedGroupId = groupId;
@@ -214,6 +228,7 @@
       }
       newTagName = "";
       tagSearch = "";
+      tagCreatorOpen = false;
       invalidatePreview();
       if (created) {
         recordHistory({
@@ -554,30 +569,59 @@
             </div>
           </div>
 
-          <form class="create-tag-row" onsubmit={createNewTag}>
+          <div class="tag-toolbar">
             <input
-              type="text"
-              bind:value={newTagName}
-              maxlength="120"
-              placeholder="输入名称，新建并选中 Tag"
-              aria-label="新建 Tag 名称"
+              class="target-search"
+              type="search"
+              bind:value={tagSearch}
+              placeholder="搜索现有 Tag"
+              aria-label="搜索现有 Tag"
             />
             <button
-              type="submit"
-              class="btn"
-              disabled={!newTagName.trim() || creatingTag || history.busy}
+              type="button"
+              class="btn btn-ghost"
+              aria-expanded={tagCreatorOpen}
+              disabled={creatingTag || history.busy}
+              onclick={() => tagCreatorOpen ? closeTagCreator() : void openTagCreator()}
             >
-              {creatingTag ? "新建中…" : "新建 Tag"}
+              {tagCreatorOpen ? "收起" : "＋ 新建"}
             </button>
-          </form>
+          </div>
 
-          <input
-            class="target-search"
-            type="search"
-            bind:value={tagSearch}
-            placeholder="搜索现有 Tag"
-            aria-label="搜索现有 Tag"
-          />
+          {#if tagCreatorOpen}
+            <form class="create-tag-panel" onsubmit={createNewTag}>
+              <input
+                bind:this={newTagInput}
+                type="text"
+                bind:value={newTagName}
+                maxlength="120"
+                placeholder="输入新 Tag 名称"
+                aria-label="新建 Tag 名称"
+                disabled={creatingTag}
+                onkeydown={event => {
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    closeTagCreator();
+                  }
+                }}
+              />
+              <div class="create-tag-actions">
+                <button
+                  type="button"
+                  class="btn btn-ghost"
+                  disabled={creatingTag}
+                  onclick={closeTagCreator}
+                >取消</button>
+                <button
+                  type="submit"
+                  class="btn"
+                  disabled={!newTagName.trim() || creatingTag || history.busy}
+                >
+                  {creatingTag ? "创建中…" : "创建并选中"}
+                </button>
+              </div>
+            </form>
+          {/if}
 
           <div class="target-list tag-list" aria-label="现有 Tag 列表">
             {#if tagsLoading}
@@ -937,7 +981,7 @@
   textarea,
   .artist-input,
   .target-search,
-  .create-tag-row input {
+  .create-tag-panel input {
     width: 100%;
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-s);
@@ -955,7 +999,7 @@
   textarea:focus,
   .artist-input:focus,
   .target-search:focus,
-  .create-tag-row input:focus {
+  .create-tag-panel input:focus {
     border-color: var(--accent);
     box-shadow: var(--focus-ring);
   }
@@ -1000,21 +1044,46 @@
     padding-bottom: 13px;
   }
 
-  .create-tag-row {
+  .tag-toolbar {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 7px;
-    margin-bottom: 9px;
   }
 
-  .create-tag-row input,
   .target-search {
     height: 35px;
     padding: 0 10px;
   }
 
-  .create-tag-row .btn {
-    min-width: 84px;
+  .tag-toolbar .btn {
+    min-width: 74px;
+    padding-inline: 11px;
+    font-size: var(--font-sm);
+  }
+
+  .create-tag-panel {
+    display: grid;
+    gap: 9px;
+    margin-top: 9px;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-s);
+    background: var(--surface-2);
+  }
+
+  .create-tag-panel input {
+    width: 100%;
+    height: 35px;
+    padding: 0 10px;
+  }
+
+  .create-tag-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+  }
+
+  .create-tag-actions .btn {
     padding-inline: 11px;
     font-size: var(--font-sm);
   }
