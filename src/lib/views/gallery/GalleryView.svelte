@@ -9,6 +9,7 @@
   import { vibeStatuses } from "../../images/vibe-statuses";
   import { restoreScrollPosition, saveScrollPosition, scrollPositionVersion } from "../../stores/view-state";
   import GalleryCard from "./GalleryCard.svelte";
+  import { softFade } from "../../ui/motion";
 
   let { active = true }: { active?: boolean } = $props();
 
@@ -311,16 +312,16 @@
   onscroll={onScroll}
 >
   {#if rowStore.error}
-    <div class="gallery-status empty-state">
+    <div class="gallery-status empty-state" transition:softFade={{ duration: 140 }}>
       <p class="muted">加载失败：{rowStore.error}</p>
       <button type="button" class="btn" onclick={() => resetRows()}>重试</button>
     </div>
   {:else if rowStore.initialLoading}
-    <div class="gallery-status empty-state">
+    <div class="gallery-status empty-state" transition:softFade={{ duration: 140 }}>
       <p class="muted">正在加载…</p>
     </div>
   {:else if rowStore.totalCount === 0}
-    <div class="gallery-status empty-state">
+    <div class="gallery-status empty-state" transition:softFade={{ duration: 140 }}>
       <p class="muted">
         {rowStore.tags.length > 0 ? "当前筛选没有匹配记录。" : "工作簿没有数据行。"}
       </p>

@@ -4,10 +4,11 @@
     chooseImageArchive,
     chooseImageFolder,
   } from "../../stores/import-actions.svelte";
+  import { softFly } from "../../ui/motion";
 </script>
 
 <div class="center-screen">
-  <div class="flow-card">
+  <div class="flow-card" in:softFly={{ duration: 230, y: 8 }}>
     <h2>导入第一批数据</h2>
     <p class="muted">
       资料库为追加式：可多次导入，已入库的图片自动跳过。支持 NovelAI PNG

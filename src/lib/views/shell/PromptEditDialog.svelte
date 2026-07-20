@@ -4,6 +4,7 @@
   import { errorText } from "../../stores/app-state.svelte";
   import { captureSelectionStates, recordRowStateChange } from "../../stores/history-actions";
   import { resetRows } from "../../stores/row-store.svelte";
+  import { softFade, softFly } from "../../ui/motion";
 
   interface Props {
     selection: RowSelection;
@@ -79,6 +80,8 @@
     </nav>
 
     <div class="body">
+      {#key tab}
+      <div class="tab-panel" transition:softFly={{ duration: 150, x: tab === "replace" ? -5 : 5, y: 0 }}>
       {#if tab === "replace"}
         <label>
           <span>查找</span>
@@ -119,12 +122,14 @@
           {busy ? "执行中…" : "修正前缀"}
         </button>
       {/if}
+      </div>
+      {/key}
 
       {#if result}
-        <p class="result-ok">{result}</p>
+        <p class="result-ok" transition:softFade={{ duration: 140 }}>{result}</p>
       {/if}
       {#if error}
-        <p class="result-err">{error}</p>
+        <p class="result-err" transition:softFade={{ duration: 140 }}>{error}</p>
       {/if}
     </div>
   </div>
@@ -173,6 +178,10 @@
     color: var(--text-2);
     cursor: pointer;
     border-bottom: 2px solid transparent;
+    transition:
+      color var(--motion-fast) var(--ease-responsive),
+      border-color var(--motion-fast) var(--ease-responsive),
+      background var(--motion-fast) var(--ease-responsive);
   }
 
   .tabs button.active {
@@ -183,6 +192,13 @@
 
   .body {
     padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .tab-panel {
+    min-height: 154px;
     display: flex;
     flex-direction: column;
     gap: 12px;

@@ -39,6 +39,7 @@
   import TagSidebar from "./TagSidebar.svelte";
   import TopBar from "./TopBar.svelte";
   import UpdateImportDialog from "./UpdateImportDialog.svelte";
+  import { softFade, softFly, softPop } from "../../ui/motion";
 
   type DataViewMode = Exclude<ViewMode, "promptDocs">;
 
@@ -237,7 +238,7 @@
       </main>
 
       {#if app.detailOpen}
-        <aside class="detail">
+        <aside class="detail" transition:softFly={{ duration: 190, x: 12, y: 0 }}>
           <DetailPanel />
         </aside>
       {:else}
@@ -246,6 +247,7 @@
           class="detail-strip"
           title="展开详情面板"
           onclick={() => (app.detailOpen = true)}
+          transition:softFade={{ duration: 120 }}
         >
           «
         </button>
@@ -254,9 +256,7 @@
   </div>
 </div>
 
-{#if app.groupManageOpen}
-  <GroupManageView />
-{/if}
+<GroupManageView />
 
 <ContextMenu />
 <SectionContextMenu />
@@ -265,8 +265,10 @@
 <UpdateImportDialog />
 
 {#if dropState.dragging && app.viewMode !== "promptDocs"}
-  <div class="drop-overlay">
-    <div class="drop-hint">松开鼠标以导入图片</div>
+  <div class="drop-overlay" transition:softFade={{ duration: 120 }}>
+    <div class="drop-hint" transition:softPop={{ duration: 150, y: 4, start: 0.98 }}>
+      松开鼠标以导入图片
+    </div>
   </div>
 {/if}
 
@@ -353,15 +355,16 @@
     width: 40%;
     border-radius: 2px;
     background: var(--accent);
-    animation: refresh-slide 0.9s ease-in-out infinite;
+    transform: translateX(-100%);
+    animation: refresh-slide 0.9s linear infinite;
   }
 
   @keyframes refresh-slide {
     0% {
-      left: -40%;
+      transform: translateX(-100%);
     }
     100% {
-      left: 100%;
+      transform: translateX(350%);
     }
   }
 
@@ -394,6 +397,9 @@
     background: var(--surface);
     color: var(--text-3);
     font-size: var(--font-md);
+    transition:
+      background var(--motion-fast) var(--ease-responsive),
+      color var(--motion-fast) var(--ease-responsive);
   }
 
   .detail-strip:hover {
@@ -419,6 +425,13 @@
     font-size: var(--font-xl);
     font-weight: 600;
     color: var(--accent, #5b9ef4);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .refresh-bar::after {
+      animation: none;
+      transform: translateX(80%);
+    }
   }
 
 </style>

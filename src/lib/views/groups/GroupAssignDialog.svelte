@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { flip } from "svelte/animate";
+
   import type { RowSelection } from "../../api";
   import Modal from "../../ui/Modal.svelte";
   import { errorText } from "../../stores/app-state.svelte";
@@ -6,6 +8,7 @@
   import { beginHistoryGroup, commitHistoryGroup } from "../../stores/history.svelte";
   import { assignToGroup, createNewGroup, groupStore, loadGroups, removeFromGroup } from "../../stores/group-store.svelte";
   import { resetRows } from "../../stores/row-store.svelte";
+  import { softFade } from "../../ui/motion";
 
   interface Props {
     selection: RowSelection;
@@ -127,6 +130,7 @@
               class="group-item"
               disabled={busy}
               onclick={() => void assignTo(group.id, group.name)}
+              animate:flip={{ duration: 160 }}
             >
               <span class="group-name">{group.name}</span>
               <span class="group-count">{group.memberCount} 行</span>
@@ -140,10 +144,10 @@
       </button>
 
       {#if result}
-        <p class="result-ok">{result}</p>
+        <p class="result-ok" transition:softFade={{ duration: 140 }}>{result}</p>
       {/if}
       {#if error}
-        <p class="result-err">{error}</p>
+        <p class="result-err" transition:softFade={{ duration: 140 }}>{error}</p>
       {/if}
     </div>
   </div>
@@ -251,6 +255,13 @@
     padding: 6px 10px;
     font-size: var(--font-md);
     cursor: pointer;
+    transition:
+      background var(--motion-fast) var(--ease-responsive),
+      transform var(--motion-press) var(--ease-responsive);
+  }
+
+  .group-item:active:not(:disabled) {
+    transform: scale(0.985);
   }
 
   .group-item:hover:not(:disabled) {

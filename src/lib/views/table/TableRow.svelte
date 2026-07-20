@@ -130,6 +130,7 @@
     background: var(--surface);
     border-bottom: 1px solid var(--border);
     cursor: default;
+    transition: background var(--motion-fast) var(--ease-responsive);
   }
 
   .table-row:hover:not(.is-skeleton) {
@@ -141,7 +142,17 @@
   }
 
   .table-row.is-active {
-    box-shadow: inset 2px 0 0 var(--accent);
+    position: absolute;
+  }
+
+  .table-row.is-active::before {
+    content: "";
+    position: absolute;
+    inset: 8px auto 8px 0;
+    width: 2px;
+    border-radius: var(--radius-full);
+    background: var(--accent);
+    animation: row-indicator-in var(--motion-fast) var(--ease-responsive);
   }
 
   .table-row:focus-visible {
@@ -171,13 +182,17 @@
     accent-color: var(--accent);
     cursor: pointer;
     opacity: 0;
-    transition: opacity 0.1s ease;
+    transform: scale(0.85);
+    transition:
+      opacity var(--motion-fast) var(--ease-responsive),
+      transform var(--motion-fast) var(--ease-responsive);
   }
 
   .table-row:hover .cell-check input,
   .table-row.is-checked .cell-check input,
   .table-row.selection-active .cell-check input {
     opacity: 1;
+    transform: scale(1);
   }
 
   .cell-thumb {
@@ -234,5 +249,18 @@
 
   .skeleton-line.wide {
     width: 90%;
+  }
+
+  @keyframes row-indicator-in {
+    from {
+      opacity: 0;
+      transform: scaleY(0);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .table-row.is-active::before {
+      animation: none;
+    }
   }
 </style>

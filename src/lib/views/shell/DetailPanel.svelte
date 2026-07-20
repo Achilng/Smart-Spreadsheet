@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { flip } from "svelte/animate";
+
   import {
     createTag,
     setTagsForRow,
@@ -22,6 +24,7 @@
   } from "../../images/progressive-images";
   import { vibeStatuses } from "../../images/vibe-statuses";
   import { recordRowStateChange } from "../../stores/history-actions";
+  import { softFade, softPop } from "../../ui/motion";
 
   const row = $derived(rowStore.activeRow);
   const hasImage = $derived(
@@ -385,6 +388,7 @@
               <span
                 class="vibe-badge"
                 title="原图元数据包含 {vibeRefs} 个 vibe 引用，拖到 NovelAI 可一并导入"
+                transition:softPop={{ duration: 140, y: 0, start: 0.85 }}
               >VIBE ×{vibeRefs}</span>
             {/if}
           </button>
@@ -420,6 +424,7 @@
             onkeydown={event => {
               if (event.key === "Escape") noteEditor.cancel();
             }}
+            transition:softFade={{ duration: 130 }}
           ></textarea>
           <div class="prompt-edit-actions">
             <button type="button" class="btn btn-sm" disabled={noteEditor.saving} onclick={noteEditor.cancel}>取消</button>
@@ -431,7 +436,7 @@
             <p class="save-error">{noteEditor.error}</p>
           {/if}
         {:else}
-          <pre class:is-empty={!row.note}>{row.note ?? "—"}</pre>
+          <pre class:is-empty={!row.note} transition:softFade={{ duration: 130 }}>{row.note ?? "—"}</pre>
         {/if}
       </section>
 
@@ -439,7 +444,11 @@
         <h4>Tags</h4>
         <div class="chip-list">
           {#each row.tags as tag (tag)}
-            <span class="chip">
+            <span
+              class="chip"
+              animate:flip={{ duration: 160 }}
+              transition:softPop={{ duration: 140, y: 0, start: 0.9 }}
+            >
               {tag}
               <button
                 type="button"
@@ -465,7 +474,7 @@
             onblur={() => window.setTimeout(() => (tagInputFocused = false), 120)}
           />
           {#if tagInputFocused && suggestions.length > 0}
-            <div class="suggestions">
+            <div class="suggestions" transition:softPop={{ duration: 145, y: -4, start: 0.98 }}>
               {#each suggestions as name (name)}
                 <button type="button" onmousedown={event => event.preventDefault()} onclick={() => void addTag(name)}>
                   {name}
@@ -532,6 +541,7 @@
               onkeydown={event => {
                 if (event.key === "Escape") prompt.editor.cancel();
               }}
+              transition:softFade={{ duration: 130 }}
             ></textarea>
             <div class="prompt-edit-actions">
               <button type="button" class="btn btn-sm" disabled={prompt.editor.saving} onclick={prompt.editor.cancel}>取消</button>
@@ -543,7 +553,7 @@
               <p class="save-error">{prompt.editor.error}</p>
             {/if}
           {:else}
-            <pre class:is-empty={!prompt.text}>{prompt.text ?? "—"}</pre>
+            <pre class:is-empty={!prompt.text} transition:softFade={{ duration: 130 }}>{prompt.text ?? "—"}</pre>
           {/if}
         </section>
       {/each}
@@ -578,6 +588,7 @@
         lightboxOpen = false;
       }
     }}
+    transition:softFade={{ duration: 150 }}
   >
     <img
       src={lightboxUrl}
@@ -585,6 +596,7 @@
       title={originalError ?? (originalUrl ? "完整原图" : "正在加载完整原图…")}
       draggable="false"
       onmousedown={(e) => { if (row && hasImage) beginFileDrag(e, row.id); }}
+      transition:softPop={{ duration: 190, y: 0, start: 0.98 }}
     />
   </div>
 {/if}
@@ -773,6 +785,7 @@
     text-align: left;
     padding: 6px 10px;
     font-size: var(--font-md);
+    transition: background var(--motion-fast) var(--ease-responsive);
   }
 
   .suggestions button:hover {
@@ -867,6 +880,10 @@
     color: var(--accent);
     font-size: var(--font-sm);
     padding: 0;
+    min-width: 36px;
+    transition:
+      color var(--motion-fast) var(--ease-responsive),
+      opacity var(--motion-fast) var(--ease-responsive);
   }
 
   .copy-btn:hover {

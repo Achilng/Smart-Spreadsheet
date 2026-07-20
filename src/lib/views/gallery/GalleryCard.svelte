@@ -152,13 +152,22 @@
     border: 1px solid var(--border);
     border-radius: var(--radius-m);
     overflow: hidden;
-    transition: border-color 0.12s ease, box-shadow 0.12s ease, transform 0.12s ease;
+    transition:
+      background var(--motion-fast) var(--ease-responsive),
+      border-color var(--motion-fast) var(--ease-responsive),
+      box-shadow var(--motion-fast) var(--ease-responsive),
+      transform var(--motion-fast) var(--ease-responsive);
   }
 
   .card:hover:not(.is-skeleton) {
     border-color: var(--border-strong);
     box-shadow: var(--shadow-hover);
     transform: translateY(-1px);
+  }
+
+  .card:active:not(.is-skeleton) {
+    transform: translateY(-1px) scale(0.99);
+    transition-duration: var(--motion-press);
   }
 
   .card.is-active {
@@ -182,13 +191,17 @@
     accent-color: var(--accent);
     cursor: pointer;
     opacity: 0;
-    transition: opacity 0.1s ease;
+    transform: scale(0.85);
+    transition:
+      opacity var(--motion-fast) var(--ease-responsive),
+      transform var(--motion-fast) var(--ease-responsive);
   }
 
   .card:hover .select-box,
   .card.is-checked .select-box,
   .card.selection-active .select-box {
     opacity: 1;
+    transform: scale(1);
   }
 
   .thumb {

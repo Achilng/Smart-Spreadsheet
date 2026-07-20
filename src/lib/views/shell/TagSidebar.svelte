@@ -23,6 +23,7 @@
     selectionDto,
   } from "../../stores/selection-store.svelte";
   import { loadTags, tagStore } from "../../stores/tag-store.svelte";
+  import { softFade, softFly } from "../../ui/motion";
 
   type SidebarMode = "filter" | "tag";
   type CoverageState = "all" | "partial" | "none";
@@ -286,7 +287,7 @@
   </header>
 
   {#if sidebarMode === "filter"}
-    <div class="filter-info">
+    <div class="filter-info" in:softFly={{ duration: 145, x: -4, y: 0 }}>
       <span class="faint">{formatCount(rowStore.totalCount)} 条匹配</span>
       <div class="filter-mode" role="group" aria-label="筛选模式">
         <button
@@ -311,7 +312,7 @@
       {/if}
     </div>
 
-    <div class="dedupe-options" role="group" aria-label="去重与筛选">
+    <div class="dedupe-options" role="group" aria-label="去重与筛选" in:softFly={{ duration: 145, x: -4, y: 0 }}>
       <label>
         <input
           type="checkbox"
@@ -349,7 +350,7 @@
       </label>
     </div>
   {:else}
-    <div class="tagging-info">
+    <div class="tagging-info" in:softFly={{ duration: 145, x: 4, y: 0 }}>
       {#if selectedCount === 0}
         <span>请先在画廊或表格中选择要打标的行。</span>
       {:else if coverageLoading}
@@ -403,7 +404,7 @@
   </div>
 
   {#if sidebarMode === "tag"}
-    <form class="create-form" onsubmit={createAndAttach}>
+    <form class="create-form" onsubmit={createAndAttach} transition:softFly={{ duration: 155, y: 6 }}>
       <input
         type="text"
         placeholder="输入 Tag 名称，即建即贴"
@@ -421,7 +422,7 @@
     </form>
   {/if}
   {#if status}
-    <p class="form-status" class:is-error={status.isError} role="status">{status.text}</p>
+    <p class="form-status" class:is-error={status.isError} role="status" transition:softFade={{ duration: 140 }}>{status.text}</p>
   {/if}
 </div>
 
@@ -480,6 +481,16 @@
     padding: 1px 8px;
     font-size: var(--font-xs);
     color: var(--text-2);
+    transition:
+      background var(--motion-fast) var(--ease-responsive),
+      color var(--motion-fast) var(--ease-responsive),
+      box-shadow var(--motion-fast) var(--ease-responsive),
+      transform var(--motion-press) var(--ease-responsive);
+  }
+
+  .mode-switch button:active,
+  .filter-mode button:active {
+    transform: scale(0.96);
   }
 
   .mode-switch button.is-active,
@@ -577,6 +588,14 @@
     font-size: var(--font-md);
     text-align: left;
     color: var(--text);
+    transition:
+      background var(--motion-fast) var(--ease-responsive),
+      color var(--motion-fast) var(--ease-responsive),
+      transform var(--motion-press) var(--ease-responsive);
+  }
+
+  .tag-row:active:not(:disabled) {
+    transform: scale(0.99);
   }
 
   .tag-row:hover:not(:disabled) {

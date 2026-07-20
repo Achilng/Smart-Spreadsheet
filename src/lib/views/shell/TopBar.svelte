@@ -16,6 +16,7 @@
   import { openToolboxWindow } from "../../windows/toolbox";
   import SizeSlider from "./SizeSlider.svelte";
   import WindowControls from "../../ui/WindowControls.svelte";
+  import { softPop } from "../../ui/motion";
 
   let searchInput = $state("");
   let debounceTimer: ReturnType<typeof setTimeout> | undefined;
@@ -87,7 +88,13 @@
         class:has-value={searchInput.length > 0}
       />
       {#if searchInput.length > 0}
-        <button type="button" class="search-clear" onclick={clearSearch} title="清除搜索">&times;</button>
+        <button
+          type="button"
+          class="search-clear"
+          onclick={clearSearch}
+          title="清除搜索"
+          transition:softPop={{ duration: 110, y: 0, start: 0.85 }}
+        >&times;</button>
       {/if}
     </div>
   {:else}
@@ -182,6 +189,10 @@
 
   .search-clear:hover {
     color: var(--text);
+  }
+
+  .search-clear:active {
+    transform: translateY(-50%) scale(0.85);
   }
 
   .actions {

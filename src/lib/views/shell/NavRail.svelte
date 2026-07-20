@@ -97,7 +97,9 @@
     justify-content: center;
     color: var(--text-3);
     cursor: pointer;
-    transition: background 0.12s ease, color 0.12s ease;
+    transition:
+      background var(--motion-fast) var(--ease-responsive),
+      color var(--motion-fast) var(--ease-responsive);
     position: relative;
   }
 
@@ -111,9 +113,26 @@
     color: var(--accent);
   }
 
+  .nav-item.is-active::before {
+    content: "";
+    position: absolute;
+    left: -6px;
+    width: 2px;
+    height: 18px;
+    border-radius: var(--radius-full);
+    background: var(--accent);
+    transform-origin: center;
+    animation: nav-indicator-in var(--motion-base) var(--ease-responsive);
+  }
+
   .nav-item svg {
     width: 20px;
     height: 20px;
+    transition: transform var(--motion-press) var(--ease-responsive);
+  }
+
+  .nav-item:active svg {
+    transform: scale(0.94);
   }
 
   .nav-item::after {
@@ -121,7 +140,7 @@
     position: absolute;
     left: calc(100% + 8px);
     top: 50%;
-    transform: translateY(-50%);
+    transform: translate(-4px, -50%);
     padding: 4px 10px;
     background: var(--text);
     color: var(--surface);
@@ -130,12 +149,35 @@
     white-space: nowrap;
     pointer-events: none;
     opacity: 0;
-    transition: opacity 0.15s ease;
+    transition:
+      opacity var(--motion-fast) var(--ease-responsive),
+      transform var(--motion-fast) var(--ease-responsive);
+    transition-delay: 0ms;
     z-index: var(--z-dropdown);
   }
 
   .nav-item:hover::after {
     opacity: 1;
+    transform: translate(0, -50%);
+    transition-delay: 320ms;
+  }
+
+  .nav-item:focus-visible::after {
+    opacity: 1;
+    transform: translate(0, -50%);
+  }
+
+  @keyframes nav-indicator-in {
+    from {
+      opacity: 0;
+      transform: scaleY(0.45);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .nav-item.is-active::before {
+      animation: none;
+    }
   }
 
   .nav-bottom {

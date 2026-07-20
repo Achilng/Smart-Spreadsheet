@@ -58,11 +58,14 @@
     align-items: center;
     gap: 4px;
     flex: none;
+    opacity: 1;
+    transition: opacity var(--motion-fast) var(--ease-responsive);
   }
 
   /* 非画廊/表格视图下隐藏但保留占位，避免顶栏在切换视图时重排 */
   .size-slider.is-hidden {
     visibility: hidden;
+    opacity: 0;
     pointer-events: none;
   }
 
@@ -90,9 +93,17 @@
     border: 2px solid var(--surface);
     box-shadow: 0 0 0 1px var(--border-strong);
     cursor: pointer;
+    transition:
+      transform var(--motion-fast) var(--ease-responsive),
+      background var(--motion-fast) var(--ease-responsive);
   }
 
   input[type="range"]::-webkit-slider-thumb:hover {
     background: var(--accent-hover);
+    transform: scale(1.1);
+  }
+
+  input[type="range"]:active::-webkit-slider-thumb {
+    transform: scale(1.18);
   }
 </style>

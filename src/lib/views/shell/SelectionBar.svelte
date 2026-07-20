@@ -12,6 +12,7 @@
   import { rowStore } from "../../stores/row-store.svelte";
   import GroupAssignDialog from "../groups/GroupAssignDialog.svelte";
   import PromptEditDialog from "./PromptEditDialog.svelte";
+  import { softFade, softPop } from "../../ui/motion";
 
   let promptEditOpen = $state(false);
   let groupDialogOpen = $state(false);
@@ -45,10 +46,14 @@
 />
 
 {#if count > 0}
-  <div class="selection-bar-wrap">
+  <div class="selection-bar-wrap" transition:softPop={{ duration: 180, y: 10, start: 0.98 }}>
     <div class="selection-bar">
       <span class="count">
-        已选 {formatCount(count)} 行
+        已选
+        {#key count}
+          <span class="count-value" transition:softFade={{ duration: 110 }}>{formatCount(count)}</span>
+        {/key}
+        行
         {#if selection.kind === "filtered"}
           <small class="faint">（筛选全选{selectionIds.size > 0 ? `，排除 ${formatCount(selectionIds.size)} 行` : ""}）</small>
         {/if}
@@ -59,6 +64,7 @@
           class="btn"
           disabled={selectingAll}
           onclick={() => void selectAll()}
+          transition:softFade={{ duration: 120 }}
         >
           {selectingAll ? "全选中…" : "全选"}
         </button>
@@ -141,6 +147,12 @@
   .count small {
     font-weight: 400;
     font-size: var(--font-sm);
+  }
+
+  .count-value {
+    display: inline-block;
+    min-width: 1ch;
+    text-align: center;
   }
 
   .selection-bar .btn {

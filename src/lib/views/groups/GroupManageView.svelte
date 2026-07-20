@@ -1,7 +1,11 @@
 <script lang="ts">
+  import { flip } from "svelte/animate";
+
   import { app, errorText } from "../../stores/app-state.svelte";
   import { cleanEmptyGroups, groupStore, loadGroups, removeGroup, renameExistingGroup } from "../../stores/group-store.svelte";
   import { resetRows } from "../../stores/row-store.svelte";
+  import Modal from "../../ui/Modal.svelte";
+  import { softFade } from "../../ui/motion";
 
   let editingId = $state<number | null>(null);
   let editName = $state("");
@@ -65,7 +69,7 @@
   }
 </script>
 
-<div class="overlay">
+<Modal open={app.groupManageOpen} onclose={close} width="480px">
   <div class="panel">
     <header>
       <h2>管理分组（{groupStore.list.length}）</h2>
@@ -76,12 +80,12 @@
     </header>
 
     {#if error}
-      <p class="error">{error}</p>
+      <p class="error" transition:softFade={{ duration: 140 }}>{error}</p>
     {/if}
 
     <div class="list">
       {#each groupStore.list as group (group.id)}
-        <div class="group-row">
+        <div class="group-row" animate:flip={{ duration: 170 }} transition:softFade={{ duration: 130 }}>
           {#if editingId === group.id}
             <input
               type="text"
@@ -107,26 +111,10 @@
       {/each}
     </div>
   </div>
-</div>
+</Modal>
 
 <style>
-  .overlay {
-    position: fixed;
-    inset: 0;
-    z-index: var(--z-overlay);
-    background: rgb(15 20 28 / 50%);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
   .panel {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-m);
-    box-shadow: var(--shadow-2);
-    width: 480px;
-    max-width: 95vw;
     max-height: 80vh;
     display: flex;
     flex-direction: column;
