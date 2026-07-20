@@ -136,7 +136,7 @@
         : "";
       setNotice({
         tone: "success",
-        text: `已导出 ${formatCount(result.exported)} 张图片${missing}。`,
+        text: `已导出 ${formatCount(result.exported)} 张图片${missing}${stripMetadata ? "，已通过普通与隐写元数据复检" : ""}。`,
       });
       await requestSelection();
     } catch (cause) {
@@ -244,7 +244,7 @@
       <span class="step">4</span>
       <div>
         <h3>图片元数据</h3>
-        <p>需要时重新编码导出副本的像素，彻底移除提示词、参数和其他元数据。</p>
+        <p>重新编码导出副本，移除 PNG 附加块及 NovelAI Alpha 通道隐写元数据。</p>
       </div>
       <label class="switch-row danger-switch">
         <input type="checkbox" bind:checked={stripMetadata} />
@@ -253,7 +253,7 @@
     </div>
     {#if stripMetadata}
       <p class="safety-note">
-        只处理新导出的图片副本；资料库记录、原图和受管原件都不会被修改。
+        只处理新导出的图片副本；会微调透明度最低位（肉眼不可见），原图和资料库不会被修改。
       </p>
     {/if}
   </section>

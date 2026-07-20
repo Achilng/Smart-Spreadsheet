@@ -1,5 +1,5 @@
-use std::fs::{self, File};
-use std::io::{self, BufReader, BufWriter, Read, Write};
+use std::fs;
+use std::io;
 use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
@@ -9,7 +9,9 @@ use super::{DataDirectory, StorageError};
 use crate::db::{ExportRow, RowSelection, TagMutationError};
 
 const PROGRESS_EVERY_FILES: usize = 20;
+#[cfg(test)]
 const PNG_SIGNATURE: [u8; 8] = [137, 80, 78, 71, 13, 10, 26, 10];
+#[cfg(test)]
 const PNG_METADATA_FREE_CHUNKS: [[u8; 4]; 5] =
     [*b"IHDR", *b"PLTE", *b"tRNS", *b"IDAT", *b"IEND"];
 
@@ -450,14 +452,6 @@ fn write_exported_copy(
         return Ok(());
     }
 
-    if has_png_signature(source)? {
-        if let Err(error) = write_png_without_metadata(source, target) {
-            let _ = fs::remove_file(target);
-            return Err(error.into());
-        }
-        return Ok(());
-    }
-
     let reader = image::ImageReader::open(source)?.with_guessed_format()?;
     let format = reader.format().ok_or_else(|| {
         io::Error::new(
@@ -466,103 +460,50 @@ fn write_exported_copy(
         )
     })?;
     let image = reader.decode()?;
-    image.save_with_format(target, format)?;
+    if format == image::ImageFormat::Png {
+        let mut rgba = image.to_rgba8();
+        crate::pipeline::stealth_png::scrub_stealth_alpha_lsb(&mut rgba);
+        if let Err(error) = rgba.save_with_format(target, image::ImageFormat::Png) {
+            let _ = fs::remove_file(target);
+            return Err(error.into());
+        }
+        if let Err(error) = validate_stripped_png(target) {
+            let _ = fs::remove_file(target);
+            return Err(error.into());
+        }
+    } else {
+        image.save_with_format(target, format)?;
+    }
     Ok(())
 }
 
-fn has_png_signature(path: &Path) -> io::Result<bool> {
-    let mut file = File::open(path)?;
-    let mut signature = [0_u8; PNG_SIGNATURE.len()];
-    match file.read_exact(&mut signature) {
-        Ok(()) => Ok(signature == PNG_SIGNATURE),
-        Err(error) if error.kind() == io::ErrorKind::UnexpectedEof => Ok(false),
-        Err(error) => Err(error),
-    }
-}
-
-/// 无损复制 PNG 的像素数据，只保留构成静态图像必需的块。
-///
-/// PNG 的文本、EXIF、ICC、时间、物理尺寸、颜色建议以及私有附加块都会被丢弃。
-/// PLTE 和 tRNS 可能直接参与调色板与透明度显示，因此必须保留。
-fn write_png_without_metadata(source: &Path, target: &Path) -> io::Result<()> {
-    let mut reader = BufReader::new(File::open(source)?);
-    let mut writer = BufWriter::new(File::create(target)?);
-    let mut signature = [0_u8; PNG_SIGNATURE.len()];
-    reader.read_exact(&mut signature)?;
-    if signature != PNG_SIGNATURE {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!("不是有效的 PNG 文件: {}", source.display()),
-        ));
-    }
-    writer.write_all(&PNG_SIGNATURE)?;
-
-    let mut chunk_index = 0_usize;
-    let mut saw_idat = false;
-    loop {
-        let mut length_bytes = [0_u8; 4];
-        reader.read_exact(&mut length_bytes).map_err(|error| {
+fn validate_stripped_png(path: &Path) -> io::Result<()> {
+    let text_chunks =
+        crate::pipeline::png_text::read_png_text_chunks(path).map_err(|error| {
             io::Error::new(
-                error.kind(),
-                format!("PNG 数据块不完整（缺少 IEND）: {}", source.display()),
+                io::ErrorKind::InvalidData,
+                format!("导出后 PNG 文本元数据复检失败: {error}"),
             )
         })?;
-        let length = u32::from_be_bytes(length_bytes) as u64;
-        let mut chunk_type = [0_u8; 4];
-        reader.read_exact(&mut chunk_type)?;
-
-        if chunk_index == 0 && (chunk_type != *b"IHDR" || length != 13) {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!("PNG 首块不是有效 IHDR: {}", source.display()),
-            ));
-        }
-        if chunk_type[0].is_ascii_uppercase() && !PNG_METADATA_FREE_CHUNKS.contains(&chunk_type) {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!(
-                    "PNG 含有无法安全丢弃的未知关键块 {}: {}",
-                    String::from_utf8_lossy(&chunk_type),
-                    source.display()
-                ),
-            ));
-        }
-
-        let keep = PNG_METADATA_FREE_CHUNKS.contains(&chunk_type);
-        if keep {
-            writer.write_all(&length_bytes)?;
-            writer.write_all(&chunk_type)?;
-        }
-        let mut chunk_body = reader.by_ref().take(length + 4);
-        let copied = if keep {
-            io::copy(&mut chunk_body, &mut writer)?
-        } else {
-            io::copy(&mut chunk_body, &mut io::sink())?
-        };
-        if copied != length + 4 {
-            return Err(io::Error::new(
-                io::ErrorKind::UnexpectedEof,
-                format!(
-                    "PNG {} 块不完整: {}",
-                    String::from_utf8_lossy(&chunk_type),
-                    source.display()
-                ),
-            ));
-        }
-
-        chunk_index += 1;
-        saw_idat |= chunk_type == *b"IDAT";
-        if chunk_type == *b"IEND" {
-            if length != 0 || !saw_idat {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!("PNG 缺少图像数据或 IEND 无效: {}", source.display()),
-                ));
-            }
-            break;
-        }
+    if !text_chunks.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("导出后仍存在 PNG 文本元数据: {}", path.display()),
+        ));
     }
-    writer.flush()
+    let stealth = crate::pipeline::stealth_png::read_stealth_png_metadata(path).map_err(|error| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("导出后 NovelAI 隐写元数据复检失败: {error}"),
+        )
+    })?;
+    if stealth.is_some() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("导出后仍存在 NovelAI 隐写元数据: {}", path.display()),
+        ));
+    }
+    Ok(())
 }
 
 fn output_file_name(ordinal: usize, source: &Path) -> String {
@@ -588,11 +529,15 @@ fn create_unique_output_dir(parent_dir: &Path, base_name: &str) -> io::Result<Pa
 
 #[cfg(test)]
 mod tests {
+    use std::io::{Cursor, Write};
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    use flate2::{Compression, write::GzEncoder};
 
     use super::*;
     use crate::db::{NewRow, SourceType, TagMatchMode};
     use crate::pipeline::png_text::read_png_text_chunks;
+    use crate::pipeline::stealth_png::read_stealth_png_metadata;
     use crate::storage::test_fixtures::metadata_png_bytes;
 
     #[test]
@@ -738,7 +683,14 @@ mod tests {
         let temporary = TemporaryImageFilesExport::new();
         let directory = DataDirectory::initialize(&temporary.data).unwrap();
         let source = temporary.root.join("metadata.png");
-        let mut source_bytes = metadata_png_bytes("artist:source", Some(r#"{"seed":42}"#));
+        let mut source_bytes =
+            stealth_png_bytes("artist:source", r#"{"seed":42,"uc":"bad hands"}"#);
+        insert_text_chunk_after_ihdr(&mut source_bytes, "Description", "artist:source");
+        insert_text_chunk_after_ihdr(
+            &mut source_bytes,
+            "Comment",
+            r#"{"seed":42,"uc":"bad hands"}"#,
+        );
         insert_png_chunk_after_ihdr(
             &mut source_bytes,
             *b"eXIf",
@@ -778,7 +730,8 @@ mod tests {
         assert!(exported.is_file());
         // 与表格导入/元数据检测完全相同的读取器必须检测不到任何文本元数据。
         assert!(read_png_text_chunks(&exported).unwrap().is_empty());
-        assert_eq!(image::image_dimensions(&exported).unwrap(), (16, 16));
+        assert!(read_stealth_png_metadata(&exported).unwrap().is_none());
+        assert_eq!(image::image_dimensions(&exported).unwrap(), (64, 64));
         let exported_bytes = fs::read(&exported).unwrap();
         let exported_chunks = png_chunks(&exported_bytes);
         assert!(
@@ -786,12 +739,14 @@ mod tests {
                 .iter()
                 .all(|(chunk_type, _)| PNG_METADATA_FREE_CHUNKS.contains(chunk_type))
         );
-        assert_eq!(
-            png_chunk_payloads(&source_bytes, *b"IDAT"),
-            png_chunk_payloads(&exported_bytes, *b"IDAT")
-        );
         for removed in [*b"tEXt", *b"eXIf", *b"pHYs", *b"tIME", *b"raNd"] {
             assert!(!exported_chunks.iter().any(|(kind, _)| *kind == removed));
+        }
+        let source_pixels = image::load_from_memory(&source_bytes).unwrap().to_rgba8();
+        let exported_pixels = image::load_from_memory(&exported_bytes).unwrap().to_rgba8();
+        for (before, after) in source_pixels.pixels().zip(exported_pixels.pixels()) {
+            assert_eq!(&before.0[..3], &after.0[..3]);
+            assert_eq!(after.0[3], before.0[3] | 1);
         }
 
         // 抹除只作用于导出副本，原图仍能被表格检测出 Description/Comment。
@@ -807,9 +762,62 @@ mod tests {
                 .unwrap()
                 .get("Comment")
                 .map(String::as_str),
-            Some(r#"{"seed":42}"#)
+            Some(r#"{"seed":42,"uc":"bad hands"}"#)
+        );
+        assert_eq!(
+            read_stealth_png_metadata(&source)
+                .unwrap()
+                .unwrap()
+                .get("Description")
+                .map(String::as_str),
+            Some("artist:source")
         );
         assert_eq!(fs::read(&source).unwrap(), source_bytes);
+    }
+
+    fn stealth_png_bytes(description: &str, comment: &str) -> Vec<u8> {
+        let metadata = serde_json::json!({
+            "Description": description,
+            "Comment": comment,
+            "Source": "NovelAI"
+        });
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+        encoder
+            .write_all(serde_json::to_string(&metadata).unwrap().as_bytes())
+            .unwrap();
+        let compressed = encoder.finish().unwrap();
+        let mut payload = b"stealth_pngcomp".to_vec();
+        payload.extend_from_slice(
+            &u32::try_from(compressed.len() * 8)
+                .unwrap()
+                .to_be_bytes(),
+        );
+        payload.extend_from_slice(&compressed);
+
+        let mut image = image::RgbaImage::from_pixel(64, 64, image::Rgba([12, 34, 56, 255]));
+        let height = image.height() as usize;
+        for (position, bit) in payload
+            .iter()
+            .flat_map(|byte| (0..8).map(move |shift| (byte >> (7 - shift)) & 1))
+            .enumerate()
+        {
+            let x = position / height;
+            let y = position % height;
+            let pixel = image.get_pixel_mut(x as u32, y as u32);
+            pixel.0[3] = (pixel.0[3] & 0xfe) | bit;
+        }
+        let mut encoded = Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgba8(image)
+            .write_to(&mut encoded, image::ImageFormat::Png)
+            .unwrap();
+        encoded.into_inner()
+    }
+
+    fn insert_text_chunk_after_ihdr(png: &mut Vec<u8>, keyword: &str, text: &str) {
+        let mut data = keyword.as_bytes().to_vec();
+        data.push(0);
+        data.extend_from_slice(text.as_bytes());
+        insert_png_chunk_after_ihdr(png, *b"tEXt", &data);
     }
 
     fn insert_png_chunk_after_ihdr(png: &mut Vec<u8>, chunk_type: [u8; 4], data: &[u8]) {
@@ -841,13 +849,6 @@ mod tests {
             }
         }
         chunks
-    }
-
-    fn png_chunk_payloads(bytes: &[u8], expected_type: [u8; 4]) -> Vec<Vec<u8>> {
-        png_chunks(bytes)
-            .into_iter()
-            .filter_map(|(chunk_type, data)| (chunk_type == expected_type).then_some(data))
-            .collect()
     }
 
     #[test]

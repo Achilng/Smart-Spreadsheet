@@ -16,7 +16,9 @@ use crate::db::{DatabaseError, ExistingImageUpdate, NewRow, SourceType};
 use crate::fsx::{replace_output_file, unique_sibling_path};
 use crate::pipeline::archive::{ArchiveError, archive_extension, extract_archive};
 use crate::pipeline::scan::{ScanError, SourceImage, collect_png_files};
-use crate::pipeline::{metadata_fingerprint, parallel, parse_novelai_metadata, png_text};
+use crate::pipeline::{
+    metadata_fingerprint, parallel, parse_novelai_metadata, png_text, stealth_png,
+};
 
 const PROGRESS_INTERVAL: Duration = Duration::from_millis(100);
 
@@ -713,10 +715,23 @@ enum MetadataInspection {
 }
 
 fn inspect_metadata(image: SourceImage) -> MetadataInspection {
-    let Ok(chunks) = png_text::read_png_text_chunks(&image.absolute_path) else {
+    let Ok(mut chunks) = png_text::read_png_text_chunks(&image.absolute_path) else {
         return MetadataInspection::Rejected(image);
     };
-    let metadata = parse_novelai_metadata(&chunks);
+    let mut metadata = parse_novelai_metadata(&chunks);
+    if metadata.positive_prompt.trim().is_empty()
+        && metadata.character_prompt.trim().is_empty()
+        && metadata.negative_prompt.trim().is_empty()
+    {
+        match stealth_png::read_stealth_png_metadata(&image.absolute_path) {
+            Ok(Some(stealth_chunks)) => {
+                chunks = stealth_chunks;
+                metadata = parse_novelai_metadata(&chunks);
+            }
+            Ok(None) => {}
+            Err(_) => return MetadataInspection::Rejected(image),
+        }
+    }
     let metadata_fingerprint = metadata_fingerprint(&chunks);
     let positive_prompt = nonempty_string(metadata.positive_prompt);
     let character_prompt = nonempty_string(metadata.character_prompt);
@@ -970,6 +985,8 @@ impl Drop for RunTempDir {
 mod tests {
     use std::io::Write;
 
+    use flate2::{Compression, write::GzEncoder};
+
     use super::*;
     use crate::db::RowSelection;
     use crate::storage::test_fixtures::{metadata_png_bytes, write_metadata_png};
@@ -992,6 +1009,70 @@ mod tests {
             png.extend(0_u32.to_be_bytes());
         }
         fs::write(path, png).unwrap();
+    }
+
+    fn create_stealth_png(path: &Path, description: &str, comment: &str) {
+        let metadata = serde_json::json!({
+            "Description": description,
+            "Comment": comment,
+            "Source": "NovelAI"
+        });
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+        encoder
+            .write_all(serde_json::to_string(&metadata).unwrap().as_bytes())
+            .unwrap();
+        let compressed = encoder.finish().unwrap();
+        let mut payload = b"stealth_pngcomp".to_vec();
+        payload.extend_from_slice(
+            &u32::try_from(compressed.len() * 8)
+                .unwrap()
+                .to_be_bytes(),
+        );
+        payload.extend_from_slice(&compressed);
+
+        let mut image = image::RgbaImage::from_pixel(64, 64, image::Rgba([10, 20, 30, 255]));
+        let height = image.height() as usize;
+        for (position, bit) in payload
+            .iter()
+            .flat_map(|byte| (0..8).map(move |shift| (byte >> (7 - shift)) & 1))
+            .enumerate()
+        {
+            let x = position / height;
+            let y = position % height;
+            let pixel = image.get_pixel_mut(x as u32, y as u32);
+            pixel.0[3] = (pixel.0[3] & 0xfe) | bit;
+        }
+        image.save(path).unwrap();
+    }
+
+    #[test]
+    fn imports_novelai_metadata_stored_only_in_alpha_channel() {
+        let temporary = TemporaryImageImport::new();
+        fs::create_dir_all(&temporary.root).unwrap();
+        let input = temporary.root.join("stealth-only.png");
+        create_stealth_png(
+            &input,
+            "best quality, artist:stealth",
+            r#"{"seed":42,"uc":"bad hands"}"#,
+        );
+        let directory = temporary.initialize_directory();
+
+        let outcome = directory.import_images(&input, |_| {}).unwrap();
+
+        assert_eq!(outcome.added, 1);
+        assert_eq!(outcome.metadata_rejected, 0);
+        let row = directory
+            .open_database()
+            .unwrap()
+            .get_rows_by_ids(&[1])
+            .unwrap()
+            .remove(0);
+        assert_eq!(
+            row.positive_prompt.as_deref(),
+            Some("best quality, artist:stealth")
+        );
+        assert_eq!(row.negative_prompt.as_deref(), Some("bad hands"));
+        assert_eq!(row.artists.as_deref(), Some("artist:stealth"));
     }
 
     #[test]
