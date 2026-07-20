@@ -5,6 +5,7 @@
   import FileHandler from "@tiptap/extension-file-handler";
   import Image from "@tiptap/extension-image";
   import StarterKit from "@tiptap/starter-kit";
+  import { flip } from "svelte/animate";
   import { onMount, tick } from "svelte";
 
   import {
@@ -21,6 +22,7 @@
   } from "../../api";
   import { errorText, setNotice } from "../../stores/app-state.svelte";
   import { lastPromptDoc, rememberPromptDoc } from "../../stores/view-state";
+  import { softFade } from "../../ui/motion";
 
   const IMAGE_MIME_TYPES = [
     "image/png",
@@ -37,6 +39,7 @@
   let title = $state("");
   let search = $state("");
   let loading = $state(false);
+  let switchingDoc = $state(false);
   let saving = $state(false);
   let saveState = $state<"idle" | "dirty" | "saving" | "saved" | "error">("idle");
   let editorElement = $state<HTMLDivElement | null>(null);
@@ -165,12 +168,14 @@
     if (activeDoc?.id === docId) return;
     await flushSave();
     loading = true;
+    switchingDoc = true;
     try {
       applyDoc(await loadPromptDoc(docId));
     } catch (error) {
       setNotice({ tone: "error", text: errorText(error) });
     } finally {
       loading = false;
+      switchingDoc = false;
     }
   }
 
@@ -456,6 +461,8 @@
             class="doc-item"
             class:is-active={activeDoc?.id === doc.id}
             onclick={() => void selectDoc(doc.id)}
+            animate:flip={{ duration: 170 }}
+            transition:softFade={{ duration: 130 }}
           >
             <span class="doc-title">{doc.title}</span>
             <span class="doc-date">{doc.updatedAt}</span>
@@ -469,6 +476,9 @@
   </aside>
 
   <main class="doc-editor">
+    {#if switchingDoc}
+      <div class="document-progress" aria-hidden="true" transition:softFade={{ duration: 100 }}></div>
+    {/if}
     <div class="editor-titlebar">
       <input
         class="title-input"
@@ -478,7 +488,20 @@
         disabled={!activeDoc || loading}
         oninput={onTitleInput}
       />
-      <span class:error={saveState === "error"} class="save-status">{statusText}</span>
+      <span class:error={saveState === "error"} class="save-status">
+        {#key statusText}
+          <span transition:softFade={{ duration: 120 }}>
+            {#if saveState === "saving"}
+              <i class="save-spinner" aria-hidden="true"></i>
+            {:else if saveState === "saved"}
+              <i class="save-check" aria-hidden="true">✓</i>
+            {:else if saveState === "dirty"}
+              <i class="save-dot" aria-hidden="true"></i>
+            {/if}
+            {statusText}
+          </span>
+        {/key}
+      </span>
       <button type="button" class="btn" disabled={!activeDoc || loading} onclick={copyPlainText}>
         复制全文纯文本
       </button>
@@ -509,7 +532,7 @@
     </div>
 
     <div class="editor-shell">
-      <div class="editor-surface" class:is-disabled={!activeDoc}>
+      <div class="editor-surface" class:is-disabled={!activeDoc} class:is-switching={switchingDoc}>
         <div class="editor-content" bind:this={editorElement}></div>
         {#if !activeDoc}
           <div class="editor-empty">
@@ -589,6 +612,15 @@
     background: transparent;
     padding: 9px;
     text-align: left;
+    position: relative;
+    transition:
+      background var(--motion-fast) var(--ease-responsive),
+      border-color var(--motion-fast) var(--ease-responsive),
+      transform var(--motion-press) var(--ease-responsive);
+  }
+
+  .doc-item:active {
+    transform: scale(0.99);
   }
 
   .doc-item:hover {
@@ -598,6 +630,16 @@
   .doc-item.is-active {
     background: var(--accent-soft);
     border-color: var(--accent-soft-border);
+  }
+
+  .doc-item.is-active::before {
+    content: "";
+    position: absolute;
+    inset: 8px auto 8px 0;
+    width: 2px;
+    border-radius: var(--radius-full);
+    background: var(--accent);
+    animation: doc-indicator-in var(--motion-fast) var(--ease-responsive);
   }
 
   .doc-title {
@@ -635,6 +677,25 @@
     min-height: 0;
     display: flex;
     flex-direction: column;
+    position: relative;
+  }
+
+  .document-progress {
+    position: absolute;
+    z-index: var(--z-nav);
+    inset: 0 0 auto;
+    height: 2px;
+    overflow: hidden;
+    background: var(--accent-soft);
+  }
+
+  .document-progress::after {
+    content: "";
+    display: block;
+    width: 38%;
+    height: 100%;
+    background: var(--accent);
+    animation: document-progress 0.85s linear infinite;
   }
 
   .editor-titlebar {
@@ -674,6 +735,40 @@
     font-size: var(--font-sm);
   }
 
+  .save-status > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .save-dot,
+  .save-check,
+  .save-spinner {
+    width: 10px;
+    height: 10px;
+    display: inline-grid;
+    place-items: center;
+    flex: none;
+    border-radius: 50%;
+    font-size: 9px;
+    font-style: normal;
+  }
+
+  .save-dot {
+    background: #c88a1a;
+  }
+
+  .save-check {
+    color: var(--success);
+    animation: save-check-in var(--motion-fast) var(--ease-responsive);
+  }
+
+  .save-spinner {
+    border: 1.5px solid var(--border-strong);
+    border-top-color: var(--accent);
+    animation: save-spin 0.8s linear infinite;
+  }
+
   .save-status.error {
     color: var(--danger);
   }
@@ -697,6 +792,15 @@
     color: var(--text-2);
     padding: 0 10px;
     font-size: var(--font-md);
+    transition:
+      background var(--motion-fast) var(--ease-responsive),
+      border-color var(--motion-fast) var(--ease-responsive),
+      color var(--motion-fast) var(--ease-responsive),
+      transform var(--motion-press) var(--ease-responsive);
+  }
+
+  .toolbar button:active:not(:disabled) {
+    transform: scale(0.96);
   }
 
   .toolbar button:hover:not(:disabled),
@@ -731,6 +835,12 @@
     border: 1px solid var(--border);
     border-radius: var(--radius-s);
     box-shadow: var(--shadow-1);
+    opacity: 1;
+    transition: opacity var(--motion-fast) var(--ease-responsive);
+  }
+
+  .editor-surface.is-switching {
+    opacity: 0.72;
   }
 
   .editor-surface.is-disabled {
@@ -805,5 +915,31 @@
 
   :global(.ProseMirror-selectednode) {
     outline: 2px solid var(--accent);
+  }
+
+  @keyframes document-progress {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(365%); }
+  }
+
+  @keyframes save-spin {
+    to { transform: rotate(360deg); }
+  }
+
+  @keyframes save-check-in {
+    from { opacity: 0; transform: scale(0.7); }
+  }
+
+  @keyframes doc-indicator-in {
+    from { opacity: 0; transform: scaleY(0); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .document-progress::after,
+    .save-spinner,
+    .save-check,
+    .doc-item.is-active::before {
+      animation: none;
+    }
   }
 </style>

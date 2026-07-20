@@ -11,6 +11,7 @@
   import { errorText, formatCount, setNotice } from "../../stores/app-state.svelte";
   import Thumbnail from "../../ui/Thumbnail.svelte";
   import { focusMainWindow, type ToolboxRowRequest } from "../../windows/toolbox";
+  import { softFade, softFly } from "../../ui/motion";
 
   let queryPath = $state<string | null>(null);
   let matches = $state<SimilarImageMatch[]>([]);
@@ -104,32 +105,46 @@
   </section>
 
   {#if queryName}
-    <div class="query-row">
+    <div class="query-row" transition:softFly={{ duration: 150, y: 4 }}>
       <span>参考图片</span>
       <strong title={queryPath}>{queryName}</strong>
     </div>
   {/if}
 
-  {#if error}
-    <p class="message error">{error}</p>
+  {#if searching}
+    <div class="results-grid skeleton-grid" aria-label="正在搜索相似图片" transition:softFade={{ duration: 120 }}>
+      {#each Array(6) as _}
+        <div class="result-card skeleton-card" aria-hidden="true">
+          <span class="thumbnail shimmer"></span>
+          <span class="card-info">
+            <span class="skeleton-line"></span>
+            <span class="skeleton-line short"></span>
+          </span>
+        </div>
+      {/each}
+    </div>
+  {:else if error}
+    <p class="message error" transition:softFly={{ duration: 150, y: 4 }}>{error}</p>
   {:else if searched && matches.length === 0}
-    <div class="empty-result">
+    <div class="empty-result" transition:softFly={{ duration: 160, y: 4 }}>
       <strong>没有找到相似图片</strong>
       <span>可以先到“资料库维护”刷新感知哈希后再试。</span>
     </div>
   {:else if matches.length > 0}
-    <div class="result-heading">
+    <div class="result-heading" transition:softFade={{ duration: 140 }}>
       <strong>搜索结果</strong>
       <span>{formatCount(matches.length)} 张</span>
     </div>
     <div class="results-grid">
-      {#each matches as match (match.rowId)}
+      {#each matches as match, index (match.rowId)}
         <button
           type="button"
           class="result-card"
           title="在主窗口画廊中定位"
           disabled={openingRowId !== null}
+          class:is-opening={openingRowId === match.rowId}
           onclick={() => void openInMain(match.rowId)}
+          in:softFly={{ duration: 165, y: 4, delay: Math.min(index, 7) * 15 }}
         >
           <span class="thumbnail">
             <Thumbnail rowId={match.rowId} hasImage={true} alt={rowName(match.rowId)} />
@@ -140,6 +155,9 @@
               {distanceLabel(match.distance)} · 距离 {match.distance}
             </span>
           </span>
+          {#if openingRowId === match.rowId}
+            <span class="opening-indicator" aria-label="正在主窗口中打开"></span>
+          {/if}
         </button>
       {/each}
     </div>
@@ -236,6 +254,10 @@
     gap: 14px;
   }
 
+  .skeleton-grid {
+    margin-top: 20px;
+  }
+
   .result-card {
     padding: 0;
     min-width: 0;
@@ -248,16 +270,57 @@
     text-align: left;
     box-shadow: var(--shadow-1);
     cursor: pointer;
-    transition: border-color 120ms ease;
+    position: relative;
+    transition:
+      border-color var(--motion-fast) var(--ease-responsive),
+      box-shadow var(--motion-fast) var(--ease-responsive),
+      transform var(--motion-fast) var(--ease-responsive);
   }
 
   .result-card:hover:not(:disabled) {
     border-color: var(--accent);
+    box-shadow: var(--shadow-hover);
+    transform: translateY(-2px);
+  }
+
+  .result-card:active:not(:disabled) {
+    transform: translateY(-1px) scale(0.985);
+    transition-duration: var(--motion-press);
   }
 
   .result-card:disabled {
     cursor: wait;
-    opacity: 0.65;
+  }
+
+  .result-card:disabled:not(.is-opening) {
+    opacity: 0.78;
+  }
+
+  .skeleton-card {
+    pointer-events: none;
+  }
+
+  .skeleton-line {
+    display: block;
+    width: 78%;
+    height: 10px;
+    border-radius: var(--radius-full);
+    background: var(--surface-2);
+  }
+
+  .skeleton-line.short {
+    width: 52%;
+  }
+
+  .opening-indicator {
+    position: absolute;
+    inset: 8px 8px auto auto;
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--accent-soft-border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: result-spin 0.8s linear infinite;
   }
 
   .thumbnail {
@@ -300,5 +363,18 @@
 
   .card-info span.exact {
     color: var(--success);
+  }
+
+  @keyframes result-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .opening-indicator {
+      animation: none;
+      border-color: var(--accent);
+    }
   }
 </style>

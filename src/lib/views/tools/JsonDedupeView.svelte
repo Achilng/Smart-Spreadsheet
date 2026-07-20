@@ -10,6 +10,7 @@
     type JsonDedupeSummary,
   } from "../../api";
   import { errorText, formatCount } from "../../stores/app-state.svelte";
+  import { softFade, softFly } from "../../ui/motion";
 
   let inputPath = $state<string | null>(null);
   let inspection = $state<JsonDedupeInspection | null>(null);
@@ -88,16 +89,16 @@
           选择 JSON 文件
         </button>
         {#if fileName}
-          <span class="file-name" title={inputPath}>{fileName}</span>
+          <span class="file-name" title={inputPath} transition:softFly={{ duration: 145, y: 4 }}>{fileName}</span>
         {/if}
       </div>
 
       {#if error}
-        <p class="error-text">{error}</p>
+        <p class="error-text" transition:softFly={{ duration: 150, y: 4 }}>{error}</p>
       {/if}
 
       {#if inspection}
-        <dl class="stats">
+        <dl class="stats" transition:softFly={{ duration: 165, y: 4 }}>
           <div>
             <dt>预设总数</dt>
             <dd>{formatCount(inspection.originalCount)}</dd>
@@ -115,7 +116,7 @@
         </dl>
 
         {#if inspection.preview.length > 0}
-          <div class="preview">
+          <div class="preview" transition:softFade={{ duration: 150 }}>
             <p class="faint">内容预览（前 {inspection.preview.length} 条）：</p>
             {#each inspection.preview as item (item.presetKey)}
               <div class="preview-item">
@@ -129,14 +130,19 @@
         {/if}
 
         {#if progress}
-          <p class="faint" role="status">
-            正在去重 {formatCount(progress.processed)} / {formatCount(progress.total)}，已发现重复
-            {formatCount(progress.duplicateCount)} 条…
-          </p>
+          <div class="dedupe-progress" role="status" transition:softFade={{ duration: 130 }}>
+            <p class="faint">
+              正在去重 {formatCount(progress.processed)} / {formatCount(progress.total)}，已发现重复
+              {formatCount(progress.duplicateCount)} 条…
+            </p>
+            <span class="progress-track" aria-hidden="true">
+              <span class="progress-fill" style:transform="scaleX({progress.total > 0 ? progress.processed / progress.total : 0})"></span>
+            </span>
+          </div>
         {/if}
 
         {#if summary}
-          <p class="success-text" role="status">
+          <p class="success-text" role="status" transition:softFly={{ duration: 160, y: 4 }}>
             完成：去除 {formatCount(summary.duplicateCount)} 条重复，保留
             {formatCount(summary.uniqueCount)} 条，已保存到 {summary.outputPath}
           </p>
@@ -160,6 +166,7 @@
         disabled={working || !inspection || inspection.duplicateCount === 0}
         onclick={() => void runDedupe()}
       >
+        {#if working}<span class="button-spinner" aria-hidden="true"></span>{/if}
         {working ? "处理中…" : "去重并另存为…"}
       </button>
     </footer>
@@ -262,6 +269,38 @@
     color: var(--text-2);
   }
 
+  .dedupe-progress {
+    display: grid;
+    gap: 7px;
+  }
+
+  .progress-track {
+    width: 100%;
+    height: 5px;
+    overflow: hidden;
+    border-radius: var(--radius-full);
+    background: var(--surface-2);
+  }
+
+  .progress-fill {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--accent);
+    transform-origin: left;
+    transition: transform var(--motion-fast) linear;
+  }
+
+  .button-spinner {
+    width: 12px;
+    height: 12px;
+    border: 2px solid rgb(255 255 255 / 45%);
+    border-top-color: currentColor;
+    border-radius: 50%;
+    animation: button-spin 0.8s linear infinite;
+  }
+
   .json-footer {
     display: flex;
     align-items: center;
@@ -279,5 +318,17 @@
 
   .success-text {
     color: var(--success);
+  }
+
+  @keyframes button-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .button-spinner {
+      animation: none;
+    }
   }
 </style>

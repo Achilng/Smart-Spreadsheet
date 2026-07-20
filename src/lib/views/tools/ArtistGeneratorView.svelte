@@ -7,6 +7,7 @@
     setCustomArtists,
   } from "../../api";
   import { errorText, formatCount, setNotice } from "../../stores/app-state.svelte";
+  import { softFade, softFly } from "../../ui/motion";
 
   let libraryArtists = $state<string[]>([]);
   let customText = $state("");
@@ -118,9 +119,9 @@
 <div class="ag-page">
     <div class="ag-body">
       {#if loading}
-        <p class="faint">正在加载画师池…</p>
+        <p class="faint" transition:softFade={{ duration: 130 }}>正在加载画师池…</p>
       {:else if loadError}
-        <p class="error-text">{loadError}</p>
+        <p class="error-text" transition:softFly={{ duration: 150, y: 4 }}>{loadError}</p>
       {:else}
         <p class="faint">从启用的来源随机抽取画师拼成提示词串，复制后可直接喂给 NovelAI。</p>
 
@@ -140,7 +141,7 @@
         </div>
 
         {#if useCustom}
-          <div class="custom-box">
+          <div class="custom-box" transition:softFly={{ duration: 175, y: 6 }}>
             <label class="field-label" for="ag-custom">自定义名单（一行一个，自动保存）</label>
             <textarea
               id="ag-custom"
@@ -173,10 +174,12 @@
         </div>
 
         {#if result}
-          <div class="result-box">
-            <textarea readonly rows="3" value={result}></textarea>
-            <button type="button" class="btn" onclick={() => void copyResult()}>复制</button>
-          </div>
+          {#key result}
+            <div class="result-box" transition:softFly={{ duration: 160, y: 4 }}>
+              <textarea readonly rows="3" value={result}></textarea>
+              <button type="button" class="btn" onclick={() => void copyResult()}>复制</button>
+            </div>
+          {/key}
         {/if}
       {/if}
     </div>

@@ -16,6 +16,7 @@
   import { showSectionMenu } from "../../stores/section-context-menu.svelte";
   import { restoreScrollPosition, saveScrollPosition } from "../../stores/view-state";
   import GroupSectionCard from "./GroupSectionCard.svelte";
+  import { softFade } from "../../ui/motion";
 
   let { active = true }: { active?: boolean } = $props();
 
@@ -191,7 +192,7 @@
             <span class="section-count">{formatCount(group.memberCount)} 张</span>
           </button>
           {#if expanded}
-            <div class="member-grid">
+            <div class="member-grid" transition:softFade={{ duration: 130 }}>
               {#if !data || (data.loading && data.rows.length === 0)}
                 <p class="muted grid-status">加载中…</p>
               {:else if data.error}
@@ -227,7 +228,7 @@
         {#if groupBrowse.ungroupedExpanded}
           {@const uData = groupBrowse.ungrouped}
           {@const uLimit = getRenderLimit("ungrouped")}
-          <div class="member-grid">
+          <div class="member-grid" transition:softFade={{ duration: 130 }}>
             {#if !uData || (uData.loading && uData.rows.length === 0)}
               <p class="muted grid-status">加载中…</p>
             {:else if uData.error}
@@ -295,6 +296,15 @@
     font-size: var(--font-sm);
     color: var(--text-2);
     cursor: pointer;
+    transition:
+      background var(--motion-fast) var(--ease-responsive),
+      color var(--motion-fast) var(--ease-responsive),
+      border-color var(--motion-fast) var(--ease-responsive),
+      transform var(--motion-press) var(--ease-responsive);
+  }
+
+  .group-toolbar button:active {
+    transform: scale(0.98);
   }
 
   .group-toolbar button:hover {
@@ -338,6 +348,13 @@
     font-size: var(--font-base);
     text-align: left;
     color: var(--text);
+    transition:
+      background var(--motion-fast) var(--ease-responsive),
+      transform var(--motion-press) var(--ease-responsive);
+  }
+
+  .section-header:active {
+    transform: translateY(1px);
   }
 
   .section-header:hover {
@@ -347,7 +364,7 @@
   .expand-icon {
     font-size: var(--font-xs);
     color: var(--text-3);
-    transition: transform 0.15s ease;
+    transition: transform var(--motion-base) var(--ease-responsive);
     flex: none;
   }
 

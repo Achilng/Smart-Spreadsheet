@@ -47,11 +47,21 @@
     overflow: hidden;
     cursor: pointer;
     padding: 0;
-    transition: border-color 0.1s ease;
+    transition:
+      border-color var(--motion-fast) var(--ease-responsive),
+      box-shadow var(--motion-fast) var(--ease-responsive),
+      transform var(--motion-fast) var(--ease-responsive);
   }
 
   .section-card:hover {
     border-color: var(--border-strong);
+    box-shadow: var(--shadow-hover);
+    transform: translateY(-2px);
+  }
+
+  .section-card:active {
+    transform: translateY(-1px) scale(0.985);
+    transition-duration: var(--motion-press);
   }
 
   .section-card.is-active {
