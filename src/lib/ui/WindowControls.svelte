@@ -37,7 +37,7 @@
 <div class="window-controls">
   <button type="button" title="最小化" aria-label="最小化" onclick={() => void appWindow.minimize()}>
     <span class="window-icon" aria-hidden="true">
-      <Minus size={16} strokeWidth={1.5} />
+      <Minus size={13} strokeWidth={1.5} />
     </span>
   </button>
   <button
@@ -48,15 +48,15 @@
   >
     <span class="window-icon" aria-hidden="true">
       {#if maximized}
-        <Copy size={16} strokeWidth={1.5} />
+        <Copy size={13} strokeWidth={1.5} />
       {:else}
-        <Square size={16} strokeWidth={1.5} />
+        <Square size={13} strokeWidth={1.5} />
       {/if}
     </span>
   </button>
   <button type="button" class="close" title="关闭" aria-label="关闭" onclick={() => void appWindow.close()}>
     <span class="window-icon" aria-hidden="true">
-      <X size={16} strokeWidth={1.5} />
+      <X size={13} strokeWidth={1.5} />
     </span>
   </button>
 </div>
@@ -94,8 +94,8 @@
   }
 
   .window-icon {
-    width: 16px;
-    height: 16px;
+    width: 14px;
+    height: 14px;
     display: flex;
     align-items: center;
     justify-content: center;

@@ -1,19 +1,19 @@
 <script lang="ts">
   import type { LucideIcon } from "@lucide/svelte";
-  import Blend from "@lucide/svelte/icons/blend";
-  import Copy from "@lucide/svelte/icons/copy";
-  import Grid2x2 from "@lucide/svelte/icons/grid-2x2";
-  import List from "@lucide/svelte/icons/list";
-  import PenLine from "@lucide/svelte/icons/pen-line";
+  import FileText from "@lucide/svelte/icons/file-text";
+  import Files from "@lucide/svelte/icons/files";
+  import Folders from "@lucide/svelte/icons/folders";
+  import Images from "@lucide/svelte/icons/images";
+  import Rows3 from "@lucide/svelte/icons/rows-3";
   import { app, type ViewMode } from "../../stores/app-state.svelte";
   import { clearSelection } from "../../stores/selection-store.svelte";
 
   const views: { mode: ViewMode; label: string; icon: LucideIcon }[] = [
-    { mode: "gallery", label: "画廊", icon: Grid2x2 },
-    { mode: "table", label: "表格", icon: List },
-    { mode: "group", label: "分组", icon: Blend },
-    { mode: "duplicates", label: "重复", icon: Copy },
-    { mode: "promptDocs", label: "提示词", icon: PenLine },
+    { mode: "gallery", label: "画廊", icon: Images },
+    { mode: "table", label: "表格", icon: Rows3 },
+    { mode: "group", label: "分组", icon: Folders },
+    { mode: "duplicates", label: "重复", icon: Files },
+    { mode: "promptDocs", label: "提示词", icon: FileText },
   ];
 
   function switchView(mode: ViewMode): void {
@@ -39,7 +39,7 @@
       onclick={() => switchView(view.mode)}
     >
       <span class="nav-icon" aria-hidden="true">
-        <view.icon size={20} strokeWidth={1.75} />
+        <view.icon size={18} strokeWidth={1.7} />
       </span>
     </button>
   {/each}
@@ -109,8 +109,8 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 20px;
-    height: 20px;
+    width: 18px;
+    height: 18px;
     transition: transform var(--motion-press) var(--ease-responsive);
   }
 

@@ -32,7 +32,7 @@
   aria-hidden={!visible}
 >
     <span class="icon" aria-hidden="true">
-      <Grid2x2 size={10} strokeWidth={2} />
+      <Grid2x2 size={9} strokeWidth={1.8} />
     </span>
     <input
       type="range"
@@ -43,7 +43,7 @@
       oninput={onInput}
     />
     <span class="icon" aria-hidden="true">
-      <Grid2x2 size={14} strokeWidth={2} />
+      <Grid2x2 size={12} strokeWidth={1.8} />
     </span>
 </div>
 

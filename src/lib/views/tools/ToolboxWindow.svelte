@@ -2,11 +2,11 @@
   import type { LucideIcon } from "@lucide/svelte";
   import Braces from "@lucide/svelte/icons/braces";
   import Database from "@lucide/svelte/icons/database";
-  import ImageUp from "@lucide/svelte/icons/image-up";
-  import ScanSearch from "@lucide/svelte/icons/scan-search";
+  import FileOutput from "@lucide/svelte/icons/file-output";
+  import ListFilter from "@lucide/svelte/icons/list-filter";
+  import Search from "@lucide/svelte/icons/search";
+  import Settings2 from "@lucide/svelte/icons/settings-2";
   import Shuffle from "@lucide/svelte/icons/shuffle";
-  import WandSparkles from "@lucide/svelte/icons/wand-sparkles";
-  import Wrench from "@lucide/svelte/icons/wrench";
   import { onMount } from "svelte";
 
   import { app, refreshSnapshot } from "../../stores/app-state.svelte";
@@ -45,7 +45,7 @@
       description: "按提示词组合批量打 Tag 或分组",
       group: "常用工具",
       requiresLibrary: true,
-      icon: WandSparkles,
+      icon: ListFilter,
     },
     {
       id: "artist",
@@ -61,7 +61,7 @@
       description: "使用感知哈希查找库内相似图片",
       group: "常用工具",
       requiresLibrary: true,
-      icon: ScanSearch,
+      icon: Search,
     },
     {
       id: "imageExport",
@@ -69,7 +69,7 @@
       description: "导出主窗口选中的图片并按需清除元数据",
       group: "文件处理",
       requiresLibrary: true,
-      icon: ImageUp,
+      icon: FileOutput,
     },
     {
       id: "jsonDedupe",
@@ -85,7 +85,7 @@
       description: "感知哈希与失败图片目录",
       group: "资料库维护",
       requiresLibrary: true,
-      icon: Wrench,
+      icon: Settings2,
     },
     {
       id: "data",
@@ -172,7 +172,7 @@
                 onclick={() => selectTool(tool)}
               >
                 <span class="tool-icon" aria-hidden="true">
-                  <tool.icon size={17} strokeWidth={1.75} />
+                  <tool.icon size={15} strokeWidth={1.7} />
                 </span>
                 <span class="tool-label">
                   <strong>{tool.label}</strong>
