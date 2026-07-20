@@ -8,6 +8,7 @@ pub struct NovelAiMetadata {
     pub character_prompt: String,
     pub negative_prompt: String,
     pub artist_tags: Vec<String>,
+    pub vibe_reference_count: u32,
 }
 
 pub fn parse_novelai_metadata(text_chunks: &BTreeMap<String, String>) -> NovelAiMetadata {
@@ -54,13 +55,32 @@ pub fn parse_novelai_metadata(text_chunks: &BTreeMap<String, String>) -> NovelAi
         positive_prompt.clone(),
         character_prompt.clone(),
     ]));
+    let vibe_reference_count = comment_json
+        .as_ref()
+        .and_then(|json| json.get("reference_image_multiple"))
+        .and_then(Value::as_array)
+        .map_or(0, |references| {
+            u32::try_from(references.len()).unwrap_or(u32::MAX)
+        });
 
     NovelAiMetadata {
         positive_prompt,
         character_prompt,
         negative_prompt,
         artist_tags,
+        vibe_reference_count,
     }
+}
+
+/// 只读取 VIBE 引用数量；供旧资料库索引回填使用。
+pub fn vibe_reference_count(text_chunks: &BTreeMap<String, String>) -> u32 {
+    text_chunks
+        .get("Comment")
+        .and_then(|comment| serde_json::from_str::<Value>(comment).ok())
+        .and_then(|json| json.get("reference_image_multiple").cloned())
+        .and_then(|references| references.as_array().map(Vec::len))
+        .and_then(|count| u32::try_from(count).ok())
+        .unwrap_or(0)
 }
 
 fn first_non_empty<const N: usize>(values: [Option<String>; N]) -> Option<String> {
@@ -138,7 +158,7 @@ fn json_value_to_text(value: &Value) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_novelai_metadata;
+    use super::{parse_novelai_metadata, vibe_reference_count};
     use std::collections::BTreeMap;
 
     #[test]
@@ -239,5 +259,17 @@ mod tests {
 
         assert_eq!(metadata.positive_prompt, "");
         assert_eq!(metadata.character_prompt, "solo, red hair");
+    }
+
+    #[test]
+    fn counts_vibe_references_from_comment() {
+        let mut chunks = BTreeMap::new();
+        chunks.insert(
+            "Comment".to_string(),
+            r#"{"reference_image_multiple":[{"strength":0.5},{"strength":0.8}]}"#.to_string(),
+        );
+
+        assert_eq!(vibe_reference_count(&chunks), 2);
+        assert_eq!(parse_novelai_metadata(&chunks).vibe_reference_count, 2);
     }
 }

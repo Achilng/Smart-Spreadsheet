@@ -490,6 +490,7 @@ impl AppRuntime {
         tags: &[String],
         tag_mode: TagMatchMode,
         single_artist_only: bool,
+        has_vibe: bool,
         hide_grouped: bool,
     ) -> Result<Vec<DedupeCluster>, AppRuntimeError> {
         self.with_database(|db| {
@@ -498,6 +499,7 @@ impl AppRuntime {
                 tags,
                 tag_mode,
                 single_artist_only,
+                has_vibe,
                 hide_grouped,
             )
         })
@@ -582,6 +584,7 @@ impl AppRuntime {
         tags: &[String],
         tag_mode: TagMatchMode,
         single_artist_only: bool,
+        has_vibe: bool,
         hide_grouped: bool,
         offset: u64,
         limit: u32,
@@ -593,6 +596,7 @@ impl AppRuntime {
                 tags,
                 tag_mode,
                 single_artist_only,
+                has_vibe,
                 hide_grouped,
                 offset,
                 limit,
@@ -1077,6 +1081,7 @@ mod tests {
             tag_mode: crate::db::TagMatchMode::And,
             dedupe: crate::db::DedupeMode::None,
             single_artist_only: false,
+            has_vibe: false,
             search: String::new(),
             excluded_row_ids: vec![2],
         };
@@ -1174,6 +1179,7 @@ mod tests {
             tag_mode: crate::db::TagMatchMode::And,
             dedupe: crate::db::DedupeMode::None,
             single_artist_only: false,
+            has_vibe: false,
             group_view: false,
             hide_grouped: false,
             search: String::new(),

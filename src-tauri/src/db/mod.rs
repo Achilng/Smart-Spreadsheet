@@ -36,7 +36,9 @@ pub use tags::{RowSelection, TagMutationError, TagMutationResult, TagSelectionSu
 use std::path::Path;
 use std::time::Duration;
 
-use migrations::{MIGRATION_9, MIGRATION_10, MINIMUM_UPGRADABLE_SCHEMA_VERSION, SCHEMA_10};
+use migrations::{
+    MIGRATION_9, MIGRATION_10, MIGRATION_11, MINIMUM_UPGRADABLE_SCHEMA_VERSION, SCHEMA_11,
+};
 use rusqlite::{Connection, MAIN_DB, TransactionBehavior};
 use thiserror::Error;
 
@@ -168,8 +170,8 @@ fn apply_pending_migrations(connection: &mut Connection, from_version: u32) -> R
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let mut version = from_version;
     if version == 0 {
-        transaction.execute_batch(SCHEMA_10)?;
-        version = 10;
+        transaction.execute_batch(SCHEMA_11)?;
+        version = 11;
     }
     if version == 8 {
         transaction.execute_batch(MIGRATION_9)?;
@@ -178,6 +180,10 @@ fn apply_pending_migrations(connection: &mut Connection, from_version: u32) -> R
     if version == 9 {
         transaction.execute_batch(MIGRATION_10)?;
         version = 10;
+    }
+    if version == 10 {
+        transaction.execute_batch(MIGRATION_11)?;
+        version = 11;
     }
     debug_assert_eq!(version, CURRENT_SCHEMA_VERSION);
     transaction.pragma_update(None, "user_version", version)?;
@@ -400,28 +406,33 @@ mod tests {
     }
 
     #[test]
-    fn upgrades_v8_through_v10_and_marks_folder_copy_as_original() {
+    fn upgrades_v8_through_v11_and_marks_folder_copy_as_original() {
         let mut connection = Connection::open_in_memory().unwrap();
         create_v8_fixture(&connection);
 
         migrate(&mut connection).unwrap();
 
-        let row: (String, bool, Option<String>) = connection
+        let row: (String, bool, Option<String>, Option<u32>) = connection
             .query_row(
                 "SELECT import_batches.source_type, rows.stored_image_is_original,
-                        rows.metadata_fingerprint
+                        rows.metadata_fingerprint, rows.vibe_reference_count
                  FROM rows JOIN import_batches ON import_batches.id = rows.batch_id
                  WHERE rows.id = 7",
                 [],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
             )
             .unwrap();
-        assert_eq!(row, ("folder".into(), true, None));
+        assert_eq!(row, ("folder".into(), true, None, None));
         verify_foreign_keys(&connection).unwrap();
     }
 
     fn create_v9_fixture(connection: &Connection) {
-        let schema = SCHEMA_10.replace("('legacy', 'folder', 'archive')", "('xlsx', 'folder', 'archive')");
+        let schema = SCHEMA_11
+            .replace("('legacy', 'folder', 'archive')", "('xlsx', 'folder', 'archive')")
+            .replace(
+                ",\n    vibe_reference_count INTEGER\n        CHECK (vibe_reference_count IS NULL OR vibe_reference_count >= 0)",
+                "",
+            );
         connection.execute_batch(&schema).unwrap();
         connection
             .execute_batch(
@@ -445,10 +456,14 @@ mod tests {
     }
 
     fn create_v8_fixture(connection: &Connection) {
-        let schema = SCHEMA_10
+        let schema = SCHEMA_11
             .replace(
                 "('legacy', 'folder', 'archive')",
                 "('xlsx', 'folder', 'archive')",
+            )
+            .replace(
+                ",\n    vibe_reference_count INTEGER\n        CHECK (vibe_reference_count IS NULL OR vibe_reference_count >= 0)",
+                "",
             )
             .replace(
                 "    note TEXT,\n    metadata_fingerprint TEXT,\n    stored_image_is_original INTEGER NOT NULL DEFAULT 0\n        CHECK (stored_image_is_original IN (0, 1))\n",

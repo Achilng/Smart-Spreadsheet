@@ -30,6 +30,7 @@
     void rowStore.tags;
     void rowStore.tagMode;
     void rowStore.singleArtistOnly;
+    void rowStore.hasVibe;
     void rowStore.hideGrouped;
     untrack(() => syncDuplicateCaches());
   });

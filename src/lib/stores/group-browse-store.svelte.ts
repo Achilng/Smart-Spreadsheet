@@ -32,6 +32,7 @@ function currentUngroupedSignature(): string {
     rowStore.tags.join("\u{2}"),
     rowStore.tagMode,
     String(rowStore.singleArtistOnly),
+    String(rowStore.hasVibe),
     rowStore.search,
   ].join("\u{1}");
 }
@@ -78,6 +79,7 @@ function ungroupedQuery(offset: number) {
     tagMode: rowStore.tagMode,
     dedupe: "none",
     singleArtistOnly: rowStore.singleArtistOnly,
+    hasVibe: rowStore.hasVibe,
     groupView: false,
     hideGrouped: true,
     search: rowStore.search,

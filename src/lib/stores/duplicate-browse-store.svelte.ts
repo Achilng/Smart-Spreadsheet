@@ -36,6 +36,7 @@ function currentClusterSignature(): string {
     rowStore.tags.join("\u{2}"),
     rowStore.tagMode,
     String(rowStore.singleArtistOnly),
+    String(rowStore.hasVibe),
     String(rowStore.hideGrouped),
   ].join("\u{1}");
 }
@@ -65,6 +66,7 @@ async function loadClusters(): Promise<void> {
       [...rowStore.tags],
       rowStore.tagMode,
       rowStore.singleArtistOnly,
+      rowStore.hasVibe,
       rowStore.hideGrouped,
     );
     if (generation !== loadGeneration) {
@@ -91,6 +93,7 @@ function fetchMembers(key: string, offset: number, limit: number) {
     [...rowStore.tags],
     rowStore.tagMode,
     rowStore.singleArtistOnly,
+    rowStore.hasVibe,
     rowStore.hideGrouped,
     offset,
     limit,

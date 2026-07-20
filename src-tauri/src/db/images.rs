@@ -31,6 +31,57 @@ impl Database {
             .optional()?
             .ok_or(DatabaseError::RowNotFound(row_id))
     }
+
+    pub fn missing_vibe_statuses(&self) -> Result<Vec<RowImageLocator>, DatabaseError> {
+        let mut statement = self.connection.prepare(
+            "SELECT id, image_path, stored_image_path, stored_image_is_original
+             FROM rows
+             WHERE vibe_reference_count IS NULL
+             ORDER BY id",
+        )?;
+        Ok(statement
+            .query_map([], |row| {
+                Ok(RowImageLocator {
+                    row_id: row.get(0)?,
+                    image_path: row.get(1)?,
+                    stored_image_path: row.get(2)?,
+                    stored_image_is_original: row.get(3)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?)
+    }
+
+    pub fn update_vibe_statuses(
+        &mut self,
+        statuses: &[(i64, u32)],
+    ) -> Result<(), DatabaseError> {
+        let transaction = self.connection.transaction()?;
+        {
+            let mut update = transaction.prepare(
+                "UPDATE rows SET vibe_reference_count = ?2 WHERE id = ?1",
+            )?;
+            for (row_id, count) in statuses {
+                update.execute(rusqlite::params![row_id, count])?;
+            }
+        }
+        transaction.commit()?;
+        self.bump_data_version();
+        Ok(())
+    }
+
+    pub fn row_vibe_reference_count(
+        &self,
+        row_id: i64,
+    ) -> Result<Option<u32>, DatabaseError> {
+        self.connection
+            .query_row(
+                "SELECT vibe_reference_count FROM rows WHERE id = ?1",
+                [row_id],
+                |row| row.get(0),
+            )
+            .optional()?
+            .ok_or(DatabaseError::RowNotFound(row_id))
+    }
 }
 
 #[cfg(test)]

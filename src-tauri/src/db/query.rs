@@ -49,6 +49,8 @@ pub struct RowQuery {
     #[serde(default)]
     pub single_artist_only: bool,
     #[serde(default)]
+    pub has_vibe: bool,
+    #[serde(default)]
     pub group_view: bool,
     #[serde(default)]
     pub hide_grouped: bool,
@@ -72,6 +74,7 @@ pub struct RowRecord {
     pub image_path: Option<String>,
     pub stored_image_path: Option<String>,
     pub metadata_failed: bool,
+    pub vibe_reference_count: Option<u32>,
     pub group_id: Option<i64>,
     pub group_name: Option<String>,
     pub tags: Vec<String>,
@@ -136,6 +139,7 @@ impl Database {
                     query.tag_mode,
                     query.dedupe,
                     query.single_artist_only,
+                    query.has_vibe,
                     query.group_view,
                     query.hide_grouped,
                     &query.search,
@@ -323,6 +327,7 @@ impl Database {
         tags: &[String],
         tag_mode: TagMatchMode,
         single_artist_only: bool,
+        has_vibe: bool,
         hide_grouped: bool,
     ) -> Result<Vec<DedupeCluster>, DatabaseError> {
         let (column, mode_str) = match dedupe {
@@ -343,6 +348,9 @@ impl Database {
                  AND TRIM(rows.artists) != ''
                  AND INSTR(rows.artists, CHAR(10)) = 0"
             );
+        }
+        if has_vibe {
+            predicate = format!("({predicate}) AND rows.vibe_reference_count > 0");
         }
         if hide_grouped {
             predicate = format!("({predicate}) AND rows.group_id IS NULL");
@@ -389,6 +397,7 @@ impl Database {
         tags: &[String],
         tag_mode: TagMatchMode,
         single_artist_only: bool,
+        has_vibe: bool,
         hide_grouped: bool,
         offset: u64,
         limit: u32,
@@ -425,6 +434,9 @@ impl Database {
                  AND TRIM(rows.artists) != ''
                  AND INSTR(rows.artists, CHAR(10)) = 0"
             );
+        }
+        if has_vibe {
+            predicate = format!("({predicate}) AND rows.vibe_reference_count > 0");
         }
         if hide_grouped {
             predicate = format!("({predicate}) AND rows.group_id IS NULL");
@@ -493,11 +505,12 @@ impl Database {
 /// 缓存键覆盖影响筛选结果集的全部参数（分页参数除外）。
 fn query_cache_key(query: &RowQuery, normalized_tags: &[String]) -> String {
     format!(
-        "{tags:?}\u{1}{mode:?}\u{1}{dedupe:?}\u{1}{sao}\u{1}{gv}\u{1}{hg}\u{1}{search}",
+        "{tags:?}\u{1}{mode:?}\u{1}{dedupe:?}\u{1}{sao}\u{1}{vibe}\u{1}{gv}\u{1}{hg}\u{1}{search}",
         tags = normalized_tags,
         mode = query.tag_mode,
         dedupe = query.dedupe,
         sao = query.single_artist_only,
+        vibe = query.has_vibe,
         gv = query.group_view,
         hg = query.hide_grouped,
         search = query.search.trim().to_lowercase(),
@@ -552,6 +565,7 @@ pub(super) fn populate_filtered_rows(
     mode: TagMatchMode,
     dedupe: DedupeMode,
     single_artist_only: bool,
+    has_vibe: bool,
     group_view: bool,
     hide_grouped: bool,
     search: &str,
@@ -565,6 +579,9 @@ pub(super) fn populate_filtered_rows(
              AND TRIM(rows.artists) != ''
              AND INSTR(rows.artists, CHAR(10)) = 0"
         );
+    }
+    if has_vibe {
+        predicate = format!("({predicate}) AND rows.vibe_reference_count > 0");
     }
     if !group_view && hide_grouped {
         predicate = format!("({predicate}) AND rows.group_id IS NULL");
@@ -676,7 +693,7 @@ fn query_page_metadata(connection: &Connection) -> Result<Vec<RowRecord>, Databa
         "SELECT rows.id, rows.batch_id, rows.source_ordinal, rows.time,
                 rows.positive_prompt, rows.character_prompt, rows.negative_prompt, rows.note,
                 rows.artists, rows.image_folder, rows.image_path, rows.stored_image_path,
-                rows.metadata_failed, rows.group_id, groups.name
+                rows.metadata_failed, rows.vibe_reference_count, rows.group_id, groups.name
          FROM {PAGE_ROWS_TABLE} AS page
          JOIN rows ON rows.id = page.id
          LEFT JOIN groups ON groups.id = rows.group_id
@@ -698,8 +715,9 @@ fn query_page_metadata(connection: &Connection) -> Result<Vec<RowRecord>, Databa
                 image_path: row.get(10)?,
                 stored_image_path: row.get(11)?,
                 metadata_failed: row.get(12)?,
-                group_id: row.get(13)?,
-                group_name: row.get(14)?,
+                vibe_reference_count: row.get(13)?,
+                group_id: row.get(14)?,
+                group_name: row.get(15)?,
                 tags: Vec::new(),
             })
         })?
@@ -776,6 +794,7 @@ mod tests {
                 tag_mode: TagMatchMode::And,
                 dedupe: DedupeMode::None,
                 single_artist_only: false,
+                has_vibe: false,
                 group_view: false,
                 hide_grouped: false,
                 search: String::new(),
@@ -853,6 +872,7 @@ mod tests {
                 tag_mode: TagMatchMode::And,
                 dedupe: DedupeMode::PositivePrompt,
                 single_artist_only: false,
+                has_vibe: false,
                 group_view: false,
                 hide_grouped: false,
                 search: String::new(),
@@ -872,6 +892,7 @@ mod tests {
                 tag_mode: TagMatchMode::And,
                 dedupe: DedupeMode::Artists,
                 single_artist_only: false,
+                has_vibe: false,
                 group_view: false,
                 hide_grouped: false,
                 search: String::new(),
@@ -903,6 +924,7 @@ mod tests {
                 tag_mode: TagMatchMode::And,
                 dedupe: DedupeMode::PositivePrompt,
                 single_artist_only: false,
+                has_vibe: false,
                 group_view: false,
                 hide_grouped: false,
                 search: String::new(),
@@ -959,6 +981,7 @@ mod tests {
                     tag_mode: TagMatchMode::And,
                     dedupe: DedupeMode::None,
                     single_artist_only: false,
+                    has_vibe: false,
                     group_view: false,
                     hide_grouped: false,
                     search: String::new(),
@@ -1012,6 +1035,7 @@ mod tests {
                 tag_mode: TagMatchMode::And,
                 dedupe: DedupeMode::None,
                 single_artist_only: false,
+                has_vibe: false,
                 group_view: false,
                 hide_grouped: false,
                 search: "UNIQUE_ROLE_TOKEN".into(),
@@ -1039,6 +1063,7 @@ mod tests {
                 tag_mode: TagMatchMode::And,
                 dedupe: DedupeMode::None,
                 single_artist_only: false,
+                has_vibe: false,
                 group_view: false,
                 hide_grouped: false,
                 search: "海边".into(),
@@ -1051,6 +1076,42 @@ mod tests {
     }
 
     #[test]
+    fn filters_rows_with_vibe_references() {
+        let mut database = database_with_rows(4);
+        database
+            .connection
+            .execute(
+                "UPDATE rows
+                 SET vibe_reference_count = CASE id WHEN 2 THEN 1 WHEN 4 THEN 3 ELSE 0 END",
+                [],
+            )
+            .unwrap();
+        database.bump_data_version();
+
+        let result = database
+            .query_rows(&RowQuery {
+                offset: 0,
+                limit: 10,
+                tags: Vec::new(),
+                tag_mode: TagMatchMode::And,
+                dedupe: DedupeMode::None,
+                single_artist_only: false,
+                has_vibe: true,
+                group_view: false,
+                hide_grouped: false,
+                search: String::new(),
+            })
+            .unwrap();
+
+        assert_eq!(result.total_count, 2);
+        assert_eq!(
+            result.rows.iter().map(|row| row.id).collect::<Vec<_>>(),
+            vec![2, 4]
+        );
+        assert_eq!(result.rows[1].vibe_reference_count, Some(3));
+    }
+
+    #[test]
     fn cache_hit_paging_returns_consistent_pages() {
         let mut database = database_with_rows(10);
         let page_query = |offset: u64| RowQuery {
@@ -1060,6 +1121,7 @@ mod tests {
             tag_mode: TagMatchMode::And,
             dedupe: DedupeMode::None,
             single_artist_only: false,
+            has_vibe: false,
             group_view: false,
             hide_grouped: false,
             search: String::new(),
@@ -1091,6 +1153,7 @@ mod tests {
             tag_mode: TagMatchMode::And,
             dedupe: DedupeMode::None,
             single_artist_only: false,
+            has_vibe: false,
             group_view: false,
             hide_grouped: false,
             search: String::new(),
@@ -1104,6 +1167,7 @@ mod tests {
                 "artist:a",
                 &[],
                 TagMatchMode::And,
+                false,
                 false,
                 false,
                 0,
@@ -1129,6 +1193,7 @@ mod tests {
                 tag_mode: TagMatchMode::Or,
                 dedupe: DedupeMode::None,
                 single_artist_only: false,
+                has_vibe: false,
                 group_view: false,
                 hide_grouped: false,
                 search: String::new(),
@@ -1181,6 +1246,7 @@ mod tests {
             tag_mode: TagMatchMode::And,
             dedupe: DedupeMode::None,
             single_artist_only: false,
+            has_vibe: false,
             group_view: false,
             hide_grouped: false,
             search: String::new(),
@@ -1225,6 +1291,7 @@ mod tests {
                 tag_mode: mode,
                 dedupe: DedupeMode::None,
                 single_artist_only: false,
+                has_vibe: false,
                 group_view: false,
                 hide_grouped: false,
                 search: String::new(),
@@ -1322,7 +1389,14 @@ mod tests {
             .unwrap();
 
         let duplicates = database
-            .list_dedupe_clusters(DedupeMode::Artists, &[], TagMatchMode::And, false, false)
+            .list_dedupe_clusters(
+                DedupeMode::Artists,
+                &[],
+                TagMatchMode::And,
+                false,
+                false,
+                false,
+            )
             .unwrap();
         assert_eq!(duplicates.len(), 1);
         assert_eq!(duplicates[0].key, "artist:a");

@@ -12,5 +12,5 @@ pub mod png_text;
 pub mod scan;
 
 pub use artist::extract_artist_tags;
-pub use metadata::{NovelAiMetadata, parse_novelai_metadata};
+pub use metadata::{NovelAiMetadata, parse_novelai_metadata, vibe_reference_count};
 pub use metadata_fingerprint::metadata_fingerprint;

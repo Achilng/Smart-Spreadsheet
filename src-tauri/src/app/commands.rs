@@ -501,11 +501,19 @@ pub(crate) fn list_dedupe_clusters(
     tags: Vec<String>,
     tag_mode: TagMatchMode,
     single_artist_only: bool,
+    has_vibe: bool,
     hide_grouped: bool,
     runtime: State<'_, AppRuntime>,
 ) -> Result<Vec<DedupeClusterDto>, String> {
     runtime
-        .list_dedupe_clusters(dedupe, &tags, tag_mode, single_artist_only, hide_grouped)
+        .list_dedupe_clusters(
+            dedupe,
+            &tags,
+            tag_mode,
+            single_artist_only,
+            has_vibe,
+            hide_grouped,
+        )
         .map(|clusters| clusters.into_iter().map(DedupeClusterDto::from).collect())
         .map_err(error_text)
 }
@@ -613,6 +621,7 @@ pub(crate) fn get_dedupe_cluster_members(
     tags: Vec<String>,
     tag_mode: TagMatchMode,
     single_artist_only: bool,
+    has_vibe: bool,
     hide_grouped: bool,
     offset: u64,
     limit: u32,
@@ -625,6 +634,7 @@ pub(crate) fn get_dedupe_cluster_members(
             &tags,
             tag_mode,
             single_artist_only,
+            has_vibe,
             hide_grouped,
             offset,
             limit,
@@ -1159,8 +1169,7 @@ pub(crate) fn prepare_file_drag(
     })
 }
 
-/// 行图片的 vibe 引用数：读取图片 Comment 元数据中的 `reference_image_multiple`。
-/// 文件缺失或元数据无法解析时返回 None（前端不显示徽标）。
+/// 行图片的 vibe 引用数：读取导入/升级时建立的元数据索引。
 #[tauri::command]
 pub(crate) async fn get_row_vibe_status(
     row_id: i64,
@@ -1168,29 +1177,16 @@ pub(crate) async fn get_row_vibe_status(
 ) -> Result<Option<u32>, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let runtime = app.state::<AppRuntime>();
-        let directory = runtime.active_directory().map_err(error_text)?;
-        let locator = directory
+        runtime
+            .active_directory()
+            .map_err(error_text)?
             .open_database()
             .map_err(error_text)?
-            .row_image_locator(row_id)
-            .map_err(error_text)?;
-        let Some(path) = crate::storage::resolve_image_source(&directory, &locator) else {
-            return Ok(None);
-        };
-        Ok(vibe_reference_count(&path))
+            .row_vibe_reference_count(row_id)
+            .map_err(error_text)
     })
     .await
     .map_err(|e| format!("vibe 状态读取异常: {e}"))?
-}
-
-fn vibe_reference_count(path: &Path) -> Option<u32> {
-    let chunks = crate::pipeline::png_text::read_png_text_chunks(path).ok()?;
-    let value: serde_json::Value = serde_json::from_str(chunks.get("Comment")?).ok()?;
-    let count = value
-        .get("reference_image_multiple")
-        .and_then(|refs| refs.as_array())
-        .map_or(0, Vec::len);
-    u32::try_from(count).ok()
 }
 
 fn open_path_in_explorer(path: &Path) {
@@ -1327,6 +1323,7 @@ mod tests {
                 tag_mode: TagMatchMode::Or,
                 dedupe: DedupeMode::Artists,
                 single_artist_only: false,
+                has_vibe: false,
                 search: String::new(),
                 excluded_row_ids: vec![2, 9],
             }

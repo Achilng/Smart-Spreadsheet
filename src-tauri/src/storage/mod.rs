@@ -8,6 +8,7 @@ mod metadata_fingerprint;
 mod migration;
 mod perceptual_hash;
 mod prompt_docs;
+mod vibe_status;
 #[cfg(test)]
 pub(crate) mod test_fixtures;
 
@@ -154,6 +155,7 @@ impl DataDirectory {
         let directory = Self { root: root.to_owned() };
         directory.backfill_content_hashes(progress)?;
         directory.backfill_metadata_fingerprints()?;
+        directory.backfill_vibe_statuses()?;
         Ok(directory)
     }
 

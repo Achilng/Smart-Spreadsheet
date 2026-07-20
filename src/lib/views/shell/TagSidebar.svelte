@@ -14,7 +14,15 @@
   import { app, bumpDataVersion, errorText, formatCount } from "../../stores/app-state.svelte";
   import { captureSelectionStates, recordRowStateChange, restoreRowStates } from "../../stores/history-actions";
   import { recordHistory } from "../../stores/history.svelte";
-  import { resetRows, rowStore, setDedupe, setFilter, setHideGrouped, setSingleArtistOnly } from "../../stores/row-store.svelte";
+  import {
+    resetRows,
+    rowStore,
+    setDedupe,
+    setFilter,
+    setHasVibe,
+    setHideGrouped,
+    setSingleArtistOnly,
+  } from "../../stores/row-store.svelte";
   import {
     clearSelection,
     getSelectedCount,
@@ -223,6 +231,7 @@
         tagMode: "and",
         dedupe: "none",
         singleArtistOnly: false,
+        hasVibe: false,
         search: "",
         excludedRowIds: [],
       });
@@ -338,6 +347,14 @@
           onchange={() => { setSingleArtistOnly(!rowStore.singleArtistOnly); clearSelection(); }}
         />
         筛选单画师串图片
+      </label>
+      <label>
+        <input
+          type="checkbox"
+          checked={rowStore.hasVibe}
+          onchange={() => { setHasVibe(!rowStore.hasVibe); clearSelection(); }}
+        />
+        筛选存在 VIBE 的图片
       </label>
       <label>
         <input

@@ -1,8 +1,8 @@
-pub const CURRENT_SCHEMA_VERSION: u32 = 10;
+pub const CURRENT_SCHEMA_VERSION: u32 = 11;
 pub const MINIMUM_UPGRADABLE_SCHEMA_VERSION: u32 = 8;
 
 /// 新资料库直接创建当前结构，不再重放早期工作簿/XLSX 导入迁移。
-pub(super) const SCHEMA_10: &str = r#"
+pub(super) const SCHEMA_11: &str = r#"
 CREATE TABLE import_batches (
     id INTEGER PRIMARY KEY,
     source_type TEXT NOT NULL CHECK (source_type IN ('legacy', 'folder', 'archive')),
@@ -40,7 +40,9 @@ CREATE TABLE rows (
     note TEXT,
     metadata_fingerprint TEXT,
     stored_image_is_original INTEGER NOT NULL DEFAULT 0
-        CHECK (stored_image_is_original IN (0, 1))
+        CHECK (stored_image_is_original IN (0, 1)),
+    vibe_reference_count INTEGER
+        CHECK (vibe_reference_count IS NULL OR vibe_reference_count >= 0)
 ) STRICT;
 
 CREATE TABLE tags (
@@ -118,4 +120,11 @@ FROM import_batches;
 DROP TABLE import_batches;
 ALTER TABLE import_batches_v10 RENAME TO import_batches;
 DROP TABLE IF EXISTS pending_embedded_extractions;
+"#;
+
+/// v10 → v11：缓存 NovelAI Comment 中的 VIBE 引用数量，使筛选、分页和批量
+/// 操作都能走同一个数据库结果集。历史行在数据目录打开后从图片文件回填。
+pub(super) const MIGRATION_11: &str = r#"
+ALTER TABLE rows ADD COLUMN vibe_reference_count INTEGER
+CHECK (vibe_reference_count IS NULL OR vibe_reference_count >= 0);
 "#;

@@ -16,6 +16,7 @@ export const rowStore = $state({
   tagMode: "and" as TagMatchMode,
   dedupe: "none" as DedupeMode,
   singleArtistOnly: false,
+  hasVibe: false,
   groupView: false,
   hideGrouped: false,
   search: "",
@@ -64,6 +65,7 @@ export function ensurePage(pageIndex: number): void {
         tagMode: rowStore.tagMode,
         dedupe: rowStore.dedupe,
         singleArtistOnly: rowStore.singleArtistOnly,
+        hasVibe: rowStore.hasVibe,
         groupView: rowStore.groupView,
         hideGrouped: rowStore.hideGrouped,
         search: rowStore.search,
@@ -161,6 +163,13 @@ export function setSingleArtistOnly(value: boolean): void {
   }
 }
 
+export function setHasVibe(value: boolean): void {
+  if (rowStore.hasVibe !== value) {
+    rowStore.hasVibe = value;
+    resetRows({ keepStale: true, resetScroll: true });
+  }
+}
+
 export function setGroupView(value: boolean): void {
   if (rowStore.groupView !== value) {
     rowStore.groupView = value;
@@ -193,6 +202,7 @@ export function revealRowInGallery(row: RowRecord, index: number): void {
   rowStore.tagMode = "and";
   rowStore.dedupe = "none";
   rowStore.singleArtistOnly = false;
+  rowStore.hasVibe = false;
   rowStore.groupView = false;
   rowStore.hideGrouped = false;
   rowStore.search = "";

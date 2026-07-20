@@ -23,6 +23,8 @@ pub enum RowSelection {
         #[serde(default)]
         single_artist_only: bool,
         #[serde(default)]
+        has_vibe: bool,
+        #[serde(default)]
         search: String,
         excluded_row_ids: Vec<i64>,
     },
@@ -353,6 +355,7 @@ pub(super) fn create_selection_rows(
             tag_mode,
             dedupe,
             single_artist_only,
+            has_vibe,
             search,
             excluded_row_ids,
         } => {
@@ -366,7 +369,17 @@ pub(super) fn create_selection_rows(
                  ) STRICT, WITHOUT ROWID;"
             ))?;
             insert_row_ids(transaction, EXCLUDED_ROWS_TABLE, &excluded_row_ids)?;
-            populate_filtered_rows(transaction, TARGET_ROWS_TABLE, *tag_mode, *dedupe, *single_artist_only, false, false, search)?;
+            populate_filtered_rows(
+                transaction,
+                TARGET_ROWS_TABLE,
+                *tag_mode,
+                *dedupe,
+                *single_artist_only,
+                *has_vibe,
+                false,
+                false,
+                search,
+            )?;
             transaction.execute(
                 &format!(
                     "DELETE FROM {TARGET_ROWS_TABLE}
@@ -610,6 +623,7 @@ mod tests {
             tag_mode: TagMatchMode::And,
             dedupe: DedupeMode::None,
             single_artist_only: false,
+            has_vibe: false,
             search: String::new(),
             excluded_row_ids: vec![2, 9_999],
         };
@@ -640,6 +654,7 @@ mod tests {
             tag_mode: TagMatchMode::And,
             dedupe: DedupeMode::None,
             single_artist_only: false,
+            has_vibe: false,
             search: String::new(),
             excluded_row_ids: vec![3],
         };
@@ -680,6 +695,7 @@ mod tests {
             tag_mode: TagMatchMode::And,
             dedupe: DedupeMode::PositivePrompt,
             single_artist_only: false,
+            has_vibe: false,
             search: String::new(),
             excluded_row_ids: vec![1],
         };
@@ -746,6 +762,7 @@ mod tests {
                 tag_mode: TagMatchMode::And,
                 dedupe: DedupeMode::None,
                 single_artist_only: false,
+                has_vibe: false,
                 search: String::new(),
                 excluded_row_ids: vec![2],
             })
@@ -768,6 +785,7 @@ mod tests {
                 tag_mode: TagMatchMode::And,
                 dedupe: DedupeMode::None,
                 single_artist_only: false,
+                has_vibe: false,
                 search: String::new(),
                 excluded_row_ids: vec![2],
             })
@@ -784,6 +802,7 @@ mod tests {
             tag_mode: TagMatchMode::And,
             dedupe: DedupeMode::None,
             single_artist_only: false,
+            has_vibe: false,
             search: String::new(),
             excluded_row_ids: Vec::new(),
         };

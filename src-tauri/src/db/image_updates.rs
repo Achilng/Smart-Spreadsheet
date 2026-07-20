@@ -27,6 +27,7 @@ pub struct ExistingImageUpdate {
     pub metadata_fingerprint: Option<String>,
     pub stored_image_path: Option<String>,
     pub stored_image_is_original: bool,
+    pub vibe_reference_count: u32,
 }
 
 impl Database {
@@ -172,7 +173,8 @@ impl Database {
                     perceptual_hash = ?11,
                     metadata_fingerprint = ?12,
                     stored_image_path = ?13,
-                    stored_image_is_original = ?14
+                    stored_image_is_original = ?14,
+                    vibe_reference_count = ?15
                  WHERE id = ?1",
             )?;
             for update in updates {
@@ -191,6 +193,7 @@ impl Database {
                     update.metadata_fingerprint,
                     update.stored_image_path,
                     update.stored_image_is_original,
+                    update.vibe_reference_count,
                 ])? as u64;
             }
         }
@@ -245,6 +248,7 @@ mod tests {
                 metadata_fingerprint: Some("metadata".into()),
                 stored_image_path: None,
                 stored_image_is_original: true,
+                vibe_reference_count: 2,
             }])
             .unwrap();
 
@@ -258,5 +262,6 @@ mod tests {
         assert_eq!(rows[0].tags, vec!["保留标签"]);
         assert_eq!(rows[0].group_id, Some(group.id));
         assert_eq!(rows[0].group_name.as_deref(), Some("保留分组"));
+        assert_eq!(rows[0].vibe_reference_count, Some(2));
     }
 }

@@ -29,6 +29,7 @@ export function exportScope(): RowSelection {
     tagMode: rowStore.tagMode,
     dedupe: rowStore.dedupe,
     singleArtistOnly: rowStore.singleArtistOnly,
+    hasVibe: rowStore.hasVibe,
     search: rowStore.search,
     excludedRowIds: [],
   };
@@ -40,7 +41,13 @@ export function exportScopeLabel(): string {
   if (selected > 0) {
     return `已选 ${formatCount(selected)} 行`;
   }
-  return rowStore.tags.length > 0 ? "当前筛选结果" : "全部行";
+  const filtered =
+    rowStore.tags.length > 0 ||
+    rowStore.dedupe !== "none" ||
+    rowStore.singleArtistOnly ||
+    rowStore.hasVibe ||
+    rowStore.search.trim().length > 0;
+  return filtered ? "当前筛选结果" : "全部行";
 }
 
 export async function chooseXlsxExport(): Promise<void> {

@@ -63,6 +63,7 @@ export interface RowQuery {
   tagMode: TagMatchMode;
   dedupe: DedupeMode;
   singleArtistOnly: boolean;
+  hasVibe: boolean;
   groupView: boolean;
   hideGrouped: boolean;
   search: string;
@@ -82,6 +83,7 @@ export interface RowRecord {
   imagePath: string | null;
   storedImagePath: string | null;
   metadataFailed: boolean;
+  vibeReferenceCount: number | null;
   tags: string[];
   groupId: number | null;
   groupName: string | null;

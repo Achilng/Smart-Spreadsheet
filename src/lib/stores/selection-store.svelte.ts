@@ -20,6 +20,7 @@ export const selection = $state({
   filteredMode: "and" as TagMatchMode,
   filteredDedupe: "none" as DedupeMode,
   filteredSingleArtistOnly: false,
+  filteredHasVibe: false,
   filteredSearch: "",
   filteredTotal: 0,
   version: 0,
@@ -78,6 +79,7 @@ export function setExplicitSelection(ids: number[]): void {
   selection.filteredTags = [];
   selection.filteredDedupe = "none";
   selection.filteredSingleArtistOnly = false;
+  selection.filteredHasVibe = false;
   selection.filteredSearch = "";
   selection.filteredTotal = 0;
   selectionIds.clear();
@@ -93,6 +95,7 @@ export function clearSelection(): void {
   selection.filteredTags = [];
   selection.filteredDedupe = "none";
   selection.filteredSingleArtistOnly = false;
+  selection.filteredHasVibe = false;
   selection.filteredSearch = "";
   selection.filteredTotal = 0;
   selectionIds.clear();
@@ -108,6 +111,7 @@ export async function selectAllFiltered(): Promise<number> {
     tagMode: rowStore.tagMode,
     dedupe: rowStore.dedupe,
     singleArtistOnly: rowStore.singleArtistOnly,
+    hasVibe: rowStore.hasVibe,
     search: rowStore.search,
     excludedRowIds: [],
   };
@@ -117,6 +121,7 @@ export async function selectAllFiltered(): Promise<number> {
   selection.filteredMode = rowStore.tagMode;
   selection.filteredDedupe = rowStore.dedupe;
   selection.filteredSingleArtistOnly = rowStore.singleArtistOnly;
+  selection.filteredHasVibe = rowStore.hasVibe;
   selection.filteredSearch = rowStore.search;
   selection.filteredTotal = totalCount;
   selectionIds.clear();
@@ -139,6 +144,7 @@ export async function materializeSelection(): Promise<number> {
   selection.filteredTags = [];
   selection.filteredDedupe = "none";
   selection.filteredSingleArtistOnly = false;
+  selection.filteredHasVibe = false;
   selection.filteredSearch = "";
   selection.filteredTotal = 0;
   selectionIds.clear();
@@ -163,6 +169,7 @@ export function selectionDto(): RowSelection {
     tagMode: selection.filteredMode,
     dedupe: selection.filteredDedupe,
     singleArtistOnly: selection.filteredSingleArtistOnly,
+    hasVibe: selection.filteredHasVibe,
     search: selection.filteredSearch,
     excludedRowIds: [...selectionIds].sort((left, right) => left - right),
   };

@@ -627,6 +627,7 @@ impl DataDirectory {
                 metadata_fingerprint: image.metadata_fingerprint,
                 stored_image_path: Some(stored_image_path),
                 stored_image_is_original: true,
+                vibe_reference_count: image.vibe_reference_count,
             });
         }
         let updated = database.update_existing_images(&updates)?;
@@ -703,6 +704,7 @@ struct ParsedImage {
     negative_prompt: Option<String>,
     artists: Option<String>,
     metadata_fingerprint: Option<String>,
+    vibe_reference_count: u32,
 }
 
 enum MetadataInspection {
@@ -729,6 +731,7 @@ fn inspect_metadata(image: SourceImage) -> MetadataInspection {
         negative_prompt,
         artists: nonempty_string(metadata.artist_tags.join("\n")),
         metadata_fingerprint,
+        vibe_reference_count: metadata.vibe_reference_count,
     })
 }
 
@@ -789,6 +792,7 @@ fn build_new_row(
         image_path: Some(image_path),
         stored_image_rel,
         metadata_failed: false,
+        vibe_reference_count: image.vibe_reference_count,
     })
 }
 
@@ -1019,6 +1023,7 @@ mod tests {
                 tag_mode: crate::db::TagMatchMode::And,
                 dedupe: crate::db::DedupeMode::None,
                 single_artist_only: false,
+                has_vibe: false,
                 group_view: false,
                 hide_grouped: false,
                 search: String::new(),

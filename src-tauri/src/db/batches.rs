@@ -71,6 +71,7 @@ pub struct NewRow {
     /// 受管副本相对批次目录的路径；入库时组装为 `files/<批次ID>/<此路径>`。
     pub stored_image_rel: Option<String>,
     pub metadata_failed: bool,
+    pub vibe_reference_count: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -136,10 +137,10 @@ impl Database {
                     time, positive_prompt, character_prompt, negative_prompt, note, artists,
                     image_folder, image_path, stored_image_path, metadata_failed,
                     content_hash, perceptual_hash, metadata_fingerprint,
-                    stored_image_is_original
+                    stored_image_is_original, vibe_reference_count
                  ) VALUES (
                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
-                    ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19
+                    ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20
                  )",
             )?;
             for row in rows {
@@ -195,6 +196,7 @@ impl Database {
                     row.perceptual_hash,
                     row.metadata_fingerprint,
                     stored_image_path.is_some() && source_type != SourceType::Legacy,
+                    row.vibe_reference_count,
                 ])?;
                 added += 1;
             }
