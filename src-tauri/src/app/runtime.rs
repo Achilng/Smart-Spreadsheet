@@ -8,6 +8,7 @@ use thiserror::Error;
 
 use crate::db::{
     BatchSummary, DedupeCluster, DedupeMode, GroupSummary, LibrarySummary, MutableRowState,
+    QuickEditCondition, QuickEditError, QuickTagApplyResult, QuickTagAssociation, QuickTagPreview,
     RowPage, RowQuery, RowSelection, TagMatchMode, TagMutationError, TagMutationResult, TagSelectionSummary,
     TagSummary,
 };
@@ -59,6 +60,8 @@ pub(crate) enum AppRuntimeError {
     Database(#[from] crate::db::DatabaseError),
     #[error("Tag 操作失败: {0}")]
     TagMutation(#[from] TagMutationError),
+    #[error("快速编辑失败: {0}")]
+    QuickEdit(#[from] QuickEditError),
     #[error("删除行失败: {0}")]
     RowDeletion(#[from] RowDeletionError),
     #[error("图片读取失败: {0}")]
@@ -297,6 +300,36 @@ impl AppRuntime {
         tags: &[String],
     ) -> Result<TagMutationResult, AppRuntimeError> {
         self.with_database_mut(|db| db.set_tags_for_row(row_id, tags))
+    }
+
+    pub(crate) fn preview_quick_tag(
+        &self,
+        condition: &QuickEditCondition,
+        tags: &[String],
+    ) -> Result<QuickTagPreview, AppRuntimeError> {
+        self.with_database(|db| db.preview_quick_tag(condition, tags))
+    }
+
+    pub(crate) fn apply_quick_tag(
+        &self,
+        condition: &QuickEditCondition,
+        tags: &[String],
+    ) -> Result<QuickTagApplyResult, AppRuntimeError> {
+        self.with_database_mut(|db| db.apply_quick_tag(condition, tags))
+    }
+
+    pub(crate) fn revert_quick_tag_changes(
+        &self,
+        changes: &[QuickTagAssociation],
+    ) -> Result<u64, AppRuntimeError> {
+        self.with_database_mut(|db| db.revert_quick_tag_changes(changes))
+    }
+
+    pub(crate) fn reapply_quick_tag_changes(
+        &self,
+        changes: &[QuickTagAssociation],
+    ) -> Result<u64, AppRuntimeError> {
+        self.with_database_mut(|db| db.reapply_quick_tag_changes(changes))
     }
 
     pub(crate) fn delete_rows(

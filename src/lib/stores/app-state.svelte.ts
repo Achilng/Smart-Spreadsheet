@@ -196,9 +196,9 @@ export async function chooseMigration(): Promise<void> {
   });
 }
 
-export type MainStateChange = "migrated" | "reset";
+export type MainStateChange = "migrated" | "reset" | "libraryEdited";
 
-async function notifyMainStateChanged(kind: MainStateChange): Promise<void> {
+export async function notifyMainStateChanged(kind: MainStateChange): Promise<void> {
   try {
     await emitTo("main", "toolbox://app-state-changed", kind);
   } catch {

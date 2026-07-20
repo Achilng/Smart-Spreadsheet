@@ -10,6 +10,7 @@
     setNotice,
     type MainStateChange,
   } from "./lib/stores/app-state.svelte";
+  import { clearHistory } from "./lib/stores/history.svelte";
   import ImportScreen from "./lib/views/shell/ImportScreen.svelte";
   import Notice from "./lib/ui/Notice.svelte";
   import WindowControls from "./lib/ui/WindowControls.svelte";
@@ -21,6 +22,11 @@
     let disposed = false;
     let unlisten: (() => void) | null = null;
     void listen<MainStateChange>("toolbox://app-state-changed", event => {
+      if (event.payload === "libraryEdited") {
+        clearHistory();
+        bumpDataVersion({ preserveScroll: true });
+        return;
+      }
       void refreshSnapshot().then(() => {
         bumpDataVersion();
         setNotice({

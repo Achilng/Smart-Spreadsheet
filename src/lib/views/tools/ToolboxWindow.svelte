@@ -9,8 +9,9 @@
   import ImageSearchTool from "./ImageSearchTool.svelte";
   import JsonDedupeView from "./JsonDedupeView.svelte";
   import LibraryMaintenanceTool from "./LibraryMaintenanceTool.svelte";
+  import QuickEditTool from "./QuickEditTool.svelte";
 
-  type ToolId = "artist" | "imageSearch" | "jsonDedupe" | "maintenance" | "data";
+  type ToolId = "quickEdit" | "artist" | "imageSearch" | "jsonDedupe" | "maintenance" | "data";
 
   interface ToolDefinition {
     id: ToolId;
@@ -22,6 +23,14 @@
   }
 
   const tools: ToolDefinition[] = [
+    {
+      id: "quickEdit",
+      label: "快速编辑",
+      description: "按提示词组合批量整理整个资料库",
+      group: "常用工具",
+      requiresLibrary: true,
+      icon: "✎",
+    },
     {
       id: "artist",
       label: "随机画师串",
@@ -66,8 +75,9 @@
 
   const groups = ["常用工具", "文件处理", "资料库维护"] as const;
 
-  let activeTool = $state<ToolId>("artist");
+  let activeTool = $state<ToolId>("quickEdit");
   const visited = $state<Record<ToolId, boolean>>({
+    quickEdit: false,
     artist: false,
     imageSearch: false,
     jsonDedupe: false,
@@ -161,6 +171,11 @@
         {#if !app.loaded}
           <div class="loading-state">正在读取应用状态…</div>
         {:else}
+          {#if visited.quickEdit}
+            <section class="tool-panel" class:is-active={activeTool === "quickEdit"}>
+              <QuickEditTool active={activeTool === "quickEdit"} />
+            </section>
+          {/if}
           {#if visited.artist}
             <section class="tool-panel" class:is-active={activeTool === "artist"}>
               <ArtistGeneratorView />

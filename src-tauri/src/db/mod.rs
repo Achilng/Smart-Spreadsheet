@@ -11,6 +11,7 @@ mod metadata_fingerprints;
 mod migrations;
 mod notes;
 mod prompt_edit;
+mod quick_edit;
 mod query;
 mod settings;
 mod tags;
@@ -25,6 +26,10 @@ pub use image_updates::{ExistingImageTarget, ExistingImageUpdate};
 pub use images::RowImageLocator;
 pub use migrations::CURRENT_SCHEMA_VERSION;
 pub use prompt_edit::{PromptEditResult, SinglePromptEditResult};
+pub use quick_edit::{
+    QuickEditCondition, QuickEditError, QuickEditPromptField, QuickTagApplyResult,
+    QuickTagAssociation, QuickTagPreview,
+};
 pub use query::{DedupeCluster, DedupeMode, MAX_PAGE_SIZE, RowPage, RowQuery, RowRecord, TagMatchMode, TagSummary};
 pub use tags::{RowSelection, TagMutationError, TagMutationResult, TagSelectionSummary};
 

@@ -9,3 +9,4 @@ export * from "./prompt-edit";
 export * from "./import-export";
 export * from "./search";
 export * from "./prompt-docs";
+export * from "./quick-edit";
