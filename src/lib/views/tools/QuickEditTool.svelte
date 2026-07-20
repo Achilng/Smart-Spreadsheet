@@ -72,6 +72,7 @@
   let newGroupInput = $state<HTMLInputElement | undefined>(undefined);
   let groups = $state<GroupSummary[]>([]);
   let selectedGroupId = $state<number | null>(null);
+  let onlyUngrouped = $state(false);
   let artistName = $state("");
   let tagsLoading = $state(false);
   let groupsLoading = $state(false);
@@ -331,6 +332,10 @@
     return "promptFieldsNeedingChanges" in value;
   }
 
+  function isGroupPreview(value: ActivePreview): value is QuickGroupPreview {
+    return "targetGroupId" in value;
+  }
+
   function isTagResult(value: ActiveResult): value is QuickTagApplyResult {
     return "associationsChanged" in value;
   }
@@ -348,7 +353,7 @@
       const result = operation === "tag"
         ? await previewQuickTag(condition(), selectedTags)
         : operation === "group"
-          ? await previewQuickGroup(condition(), selectedGroupId!)
+          ? await previewQuickGroup(condition(), selectedGroupId!, onlyUngrouped)
           : await previewQuickArtistPrefix(artistName.trim());
       const rows = result.sampleRowIds.length > 0
         ? await getRowsByIds(result.sampleRowIds)
@@ -403,12 +408,13 @@
       } else if (operation === "group") {
         const groupId = selectedGroupId!;
         const groupName = groups.find(group => group.id === groupId)?.name ?? "目标分组";
-        const result = await applyQuickGroup(condition(), groupId);
+        const groupPreview = preview as QuickGroupPreview;
+        const result = await applyQuickGroup(condition(), groupId, groupPreview.onlyUngrouped);
         lastResult = result;
         if (result.changes.length > 0) {
           const changes = result.changes.map(change => ({ ...change }));
           recordHistory({
-            label: `批量分组到「${groupName}」（${formatCount(result.changedRows)} 张）`,
+            label: `${result.onlyUngrouped ? "未分组图片" : "批量"}分组到「${groupName}」（${formatCount(result.changedRows)} 张）`,
             undo: async () => {
               await revertQuickGroupChanges(changes);
               invalidatePreview();
@@ -422,15 +428,22 @@
           });
         }
         preview = {
-          ...(preview as QuickGroupPreview),
+          ...groupPreview,
           rowsNeedingChanges: 0,
-          alreadyInGroupRows: preview.matchedRows,
+          alreadyInGroupRows: groupPreview.onlyUngrouped ? 0 : groupPreview.matchedRows,
+          skippedGroupedRows: groupPreview.onlyUngrouped ? groupPreview.matchedRows : 0,
         };
         setNotice({
           tone: "success",
-          text: result.changedRows > 0
-            ? `批量分组完成：${formatCount(result.changedRows)} 张图片已分到「${groupName}」。`
-            : `所有命中图片已经位于「${groupName}」，没有产生修改。`,
+          text: result.onlyUngrouped
+            ? result.changedRows > 0
+              ? `批量分组完成：${formatCount(result.changedRows)} 张未分组图片已加入「${groupName}」，跳过 ${formatCount(result.skippedGroupedRows)} 张已有分组图片。`
+              : result.skippedGroupedRows > 0
+                ? `命中图片均已有分组，已跳过 ${formatCount(result.skippedGroupedRows)} 张，没有产生修改。`
+                : "没有命中可处理的未分组图片。"
+            : result.changedRows > 0
+              ? `批量分组完成：${formatCount(result.changedRows)} 张图片已分到「${groupName}」。`
+              : `所有命中图片已经位于「${groupName}」，没有产生修改。`,
         });
       } else {
         const result = await applyQuickArtistPrefix(artistName.trim());
@@ -809,6 +822,18 @@
               目标：{groups.find(group => group.id === selectedGroupId)?.name ?? "已删除的分组"}
             </div>
           {/if}
+
+          <label class="group-scope-option">
+            <input
+              type="checkbox"
+              bind:checked={onlyUngrouped}
+              onchange={invalidatePreview}
+            />
+            <span>
+              <strong>仅处理未分组的图片</strong>
+              <small>已有任意分组的命中图片会跳过，不会从原分组移出。</small>
+            </span>
+          </label>
         </section>
       {/if}
     </div>
@@ -864,10 +889,16 @@
                 {formatCount(
                   isTagPreview(preview)
                     ? preview.alreadyTaggedRows
-                    : preview.alreadyInGroupRows
+                    : preview.onlyUngrouped
+                      ? preview.skippedGroupedRows
+                      : preview.alreadyInGroupRows
                 )}
               </strong>
-              <span>{isTagPreview(preview) ? "已有全部 Tag" : "已在目标分组"}</span>
+              <span>{isTagPreview(preview)
+                ? "已有全部 Tag"
+                : preview.onlyUngrouped
+                  ? "跳过已分组"
+                  : "已在目标分组"}</span>
             </div>
           {/if}
         </div>
@@ -900,10 +931,18 @@
           <div class="empty-preview">
             <strong>{isArtistPreview(preview)
               ? "没有找到需要修正的画师 Tag"
-              : "没有图片命中这个提示词组合"}</strong>
+              : isGroupPreview(preview) &&
+                  preview.onlyUngrouped &&
+                  preview.skippedGroupedRows > 0
+                ? "命中图片均已有分组"
+                : "没有图片命中这个提示词组合"}</strong>
             <span>{isArtistPreview(preview)
               ? "已带 artist: 前缀的 Tag 会自动跳过。"
-              : "除已列出的泛用别名外，空格和下划线会被严格区分。"}</span>
+              : isGroupPreview(preview) &&
+                  preview.onlyUngrouped &&
+                  preview.skippedGroupedRows > 0
+                ? "已按“仅处理未分组的图片”全部跳过。"
+                : "除已列出的泛用别名外，空格和下划线会被严格区分。"}</span>
           </div>
         {/if}
 
@@ -926,13 +965,25 @@
                 当前规则没有可执行的修改
               {/if}
             {:else}
-              {#if preview.rowsNeedingChanges > 0}
-                将把 {formatCount(preview.rowsNeedingChanges)} 张图片移入
-                「{preview.targetGroupName}」
-              {:else if preview.matchedRows > 0}
-                命中图片已经位于「{preview.targetGroupName}」
+              {#if preview.onlyUngrouped}
+                {#if preview.rowsNeedingChanges > 0}
+                  将把 {formatCount(preview.rowsNeedingChanges)} 张未分组图片加入
+                  「{preview.targetGroupName}」；跳过
+                  {formatCount(preview.skippedGroupedRows)} 张已有分组图片
+                {:else if preview.skippedGroupedRows > 0}
+                  命中图片均已有分组，将全部跳过
+                {:else}
+                  当前规则没有可执行的修改
+                {/if}
               {:else}
-                当前规则没有可执行的修改
+                {#if preview.rowsNeedingChanges > 0}
+                  将把 {formatCount(preview.rowsNeedingChanges)} 张图片移入
+                  「{preview.targetGroupName}」
+                {:else if preview.matchedRows > 0}
+                  命中图片已经位于「{preview.targetGroupName}」
+                {:else}
+                  当前规则没有可执行的修改
+                {/if}
               {/if}
             {/if}
           </div>
@@ -961,7 +1012,9 @@
               已修改 {formatCount(lastResult.changedRows)} 张图片，共新增
               {formatCount(lastResult.associationsChanged)} 个 Tag 关联。
             {:else}
-              已将 {formatCount(lastResult.changedRows)} 张图片移入目标分组。
+              已将 {formatCount(lastResult.changedRows)} 张图片移入目标分组。{#if lastResult.onlyUngrouped}
+                跳过 {formatCount(lastResult.skippedGroupedRows)} 张已有分组图片。
+              {/if}
             {/if}
           </p>
         {/if}
@@ -1278,6 +1331,44 @@
     margin-top: 7px;
     color: var(--accent);
     font-size: var(--font-xs);
+  }
+
+  .group-scope-option {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    margin-top: 12px;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-s);
+    background: var(--surface-2);
+    color: var(--text-2);
+    cursor: pointer;
+  }
+
+  .group-scope-option input {
+    width: 17px;
+    height: 17px;
+    flex: none;
+    margin-top: 1px;
+    accent-color: var(--accent);
+  }
+
+  .group-scope-option span,
+  .group-scope-option strong,
+  .group-scope-option small {
+    display: block;
+  }
+
+  .group-scope-option strong {
+    font-size: var(--font-sm);
+  }
+
+  .group-scope-option small {
+    margin-top: 2px;
+    color: var(--text-3);
+    font-size: var(--font-xs);
+    line-height: 1.4;
   }
 
   .preview-card {

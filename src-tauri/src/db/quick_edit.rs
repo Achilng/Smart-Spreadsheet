@@ -68,6 +68,8 @@ pub struct QuickGroupPreview {
     pub matched_rows: u64,
     pub rows_needing_changes: u64,
     pub already_in_group_rows: u64,
+    pub skipped_grouped_rows: u64,
+    pub only_ungrouped: bool,
     pub sample_row_ids: Vec<i64>,
     pub normalized_tokens: Vec<String>,
     pub target_group_id: i64,
@@ -88,6 +90,8 @@ pub struct QuickGroupApplyResult {
     pub scanned_rows: u64,
     pub matched_rows: u64,
     pub changed_rows: u64,
+    pub skipped_grouped_rows: u64,
+    pub only_ungrouped: bool,
     pub changes: Vec<QuickGroupChange>,
 }
 
@@ -340,13 +344,29 @@ impl Database {
         &self,
         condition: &QuickEditCondition,
         group_id: i64,
+        only_ungrouped: bool,
     ) -> Result<QuickGroupPreview, QuickEditError> {
         let condition = EvaluatedCondition::new(condition)?;
         let group_name = validated_group_name(&self.connection, group_id)?;
         let scanned_rows = row_count(&self.connection)?;
         let matched_rows = matching_rows(&self.connection, &condition)?;
+        let skipped_grouped_rows = if only_ungrouped {
+            u64::try_from(
+                matched_rows
+                    .iter()
+                    .filter(|row| row.group_id.is_some())
+                    .count(),
+            )
+            .map_err(|_| DatabaseError::CountOverflow)?
+        } else {
+            0
+        };
+        let eligible_rows = matched_rows
+            .iter()
+            .filter(|row| !only_ungrouped || row.group_id.is_none())
+            .collect::<Vec<_>>();
         let rows_needing_changes = u64::try_from(
-            matched_rows
+            eligible_rows
                 .iter()
                 .filter(|row| row.group_id != Some(group_id))
                 .count(),
@@ -354,13 +374,17 @@ impl Database {
         .map_err(|_| DatabaseError::CountOverflow)?;
         let matched_row_count =
             u64::try_from(matched_rows.len()).map_err(|_| DatabaseError::CountOverflow)?;
+        let eligible_row_count =
+            u64::try_from(eligible_rows.len()).map_err(|_| DatabaseError::CountOverflow)?;
 
         Ok(QuickGroupPreview {
             scanned_rows,
             matched_rows: matched_row_count,
             rows_needing_changes,
-            already_in_group_rows: matched_row_count - rows_needing_changes,
-            sample_row_ids: matched_rows
+            already_in_group_rows: eligible_row_count - rows_needing_changes,
+            skipped_grouped_rows,
+            only_ungrouped,
+            sample_row_ids: eligible_rows
                 .into_iter()
                 .map(|row| row.id)
                 .take(PREVIEW_SAMPLE_LIMIT)
@@ -375,6 +399,7 @@ impl Database {
         &mut self,
         condition: &QuickEditCondition,
         group_id: i64,
+        only_ungrouped: bool,
     ) -> Result<QuickGroupApplyResult, QuickEditError> {
         let condition = EvaluatedCondition::new(condition)?;
         let transaction = self
@@ -383,9 +408,22 @@ impl Database {
         validated_group_name(&transaction, group_id)?;
         let scanned_rows = row_count(&transaction)?;
         let matched_rows = matching_rows(&transaction, &condition)?;
+        let skipped_grouped_rows = if only_ungrouped {
+            u64::try_from(
+                matched_rows
+                    .iter()
+                    .filter(|row| row.group_id.is_some())
+                    .count(),
+            )
+            .map_err(|_| DatabaseError::CountOverflow)?
+        } else {
+            0
+        };
         let changes = matched_rows
             .iter()
-            .filter(|row| row.group_id != Some(group_id))
+            .filter(|row| {
+                row.group_id != Some(group_id) && (!only_ungrouped || row.group_id.is_none())
+            })
             .map(|row| QuickGroupChange {
                 row_id: row.id,
                 previous_group_id: row.group_id,
@@ -407,6 +445,8 @@ impl Database {
                 .map_err(|_| DatabaseError::CountOverflow)?,
             changed_rows: u64::try_from(changes.len())
                 .map_err(|_| DatabaseError::CountOverflow)?,
+            skipped_grouped_rows,
+            only_ungrouped,
             changes,
         })
     }
@@ -1270,16 +1310,18 @@ mod tests {
 
         let condition = prompt_condition(&["genshin", "hutao"]);
         let preview = database
-            .preview_quick_group(&condition, target_group.id)
+            .preview_quick_group(&condition, target_group.id, false)
             .unwrap();
         assert_eq!(preview.scanned_rows, 4);
         assert_eq!(preview.matched_rows, 3);
         assert_eq!(preview.rows_needing_changes, 2);
         assert_eq!(preview.already_in_group_rows, 1);
+        assert_eq!(preview.skipped_grouped_rows, 0);
+        assert!(!preview.only_ungrouped);
         assert_eq!(preview.sample_row_ids, vec![1, 2, 3]);
 
         let applied = database
-            .apply_quick_group(&condition, target_group.id)
+            .apply_quick_group(&condition, target_group.id, false)
             .unwrap();
         assert_eq!(applied.changed_rows, 2);
         assert_eq!(
@@ -1345,6 +1387,81 @@ mod tests {
     }
 
     #[test]
+    fn quick_group_can_skip_every_already_grouped_match() {
+        let mut database = database_with_rows(4);
+        let previous_group = database.create_group("原分组").unwrap();
+        let target_group = database.create_group("目标分组").unwrap();
+        database
+            .assign_rows_to_group(
+                &crate::db::RowSelection::Explicit { row_ids: vec![1] },
+                previous_group.id,
+            )
+            .unwrap();
+        database
+            .assign_rows_to_group(
+                &crate::db::RowSelection::Explicit { row_ids: vec![2] },
+                target_group.id,
+            )
+            .unwrap();
+        database
+            .connection
+            .execute(
+                "UPDATE rows SET positive_prompt = 'genshin' WHERE id IN (1, 2, 3)",
+                [],
+            )
+            .unwrap();
+
+        let condition = prompt_condition(&["genshin"]);
+        let preview = database
+            .preview_quick_group(&condition, target_group.id, true)
+            .unwrap();
+        assert_eq!(preview.scanned_rows, 4);
+        assert_eq!(preview.matched_rows, 3);
+        assert_eq!(preview.rows_needing_changes, 1);
+        assert_eq!(preview.already_in_group_rows, 0);
+        assert_eq!(preview.skipped_grouped_rows, 2);
+        assert!(preview.only_ungrouped);
+        assert_eq!(preview.sample_row_ids, vec![3]);
+
+        let applied = database
+            .apply_quick_group(&condition, target_group.id, true)
+            .unwrap();
+        assert_eq!(applied.matched_rows, 3);
+        assert_eq!(applied.changed_rows, 1);
+        assert_eq!(applied.skipped_grouped_rows, 2);
+        assert!(applied.only_ungrouped);
+        assert_eq!(
+            applied.changes,
+            vec![QuickGroupChange {
+                row_id: 3,
+                previous_group_id: None,
+                target_group_id: target_group.id,
+            }]
+        );
+        assert_eq!(
+            database
+                .get_rows_by_ids(&[1, 2, 3])
+                .unwrap()
+                .iter()
+                .map(|row| row.group_id)
+                .collect::<Vec<_>>(),
+            vec![
+                Some(previous_group.id),
+                Some(target_group.id),
+                Some(target_group.id),
+            ]
+        );
+
+        assert_eq!(
+            database
+                .revert_quick_group_changes(&applied.changes)
+                .unwrap(),
+            1
+        );
+        assert_eq!(database.get_rows_by_ids(&[3]).unwrap()[0].group_id, None);
+    }
+
+    #[test]
     fn quick_group_rejects_unknown_target_without_changes() {
         let mut database = database_with_rows(1);
         database
@@ -1352,7 +1469,7 @@ mod tests {
             .execute("UPDATE rows SET positive_prompt = 'genshin, hutao'", [])
             .unwrap();
 
-        let result = database.apply_quick_group(&prompt_condition(&["genshin"]), 999);
+        let result = database.apply_quick_group(&prompt_condition(&["genshin"]), 999, false);
 
         assert!(matches!(
             result,

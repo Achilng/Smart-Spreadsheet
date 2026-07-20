@@ -804,10 +804,11 @@ pub(crate) fn reapply_quick_tag_changes(
 pub(crate) fn preview_quick_group(
     condition: QuickEditCondition,
     group_id: i64,
+    only_ungrouped: bool,
     runtime: State<'_, AppRuntime>,
 ) -> Result<QuickGroupPreview, String> {
     runtime
-        .preview_quick_group(&condition, group_id)
+        .preview_quick_group(&condition, group_id, only_ungrouped)
         .map_err(error_text)
 }
 
@@ -815,10 +816,11 @@ pub(crate) fn preview_quick_group(
 pub(crate) fn apply_quick_group(
     condition: QuickEditCondition,
     group_id: i64,
+    only_ungrouped: bool,
     runtime: State<'_, AppRuntime>,
 ) -> Result<QuickGroupApplyResult, String> {
     runtime
-        .apply_quick_group(&condition, group_id)
+        .apply_quick_group(&condition, group_id, only_ungrouped)
         .map_err(error_text)
 }
 

@@ -6,3 +6,8 @@ resolver = "3"
 # Debug 下慢几十倍，同时仍保留调试信息和较快的增量编译。
 [profile.dev]
 opt-level = 1
+
+# Windows MSVC 在优化后的增量 cdylib 跨多个 codegen 单元时会偶发丢失 LLVM
+# 匿名符号并触发 LNK2019。只收敛应用 crate，依赖仍保留默认并行 codegen。
+[profile.dev.package.smart-spreadsheet]
+codegen-units = 1

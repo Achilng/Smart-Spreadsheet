@@ -41,6 +41,8 @@ export interface QuickGroupPreview {
   matchedRows: number;
   rowsNeedingChanges: number;
   alreadyInGroupRows: number;
+  skippedGroupedRows: number;
+  onlyUngrouped: boolean;
   sampleRowIds: number[];
   normalizedTokens: string[];
   targetGroupId: number;
@@ -57,6 +59,8 @@ export interface QuickGroupApplyResult {
   scannedRows: number;
   matchedRows: number;
   changedRows: number;
+  skippedGroupedRows: number;
+  onlyUngrouped: boolean;
   changes: QuickGroupChange[];
 }
 
@@ -114,15 +118,25 @@ export function reapplyQuickTagChanges(changes: QuickTagAssociation[]): Promise<
 export function previewQuickGroup(
   condition: QuickEditCondition,
   groupId: number,
+  onlyUngrouped: boolean,
 ): Promise<QuickGroupPreview> {
-  return invoke<QuickGroupPreview>("preview_quick_group", { condition, groupId });
+  return invoke<QuickGroupPreview>("preview_quick_group", {
+    condition,
+    groupId,
+    onlyUngrouped,
+  });
 }
 
 export function applyQuickGroup(
   condition: QuickEditCondition,
   groupId: number,
+  onlyUngrouped: boolean,
 ): Promise<QuickGroupApplyResult> {
-  return invoke<QuickGroupApplyResult>("apply_quick_group", { condition, groupId });
+  return invoke<QuickGroupApplyResult>("apply_quick_group", {
+    condition,
+    groupId,
+    onlyUngrouped,
+  });
 }
 
 export function revertQuickGroupChanges(changes: QuickGroupChange[]): Promise<number> {

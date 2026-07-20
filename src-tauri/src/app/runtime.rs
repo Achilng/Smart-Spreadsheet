@@ -338,16 +338,18 @@ impl AppRuntime {
         &self,
         condition: &QuickEditCondition,
         group_id: i64,
+        only_ungrouped: bool,
     ) -> Result<QuickGroupPreview, AppRuntimeError> {
-        self.with_database(|db| db.preview_quick_group(condition, group_id))
+        self.with_database(|db| db.preview_quick_group(condition, group_id, only_ungrouped))
     }
 
     pub(crate) fn apply_quick_group(
         &self,
         condition: &QuickEditCondition,
         group_id: i64,
+        only_ungrouped: bool,
     ) -> Result<QuickGroupApplyResult, AppRuntimeError> {
-        self.with_database_mut(|db| db.apply_quick_group(condition, group_id))
+        self.with_database_mut(|db| db.apply_quick_group(condition, group_id, only_ungrouped))
     }
 
     pub(crate) fn revert_quick_group_changes(
