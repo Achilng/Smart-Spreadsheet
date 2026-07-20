@@ -1,5 +1,6 @@
 <script lang="ts">
   import { app, formatCount, setNotice } from "../stores/app-state.svelte";
+  import { softFly } from "./motion";
 
   const progressText = $derived.by(() => {
     const hashing = app.hashProgress;
@@ -69,16 +70,16 @@
 </script>
 
 {#if progressText}
-  <div class="toast toast-progress" role="status">
+  <div class="toast toast-progress" role="status" transition:softFly={{ duration: 180, y: 8 }}>
     <span>{progressText}</span>
     {#if progressPercent != null}
       <span class="progress-track" aria-hidden="true">
-        <span class="progress-fill" style:width="{progressPercent}%"></span>
+        <span class="progress-fill" style:transform="scaleX({progressPercent / 100})"></span>
       </span>
     {/if}
   </div>
 {:else if app.notice}
-  <div class="toast toast-{app.notice.tone}" role="status">
+  <div class="toast toast-{app.notice.tone}" role="status" transition:softFly={{ duration: 180, y: 8 }}>
     <span>{app.notice.text}</span>
     <button type="button" aria-label="关闭提示" onclick={() => setNotice(null)}>×</button>
   </div>
@@ -132,10 +133,12 @@
 
   .progress-fill {
     display: block;
+    width: 100%;
     height: 100%;
     border-radius: var(--radius-full);
     background: var(--accent);
-    transition: width 0.15s ease;
+    transform-origin: left;
+    transition: transform var(--motion-fast) linear;
   }
 
   .toast span {
@@ -149,5 +152,10 @@
     font-size: var(--font-lg);
     line-height: 1;
     padding: 0 2px;
+    transition: transform var(--motion-press) var(--ease-responsive);
+  }
+
+  .toast button:active {
+    transform: translateY(1px) scale(0.9);
   }
 </style>

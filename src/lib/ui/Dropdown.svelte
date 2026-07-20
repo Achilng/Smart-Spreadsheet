@@ -8,6 +8,8 @@
 </script>
 
 <script lang="ts">
+  import { softPop } from "./motion";
+
   let {
     label,
     items,
@@ -55,10 +57,10 @@
     onclick={() => (open = !open)}
   >
     {label}
-    <span class="caret" aria-hidden="true">▾</span>
+    <span class="caret" class:is-open={open} aria-hidden="true">▾</span>
   </button>
   {#if open}
-    <div class="menu" role="menu">
+    <div class="menu" role="menu" transition:softPop={{ duration: 150, y: -4, start: 0.98 }}>
       {#each items as item (item.label)}
         <button
           type="button"
@@ -83,8 +85,14 @@
   }
 
   .caret {
+    display: inline-block;
     font-size: var(--font-xs);
     margin-left: 2px;
+    transition: transform var(--motion-fast) var(--ease-responsive);
+  }
+
+  .caret.is-open {
+    transform: rotate(180deg);
   }
 
   .menu {
@@ -116,6 +124,9 @@
     text-align: left;
     font-size: var(--font-md);
     color: var(--text);
+    transition:
+      background var(--motion-fast) var(--ease-responsive),
+      color var(--motion-fast) var(--ease-responsive);
   }
 
   .menu button:hover {

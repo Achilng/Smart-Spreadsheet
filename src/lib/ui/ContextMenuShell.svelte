@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
+  import { softPop } from "./motion";
 
   interface Props {
     open: boolean;
@@ -34,6 +35,7 @@
     role="menu"
     style:left="{x}px"
     style:top="{y}px"
+    transition:softPop={{ duration: 145, y: -4, start: 0.98 }}
   >
     {@render children()}
   </div>
@@ -67,6 +69,9 @@
     font-size: var(--font-md);
     color: var(--text);
     cursor: default;
+    transition:
+      background var(--motion-fast) var(--ease-responsive),
+      color var(--motion-fast) var(--ease-responsive);
   }
 
   .ctx-menu :global(button:hover:not(:disabled)) {

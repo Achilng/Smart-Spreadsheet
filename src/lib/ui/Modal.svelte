@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import type { Snippet } from "svelte";
+  import { softFade, softPop } from "./motion";
 
   interface Props {
     open: boolean;
@@ -42,6 +43,7 @@
   <div
     class="modal-backdrop"
     role="presentation"
+    transition:softFade={{ duration: 140 }}
     onclick={event => {
       if (event.target === event.currentTarget) onclose();
     }}
@@ -53,6 +55,7 @@
       aria-modal="true"
       tabindex="-1"
       style:width={width}
+      transition:softPop={{ duration: 200, y: 6, start: 0.985 }}
     >
       {@render children()}
     </div>

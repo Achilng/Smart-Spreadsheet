@@ -78,6 +78,9 @@
     color: var(--text-2);
     padding: 0;
     border-radius: 0;
+    transition:
+      background var(--motion-fast) var(--ease-responsive),
+      color var(--motion-fast) var(--ease-responsive);
   }
 
   .window-controls button:hover {
@@ -88,6 +91,10 @@
   .window-controls button.close:hover {
     background: #e81123;
     color: #ffffff;
+  }
+
+  .window-controls button:active svg {
+    transform: translateY(1px);
   }
 
   .window-controls svg {

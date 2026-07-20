@@ -27,6 +27,14 @@
   --shadow-hover: 0 6px 16px rgb(23 30 42 / 10%);
   --focus-ring: 0 0 0 3px rgb(49 99 232 / 18%);
 
+  /* ---- 动效 ---- */
+  --motion-press: 70ms;
+  --motion-fast: 120ms;
+  --motion-base: 180ms;
+  --motion-panel: 220ms;
+  --ease-responsive: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+
   /* ---- 圆角 ---- */
   --radius-s: 8px;
   --radius-m: 12px;
@@ -163,7 +171,12 @@ textarea:focus-visible {
   background: var(--surface);
   color: var(--text);
   white-space: nowrap;
-  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease, box-shadow 0.12s ease;
+  transition:
+    background var(--motion-fast) var(--ease-responsive),
+    border-color var(--motion-fast) var(--ease-responsive),
+    color var(--motion-fast) var(--ease-responsive),
+    box-shadow var(--motion-fast) var(--ease-responsive),
+    transform var(--motion-press) var(--ease-responsive);
 }
 
 .btn:hover:not(:disabled) {
@@ -173,6 +186,7 @@ textarea:focus-visible {
 
 .btn:active:not(:disabled) {
   background: var(--bg);
+  transform: translateY(1px) scale(0.985);
 }
 
 .btn-primary {
@@ -299,5 +313,24 @@ textarea:focus-visible {
   }
   to {
     background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-press: 0ms;
+    --motion-fast: 0ms;
+    --motion-base: 0ms;
+    --motion-panel: 0ms;
+  }
+
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+  }
+
+  .shimmer {
+    animation: none !important;
   }
 }
