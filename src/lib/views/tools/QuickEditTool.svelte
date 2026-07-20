@@ -6,7 +6,9 @@
     applyQuickArtistPrefix,
     applyQuickGroup,
     applyQuickTag,
+    createGroup,
     createTag,
+    deleteGroup,
     deleteTag,
     getRowsByIds,
     listGroups,
@@ -17,6 +19,7 @@
     reapplyQuickArtistPrefixChanges,
     reapplyQuickGroupChanges,
     reapplyQuickTagChanges,
+    restoreGroup,
     revertQuickArtistPrefixChanges,
     revertQuickGroupChanges,
     revertQuickTagChanges,
@@ -64,12 +67,16 @@
   let tags = $state<TagSummary[]>([]);
   let selectedTags = $state<string[]>([]);
   let groupSearch = $state("");
+  let newGroupName = $state("");
+  let groupCreatorOpen = $state(false);
+  let newGroupInput = $state<HTMLInputElement | undefined>(undefined);
   let groups = $state<GroupSummary[]>([]);
   let selectedGroupId = $state<number | null>(null);
   let artistName = $state("");
   let tagsLoading = $state(false);
   let groupsLoading = $state(false);
   let creatingTag = $state(false);
+  let creatingGroup = $state(false);
   let previewing = $state(false);
   let applying = $state(false);
   let preview = $state<ActivePreview | null>(null);
@@ -104,6 +111,7 @@
       !previewing &&
       !applying &&
       !creatingTag &&
+      !creatingGroup &&
       !history.busy,
   );
 
@@ -182,6 +190,18 @@
     invalidatePreview();
   }
 
+  async function openGroupCreator(): Promise<void> {
+    groupCreatorOpen = true;
+    await tick();
+    newGroupInput?.focus();
+  }
+
+  function closeGroupCreator(): void {
+    if (creatingGroup) return;
+    groupCreatorOpen = false;
+    newGroupName = "";
+  }
+
   async function refreshTags(): Promise<void> {
     tagsLoading = true;
     try {
@@ -257,6 +277,49 @@
       error = `新建 Tag 失败：${errorText(cause)}`;
     } finally {
       creatingTag = false;
+    }
+  }
+
+  async function createNewGroup(event: SubmitEvent): Promise<void> {
+    event.preventDefault();
+    const name = newGroupName.trim();
+    if (!name || creatingGroup || history.busy) return;
+    creatingGroup = true;
+    error = null;
+    try {
+      const group = await createGroup(name);
+      await refreshGroups();
+      selectedGroupId = group.id;
+      newGroupName = "";
+      groupSearch = "";
+      groupCreatorOpen = false;
+      invalidatePreview();
+      recordHistory({
+        label: `新建分组「${group.name}」`,
+        undo: async () => {
+          await deleteGroup(group.id);
+          if (selectedGroupId === group.id) {
+            selectedGroupId = null;
+          }
+          invalidatePreview();
+          await refreshAfterMutation();
+        },
+        redo: async () => {
+          await restoreGroup(group);
+          selectedGroupId = group.id;
+          invalidatePreview();
+          await refreshAfterMutation();
+        },
+      });
+      await notifyMainStateChanged("libraryEdited");
+      setNotice({
+        tone: "success",
+        text: `已新建并选中分组「${group.name}」。`,
+      });
+    } catch (cause) {
+      error = `新建分组失败：${errorText(cause)}`;
+    } finally {
+      creatingGroup = false;
     }
   }
 
@@ -569,7 +632,7 @@
             </div>
           </div>
 
-          <div class="tag-toolbar">
+          <div class="target-toolbar">
             <input
               class="target-search"
               type="search"
@@ -589,7 +652,7 @@
           </div>
 
           {#if tagCreatorOpen}
-            <form class="create-tag-panel" onsubmit={createNewTag}>
+            <form class="create-target-panel" onsubmit={createNewTag}>
               <input
                 bind:this={newTagInput}
                 type="text"
@@ -605,7 +668,7 @@
                   }
                 }}
               />
-              <div class="create-tag-actions">
+              <div class="create-target-actions">
                 <button
                   type="button"
                   class="btn btn-ghost"
@@ -662,19 +725,65 @@
             </div>
           </div>
 
-          <input
-            class="target-search"
-            type="search"
-            bind:value={groupSearch}
-            placeholder="搜索现有分组"
-            aria-label="搜索现有分组"
-          />
+          <div class="target-toolbar">
+            <input
+              class="target-search"
+              type="search"
+              bind:value={groupSearch}
+              placeholder="搜索现有分组"
+              aria-label="搜索现有分组"
+            />
+            <button
+              type="button"
+              class="btn btn-ghost"
+              aria-expanded={groupCreatorOpen}
+              disabled={creatingGroup || history.busy}
+              onclick={() => groupCreatorOpen ? closeGroupCreator() : void openGroupCreator()}
+            >
+              {groupCreatorOpen ? "收起" : "＋ 新建"}
+            </button>
+          </div>
+
+          {#if groupCreatorOpen}
+            <form class="create-target-panel" onsubmit={createNewGroup}>
+              <input
+                bind:this={newGroupInput}
+                type="text"
+                bind:value={newGroupName}
+                maxlength="120"
+                placeholder="输入新分组名称"
+                aria-label="新建分组名称"
+                disabled={creatingGroup}
+                onkeydown={event => {
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    closeGroupCreator();
+                  }
+                }}
+              />
+              <div class="create-target-actions">
+                <button
+                  type="button"
+                  class="btn btn-ghost"
+                  disabled={creatingGroup}
+                  onclick={closeGroupCreator}
+                >取消</button>
+                <button
+                  type="submit"
+                  class="btn"
+                  disabled={!newGroupName.trim() || creatingGroup || history.busy}
+                >
+                  {creatingGroup ? "创建中…" : "创建并选中"}
+                </button>
+              </div>
+            </form>
+          {/if}
 
           <div class="target-list group-list" aria-label="现有分组列表">
             {#if groupsLoading}
               <p class="list-state">正在读取分组…</p>
             {:else if groups.length === 0}
-              <p class="list-state">还没有分组，请先在主窗口的分组视图中创建。</p>
+              <p class="list-state">还没有分组，可以在上方直接新建。</p>
             {:else if visibleGroups.length === 0}
               <p class="list-state">没有匹配的分组。</p>
             {:else}
@@ -981,7 +1090,7 @@
   textarea,
   .artist-input,
   .target-search,
-  .create-tag-panel input {
+  .create-target-panel input {
     width: 100%;
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-s);
@@ -999,7 +1108,7 @@
   textarea:focus,
   .artist-input:focus,
   .target-search:focus,
-  .create-tag-panel input:focus {
+  .create-target-panel input:focus {
     border-color: var(--accent);
     box-shadow: var(--focus-ring);
   }
@@ -1044,7 +1153,7 @@
     padding-bottom: 13px;
   }
 
-  .tag-toolbar {
+  .target-toolbar {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 7px;
@@ -1055,13 +1164,13 @@
     padding: 0 10px;
   }
 
-  .tag-toolbar .btn {
+  .target-toolbar .btn {
     min-width: 74px;
     padding-inline: 11px;
     font-size: var(--font-sm);
   }
 
-  .create-tag-panel {
+  .create-target-panel {
     display: grid;
     gap: 9px;
     margin-top: 9px;
@@ -1071,19 +1180,19 @@
     background: var(--surface-2);
   }
 
-  .create-tag-panel input {
+  .create-target-panel input {
     width: 100%;
     height: 35px;
     padding: 0 10px;
   }
 
-  .create-tag-actions {
+  .create-target-actions {
     display: flex;
     justify-content: flex-end;
     gap: 6px;
   }
 
-  .create-tag-actions .btn {
+  .create-target-actions .btn {
     padding-inline: 11px;
     font-size: var(--font-sm);
   }
