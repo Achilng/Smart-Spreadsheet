@@ -963,8 +963,8 @@ fn collect_prompt_tokens(prompt: Option<&str>, output: &mut HashSet<String>) {
     }
 }
 
-/// 严格提示词匹配只规范化大小写和常见 NovelAI 权重外壳。
-/// 内部空格、下划线及其它字符保持不变。
+/// 严格提示词匹配会规范化大小写、常见 NovelAI 权重外壳和少量明确的泛用别名。
+/// 除别名表外，内部空格、下划线及其它字符保持不变。
 fn normalize_prompt_token(raw: &str) -> String {
     let mut token = raw.trim();
     loop {
@@ -1000,7 +1000,11 @@ fn normalize_prompt_token(raw: &str) -> String {
             break;
         }
     }
-    token.to_lowercase()
+    let normalized = token.to_lowercase();
+    match normalized.as_str() {
+        "girl" | "1girl" | "1 girl" => "girl".to_owned(),
+        _ => normalized,
+    }
 }
 
 #[cfg(test)]
@@ -1106,6 +1110,59 @@ mod tests {
         assert_eq!(preview.scanned_rows, 2);
         assert_eq!(preview.matched_rows, 2);
         assert_eq!(preview.sample_row_ids, vec![1, 2]);
+    }
+
+    #[test]
+    fn girl_aliases_share_one_quick_edit_match_key() {
+        let mut database = Database::open_in_memory().unwrap();
+        append_rows(
+            &mut database,
+            &[
+                NewRow {
+                    source_ordinal: 2,
+                    identity: "girl".into(),
+                    positive_prompt: Some("best quality, girl".into()),
+                    ..NewRow::default()
+                },
+                NewRow {
+                    source_ordinal: 3,
+                    identity: "one-girl".into(),
+                    character_prompt: Some("{1girl}".into()),
+                    ..NewRow::default()
+                },
+                NewRow {
+                    source_ordinal: 4,
+                    identity: "spaced-one-girl".into(),
+                    negative_prompt: Some("1.1::1 GIRL::".into()),
+                    ..NewRow::default()
+                },
+                NewRow {
+                    source_ordinal: 5,
+                    identity: "plural".into(),
+                    positive_prompt: Some("2girls".into()),
+                    ..NewRow::default()
+                },
+                NewRow {
+                    source_ordinal: 6,
+                    identity: "similar".into(),
+                    positive_prompt: Some("girlfriend".into()),
+                    ..NewRow::default()
+                },
+            ],
+        );
+        database.create_tag("人物").unwrap();
+
+        let preview = database
+            .preview_quick_tag(
+                &prompt_condition(&["girl", "1girl", "1 girl"]),
+                &["人物".into()],
+            )
+            .unwrap();
+
+        assert_eq!(preview.scanned_rows, 5);
+        assert_eq!(preview.matched_rows, 3);
+        assert_eq!(preview.sample_row_ids, vec![1, 2, 3]);
+        assert_eq!(preview.normalized_tokens, vec!["girl"]);
     }
 
     #[test]
@@ -1436,5 +1493,8 @@ mod tests {
         assert_eq!(normalize_prompt_token("Hu Tao"), "hu tao");
         assert_eq!(normalize_prompt_token("hu_tao"), "hu_tao");
         assert_eq!(normalize_prompt_token("1.2::{{HUTAO:1.1}}::"), "hutao");
+        assert_eq!(normalize_prompt_token("girl"), "girl");
+        assert_eq!(normalize_prompt_token("1girl"), "girl");
+        assert_eq!(normalize_prompt_token("(1 GIRL:1.2)"), "girl");
     }
 }

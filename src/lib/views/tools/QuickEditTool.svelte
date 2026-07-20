@@ -615,7 +615,7 @@
           <span>扫描范围：整个资料库</span>
           <span>{operation === "artist"
             ? "处理正向、角色与负向提示词；严格匹配完整 Tag 并保留权重格式"
-            : "严格匹配，仅忽略大小写与 NovelAI 权重语法"}</span>
+            : "忽略大小写与 NovelAI 权重；girl / 1girl / 1 girl 视为同一项"}</span>
           {#if operation === "artist"}
             <span>已带 artist: 前缀或仅名称相似的 Tag 不会修改</span>
           {/if}
@@ -794,8 +794,8 @@
                   aria-pressed={selectedGroupId === group.id}
                   onclick={() => selectGroup(group.id)}
                 >
-                  <span class="radio" aria-hidden="true">
-                    {selectedGroupId === group.id ? "●" : ""}
+                  <span class="check" aria-hidden="true">
+                    {selectedGroupId === group.id ? "✓" : ""}
                   </span>
                   <strong title={group.name}>{group.name}</strong>
                   <small>{formatCount(group.memberCount)} 张</small>
@@ -903,7 +903,7 @@
               : "没有图片命中这个提示词组合"}</strong>
             <span>{isArtistPreview(preview)
               ? "已带 artist: 前缀的 Tag 会自动跳过。"
-              : "请检查拼写；空格和下划线会被严格区分。"}</span>
+              : "除已列出的泛用别名外，空格和下划线会被严格区分。"}</span>
           </div>
         {/if}
 
@@ -1233,8 +1233,7 @@
     color: var(--accent);
   }
 
-  .target-list .check,
-  .target-list .radio {
+  .target-list .check {
     width: 17px;
     height: 17px;
     display: grid;
@@ -1250,16 +1249,6 @@
     border-color: var(--accent);
     background: var(--accent);
     color: white;
-  }
-
-  .target-list .radio {
-    border-radius: 50%;
-    color: var(--accent);
-    font-size: 9px;
-  }
-
-  .target-list button.is-selected .radio {
-    border-color: var(--accent);
   }
 
   .target-list strong {
