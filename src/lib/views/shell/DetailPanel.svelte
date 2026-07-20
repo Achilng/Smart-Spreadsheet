@@ -1,6 +1,4 @@
 <script lang="ts">
-  import { flip } from "svelte/animate";
-
   import {
     createTag,
     setTagsForRow,
@@ -444,11 +442,7 @@
         <h4>Tags</h4>
         <div class="chip-list">
           {#each row.tags as tag (tag)}
-            <span
-              class="chip"
-              animate:flip={{ duration: 160 }}
-              transition:softPop={{ duration: 140, y: 0, start: 0.9 }}
-            >
+            <span class="chip">
               {tag}
               <button
                 type="button"
