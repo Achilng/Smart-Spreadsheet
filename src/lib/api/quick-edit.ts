@@ -1,12 +1,14 @@
 import { invoke } from "@tauri-apps/api/core";
 
-export type QuickEditPromptField =
+export type QuickEditTextField =
   | "positivePrompt"
   | "characterPrompt"
-  | "negativePrompt";
+  | "negativePrompt"
+  | "artists"
+  | "note";
 
 export interface QuickEditCondition {
-  fields: QuickEditPromptField[];
+  fields: QuickEditTextField[];
   requiredTokens: string[];
 }
 

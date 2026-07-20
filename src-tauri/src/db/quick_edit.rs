@@ -9,20 +9,22 @@ use super::{Database, DatabaseError};
 
 const PREVIEW_SAMPLE_LIMIT: usize = 12;
 
-/// 快速编辑的匹配字段。当前前端固定使用正向、角色和负向提示词，
+/// 快速编辑的文本匹配字段。当前前端固定使用全部资料文本区域，
 /// 后续提示词替换等动作可以复用同一条件结构。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub enum QuickEditPromptField {
+pub enum QuickEditTextField {
     PositivePrompt,
     CharacterPrompt,
     NegativePrompt,
+    Artists,
+    Note,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QuickEditCondition {
-    pub fields: Vec<QuickEditPromptField>,
+    pub fields: Vec<QuickEditTextField>,
     pub required_tokens: Vec<String>,
 }
 
@@ -84,7 +86,7 @@ impl From<rusqlite::Error> for QuickEditError {
 
 #[derive(Debug)]
 struct EvaluatedCondition {
-    fields: HashSet<QuickEditPromptField>,
+    fields: HashSet<QuickEditTextField>,
     tokens: Vec<String>,
 }
 
@@ -118,16 +120,24 @@ impl EvaluatedCondition {
         positive: Option<&str>,
         character: Option<&str>,
         negative: Option<&str>,
+        artists: Option<&str>,
+        note: Option<&str>,
     ) -> bool {
         let mut available = HashSet::new();
-        if self.fields.contains(&QuickEditPromptField::PositivePrompt) {
+        if self.fields.contains(&QuickEditTextField::PositivePrompt) {
             collect_prompt_tokens(positive, &mut available);
         }
-        if self.fields.contains(&QuickEditPromptField::CharacterPrompt) {
+        if self.fields.contains(&QuickEditTextField::CharacterPrompt) {
             collect_prompt_tokens(character, &mut available);
         }
-        if self.fields.contains(&QuickEditPromptField::NegativePrompt) {
+        if self.fields.contains(&QuickEditTextField::NegativePrompt) {
             collect_prompt_tokens(negative, &mut available);
+        }
+        if self.fields.contains(&QuickEditTextField::Artists) {
+            collect_prompt_tokens(artists, &mut available);
+        }
+        if self.fields.contains(&QuickEditTextField::Note) {
+            collect_prompt_tokens(note, &mut available);
         }
         self.tokens.iter().all(|token| available.contains(token))
     }
@@ -297,7 +307,7 @@ fn matching_row_ids(
     condition: &EvaluatedCondition,
 ) -> Result<Vec<i64>, rusqlite::Error> {
     let mut statement = connection.prepare(
-        "SELECT id, positive_prompt, character_prompt, negative_prompt
+        "SELECT id, positive_prompt, character_prompt, negative_prompt, artists, note
          FROM rows
          ORDER BY id",
     )?;
@@ -307,15 +317,19 @@ fn matching_row_ids(
             row.get::<_, Option<String>>(1)?,
             row.get::<_, Option<String>>(2)?,
             row.get::<_, Option<String>>(3)?,
+            row.get::<_, Option<String>>(4)?,
+            row.get::<_, Option<String>>(5)?,
         ))
     })?;
     let mut matched = Vec::new();
     for row in rows {
-        let (row_id, positive, character, negative) = row?;
+        let (row_id, positive, character, negative, artists, note) = row?;
         if condition.matches(
             positive.as_deref(),
             character.as_deref(),
             negative.as_deref(),
+            artists.as_deref(),
+            note.as_deref(),
         ) {
             matched.push(row_id);
         }
@@ -467,9 +481,11 @@ mod tests {
     fn prompt_condition(tokens: &[&str]) -> QuickEditCondition {
         QuickEditCondition {
             fields: vec![
-                QuickEditPromptField::PositivePrompt,
-                QuickEditPromptField::CharacterPrompt,
-                QuickEditPromptField::NegativePrompt,
+                QuickEditTextField::PositivePrompt,
+                QuickEditTextField::CharacterPrompt,
+                QuickEditTextField::NegativePrompt,
+                QuickEditTextField::Artists,
+                QuickEditTextField::Note,
             ],
             required_tokens: tokens.iter().map(|token| (*token).to_owned()).collect(),
         }
@@ -525,6 +541,38 @@ mod tests {
         assert_eq!(preview.matched_rows, 3);
         assert_eq!(preview.sample_row_ids, vec![1, 4, 5]);
         assert_eq!(preview.normalized_tokens, vec!["genshin", "hutao"]);
+    }
+
+    #[test]
+    fn matching_includes_artists_and_notes() {
+        let mut database = Database::open_in_memory().unwrap();
+        append_rows(
+            &mut database,
+            &[
+                NewRow {
+                    source_ordinal: 2,
+                    identity: "artist-and-note".into(),
+                    artists: Some("GENSHIN".into()),
+                    note: Some("1.1::hutao::".into()),
+                    ..NewRow::default()
+                },
+                NewRow {
+                    source_ordinal: 3,
+                    identity: "note-only".into(),
+                    note: Some("genshin, {HUTAO}".into()),
+                    ..NewRow::default()
+                },
+            ],
+        );
+        database.create_tag("原神").unwrap();
+
+        let preview = database
+            .preview_quick_tag(&prompt_condition(&["genshin", "hutao"]), &["原神".into()])
+            .unwrap();
+
+        assert_eq!(preview.scanned_rows, 2);
+        assert_eq!(preview.matched_rows, 2);
+        assert_eq!(preview.sample_row_ids, vec![1, 2]);
     }
 
     #[test]

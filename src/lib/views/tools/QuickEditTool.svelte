@@ -65,7 +65,7 @@
 
   function condition(): QuickEditCondition {
     return {
-      fields: ["positivePrompt", "characterPrompt", "negativePrompt"],
+      fields: ["positivePrompt", "characterPrompt", "negativePrompt", "artists", "note"],
       requiredTokens: [...requiredTokens],
     };
   }

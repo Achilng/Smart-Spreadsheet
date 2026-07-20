@@ -27,7 +27,7 @@ pub use images::RowImageLocator;
 pub use migrations::CURRENT_SCHEMA_VERSION;
 pub use prompt_edit::{PromptEditResult, SinglePromptEditResult};
 pub use quick_edit::{
-    QuickEditCondition, QuickEditError, QuickEditPromptField, QuickTagApplyResult,
+    QuickEditCondition, QuickEditError, QuickEditTextField, QuickTagApplyResult,
     QuickTagAssociation, QuickTagPreview,
 };
 pub use query::{DedupeCluster, DedupeMode, MAX_PAGE_SIZE, RowPage, RowQuery, RowRecord, TagMatchMode, TagSummary};
