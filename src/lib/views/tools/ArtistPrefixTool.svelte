@@ -44,7 +44,7 @@
     }),
   );
   const selectedCount = $derived(selectedNames.length);
-  const busy = $derived(syncing || previewing || applying || history.busy);
+  const busy = $derived(loadingStatus || syncing || previewing || applying || history.busy);
 
   onMount(() => {
     void loadStatus();
@@ -223,7 +223,7 @@
 
   <section class="status-card">
     {#if loadingStatus}
-      <span>正在读取词典状态…</span>
+      <span>正在准备内置画师词典，首次使用可能需要一些时间…</span>
     {:else if status}
       <div>
         <strong>{formatCount(status.nameCount)}</strong>
@@ -242,7 +242,7 @@
         <span>最近更新</span>
       </div>
     {:else}
-      <p>尚未下载画师词典。首次使用需要联网从 Danbooru 同步公开的画师元数据。</p>
+      <p>内置画师词典暂不可用，可联网从 Danbooru 重新同步公开的画师元数据。</p>
     {/if}
   </section>
 

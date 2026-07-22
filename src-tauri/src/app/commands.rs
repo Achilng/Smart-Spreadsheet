@@ -890,10 +890,24 @@ pub(crate) fn reapply_quick_artist_prefix_changes(
 }
 
 #[tauri::command]
-pub(crate) fn get_artist_dictionary_status(
-    runtime: State<'_, AppRuntime>,
+pub(crate) async fn get_artist_dictionary_status(
+    app: tauri::AppHandle,
 ) -> Result<Option<ArtistDictionaryStatus>, String> {
-    runtime.artist_dictionary_status().map_err(error_text)
+    let resource_path = app
+        .path()
+        .resolve(
+            "resources/artist-dictionary.json.gz",
+            tauri::path::BaseDirectory::Resource,
+        )
+        .map_err(error_text)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        app.state::<AppRuntime>()
+            .ensure_bundled_artist_dictionary(&resource_path)
+            .map(Some)
+            .map_err(error_text)
+    })
+    .await
+    .map_err(|error| format!("内置画师词典初始化任务失败: {error}"))?
 }
 
 #[tauri::command]

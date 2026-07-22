@@ -71,27 +71,43 @@ struct PromptRow {
 
 impl Database {
     pub fn preview_auto_artist_prefix(&self) -> Result<AutoArtistPrefixPreview, QuickEditError> {
-        let dictionary = self.artist_dictionary_entries()?;
-        if dictionary.is_empty() {
+        if self.artist_dictionary_status()?.is_none() {
             return Err(QuickEditError::ArtistDictionaryUnavailable);
         }
-        let dictionary = dictionary
+        let rows = {
+            let mut statement = self.connection.prepare(
+                "SELECT id, positive_prompt, character_prompt, negative_prompt, artists
+                 FROM rows ORDER BY id",
+            )?;
+            statement
+                .query_map([], read_prompt_row)?
+                .collect::<Result<Vec<_>, _>>()?
+        };
+        let scanned_rows = u64::try_from(rows.len())
+            .map_err(|_| QuickEditError::Database(super::DatabaseError::RowCountOverflow))?;
+        let prompt_names = rows
+            .iter()
+            .flat_map(|row| {
+                [
+                    row.positive_prompt.as_deref(),
+                    row.character_prompt.as_deref(),
+                    row.negative_prompt.as_deref(),
+                ]
+                .into_iter()
+                .flatten()
+            })
+            .flat_map(bare_tag_names)
+            .collect::<BTreeSet<_>>();
+        let dictionary = self
+            .artist_dictionary_entries_by_names(prompt_names.iter().map(String::as_str))?
             .into_iter()
             .map(|entry| (entry.match_name.clone(), entry))
             .collect::<HashMap<_, _>>();
         let mut candidates = HashMap::<String, CandidateAccumulator>::new();
-        let mut scanned_rows = 0_u64;
         let mut matched_rows = 0_u64;
         let mut prompt_fields_needing_changes = 0_u64;
-        let mut statement = self.connection.prepare(
-            "SELECT id, positive_prompt, character_prompt, negative_prompt, artists
-             FROM rows ORDER BY id",
-        )?;
-        let rows = statement.query_map([], read_prompt_row)?;
 
         for row in rows {
-            let row = row?;
-            scanned_rows += 1;
             let mut row_matches = HashSet::new();
             for prompt in [
                 row.positive_prompt.as_deref(),
@@ -165,7 +181,7 @@ impl Database {
             return Err(QuickEditError::EmptyArtistSelection);
         }
         let known_names = self
-            .artist_dictionary_entries()?
+            .artist_dictionary_entries_by_names(selected_names.iter().map(String::as_str))?
             .into_iter()
             .map(|entry| entry.match_name)
             .collect::<HashSet<_>>();
@@ -246,10 +262,16 @@ fn matching_dictionary_names(
     prompt: &str,
     dictionary: &HashMap<String, ArtistDictionaryEntry>,
 ) -> BTreeSet<String> {
+    bare_tag_names(prompt)
+        .into_iter()
+        .filter(|name| dictionary.contains_key(name))
+        .collect()
+}
+
+fn bare_tag_names(prompt: &str) -> BTreeSet<String> {
     prompt
         .split([',', '\n', '\r'])
         .filter_map(normalized_bare_tag_in_fragment)
-        .filter(|name| dictionary.contains_key(name))
         .collect()
 }
 

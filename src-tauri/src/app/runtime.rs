@@ -409,10 +409,11 @@ impl AppRuntime {
         self.with_database_mut(|db| db.reapply_quick_artist_prefix_changes(changes))
     }
 
-    pub(crate) fn artist_dictionary_status(
+    pub(crate) fn ensure_bundled_artist_dictionary(
         &self,
-    ) -> Result<Option<ArtistDictionaryStatus>, AppRuntimeError> {
-        self.with_database(|db| db.artist_dictionary_status())
+        path: &Path,
+    ) -> Result<ArtistDictionaryStatus, AppRuntimeError> {
+        self.with_database_mut(|db| db.install_bundled_artist_dictionary(path))
     }
 
     pub(crate) fn replace_artist_dictionary(

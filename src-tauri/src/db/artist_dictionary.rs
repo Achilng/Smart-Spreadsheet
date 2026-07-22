@@ -1,5 +1,9 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::fs::File;
+use std::io::{BufRead, BufReader};
+use std::path::Path;
 
+use flate2::read::GzDecoder;
 use rusqlite::{OptionalExtension, TransactionBehavior, params};
 use serde::{Deserialize, Serialize};
 
@@ -40,14 +44,14 @@ pub struct DanbooruTagAlias {
     pub status: String,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 pub struct ArtistDictionaryInput {
     pub tags: Vec<DanbooruArtistTag>,
     pub artists: Vec<DanbooruArtistRecord>,
     pub aliases: Vec<DanbooruTagAlias>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ArtistDictionaryEntry {
     pub match_name: String,
@@ -64,6 +68,16 @@ pub struct ArtistDictionaryEntry {
 #[serde(rename_all = "camelCase")]
 pub struct ArtistDictionaryStatus {
     pub synced_at: String,
+    pub tag_count: u64,
+    pub artist_count: u64,
+    pub alias_count: u64,
+    pub name_count: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BundledArtistDictionaryHeader {
+    pub snapshot_at: String,
     pub tag_count: u64,
     pub artist_count: u64,
     pub alias_count: u64,
@@ -89,6 +103,94 @@ struct Candidate {
 }
 
 impl Database {
+    pub fn install_bundled_artist_dictionary(
+        &mut self,
+        path: impl AsRef<Path>,
+    ) -> Result<ArtistDictionaryStatus, DatabaseError> {
+        if let Some(status) = self.artist_dictionary_status()? {
+            return Ok(status);
+        }
+
+        let file = File::open(path.as_ref()).map_err(bundled_dictionary_error)?;
+        let decoder = GzDecoder::new(file);
+        self.install_bundled_artist_dictionary_reader(BufReader::new(decoder))
+    }
+
+    fn install_bundled_artist_dictionary_reader(
+        &mut self,
+        reader: impl BufRead,
+    ) -> Result<ArtistDictionaryStatus, DatabaseError> {
+        let mut lines = reader.lines();
+        let header_line = lines
+            .next()
+            .ok_or_else(|| bundled_dictionary_error("缺少快照头"))?
+            .map_err(bundled_dictionary_error)?;
+        let header = serde_json::from_str::<BundledArtistDictionaryHeader>(&header_line)
+            .map_err(bundled_dictionary_error)?;
+
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        transaction.execute("DELETE FROM artist_dictionary_names", [])?;
+        let mut inserted = 0_u64;
+        {
+            let mut insert = transaction.prepare(
+                "INSERT INTO artist_dictionary_names
+                    (match_name, display_name, canonical_name, post_count, is_banned,
+                     is_deprecated, is_ambiguous, source_mask)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            )?;
+            for line in lines {
+                let line = line.map_err(bundled_dictionary_error)?;
+                if line.is_empty() {
+                    continue;
+                }
+                let entry = serde_json::from_str::<ArtistDictionaryEntry>(&line)
+                    .map_err(bundled_dictionary_error)?;
+                insert.execute(params![
+                    entry.match_name,
+                    entry.display_name,
+                    entry.canonical_name,
+                    to_i64(entry.post_count)?,
+                    entry.is_banned,
+                    entry.is_deprecated,
+                    entry.is_ambiguous,
+                    i64::from(entry.source_mask),
+                ])?;
+                inserted = inserted
+                    .checked_add(1)
+                    .ok_or(DatabaseError::RowCountOverflow)?;
+            }
+        }
+        if inserted != header.name_count {
+            return Err(bundled_dictionary_error(format!(
+                "名称数量不匹配：快照声明 {}，实际读取 {inserted}",
+                header.name_count
+            )));
+        }
+        transaction.execute(
+            "INSERT INTO artist_dictionary_sync
+                (singleton, synced_at, tag_count, artist_count, alias_count, name_count)
+             VALUES (1, ?1, ?2, ?3, ?4, ?5)",
+            params![
+                header.snapshot_at,
+                to_i64(header.tag_count)?,
+                to_i64(header.artist_count)?,
+                to_i64(header.alias_count)?,
+                to_i64(header.name_count)?,
+            ],
+        )?;
+        transaction.commit()?;
+
+        Ok(ArtistDictionaryStatus {
+            synced_at: header.snapshot_at,
+            tag_count: header.tag_count,
+            artist_count: header.artist_count,
+            alias_count: header.alias_count,
+            name_count: header.name_count,
+        })
+    }
+
     pub fn replace_artist_dictionary(
         &mut self,
         input: &ArtistDictionaryInput,
@@ -197,9 +299,47 @@ impl Database {
             .collect::<Result<Vec<_>, _>>()
             .map_err(Into::into)
     }
+
+    pub fn artist_dictionary_entries_by_names<'a>(
+        &self,
+        names: impl IntoIterator<Item = &'a str>,
+    ) -> Result<Vec<ArtistDictionaryEntry>, DatabaseError> {
+        let mut statement = self.connection.prepare(
+            "SELECT match_name, display_name, canonical_name, post_count, is_banned,
+                    is_deprecated, is_ambiguous, source_mask
+             FROM artist_dictionary_names WHERE match_name = ?1",
+        )?;
+        let mut entries = Vec::new();
+        for name in names {
+            if let Some(entry) = statement
+                .query_row([name], |row| {
+                    Ok(ArtistDictionaryEntry {
+                        match_name: row.get(0)?,
+                        display_name: row.get(1)?,
+                        canonical_name: row.get(2)?,
+                        post_count: from_i64(row.get(3)?)?,
+                        is_banned: row.get(4)?,
+                        is_deprecated: row.get(5)?,
+                        is_ambiguous: row.get(6)?,
+                        source_mask: u32::try_from(row.get::<_, i64>(7)?).map_err(|error| {
+                            rusqlite::Error::FromSqlConversionFailure(
+                                7,
+                                rusqlite::types::Type::Integer,
+                                Box::new(error),
+                            )
+                        })?,
+                    })
+                })
+                .optional()?
+            {
+                entries.push(entry);
+            }
+        }
+        Ok(entries)
+    }
 }
 
-fn build_artist_dictionary(input: &ArtistDictionaryInput) -> Vec<ArtistDictionaryEntry> {
+pub fn build_artist_dictionary(input: &ArtistDictionaryInput) -> Vec<ArtistDictionaryEntry> {
     let tag_by_name = input
         .tags
         .iter()
@@ -419,8 +559,15 @@ fn from_i64(value: i64) -> Result<u64, rusqlite::Error> {
     })
 }
 
+fn bundled_dictionary_error(error: impl std::fmt::Display) -> DatabaseError {
+    DatabaseError::InvalidBundledArtistDictionary(error.to_string())
+}
+
 #[cfg(test)]
 mod tests {
+    use std::fmt::Write as _;
+    use std::io::Cursor;
+
     use super::*;
 
     fn tag(id: i64, name: &str, post_count: u64) -> DanbooruArtistTag {
@@ -563,5 +710,65 @@ mod tests {
         assert_eq!(status.name_count, 2);
         assert_eq!(database.artist_dictionary_status().unwrap(), Some(status));
         assert_eq!(database.artist_dictionary_entries().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn bundled_dictionary_stream_installs_atomically() {
+        let header = BundledArtistDictionaryHeader {
+            snapshot_at: "2026-07-22T17:50:38Z".into(),
+            tag_count: 2,
+            artist_count: 1,
+            alias_count: 0,
+            name_count: 2,
+        };
+        let entries = build_artist_dictionary(&ArtistDictionaryInput {
+            tags: vec![tag(1, "parsley-f", 891), tag(2, "parsley_f", 0)],
+            artists: vec![DanbooruArtistRecord {
+                id: 27_785,
+                name: "parsley-f".into(),
+                other_names: vec!["parsley_f".into()],
+                is_deleted: false,
+                is_banned: true,
+            }],
+            aliases: Vec::new(),
+        });
+        let mut payload = String::new();
+        writeln!(&mut payload, "{}", serde_json::to_string(&header).unwrap()).unwrap();
+        for entry in entries {
+            writeln!(&mut payload, "{}", serde_json::to_string(&entry).unwrap()).unwrap();
+        }
+
+        let mut database = Database::open_in_memory().unwrap();
+        let status = database
+            .install_bundled_artist_dictionary_reader(Cursor::new(payload))
+            .unwrap();
+        assert_eq!(status.name_count, 2);
+        assert_eq!(database.artist_dictionary_status().unwrap(), Some(status));
+        let names = database
+            .artist_dictionary_entries_by_names(["parsley-f", "parsley_f"])
+            .unwrap();
+        assert_eq!(names.len(), 2);
+        assert!(names.iter().all(|entry| entry.is_banned));
+    }
+
+    #[test]
+    fn invalid_bundled_dictionary_count_rolls_back() {
+        let header = BundledArtistDictionaryHeader {
+            snapshot_at: "2026-07-22T17:50:38Z".into(),
+            tag_count: 0,
+            artist_count: 0,
+            alias_count: 0,
+            name_count: 1,
+        };
+        let payload = format!("{}\n", serde_json::to_string(&header).unwrap());
+        let mut database = Database::open_in_memory().unwrap();
+
+        let error = database
+            .install_bundled_artist_dictionary_reader(Cursor::new(payload))
+            .unwrap_err();
+
+        assert!(error.to_string().contains("名称数量不匹配"));
+        assert!(database.artist_dictionary_status().unwrap().is_none());
+        assert!(database.artist_dictionary_entries().unwrap().is_empty());
     }
 }

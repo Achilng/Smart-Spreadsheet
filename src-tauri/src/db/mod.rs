@@ -20,8 +20,9 @@ mod tags;
 
 pub use batches::{AppendOutcome, BatchSummary, LibrarySummary, NewRow, SourceType};
 pub use artist_dictionary::{
-    ArtistDictionaryEntry, ArtistDictionaryInput, ArtistDictionaryStatus, DanbooruArtistRecord,
-    DanbooruArtistTag, DanbooruTagAlias,
+    ArtistDictionaryEntry, ArtistDictionaryInput, ArtistDictionaryStatus,
+    BundledArtistDictionaryHeader, DanbooruArtistRecord, DanbooruArtistTag, DanbooruTagAlias,
+    build_artist_dictionary,
 };
 pub use artist_auto_prefix::{
     AutoArtistCandidate, AutoArtistPrefixApplyResult, AutoArtistPrefixPreview,
@@ -67,6 +68,8 @@ pub enum DatabaseError {
     LegacySchemaVersion { found: u32, minimum: u32 },
     #[error("数据库完整性检查失败: {0}")]
     IntegrityCheckFailed(String),
+    #[error("内置画师词典无效: {0}")]
+    InvalidBundledArtistDictionary(String),
     #[error("导入行数超出 SQLite 可表示范围")]
     RowCountOverflow,
     #[error("分页大小 {requested} 无效，允许范围为 1..={maximum}")]
