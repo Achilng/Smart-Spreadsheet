@@ -7,8 +7,9 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::db::{
-    BatchSummary, DedupeCluster, DedupeMode, GroupSummary, LibrarySummary, MutableRowState,
-    QuickArtistPrefixApplyResult, QuickArtistPrefixChange, QuickArtistPrefixPreview,
+    ArtistDictionaryInput, ArtistDictionaryStatus, BatchSummary, DedupeCluster, DedupeMode,
+    GroupSummary, LibrarySummary, MutableRowState, QuickArtistPrefixApplyResult,
+    QuickArtistPrefixChange, QuickArtistPrefixPreview,
     QuickEditCondition, QuickEditError, QuickGroupApplyResult, QuickGroupChange,
     QuickGroupPreview, QuickTagApplyResult, QuickTagAssociation, QuickTagPreview, RowPage,
     RowQuery, RowSelection, SortMode, TagMatchMode, TagMutationError, TagMutationResult,
@@ -405,6 +406,20 @@ impl AppRuntime {
         changes: &[QuickArtistPrefixChange],
     ) -> Result<u64, AppRuntimeError> {
         self.with_database_mut(|db| db.reapply_quick_artist_prefix_changes(changes))
+    }
+
+    pub(crate) fn artist_dictionary_status(
+        &self,
+    ) -> Result<Option<ArtistDictionaryStatus>, AppRuntimeError> {
+        self.with_database(|db| db.artist_dictionary_status())
+    }
+
+    pub(crate) fn replace_artist_dictionary(
+        &self,
+        input: &ArtistDictionaryInput,
+        synced_at: &str,
+    ) -> Result<ArtistDictionaryStatus, AppRuntimeError> {
+        self.with_database(|db| db.replace_artist_dictionary(input, synced_at))
     }
 
     pub(crate) fn delete_rows(

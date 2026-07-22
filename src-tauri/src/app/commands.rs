@@ -7,7 +7,8 @@ use tauri::{
 
 use super::runtime::{AppRuntime, RuntimeSnapshot};
 use crate::db::{
-    BatchSummary, DedupeCluster, DedupeMode, GroupSummary, LibrarySummary, MutableRowState, PromptEditResult,
+    ArtistDictionaryStatus, BatchSummary, DedupeCluster, DedupeMode, GroupSummary, LibrarySummary,
+    MutableRowState, PromptEditResult,
     QuickArtistPrefixApplyResult, QuickArtistPrefixChange, QuickArtistPrefixPreview,
     QuickEditCondition, QuickGroupApplyResult, QuickGroupChange, QuickGroupPreview,
     QuickTagApplyResult, QuickTagAssociation, QuickTagPreview, RowPage, RowQuery, SortMode,
@@ -886,6 +887,39 @@ pub(crate) fn reapply_quick_artist_prefix_changes(
     runtime
         .reapply_quick_artist_prefix_changes(&changes)
         .map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn get_artist_dictionary_status(
+    runtime: State<'_, AppRuntime>,
+) -> Result<Option<ArtistDictionaryStatus>, String> {
+    runtime.artist_dictionary_status().map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) async fn sync_artist_dictionary(
+    app: tauri::AppHandle,
+) -> Result<ArtistDictionaryStatus, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let input = crate::danbooru::fetch_artist_dictionary(|progress| {
+            let _ = app.emit("artist-dictionary://progress", progress);
+        })
+        .map_err(error_text)?;
+        let _ = app.emit(
+            "artist-dictionary://progress",
+            crate::danbooru::ArtistDictionarySyncProgress {
+                stage: crate::danbooru::ArtistDictionarySyncStage::Saving,
+                pages_fetched: 0,
+                items_fetched: input.tags.len() + input.artists.len() + input.aliases.len(),
+            },
+        );
+        let synced_at = chrono::Utc::now().to_rfc3339();
+        app.state::<AppRuntime>()
+            .replace_artist_dictionary(&input, &synced_at)
+            .map_err(error_text)
+    })
+    .await
+    .map_err(|error| format!("画师词典同步任务失败: {error}"))?
 }
 
 #[tauri::command]
