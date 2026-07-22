@@ -923,20 +923,30 @@ pub(crate) async fn sync_artist_dictionary(
 }
 
 #[tauri::command]
-pub(crate) fn preview_auto_artist_prefix(
-    runtime: State<'_, AppRuntime>,
+pub(crate) async fn preview_auto_artist_prefix(
+    app: tauri::AppHandle,
 ) -> Result<AutoArtistPrefixPreview, String> {
-    runtime.preview_auto_artist_prefix().map_err(error_text)
+    tauri::async_runtime::spawn_blocking(move || {
+        app.state::<AppRuntime>()
+            .preview_auto_artist_prefix()
+            .map_err(error_text)
+    })
+    .await
+    .map_err(|error| format!("画师 Tag 扫描任务失败: {error}"))?
 }
 
 #[tauri::command]
-pub(crate) fn apply_auto_artist_prefix(
+pub(crate) async fn apply_auto_artist_prefix(
     selected_names: Vec<String>,
-    runtime: State<'_, AppRuntime>,
+    app: tauri::AppHandle,
 ) -> Result<AutoArtistPrefixApplyResult, String> {
-    runtime
-        .apply_auto_artist_prefix(&selected_names)
-        .map_err(error_text)
+    tauri::async_runtime::spawn_blocking(move || {
+        app.state::<AppRuntime>()
+            .apply_auto_artist_prefix(&selected_names)
+            .map_err(error_text)
+    })
+    .await
+    .map_err(|error| format!("画师前缀修正任务失败: {error}"))?
 }
 
 #[tauri::command]
