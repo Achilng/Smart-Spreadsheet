@@ -67,7 +67,10 @@ export interface RowQuery {
   groupView: boolean;
   hideGrouped: boolean;
   search: string;
+  sort: SortMode;
 }
+
+export type SortMode = "timeAsc" | "timeDesc" | "recentlyUpdated";
 
 export interface RowRecord {
   id: number;
@@ -142,15 +145,16 @@ export function restoreMutableRowStates(states: MutableRowState[]): Promise<numb
 }
 
 export function queryRows(query: RowQuery): Promise<RowPage> {
-  return invoke<RowPage>("query_rows", { query });
+  const { sort, ...filters } = query;
+  return invoke<RowPage>("query_rows", { query: filters, sort });
 }
 
 export function getRowsByIds(rowIds: number[]): Promise<RowRecord[]> {
   return invoke<RowRecord[]>("get_rows_by_ids", { rowIds });
 }
 
-export function getRowIndex(rowId: number): Promise<number> {
-  return invoke<number>("get_row_index", { rowId });
+export function getRowIndex(rowId: number, sort: SortMode = "timeAsc"): Promise<number> {
+  return invoke<number>("get_row_index", { rowId, sort });
 }
 
 export function countSelectedRows(selection: RowSelection): Promise<number> {

@@ -10,7 +10,7 @@ use crate::db::{
     BatchSummary, DedupeCluster, DedupeMode, GroupSummary, LibrarySummary, MutableRowState, PromptEditResult,
     QuickArtistPrefixApplyResult, QuickArtistPrefixChange, QuickArtistPrefixPreview,
     QuickEditCondition, QuickGroupApplyResult, QuickGroupChange, QuickGroupPreview,
-    QuickTagApplyResult, QuickTagAssociation, QuickTagPreview, RowPage, RowQuery,
+    QuickTagApplyResult, QuickTagAssociation, QuickTagPreview, RowPage, RowQuery, SortMode,
     RowRecord, RowSelection, SinglePromptEditResult, TagMatchMode, TagMutationResult,
     TagSelectionSummary, TagSummary,
 };
@@ -660,10 +660,11 @@ pub(crate) fn set_dedupe_alias(
 #[tauri::command]
 pub(crate) fn query_rows(
     query: RowQuery,
+    sort: Option<SortMode>,
     runtime: State<'_, AppRuntime>,
 ) -> Result<RowPageDto, String> {
     runtime
-        .query_rows(&query)
+        .query_rows_sorted(&query, sort.unwrap_or_default())
         .map(RowPageDto::from)
         .map_err(error_text)
 }
@@ -679,9 +680,12 @@ pub(crate) fn get_rows_by_ids(
 #[tauri::command]
 pub(crate) fn get_row_index(
     row_id: i64,
+    sort: Option<SortMode>,
     runtime: State<'_, AppRuntime>,
 ) -> Result<u64, String> {
-    runtime.row_index_by_id(row_id).map_err(error_text)
+    runtime
+        .row_index_by_id_sorted(row_id, sort.unwrap_or_default())
+        .map_err(error_text)
 }
 
 #[tauri::command]

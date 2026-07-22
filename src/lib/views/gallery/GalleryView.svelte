@@ -10,6 +10,7 @@
   import { restoreScrollPosition, saveScrollPosition, scrollPositionVersion } from "../../stores/view-state";
   import GalleryCard from "./GalleryCard.svelte";
   import { softFade } from "../../ui/motion";
+  import SortControl from "../shell/SortControl.svelte";
 
   let { active = true }: { active?: boolean } = $props();
 
@@ -304,46 +305,57 @@
   });
 </script>
 
-<div
-  class="gallery-viewport"
-  bind:this={viewport}
-  bind:clientWidth={measuredWidth}
-  bind:clientHeight={measuredHeight}
-  onscroll={onScroll}
->
-  {#if rowStore.error}
-    <div class="gallery-status empty-state" transition:softFade={{ duration: 140 }}>
-      <p class="muted">加载失败：{rowStore.error}</p>
-      <button type="button" class="btn" onclick={() => resetRows()}>重试</button>
-    </div>
-  {:else if rowStore.initialLoading}
-    <div class="gallery-status empty-state" transition:softFade={{ duration: 140 }}>
-      <p class="muted">正在加载…</p>
-    </div>
-  {:else if rowStore.totalCount === 0}
-    <div class="gallery-status empty-state" transition:softFade={{ duration: 140 }}>
-      <p class="muted">
-        {rowStore.tags.length > 0 ? "当前筛选没有匹配记录。" : "工作簿没有数据行。"}
-      </p>
-    </div>
-  {:else}
-    <div class="gallery-spacer" style:height="{spacerHeight}px">
-      {#each cells as cell (cell.index)}
-        <GalleryCard
-          row={cell.row}
-          index={cell.index}
-          x={cell.x}
-          y={cell.y}
-          width={cardWidth}
-          {imageHeight}
-          enhance={progressiveReady && Boolean(cell.row && progressiveRowIds.has(cell.row.id))}
-        />
-      {/each}
-    </div>
-  {/if}
+<div class="gallery-view">
+  <SortControl controlId="gallery-sort" />
+  <div
+    class="gallery-viewport"
+    bind:this={viewport}
+    bind:clientWidth={measuredWidth}
+    bind:clientHeight={measuredHeight}
+    onscroll={onScroll}
+  >
+    {#if rowStore.error}
+      <div class="gallery-status empty-state" transition:softFade={{ duration: 140 }}>
+        <p class="muted">加载失败：{rowStore.error}</p>
+        <button type="button" class="btn" onclick={() => resetRows()}>重试</button>
+      </div>
+    {:else if rowStore.initialLoading}
+      <div class="gallery-status empty-state" transition:softFade={{ duration: 140 }}>
+        <p class="muted">正在加载…</p>
+      </div>
+    {:else if rowStore.totalCount === 0}
+      <div class="gallery-status empty-state" transition:softFade={{ duration: 140 }}>
+        <p class="muted">
+          {rowStore.tags.length > 0 ? "当前筛选没有匹配记录。" : "工作簿没有数据行。"}
+        </p>
+      </div>
+    {:else}
+      <div class="gallery-spacer" style:height="{spacerHeight}px">
+        {#each cells as cell (cell.index)}
+          <GalleryCard
+            row={cell.row}
+            index={cell.index}
+            x={cell.x}
+            y={cell.y}
+            width={cardWidth}
+            {imageHeight}
+            enhance={progressiveReady && Boolean(cell.row && progressiveRowIds.has(cell.row.id))}
+          />
+        {/each}
+      </div>
+    {/if}
+  </div>
 </div>
 
 <style>
+  .gallery-view {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
   .gallery-viewport {
     flex: 1;
     min-height: 0;

@@ -108,7 +108,7 @@
         throw new Error("图片记录已不存在");
       }
 
-      const index = await getRowIndex(request.rowId);
+      const index = await getRowIndex(request.rowId, rowStore.sort);
       revealRowInGallery(row, index);
       app.viewMode = "gallery";
       clearSelection();

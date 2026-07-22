@@ -1,8 +1,8 @@
-pub const CURRENT_SCHEMA_VERSION: u32 = 11;
+pub const CURRENT_SCHEMA_VERSION: u32 = 12;
 pub const MINIMUM_UPGRADABLE_SCHEMA_VERSION: u32 = 8;
 
 /// 新资料库直接创建当前结构，不再重放早期工作簿/XLSX 导入迁移。
-pub(super) const SCHEMA_11: &str = r#"
+pub(super) const SCHEMA_12: &str = r#"
 CREATE TABLE import_batches (
     id INTEGER PRIMARY KEY,
     source_type TEXT NOT NULL CHECK (source_type IN ('legacy', 'folder', 'archive')),
@@ -42,7 +42,8 @@ CREATE TABLE rows (
     stored_image_is_original INTEGER NOT NULL DEFAULT 0
         CHECK (stored_image_is_original IN (0, 1)),
     vibe_reference_count INTEGER
-        CHECK (vibe_reference_count IS NULL OR vibe_reference_count >= 0)
+        CHECK (vibe_reference_count IS NULL OR vibe_reference_count >= 0),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 ) STRICT;
 
 CREATE TABLE tags (
@@ -80,6 +81,30 @@ CREATE INDEX idx_rows_group_id ON rows(group_id)
 WHERE group_id IS NOT NULL;
 CREATE INDEX idx_rows_metadata_fingerprint ON rows(metadata_fingerprint)
 WHERE metadata_fingerprint IS NOT NULL;
+CREATE INDEX idx_rows_updated_at ON rows(updated_at DESC, id DESC);
+
+CREATE TRIGGER touch_row_after_user_edit
+AFTER UPDATE OF positive_prompt, character_prompt, negative_prompt, note, group_id ON rows
+WHEN OLD.positive_prompt IS NOT NEW.positive_prompt
+  OR OLD.character_prompt IS NOT NEW.character_prompt
+  OR OLD.negative_prompt IS NOT NEW.negative_prompt
+  OR OLD.note IS NOT NEW.note
+  OR OLD.group_id IS NOT NEW.group_id
+BEGIN
+    UPDATE rows SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id;
+END;
+
+CREATE TRIGGER touch_row_after_tag_add
+AFTER INSERT ON row_tags
+BEGIN
+    UPDATE rows SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.row_id;
+END;
+
+CREATE TRIGGER touch_row_after_tag_remove
+AFTER DELETE ON row_tags
+BEGIN
+    UPDATE rows SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = OLD.row_id;
+END;
 "#;
 
 /// v8 → v9：为原图搬家后的安全重新关联增加元数据指纹，并记录受管副本是否为原件。
@@ -127,4 +152,44 @@ DROP TABLE IF EXISTS pending_embedded_extractions;
 pub(super) const MIGRATION_11: &str = r#"
 ALTER TABLE rows ADD COLUMN vibe_reference_count INTEGER
 CHECK (vibe_reference_count IS NULL OR vibe_reference_count >= 0);
+"#;
+
+/// v11 → v12：记录每张图片最近一次用户可见编辑时间，供资料库按“最近更新”
+/// 排序。历史记录以最初导入时间回填；提示词、备注、分组与 Tag 变更自动触碰时间。
+pub(super) const MIGRATION_12: &str = r#"
+ALTER TABLE rows ADD COLUMN updated_at TEXT;
+UPDATE rows
+SET updated_at = COALESCE(
+    strftime(
+        '%Y-%m-%dT%H:%M:%fZ',
+        (SELECT import_batches.imported_at
+         FROM import_batches
+         WHERE import_batches.id = rows.batch_id)
+    ),
+    strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+);
+CREATE INDEX idx_rows_updated_at ON rows(updated_at DESC, id DESC);
+
+CREATE TRIGGER touch_row_after_user_edit
+AFTER UPDATE OF positive_prompt, character_prompt, negative_prompt, note, group_id ON rows
+WHEN OLD.positive_prompt IS NOT NEW.positive_prompt
+  OR OLD.character_prompt IS NOT NEW.character_prompt
+  OR OLD.negative_prompt IS NOT NEW.negative_prompt
+  OR OLD.note IS NOT NEW.note
+  OR OLD.group_id IS NOT NEW.group_id
+BEGIN
+    UPDATE rows SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id;
+END;
+
+CREATE TRIGGER touch_row_after_tag_add
+AFTER INSERT ON row_tags
+BEGIN
+    UPDATE rows SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.row_id;
+END;
+
+CREATE TRIGGER touch_row_after_tag_remove
+AFTER DELETE ON row_tags
+BEGIN
+    UPDATE rows SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = OLD.row_id;
+END;
 "#;

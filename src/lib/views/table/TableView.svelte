@@ -8,6 +8,7 @@
   import { restoreScrollPosition, saveScrollPosition, scrollPositionVersion } from "../../stores/view-state";
   import TableRow from "./TableRow.svelte";
   import { softFade } from "../../ui/motion";
+  import SortControl from "../shell/SortControl.svelte";
 
   let { active = true }: { active?: boolean } = $props();
 
@@ -158,47 +159,58 @@
   });
 </script>
 
-<div
-  class="table-viewport"
-  bind:this={viewport}
-  bind:clientHeight={measuredHeight}
-  onscroll={onScroll}
->
-  {#if rowStore.error}
-    <div class="table-status empty-state" transition:softFade={{ duration: 140 }}>
-      <p class="muted">加载失败：{rowStore.error}</p>
-      <button type="button" class="btn" onclick={() => resetRows()}>重试</button>
-    </div>
-  {:else if rowStore.initialLoading}
-    <div class="table-status empty-state" transition:softFade={{ duration: 140 }}>
-      <p class="muted">正在加载…</p>
-    </div>
-  {:else if rowStore.totalCount === 0}
-    <div class="table-status empty-state" transition:softFade={{ duration: 140 }}>
-      <p class="muted">
-        {rowStore.tags.length > 0 ? "当前筛选没有匹配记录。" : "工作簿没有数据行。"}
-      </p>
-    </div>
-  {:else}
-    <div class="table-header" style:height="{HEADER_HEIGHT}px" style:grid-template-columns={gridCols} role="row">
-      <span></span>
-      <span>图片</span>
-      <span>行号</span>
-      <span>时间</span>
-      <span>正向提示词</span>
-      <span>角色提示词</span>
-      <span>画师串</span>
-      <span>Tags</span>
-    </div>
-    <div class="table-spacer" style:height="{spacerHeight}px" role="rowgroup">
-      {#each items as item (item.index)}
-        <TableRow row={item.row} index={item.index} y={item.y} height={rowHeight} {gridCols} {thumbColWidth} />
-      {/each}
-    </div>
-  {/if}
+<div class="table-view">
+  <SortControl controlId="table-sort" />
+  <div
+    class="table-viewport"
+    bind:this={viewport}
+    bind:clientHeight={measuredHeight}
+    onscroll={onScroll}
+  >
+    {#if rowStore.error}
+      <div class="table-status empty-state" transition:softFade={{ duration: 140 }}>
+        <p class="muted">加载失败：{rowStore.error}</p>
+        <button type="button" class="btn" onclick={() => resetRows()}>重试</button>
+      </div>
+    {:else if rowStore.initialLoading}
+      <div class="table-status empty-state" transition:softFade={{ duration: 140 }}>
+        <p class="muted">正在加载…</p>
+      </div>
+    {:else if rowStore.totalCount === 0}
+      <div class="table-status empty-state" transition:softFade={{ duration: 140 }}>
+        <p class="muted">
+          {rowStore.tags.length > 0 ? "当前筛选没有匹配记录。" : "工作簿没有数据行。"}
+        </p>
+      </div>
+    {:else}
+      <div class="table-header" style:height="{HEADER_HEIGHT}px" style:grid-template-columns={gridCols} role="row">
+        <span></span>
+        <span>图片</span>
+        <span>行号</span>
+        <span>时间</span>
+        <span>正向提示词</span>
+        <span>角色提示词</span>
+        <span>画师串</span>
+        <span>Tags</span>
+      </div>
+      <div class="table-spacer" style:height="{spacerHeight}px" role="rowgroup">
+        {#each items as item (item.index)}
+          <TableRow row={item.row} index={item.index} y={item.y} height={rowHeight} {gridCols} {thumbColWidth} />
+        {/each}
+      </div>
+    {/if}
+  </div>
 </div>
 
 <style>
+  .table-view {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
   .table-viewport {
     flex: 1;
     min-height: 0;

@@ -83,6 +83,7 @@ function ungroupedQuery(offset: number) {
     groupView: false,
     hideGrouped: true,
     search: rowStore.search,
+    sort: "timeAsc",
   });
 }
 

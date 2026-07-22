@@ -38,6 +38,15 @@ pub enum DedupeMode {
     Artists,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SortMode {
+    #[default]
+    TimeAsc,
+    TimeDesc,
+    RecentlyUpdated,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RowQuery {
@@ -111,6 +120,14 @@ pub struct DedupeCluster {
 
 impl Database {
     pub fn query_rows(&mut self, query: &RowQuery) -> Result<RowPage, DatabaseError> {
+        self.query_rows_sorted(query, SortMode::TimeAsc)
+    }
+
+    pub fn query_rows_sorted(
+        &mut self,
+        query: &RowQuery,
+        sort: SortMode,
+    ) -> Result<RowPage, DatabaseError> {
         if query.limit == 0 || query.limit > MAX_PAGE_SIZE {
             return Err(DatabaseError::InvalidPageSize {
                 requested: query.limit,
@@ -156,7 +173,13 @@ impl Database {
         };
 
         create_page_rows_table(&self.connection)?;
-        create_page_rows(&self.connection, FILTERED_ROWS_TABLE, query.limit, offset)?;
+        create_page_rows(
+            &self.connection,
+            FILTERED_ROWS_TABLE,
+            query.limit,
+            offset,
+            sort,
+        )?;
         let mut rows = query_page_metadata(&self.connection)?;
         attach_page_tags(&self.connection, &mut rows)?;
         self.connection
@@ -195,9 +218,16 @@ impl Database {
         Ok(rows)
     }
 
-    /// 返回未筛选资料库中指定行的零基序号。按主查询一致的 ID 升序计算，
-    /// 即使中间删除过记录也能得到准确的表格位置。
+    /// 返回未筛选资料库中指定行的零基序号。默认沿用历史的导入正序。
     pub fn row_index_by_id(&self, row_id: i64) -> Result<u64, DatabaseError> {
+        self.row_index_by_id_sorted(row_id, SortMode::TimeAsc)
+    }
+
+    pub fn row_index_by_id_sorted(
+        &self,
+        row_id: i64,
+        sort: SortMode,
+    ) -> Result<u64, DatabaseError> {
         let exists: bool = self.connection.query_row(
             "SELECT EXISTS(SELECT 1 FROM rows WHERE id = ?1)",
             [row_id],
@@ -206,8 +236,16 @@ impl Database {
         if !exists {
             return Err(DatabaseError::RowNotFound(row_id));
         }
+        let order_by = sort_order_sql(sort, "rows");
         let index: i64 = self.connection.query_row(
-            "SELECT COUNT(*) FROM rows WHERE id < ?1",
+            &format!(
+                "SELECT ordinal - 1
+                 FROM (
+                     SELECT rows.id, ROW_NUMBER() OVER (ORDER BY {order_by}) AS ordinal
+                     FROM rows
+                 )
+                 WHERE id = ?1"
+            ),
             [row_id],
             |row| row.get(0),
         )?;
@@ -237,7 +275,13 @@ impl Database {
             [group_id],
         )?;
         create_page_rows_table(&transaction)?;
-        create_page_rows(&transaction, SCRATCH_ROWS_TABLE, limit, offset_i64)?;
+        create_page_rows(
+            &transaction,
+            SCRATCH_ROWS_TABLE,
+            limit,
+            offset_i64,
+            SortMode::TimeAsc,
+        )?;
 
         let total_count = query_total_count(&transaction, SCRATCH_ROWS_TABLE)?;
         let mut rows = query_page_metadata(&transaction)?;
@@ -455,7 +499,13 @@ impl Database {
             params![key],
         )?;
         create_page_rows_table(&transaction)?;
-        create_page_rows(&transaction, SCRATCH_ROWS_TABLE, limit, offset_i64)?;
+        create_page_rows(
+            &transaction,
+            SCRATCH_ROWS_TABLE,
+            limit,
+            offset_i64,
+            SortMode::TimeAsc,
+        )?;
 
         let total_count = query_total_count(&transaction, SCRATCH_ROWS_TABLE)?;
         let mut rows = query_page_metadata(&transaction)?;
@@ -667,19 +717,31 @@ fn create_page_rows(
     source_table: &str,
     limit: u32,
     offset: i64,
+    sort: SortMode,
 ) -> Result<(), rusqlite::Error> {
-    // 行的展示顺序即入库顺序（rows.id 单调递增）。
+    let order_by = sort_order_sql(sort, "rows");
     connection.execute(
         &format!(
             "INSERT INTO {PAGE_ROWS_TABLE}(ordinal, id)
-             SELECT ROW_NUMBER() OVER (ORDER BY filtered.id), filtered.id
+             SELECT ROW_NUMBER() OVER (ORDER BY {order_by}), filtered.id
              FROM {source_table} AS filtered
-             ORDER BY filtered.id
+             JOIN rows ON rows.id = filtered.id
+             ORDER BY {order_by}
              LIMIT ?1 OFFSET ?2"
         ),
         params![limit, offset],
     )?;
     Ok(())
+}
+
+fn sort_order_sql(sort: SortMode, rows_alias: &str) -> String {
+    match sort {
+        SortMode::TimeAsc => format!("{rows_alias}.id ASC"),
+        SortMode::TimeDesc => format!("{rows_alias}.id DESC"),
+        SortMode::RecentlyUpdated => format!(
+            "COALESCE({rows_alias}.updated_at, '') DESC, {rows_alias}.id DESC"
+        ),
+    }
 }
 
 fn query_total_count(connection: &Connection, table: &str) -> Result<u64, DatabaseError> {
@@ -812,6 +874,115 @@ mod tests {
         assert_eq!(page.rows[0].tags, vec!["Common", "red"]);
         assert_eq!(page.rows[1].tags, vec!["Blue", "Red"]);
         assert!(page.has_more());
+    }
+
+    #[test]
+    fn supports_all_library_sort_modes() {
+        let mut database = database_with_rows(4);
+        database
+            .connection
+            .execute_batch(
+                "UPDATE rows SET updated_at = CASE id
+                     WHEN 1 THEN '2026-01-01T00:00:00.000Z'
+                     WHEN 2 THEN '2026-03-01T00:00:00.000Z'
+                     WHEN 3 THEN '2026-03-01T00:00:00.000Z'
+                     ELSE '2025-01-01T00:00:00.000Z'
+                 END;",
+            )
+            .unwrap();
+        let query = RowQuery {
+            offset: 0,
+            limit: 10,
+            tags: Vec::new(),
+            tag_mode: TagMatchMode::And,
+            dedupe: DedupeMode::None,
+            single_artist_only: false,
+            has_vibe: false,
+            group_view: false,
+            hide_grouped: false,
+            search: String::new(),
+        };
+
+        let ids = |page: RowPage| page.rows.into_iter().map(|row| row.id).collect::<Vec<_>>();
+        assert_eq!(
+            ids(database.query_rows_sorted(&query, SortMode::TimeAsc).unwrap()),
+            vec![1, 2, 3, 4]
+        );
+        assert_eq!(
+            ids(database.query_rows_sorted(&query, SortMode::TimeDesc).unwrap()),
+            vec![4, 3, 2, 1]
+        );
+        assert_eq!(
+            ids(database
+                .query_rows_sorted(&query, SortMode::RecentlyUpdated)
+                .unwrap()),
+            vec![3, 2, 1, 4]
+        );
+        assert_eq!(database.row_index_by_id_sorted(2, SortMode::TimeDesc).unwrap(), 2);
+        assert_eq!(
+            database
+                .row_index_by_id_sorted(2, SortMode::RecentlyUpdated)
+                .unwrap(),
+            1
+        );
+    }
+
+    #[test]
+    fn user_edits_and_tag_changes_touch_recent_update_order() {
+        let mut database = database_with_rows(3);
+        let query = RowQuery {
+            offset: 0,
+            limit: 10,
+            tags: Vec::new(),
+            tag_mode: TagMatchMode::And,
+            dedupe: DedupeMode::None,
+            single_artist_only: false,
+            has_vibe: false,
+            group_view: false,
+            hide_grouped: false,
+            search: String::new(),
+        };
+        database
+            .connection
+            .execute("UPDATE rows SET updated_at = '2000-01-01T00:00:00.000Z'", [])
+            .unwrap();
+        database.update_note(2, "最近修改").unwrap();
+        assert_eq!(
+            database
+                .query_rows_sorted(&query, SortMode::RecentlyUpdated)
+                .unwrap()
+                .rows[0]
+                .id,
+            2
+        );
+
+        database
+            .connection
+            .execute("UPDATE rows SET updated_at = '2000-01-01T00:00:00.000Z'", [])
+            .unwrap();
+        database.update_positive_prompt(3, "新的提示词").unwrap();
+        assert_eq!(
+            database
+                .query_rows_sorted(&query, SortMode::RecentlyUpdated)
+                .unwrap()
+                .rows[0]
+                .id,
+            3
+        );
+
+        database
+            .connection
+            .execute("UPDATE rows SET updated_at = '2000-01-01T00:00:00.000Z'", [])
+            .unwrap();
+        database.add_tags_to_rows(&[1], &["最近标签".into()]).unwrap();
+        assert_eq!(
+            database
+                .query_rows_sorted(&query, SortMode::RecentlyUpdated)
+                .unwrap()
+                .rows[0]
+                .id,
+            1
+        );
     }
 
     #[test]

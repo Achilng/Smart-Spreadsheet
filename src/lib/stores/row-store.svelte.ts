@@ -1,4 +1,4 @@
-import { queryRows, type DedupeMode, type RowRecord, type TagMatchMode } from "../api";
+import { queryRows, type DedupeMode, type RowRecord, type SortMode, type TagMatchMode } from "../api";
 import { errorText } from "./app-state.svelte";
 import { clearScrollPositions } from "./view-state";
 
@@ -20,6 +20,7 @@ export const rowStore = $state({
   groupView: false,
   hideGrouped: false,
   search: "",
+  sort: "timeAsc" as SortMode,
   totalCount: 0,
   /** 首次加载 / 数据集整体更换，期间没有可显示的旧内容 */
   initialLoading: true,
@@ -42,6 +43,8 @@ let pendingPages = new Set<number>();
 let generation = 0;
 /** 本轮刷新完成时是否要求视图回到顶部 */
 let resetScrollOnSwap = true;
+/** 最近更新排序下的单行编辑刷新期间保留详情面板，若刷新后仍命中则继续显示。 */
+let keepActiveOnSwap = false;
 
 export function getRow(index: number): RowRecord | undefined {
   return pages.get(Math.floor(index / PAGE_SIZE))?.[index % PAGE_SIZE];
@@ -69,12 +72,21 @@ export function ensurePage(pageIndex: number): void {
         groupView: rowStore.groupView,
         hideGrouped: rowStore.hideGrouped,
         search: rowStore.search,
+        sort: rowStore.sort,
       });
       if (requestGeneration !== generation) {
         return;
       }
       if (incoming) {
         incoming.set(pageIndex, page.rows);
+        if (
+          keepActiveOnSwap &&
+          rowStore.activeRow &&
+          !page.rows.some(row => row.id === rowStore.activeRow?.id)
+        ) {
+          rowStore.activeRow = null;
+        }
+        keepActiveOnSwap = false;
         // 新结果首页到达：原子替换旧内容
         pages = incoming;
         incoming = null;
@@ -109,6 +121,8 @@ interface ResetOptions {
   keepStale?: boolean;
   /** true = 筛选语义变化，各视图清位置回顶部；false = 就地刷新保留位置 */
   resetScroll?: boolean;
+  /** 刷新后目标仍在首页时保留当前详情。仅用于最近更新排序下的单行编辑。 */
+  keepActive?: boolean;
 }
 
 /**
@@ -117,11 +131,14 @@ interface ResetOptions {
  * 筛选/搜索变化传 resetScroll: true；导入/删除/换库传 keepStale: false。
  */
 export function resetRows(options: ResetOptions = {}): void {
-  const { keepStale = true, resetScroll = false } = options;
+  const { keepStale = true, resetScroll = false, keepActive = false } = options;
   generation += 1;
   pendingPages = new Set();
   rowStore.error = null;
-  rowStore.activeRow = null;
+  keepActiveOnSwap = keepActive;
+  if (!keepActive) {
+    rowStore.activeRow = null;
+  }
   resetScrollOnSwap = resetScroll;
   if (resetScroll) {
     clearScrollPositions();
@@ -196,6 +213,13 @@ export function setSearch(value: string): void {
   }
 }
 
+export function setSort(sort: SortMode): void {
+  if (rowStore.sort !== sort) {
+    rowStore.sort = sort;
+    resetRows({ keepStale: true, resetScroll: true });
+  }
+}
+
 /** 清除可能隐藏目标行的筛选，并请求画廊在数据就绪后滚动到指定图片。 */
 export function revealRowInGallery(row: RowRecord, index: number): void {
   rowStore.tags = [];
@@ -225,6 +249,9 @@ export function patchRowFields(rowId: number, fields: Partial<RowRecord>): void 
     Object.assign(rowStore.activeRow, fields);
   }
   rowStore.pagesVersion += 1;
+  if (rowStore.sort === "recentlyUpdated") {
+    resetRows({ keepStale: true, resetScroll: true, keepActive: true });
+  }
 }
 
 /** 单行 Tag 编辑成功后原位更新缓存，避免整表重载丢失滚动位置。 */
@@ -241,4 +268,7 @@ export function patchRowTags(rowId: number, tags: string[]): void {
     rowStore.activeRow.tags = [...tags];
   }
   rowStore.pagesVersion += 1;
+  if (rowStore.sort === "recentlyUpdated") {
+    resetRows({ keepStale: true, resetScroll: true, keepActive: true });
+  }
 }

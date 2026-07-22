@@ -137,10 +137,11 @@ impl Database {
                     time, positive_prompt, character_prompt, negative_prompt, note, artists,
                     image_folder, image_path, stored_image_path, metadata_failed,
                     content_hash, perceptual_hash, metadata_fingerprint,
-                    stored_image_is_original, vibe_reference_count
+                    stored_image_is_original, vibe_reference_count, updated_at
                  ) VALUES (
                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
-                    ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20
+                    ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20,
+                    strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
                  )",
             )?;
             for row in rows {
