@@ -764,6 +764,7 @@ impl AppRuntime {
     pub(crate) fn export_selected_images(
         &self,
         selection: &RowSelection,
+        extra_sources: &[PathBuf],
         parent_dir: impl AsRef<Path>,
         naming: ImageFileNaming,
         strip_metadata: bool,
@@ -772,6 +773,7 @@ impl AppRuntime {
         let directory = self.active_directory()?;
         Ok(directory.export_selected_images(
             selection,
+            extra_sources,
             parent_dir,
             naming,
             strip_metadata,

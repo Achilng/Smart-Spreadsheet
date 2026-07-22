@@ -66,7 +66,7 @@
     {
       id: "imageExport",
       label: "导出工具",
-      description: "导出主窗口选中的图片并按需清除元数据",
+      description: "导出主窗口选区或本地图片并按需清除元数据",
       group: "文件处理",
       requiresLibrary: true,
       icon: FileOutput,

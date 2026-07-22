@@ -74,6 +74,7 @@ export function exportImageFiles(
 
 export function exportSelectedImages(
   selection: RowSelection,
+  sourcePaths: string[],
   parentDir: string,
   renameMode: ImageFileRenameMode,
   customName: string | null,
@@ -81,11 +82,16 @@ export function exportSelectedImages(
 ): Promise<ImageFilesExportResult> {
   return invoke<ImageFilesExportResult>("export_selected_images", {
     selection,
+    sourcePaths,
     parentDir,
     renameMode,
     customName,
     stripMetadata,
   });
+}
+
+export function collectExportImages(paths: string[]): Promise<string[]> {
+  return invoke<string[]>("collect_export_images", { paths });
 }
 
 export interface JsonDedupePreviewItem {

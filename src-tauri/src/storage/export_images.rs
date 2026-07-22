@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::fs::{self, File};
 use std::io::{self, BufWriter, Write};
@@ -7,6 +8,7 @@ use image::ImageEncoder;
 use image::codecs::png::{CompressionType, FilterType, PngEncoder};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
+use walkdir::WalkDir;
 
 use super::{DataDirectory, StorageError};
 use crate::db::{ExportRow, RowSelection, TagMutationError};
@@ -16,6 +18,9 @@ const PROGRESS_EVERY_FILES: usize = 20;
 const MAX_EXPORT_WORKERS: usize = 8;
 const MAX_COPY_WORKERS: usize = 4;
 const BYTES_PER_PIXEL_WORKING_SET: u64 = 8;
+const SUPPORTED_IMAGE_EXTENSIONS: [&str; 8] = [
+    "png", "jpg", "jpeg", "webp", "gif", "bmp", "tif", "tiff",
+];
 #[cfg(test)]
 const PNG_SIGNATURE: [u8; 8] = [137, 80, 78, 71, 13, 10, 26, 10];
 #[cfg(test)]
@@ -82,6 +87,135 @@ pub enum ImageFilesExportError {
     Image(#[from] image::ImageError),
     #[error("导出文件操作失败: {0}")]
     Io(#[from] std::io::Error),
+    #[error("扫描图片文件夹失败: {0}")]
+    Walk(#[from] walkdir::Error),
+}
+
+/// 递归展开用户选择或拖入的图片/文件夹，按文件名自然排序并按规范化路径去重。
+/// 不支持的文件会被忽略，文件夹中的符号链接目录不会被继续跟随。
+pub fn collect_export_image_paths(
+    input_paths: impl IntoIterator<Item = PathBuf>,
+) -> Result<Vec<PathBuf>, ImageFilesExportError> {
+    let mut images = Vec::new();
+    let mut seen = HashSet::new();
+
+    for input in input_paths {
+        if input.is_file() {
+            append_export_image(&mut images, &mut seen, input)?;
+            continue;
+        }
+        if !input.is_dir() {
+            continue;
+        }
+        for entry in WalkDir::new(&input) {
+            let entry = entry?;
+            if entry.file_type().is_file() {
+                append_export_image(&mut images, &mut seen, entry.into_path())?;
+            }
+        }
+    }
+
+    images.sort_by(|left, right| natural_path_cmp(left, right));
+    Ok(images)
+}
+
+fn append_export_image(
+    images: &mut Vec<PathBuf>,
+    seen: &mut HashSet<PathBuf>,
+    path: PathBuf,
+) -> Result<(), ImageFilesExportError> {
+    if !is_supported_export_image(&path) {
+        return Ok(());
+    }
+    let identity = fs::canonicalize(&path)?;
+    if seen.insert(identity) {
+        images.push(path);
+    }
+    Ok(())
+}
+
+fn is_supported_export_image(path: &Path) -> bool {
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| {
+            SUPPORTED_IMAGE_EXTENSIONS
+                .iter()
+                .any(|supported| extension.eq_ignore_ascii_case(supported))
+        })
+}
+
+fn natural_path_cmp(left: &Path, right: &Path) -> Ordering {
+    let left_name = left
+        .file_name()
+        .map(|value| value.to_string_lossy())
+        .unwrap_or_else(|| left.as_os_str().to_string_lossy());
+    let right_name = right
+        .file_name()
+        .map(|value| value.to_string_lossy())
+        .unwrap_or_else(|| right.as_os_str().to_string_lossy());
+    natural_str_cmp(&left_name, &right_name).then_with(|| {
+        left.to_string_lossy()
+            .to_lowercase()
+            .cmp(&right.to_string_lossy().to_lowercase())
+    })
+}
+
+fn natural_str_cmp(left: &str, right: &str) -> Ordering {
+    let mut left_chars = left.char_indices().peekable();
+    let mut right_chars = right.char_indices().peekable();
+
+    loop {
+        match (left_chars.peek().copied(), right_chars.peek().copied()) {
+            (None, None) => return Ordering::Equal,
+            (None, Some(_)) => return Ordering::Less,
+            (Some(_), None) => return Ordering::Greater,
+            (Some((_, left_char)), Some((_, right_char)))
+                if left_char.is_ascii_digit() && right_char.is_ascii_digit() =>
+            {
+                let left_number = take_ascii_digits(left, &mut left_chars);
+                let right_number = take_ascii_digits(right, &mut right_chars);
+                let left_trimmed = left_number.trim_start_matches('0');
+                let right_trimmed = right_number.trim_start_matches('0');
+                let left_value = if left_trimmed.is_empty() { "0" } else { left_trimmed };
+                let right_value = if right_trimmed.is_empty() { "0" } else { right_trimmed };
+                let number_order = left_value
+                    .len()
+                    .cmp(&right_value.len())
+                    .then_with(|| left_value.cmp(right_value))
+                    .then_with(|| left_number.len().cmp(&right_number.len()));
+                if number_order != Ordering::Equal {
+                    return number_order;
+                }
+            }
+            (Some((_, left_char)), Some((_, right_char))) => {
+                left_chars.next();
+                right_chars.next();
+                let character_order = left_char
+                    .to_lowercase()
+                    .to_string()
+                    .cmp(&right_char.to_lowercase().to_string());
+                if character_order != Ordering::Equal {
+                    return character_order;
+                }
+            }
+        }
+    }
+}
+
+fn take_ascii_digits<'a>(
+    value: &'a str,
+    chars: &mut std::iter::Peekable<std::str::CharIndices<'a>>,
+) -> &'a str {
+    let start = chars.peek().map(|(index, _)| *index).unwrap_or(value.len());
+    let mut end = start;
+    while let Some((index, character)) = chars.peek().copied() {
+        if !character.is_ascii_digit() {
+            break;
+        }
+        chars.next();
+        end = index + character.len_utf8();
+    }
+    &value[start..end]
 }
 
 impl DataDirectory {
@@ -156,6 +290,7 @@ impl DataDirectory {
     pub fn export_selected_images(
         &self,
         selection: &RowSelection,
+        extra_sources: &[PathBuf],
         parent_dir: impl AsRef<Path>,
         naming: ImageFileNaming,
         strip_metadata: bool,
@@ -167,35 +302,55 @@ impl DataDirectory {
         }
         let naming = validate_naming(naming)?;
         let rows = self.open_database()?.export_rows(selection)?;
-        if rows.is_empty() {
+        if rows.is_empty() && extra_sources.is_empty() {
             return Err(ImageFilesExportError::EmptySelection);
         }
 
-        let total = rows.len();
-        progress(ImageFilesProgress {
-            processed: 0,
-            total,
-        });
+        let mut sources = Vec::with_capacity(rows.len() + extra_sources.len());
+        let mut source_identities = HashSet::with_capacity(rows.len() + extra_sources.len());
+        let mut missing = 0;
+        for row in &rows {
+            match resolve_source(self, row) {
+                Some(source) => {
+                    append_unique_source(&mut sources, &mut source_identities, source);
+                }
+                None => missing += 1,
+            }
+        }
+        for source in extra_sources {
+            if source.is_file() && is_supported_export_image(source) {
+                append_unique_source(
+                    &mut sources,
+                    &mut source_identities,
+                    source.to_owned(),
+                );
+            }
+        }
+        if sources.is_empty() {
+            return Err(ImageFilesExportError::EmptySelection);
+        }
+
+        let total = sources.len() + missing;
+        progress(ImageFilesProgress { processed: 0, total });
         let output_dir = parent_dir.to_owned();
         let nonce = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_nanos();
-        let mut jobs = Vec::with_capacity(total);
+        let mut jobs = Vec::with_capacity(sources.len());
         let mut reserved_targets = HashSet::with_capacity(total);
-        let mut missing = 0;
-
-        for row in &rows {
-            match resolve_source(self, row) {
-                Some(source) => {
-                    let file_name =
-                        selected_output_file_name(&naming, jobs.len() + 1, nonce, row.id, &source);
-                    let target =
-                        reserve_unique_output_target(&output_dir, &file_name, &mut reserved_targets);
-                    jobs.push((source, target));
-                }
-                None => missing += 1,
-            }
+        for source in sources {
+            let ordinal = jobs.len() + 1;
+            let file_name = selected_output_file_name(
+                &naming,
+                ordinal,
+                nonce,
+                i64::try_from(ordinal).unwrap_or(i64::MAX),
+                &source,
+            );
+            let target =
+                reserve_unique_output_target(&output_dir, &file_name, &mut reserved_targets);
+            jobs.push((source, target));
         }
 
         let exported = jobs.len();
@@ -275,6 +430,17 @@ pub fn resolve_locator_source(
         }
     }
     None
+}
+
+fn append_unique_source(
+    sources: &mut Vec<PathBuf>,
+    identities: &mut HashSet<PathBuf>,
+    source: PathBuf,
+) {
+    let identity = fs::canonicalize(&source).unwrap_or_else(|_| source.clone());
+    if identities.insert(identity) {
+        sources.push(source);
+    }
 }
 
 /// 只解析"完整原件"：外部原图，或明确标记为完整原件的受管副本。
@@ -621,6 +787,57 @@ mod tests {
     use crate::storage::test_fixtures::metadata_png_bytes;
 
     #[test]
+    fn collects_nested_export_images_with_natural_sorting_and_path_deduplication() {
+        let temporary = TemporaryImageFilesExport::new();
+        let input = temporary.root.join("input");
+        let nested = input.join("nested");
+        fs::create_dir_all(&nested).unwrap();
+        fs::write(input.join("image10.png"), b"ten").unwrap();
+        fs::write(input.join("image2.png"), b"two").unwrap();
+        fs::write(nested.join("image1.JPG"), b"one").unwrap();
+        fs::write(nested.join("notes.txt"), b"ignored").unwrap();
+
+        let images = collect_export_image_paths([
+            input.clone(),
+            input.join("image2.png"),
+            nested.join("notes.txt"),
+        ])
+        .unwrap();
+        let names: Vec<String> = images
+            .iter()
+            .map(|path| path.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+
+        assert_eq!(names, ["image1.JPG", "image2.png", "image10.png"]);
+    }
+
+    #[test]
+    fn exports_extra_image_paths_without_a_main_window_selection() {
+        let temporary = TemporaryImageFilesExport::new();
+        let directory = DataDirectory::initialize(&temporary.data).unwrap();
+        let input = temporary.root.join("input");
+        let output = temporary.root.join("output");
+        fs::create_dir_all(&input).unwrap();
+        fs::create_dir_all(&output).unwrap();
+        let image = input.join("sample.webp");
+        fs::write(&image, b"image-bytes").unwrap();
+
+        let outcome = directory
+            .export_selected_images(
+                &RowSelection::Explicit { row_ids: Vec::new() },
+                &[image.clone(), image],
+                &output,
+                ImageFileNaming::Original,
+                false,
+                |_| {},
+            )
+            .unwrap();
+
+        assert_eq!(outcome.exported, 1);
+        assert_eq!(fs::read(output.join("sample.webp")).unwrap(), b"image-bytes");
+    }
+
+    #[test]
     fn exports_images_with_ordered_names_and_counts_missing() {
         let temporary = TemporaryImageFilesExport::new();
         let directory = DataDirectory::initialize(&temporary.data).unwrap();
@@ -745,6 +962,7 @@ mod tests {
                 &RowSelection::Explicit {
                     row_ids: vec![1, 2],
                 },
+                &[],
                 &temporary.root,
                 ImageFileNaming::Original,
                 false,
@@ -801,6 +1019,7 @@ mod tests {
         let outcome = directory
             .export_selected_images(
                 &RowSelection::Explicit { row_ids: vec![1] },
+                &[],
                 &temporary.root,
                 ImageFileNaming::Custom(" 自定义命名 ".into()),
                 true,

@@ -1,13 +1,19 @@
 <script lang="ts">
   import { emitTo, listen, type UnlistenFn } from "@tauri-apps/api/event";
+  import { getCurrentWebview } from "@tauri-apps/api/webview";
   import { open } from "@tauri-apps/plugin-dialog";
+  import FolderInput from "@lucide/svelte/icons/folder-input";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
+  import X from "@lucide/svelte/icons/x";
   import { onMount } from "svelte";
 
   import {
+    collectExportImages,
     exportSelectedImages,
     type ExportProgress,
     type ImageFileRenameMode,
     type ImageFilesExportResult,
+    type RowSelection,
   } from "../../api";
   import {
     errorText,
@@ -36,8 +42,14 @@
   let lastResult = $state<ImageFilesExportResult | null>(null);
   let localError = $state<string | null>(null);
   let selectionListenerReady = $state(false);
+  let addedPaths = $state<string[]>([]);
+  let scanning = $state(false);
+  let draggingOverSource = $state(false);
+  let sourceDropZone: HTMLButtonElement;
 
-  const selectedCount = $derived(selectionSnapshot?.count ?? 0);
+  const mainSelectedCount = $derived(selectionSnapshot?.count ?? 0);
+  const addedCount = $derived(addedPaths.length);
+  const selectedCount = $derived(mainSelectedCount + addedCount);
   const effectiveRenameMode = $derived<ImageFileRenameMode>(
     renameEnabled ? renameMode : "original",
   );
@@ -46,6 +58,7 @@
   );
   const canExport = $derived(
     !exporting &&
+      !scanning &&
       selectedCount > 0 &&
       Boolean(destination) &&
       customNameValid,
@@ -54,6 +67,7 @@
   onMount(() => {
     let disposed = false;
     let unlistenSelection: UnlistenFn | null = null;
+    let unlistenDragDrop: UnlistenFn | null = null;
     void listen<ToolboxSelectionSnapshot>("main://selection-changed", event => {
       selectionSnapshot = event.payload;
     }).then(unlisten => {
@@ -65,10 +79,31 @@
         void requestSelection();
       }
     });
+    void getCurrentWebview().onDragDropEvent(event => {
+      if (!active || exporting || scanning) {
+        draggingOverSource = false;
+        return;
+      }
+      if (event.payload.type === "enter" || event.payload.type === "over") {
+        draggingOverSource = isInsideSourceDropZone(event.payload.position);
+      } else if (event.payload.type === "leave") {
+        draggingOverSource = false;
+      } else {
+        const shouldAdd = isInsideSourceDropZone(event.payload.position);
+        draggingOverSource = false;
+        if (shouldAdd) {
+          void addSourcePaths(event.payload.paths);
+        }
+      }
+    }).then(unlisten => {
+      if (disposed) unlisten();
+      else unlistenDragDrop = unlisten;
+    });
 
     return () => {
       disposed = true;
       unlistenSelection?.();
+      unlistenDragDrop?.();
     };
   });
 
@@ -100,6 +135,50 @@
     localError = null;
   }
 
+  async function chooseSourceFolder(): Promise<void> {
+    const selected = await open({
+      directory: true,
+      multiple: false,
+      title: "选择需要导出的图片文件夹",
+    });
+    if (typeof selected === "string") {
+      await addSourcePaths([selected]);
+    }
+  }
+
+  async function addSourcePaths(paths: string[]): Promise<void> {
+    if (paths.length === 0 || scanning || exporting) return;
+    scanning = true;
+    localError = null;
+    lastResult = null;
+    try {
+      addedPaths = await collectExportImages([...addedPaths, ...paths]);
+    } catch (cause) {
+      localError = errorText(cause);
+    } finally {
+      scanning = false;
+    }
+  }
+
+  function removeAddedPath(path: string): void {
+    addedPaths = addedPaths.filter(candidate => candidate !== path);
+    lastResult = null;
+  }
+
+  function clearAddedPaths(): void {
+    addedPaths = [];
+    lastResult = null;
+  }
+
+  function isInsideSourceDropZone(position: { x: number; y: number }): boolean {
+    if (!sourceDropZone) return false;
+    const scale = window.devicePixelRatio || 1;
+    const x = position.x / scale;
+    const y = position.y / scale;
+    const rect = sourceDropZone.getBoundingClientRect();
+    return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+  }
+
   async function returnToMain(): Promise<void> {
     try {
       await focusMainWindow();
@@ -109,10 +188,13 @@
   }
 
   async function runExport(): Promise<void> {
-    if (!canExport || !selectionSnapshot || !destination) {
+    if (!canExport || !destination) {
       return;
     }
-    const selection = selectionSnapshot.selection;
+    const selection: RowSelection = selectionSnapshot?.selection ?? {
+      kind: "explicit",
+      rowIds: [],
+    };
     const target = destination;
     const custom = effectiveRenameMode === "custom" ? customName.trim() : null;
     exporting = true;
@@ -125,6 +207,7 @@
     try {
       const result = await exportSelectedImages(
         selection,
+        addedPaths,
         target,
         effectiveRenameMode,
         custom,
@@ -151,22 +234,73 @@
   function folderName(path: string): string {
     return path.split(/[\\/]/).filter(Boolean).pop() ?? path;
   }
+
+  function fileName(path: string): string {
+    return path.split(/[\\/]/).pop() ?? path;
+  }
 </script>
 
 <div class="export-page">
   <section class="selection-card" class:is-ready={selectedCount > 0}>
     <span class="step">1</span>
     <div class="card-copy">
-      <h3>在主窗口选择图片</h3>
+      <h3>选择需要导出的图片</h3>
       {#if selectedCount > 0}
-        <p>已读取主窗口当前选中的 <strong>{formatCount(selectedCount)}</strong> 张图片。</p>
+        <p>
+          共选择 <strong>{formatCount(selectedCount)}</strong> 张图片
+          {#if mainSelectedCount > 0 && addedCount > 0}
+            （主窗口 {formatCount(mainSelectedCount)} 张，另行添加 {formatCount(addedCount)} 张）
+          {:else if addedCount > 0}
+            （通过文件夹或拖放添加）
+          {/if}
+        </p>
       {:else}
-        <p>尚未选中图片。请返回主窗口勾选需要导出的图片。</p>
+        <p>可沿用主窗口选区，也可直接选择文件夹或拖入图片。</p>
       {/if}
     </div>
-    <button type="button" class="btn" onclick={() => void returnToMain()}>
-      返回主窗口选择
-    </button>
+    <div class="selection-actions">
+      <button type="button" class="btn" onclick={() => void returnToMain()}>
+        返回主窗口选择
+      </button>
+      <button
+        bind:this={sourceDropZone}
+        type="button"
+        class="source-drop-zone"
+        class:is-dragging={draggingOverSource}
+        disabled={scanning || exporting}
+        onclick={() => void chooseSourceFolder()}
+      >
+        <FolderInput size={20} strokeWidth={1.7} />
+        <span>
+          <strong>{scanning ? "正在扫描图片…" : "点击选择文件夹"}</strong>
+          <small>或拖入图片 / 文件夹</small>
+        </span>
+      </button>
+    </div>
+    {#if addedCount > 0}
+      <div class="added-sources">
+        <div class="added-heading">
+          <span>已追加并去重 {formatCount(addedCount)} 张，文件夹已包含全部子文件夹</span>
+          <button type="button" onclick={clearAddedPaths} title="清空另行添加的图片">
+            <Trash2 size={14} strokeWidth={1.8} />
+            清空
+          </button>
+        </div>
+        <div class="source-preview">
+          {#each addedPaths.slice(0, 4) as path (path)}
+            <span title={path}>
+              <code>{fileName(path)}</code>
+              <button type="button" onclick={() => removeAddedPath(path)} aria-label={`移除 ${fileName(path)}`}>
+                <X size={13} strokeWidth={1.8} />
+              </button>
+            </span>
+          {/each}
+          {#if addedCount > 4}
+            <em>还有 {formatCount(addedCount - 4)} 张</em>
+          {/if}
+        </div>
+      </div>
+    {/if}
   </section>
 
   <section class="option-card">
@@ -286,7 +420,7 @@
   <footer class="action-bar">
     <div>
       {#if selectedCount === 0}
-        <span>请先在主窗口选择图片</span>
+        <span>请选择文件夹、拖入图片，或在主窗口选择图片</span>
       {:else if !destination}
         <span>请选择导出文件夹</span>
       {:else if !customNameValid}
@@ -332,6 +466,137 @@
   .selection-card.is-ready {
     border-color: color-mix(in srgb, var(--success) 35%, var(--border));
     background: color-mix(in srgb, var(--success-soft) 28%, var(--surface));
+  }
+
+  .selection-actions {
+    display: flex;
+    align-items: stretch;
+    gap: 9px;
+  }
+
+  .selection-actions > .btn {
+    white-space: nowrap;
+  }
+
+  .source-drop-zone {
+    min-width: 218px;
+    min-height: 54px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 11px;
+    border: 1px dashed var(--border-strong);
+    border-radius: var(--radius-s);
+    background: var(--surface-2);
+    color: var(--accent);
+    text-align: left;
+    transition: border-color 120ms ease, background 120ms ease, transform 120ms ease;
+  }
+
+  .source-drop-zone:hover,
+  .source-drop-zone.is-dragging {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+
+  .source-drop-zone.is-dragging {
+    transform: translateY(-1px);
+  }
+
+  .source-drop-zone:disabled {
+    cursor: wait;
+    opacity: 0.65;
+  }
+
+  .source-drop-zone span {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .source-drop-zone strong {
+    color: var(--text-1);
+    font-size: var(--font-sm);
+  }
+
+  .source-drop-zone small {
+    color: var(--text-3);
+    font-size: var(--font-xs);
+  }
+
+  .added-sources {
+    min-width: 0;
+    grid-column: 2 / -1;
+    padding-top: 12px;
+    border-top: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
+  }
+
+  .added-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    color: var(--text-2);
+    font-size: var(--font-xs);
+  }
+
+  .added-heading button {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--text-3);
+    font-size: var(--font-xs);
+  }
+
+  .added-heading button:hover {
+    color: var(--danger);
+  }
+
+  .source-preview {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+  }
+
+  .source-preview > span {
+    min-width: 0;
+    max-width: 180px;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 4px 5px 4px 8px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--surface);
+  }
+
+  .source-preview code {
+    overflow: hidden;
+    color: var(--text-2);
+    font-family: var(--font);
+    font-size: var(--font-xs);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .source-preview button {
+    flex: none;
+    display: grid;
+    place-items: center;
+    color: var(--text-3);
+  }
+
+  .source-preview button:hover {
+    color: var(--danger);
+  }
+
+  .source-preview em {
+    color: var(--text-3);
+    font-size: var(--font-xs);
+    font-style: normal;
   }
 
   .step {
@@ -626,9 +891,17 @@
       grid-template-columns: 34px minmax(0, 1fr);
     }
 
-    .selection-card .btn {
+    .selection-actions {
       grid-column: 2;
-      justify-self: start;
+      flex-wrap: wrap;
+    }
+
+    .source-drop-zone {
+      flex: 1 1 218px;
+    }
+
+    .added-sources {
+      grid-column: 1 / -1;
     }
 
     .option-heading {

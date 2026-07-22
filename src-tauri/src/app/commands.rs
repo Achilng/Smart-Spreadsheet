@@ -1097,6 +1097,7 @@ pub(crate) async fn export_image_files(
 #[tauri::command]
 pub(crate) async fn export_selected_images(
     selection: RowSelection,
+    source_paths: Vec<String>,
     parent_dir: String,
     rename_mode: String,
     custom_name: Option<String>,
@@ -1110,10 +1111,15 @@ pub(crate) async fn export_selected_images(
         _ => return Err(format!("未知的图片重命名方式: {rename_mode}")),
     };
     tauri::async_runtime::spawn_blocking(move || {
+        let extra_sources = crate::storage::collect_export_image_paths(
+            source_paths.into_iter().map(PathBuf::from),
+        )
+        .map_err(error_text)?;
         let runtime = app.state::<AppRuntime>();
         runtime
             .export_selected_images(
                 &selection,
+                &extra_sources,
                 PathBuf::from(parent_dir),
                 naming,
                 strip_metadata,
@@ -1131,6 +1137,23 @@ pub(crate) async fn export_selected_images(
     })
     .await
     .map_err(|error| format!("导出任务异常中止: {error}"))?
+}
+
+/// 工具箱导出入口：递归扫描图片或文件夹，返回自然排序、按完整路径去重后的图片。
+#[tauri::command]
+pub(crate) async fn collect_export_images(paths: Vec<String>) -> Result<Vec<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::storage::collect_export_image_paths(paths.into_iter().map(PathBuf::from))
+            .map(|images| {
+                images
+                    .into_iter()
+                    .map(|path| path.to_string_lossy().into_owned())
+                    .collect()
+            })
+            .map_err(error_text)
+    })
+    .await
+    .map_err(|error| format!("扫描图片文件夹任务异常中止: {error}"))?
 }
 
 fn emit_export_progress(app: &tauri::AppHandle, processed: usize, total: usize) {
