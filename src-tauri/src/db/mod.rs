@@ -1,4 +1,5 @@
 mod batches;
+mod artist_dictionary;
 mod delete;
 mod export;
 mod groups;
@@ -17,6 +18,10 @@ mod settings;
 mod tags;
 
 pub use batches::{AppendOutcome, BatchSummary, LibrarySummary, NewRow, SourceType};
+pub use artist_dictionary::{
+    ArtistDictionaryEntry, ArtistDictionaryInput, ArtistDictionaryStatus, DanbooruArtistRecord,
+    DanbooruArtistTag, DanbooruTagAlias,
+};
 pub use delete::DeleteOutcome;
 pub use export::ExportRow;
 pub use groups::GroupSummary;
@@ -39,8 +44,8 @@ use std::path::Path;
 use std::time::Duration;
 
 use migrations::{
-    MIGRATION_9, MIGRATION_10, MIGRATION_11, MIGRATION_12, MINIMUM_UPGRADABLE_SCHEMA_VERSION,
-    SCHEMA_12,
+    MIGRATION_9, MIGRATION_10, MIGRATION_11, MIGRATION_12, MIGRATION_13,
+    MINIMUM_UPGRADABLE_SCHEMA_VERSION, SCHEMA_13,
 };
 use rusqlite::{Connection, MAIN_DB, OptionalExtension, TransactionBehavior};
 use thiserror::Error;
@@ -234,8 +239,8 @@ fn apply_pending_migrations(connection: &mut Connection, from_version: u32) -> R
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let mut version = from_version;
     if version == 0 {
-        transaction.execute_batch(SCHEMA_12)?;
-        version = 12;
+        transaction.execute_batch(SCHEMA_13)?;
+        version = 13;
     }
     if version == 8 {
         transaction.execute_batch(MIGRATION_9)?;
@@ -252,6 +257,10 @@ fn apply_pending_migrations(connection: &mut Connection, from_version: u32) -> R
     if version == 11 {
         transaction.execute_batch(MIGRATION_12)?;
         version = 12;
+    }
+    if version == 12 {
+        transaction.execute_batch(MIGRATION_13)?;
+        version = 13;
     }
     debug_assert_eq!(version, CURRENT_SCHEMA_VERSION);
     transaction.pragma_update(None, "user_version", version)?;
@@ -335,6 +344,8 @@ mod tests {
         assert_eq!(
             tables,
             vec![
+                "artist_dictionary_names",
+                "artist_dictionary_sync",
                 "dedupe_aliases",
                 "groups",
                 "import_batches",
@@ -559,7 +570,7 @@ mod tests {
     }
 
     #[test]
-    fn upgrades_v8_through_v12_and_marks_folder_copy_as_original() {
+    fn upgrades_v8_through_v13_and_marks_folder_copy_as_original() {
         let mut connection = Connection::open_in_memory().unwrap();
         create_v8_fixture(&connection);
 
@@ -597,8 +608,8 @@ mod tests {
     }
 
     fn create_v9_fixture(connection: &Connection) {
-        let schema = SCHEMA_12
-            .split("CREATE INDEX idx_rows_updated_at")
+        let schema = SCHEMA_13
+            .split("CREATE TABLE artist_dictionary_names")
             .next()
             .unwrap()
             .replace(
@@ -633,8 +644,8 @@ mod tests {
     }
 
     fn create_v8_fixture(connection: &Connection) {
-        let schema = SCHEMA_12
-            .split("CREATE INDEX idx_rows_updated_at")
+        let schema = SCHEMA_13
+            .split("CREATE TABLE artist_dictionary_names")
             .next()
             .unwrap()
             .replace(

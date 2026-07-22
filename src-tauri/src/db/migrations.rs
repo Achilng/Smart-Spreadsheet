@@ -1,8 +1,8 @@
-pub const CURRENT_SCHEMA_VERSION: u32 = 12;
+pub const CURRENT_SCHEMA_VERSION: u32 = 13;
 pub const MINIMUM_UPGRADABLE_SCHEMA_VERSION: u32 = 8;
 
 /// 新资料库直接创建当前结构，不再重放早期工作簿/XLSX 导入迁移。
-pub(super) const SCHEMA_12: &str = r#"
+pub(super) const SCHEMA_13: &str = r#"
 CREATE TABLE import_batches (
     id INTEGER PRIMARY KEY,
     source_type TEXT NOT NULL CHECK (source_type IN ('legacy', 'folder', 'archive')),
@@ -71,6 +71,26 @@ CREATE TABLE dedupe_aliases (
     PRIMARY KEY (mode, key)
 ) STRICT, WITHOUT ROWID;
 
+CREATE TABLE artist_dictionary_names (
+    match_name TEXT PRIMARY KEY COLLATE BINARY,
+    display_name TEXT NOT NULL,
+    canonical_name TEXT NOT NULL,
+    post_count INTEGER NOT NULL CHECK (post_count >= 0),
+    is_banned INTEGER NOT NULL CHECK (is_banned IN (0, 1)),
+    is_deprecated INTEGER NOT NULL CHECK (is_deprecated IN (0, 1)),
+    is_ambiguous INTEGER NOT NULL CHECK (is_ambiguous IN (0, 1)),
+    source_mask INTEGER NOT NULL CHECK (source_mask > 0)
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE artist_dictionary_sync (
+    singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+    synced_at TEXT NOT NULL,
+    tag_count INTEGER NOT NULL CHECK (tag_count >= 0),
+    artist_count INTEGER NOT NULL CHECK (artist_count >= 0),
+    alias_count INTEGER NOT NULL CHECK (alias_count >= 0),
+    name_count INTEGER NOT NULL CHECK (name_count >= 0)
+) STRICT;
+
 CREATE INDEX idx_rows_batch ON rows(batch_id);
 CREATE INDEX idx_row_tags_tag_row ON row_tags(tag_id, row_id);
 CREATE INDEX idx_rows_content_hash ON rows(content_hash)
@@ -82,6 +102,8 @@ WHERE group_id IS NOT NULL;
 CREATE INDEX idx_rows_metadata_fingerprint ON rows(metadata_fingerprint)
 WHERE metadata_fingerprint IS NOT NULL;
 CREATE INDEX idx_rows_updated_at ON rows(updated_at DESC, id DESC);
+CREATE INDEX idx_artist_dictionary_canonical
+ON artist_dictionary_names(canonical_name, match_name);
 
 CREATE TRIGGER touch_row_after_user_edit
 AFTER UPDATE OF positive_prompt, character_prompt, negative_prompt, note, group_id ON rows
@@ -192,4 +214,31 @@ AFTER DELETE ON row_tags
 BEGIN
     UPDATE rows SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = OLD.row_id;
 END;
+"#;
+
+/// v12 → v13：缓存 Danbooru 画师 Tag、现存画师的其它名称及历史别名，供全库
+/// 裸画师 Tag 扫描使用。词典只保存公开 API 元数据，不保存作品或画师页面内容。
+pub(super) const MIGRATION_13: &str = r#"
+CREATE TABLE artist_dictionary_names (
+    match_name TEXT PRIMARY KEY COLLATE BINARY,
+    display_name TEXT NOT NULL,
+    canonical_name TEXT NOT NULL,
+    post_count INTEGER NOT NULL CHECK (post_count >= 0),
+    is_banned INTEGER NOT NULL CHECK (is_banned IN (0, 1)),
+    is_deprecated INTEGER NOT NULL CHECK (is_deprecated IN (0, 1)),
+    is_ambiguous INTEGER NOT NULL CHECK (is_ambiguous IN (0, 1)),
+    source_mask INTEGER NOT NULL CHECK (source_mask > 0)
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE artist_dictionary_sync (
+    singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+    synced_at TEXT NOT NULL,
+    tag_count INTEGER NOT NULL CHECK (tag_count >= 0),
+    artist_count INTEGER NOT NULL CHECK (artist_count >= 0),
+    alias_count INTEGER NOT NULL CHECK (alias_count >= 0),
+    name_count INTEGER NOT NULL CHECK (name_count >= 0)
+) STRICT;
+
+CREATE INDEX idx_artist_dictionary_canonical
+ON artist_dictionary_names(canonical_name, match_name);
 "#;
