@@ -7,9 +7,10 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::db::{
-    ArtistDictionaryInput, ArtistDictionaryStatus, BatchSummary, DedupeCluster, DedupeMode,
-    GroupSummary, LibrarySummary, MutableRowState, QuickArtistPrefixApplyResult,
-    QuickArtistPrefixChange, QuickArtistPrefixPreview,
+    ArtistDictionaryInput, ArtistDictionaryStatus, AutoArtistPrefixApplyResult,
+    AutoArtistPrefixPreview, BatchSummary, DedupeCluster, DedupeMode, GroupSummary, LibrarySummary,
+    MutableRowState, QuickArtistPrefixApplyResult, QuickArtistPrefixChange,
+    QuickArtistPrefixPreview,
     QuickEditCondition, QuickEditError, QuickGroupApplyResult, QuickGroupChange,
     QuickGroupPreview, QuickTagApplyResult, QuickTagAssociation, QuickTagPreview, RowPage,
     RowQuery, RowSelection, SortMode, TagMatchMode, TagMutationError, TagMutationResult,
@@ -420,6 +421,19 @@ impl AppRuntime {
         synced_at: &str,
     ) -> Result<ArtistDictionaryStatus, AppRuntimeError> {
         self.with_database(|db| db.replace_artist_dictionary(input, synced_at))
+    }
+
+    pub(crate) fn preview_auto_artist_prefix(
+        &self,
+    ) -> Result<AutoArtistPrefixPreview, AppRuntimeError> {
+        self.with_database(|db| db.preview_auto_artist_prefix())
+    }
+
+    pub(crate) fn apply_auto_artist_prefix(
+        &self,
+        selected_names: &[String],
+    ) -> Result<AutoArtistPrefixApplyResult, AppRuntimeError> {
+        self.with_database_mut(|db| db.apply_auto_artist_prefix(selected_names))
     }
 
     pub(crate) fn delete_rows(

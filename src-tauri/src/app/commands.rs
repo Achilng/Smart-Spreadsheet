@@ -7,8 +7,8 @@ use tauri::{
 
 use super::runtime::{AppRuntime, RuntimeSnapshot};
 use crate::db::{
-    ArtistDictionaryStatus, BatchSummary, DedupeCluster, DedupeMode, GroupSummary, LibrarySummary,
-    MutableRowState, PromptEditResult,
+    ArtistDictionaryStatus, AutoArtistPrefixApplyResult, AutoArtistPrefixPreview, BatchSummary,
+    DedupeCluster, DedupeMode, GroupSummary, LibrarySummary, MutableRowState, PromptEditResult,
     QuickArtistPrefixApplyResult, QuickArtistPrefixChange, QuickArtistPrefixPreview,
     QuickEditCondition, QuickGroupApplyResult, QuickGroupChange, QuickGroupPreview,
     QuickTagApplyResult, QuickTagAssociation, QuickTagPreview, RowPage, RowQuery, SortMode,
@@ -920,6 +920,23 @@ pub(crate) async fn sync_artist_dictionary(
     })
     .await
     .map_err(|error| format!("画师词典同步任务失败: {error}"))?
+}
+
+#[tauri::command]
+pub(crate) fn preview_auto_artist_prefix(
+    runtime: State<'_, AppRuntime>,
+) -> Result<AutoArtistPrefixPreview, String> {
+    runtime.preview_auto_artist_prefix().map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn apply_auto_artist_prefix(
+    selected_names: Vec<String>,
+    runtime: State<'_, AppRuntime>,
+) -> Result<AutoArtistPrefixApplyResult, String> {
+    runtime
+        .apply_auto_artist_prefix(&selected_names)
+        .map_err(error_text)
 }
 
 #[tauri::command]

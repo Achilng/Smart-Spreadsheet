@@ -1,5 +1,6 @@
 mod batches;
 mod artist_dictionary;
+mod artist_auto_prefix;
 mod delete;
 mod export;
 mod groups;
@@ -21,6 +22,9 @@ pub use batches::{AppendOutcome, BatchSummary, LibrarySummary, NewRow, SourceTyp
 pub use artist_dictionary::{
     ArtistDictionaryEntry, ArtistDictionaryInput, ArtistDictionaryStatus, DanbooruArtistRecord,
     DanbooruArtistTag, DanbooruTagAlias,
+};
+pub use artist_auto_prefix::{
+    AutoArtistCandidate, AutoArtistPrefixApplyResult, AutoArtistPrefixPreview,
 };
 pub use delete::DeleteOutcome;
 pub use export::ExportRow;

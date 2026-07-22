@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use rusqlite::TransactionBehavior;
 use serde::Serialize;
 
@@ -46,6 +48,127 @@ pub(super) fn prefix_artist_tag_in_prompt(prompt: &str, artist_name: &str) -> Op
     append_prefixed_fragment(&mut result, &prompt[start..], artist_name, &mut changed);
 
     changed.then_some(result)
+}
+
+pub(super) fn normalized_bare_tag_in_fragment(fragment: &str) -> Option<String> {
+    let token = fragment.trim();
+    let bare = bare_tag_in_token(token)?;
+    let normalized = bare.to_lowercase();
+    (!normalized.starts_with("artist:")).then_some(normalized)
+}
+
+pub(super) fn prefix_known_artist_tags_in_prompt(
+    prompt: &str,
+    selected_names: &HashSet<String>,
+) -> Option<(String, Vec<String>)> {
+    let mut changed = false;
+    let mut matched_names = HashSet::new();
+    let mut result = String::with_capacity(prompt.len() + "artist:".len());
+    let mut start = 0;
+
+    for (index, ch) in prompt.char_indices() {
+        if matches!(ch, ',' | '\n' | '\r') {
+            append_known_artist_fragment(
+                &mut result,
+                &prompt[start..index],
+                selected_names,
+                &mut matched_names,
+                &mut changed,
+            );
+            result.push(ch);
+            start = index + ch.len_utf8();
+        }
+    }
+    append_known_artist_fragment(
+        &mut result,
+        &prompt[start..],
+        selected_names,
+        &mut matched_names,
+        &mut changed,
+    );
+
+    changed.then(|| {
+        let mut matched_names = matched_names.into_iter().collect::<Vec<_>>();
+        matched_names.sort();
+        (result, matched_names)
+    })
+}
+
+fn append_known_artist_fragment(
+    result: &mut String,
+    fragment: &str,
+    selected_names: &HashSet<String>,
+    matched_names: &mut HashSet<String>,
+    changed: &mut bool,
+) {
+    let start = fragment
+        .find(|ch: char| !ch.is_whitespace())
+        .unwrap_or(fragment.len());
+    let end = fragment
+        .rfind(|ch: char| !ch.is_whitespace())
+        .map(|index| index + fragment[index..].chars().next().unwrap().len_utf8())
+        .unwrap_or(start);
+    let token = &fragment[start..end];
+    if let Some((rewritten, matched_name)) =
+        prefix_known_artist_tag_in_token(token, selected_names)
+    {
+        result.push_str(&fragment[..start]);
+        result.push_str(&rewritten);
+        result.push_str(&fragment[end..]);
+        matched_names.insert(matched_name);
+        *changed = true;
+    } else {
+        result.push_str(fragment);
+    }
+}
+
+fn prefix_known_artist_tag_in_token(
+    token: &str,
+    selected_names: &HashSet<String>,
+) -> Option<(String, String)> {
+    if token.is_empty() {
+        return None;
+    }
+    if let Some((prefix, inner, suffix)) = split_novelai_weight(token)
+        && let Some((rewritten, matched_name)) =
+            prefix_known_artist_tag_in_token(inner, selected_names)
+    {
+        return Some((format!("{prefix}{rewritten}{suffix}"), matched_name));
+    }
+    if let Some((open, inner, close)) = split_outer_wrapper(token)
+        && let Some((rewritten, matched_name)) =
+            prefix_known_artist_tag_in_token(inner, selected_names)
+    {
+        return Some((format!("{open}{rewritten}{close}"), matched_name));
+    }
+    if let Some((name, weight)) = split_colon_weight(token)
+        && let Some((rewritten, matched_name)) =
+            prefix_known_artist_tag_in_token(name, selected_names)
+    {
+        return Some((format!("{rewritten}{weight}"), matched_name));
+    }
+
+    let matched_name = token.to_lowercase();
+    if matched_name.starts_with("artist:") || !selected_names.contains(&matched_name) {
+        return None;
+    }
+    Some((format!("artist:{token}"), matched_name))
+}
+
+fn bare_tag_in_token(token: &str) -> Option<&str> {
+    if token.is_empty() {
+        return None;
+    }
+    if let Some((_, inner, _)) = split_novelai_weight(token) {
+        return bare_tag_in_token(inner);
+    }
+    if let Some((_, inner, _)) = split_outer_wrapper(token) {
+        return bare_tag_in_token(inner);
+    }
+    if let Some((name, _)) = split_colon_weight(token) {
+        return bare_tag_in_token(name);
+    }
+    Some(token)
 }
 
 fn append_prefixed_fragment(
@@ -321,8 +444,11 @@ pub(super) fn combined_artists(
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
+
     use super::super::tags::RowSelection;
     use super::super::test_support::database_with_rows;
+    use super::{normalized_bare_tag_in_fragment, prefix_known_artist_tags_in_prompt};
 
     #[test]
     fn update_single_row_prompt_and_reextracts_artists() {
@@ -564,5 +690,33 @@ mod tests {
             .prepend_artist(&RowSelection::Explicit { row_ids: vec![1] }, "  ")
             .unwrap();
         assert_eq!(result.affected_rows, 0);
+    }
+
+    #[test]
+    fn automatic_artist_matching_unwraps_weights_and_skips_existing_prefixes() {
+        assert_eq!(
+            normalized_bare_tag_in_fragment(" 0.7::(Parsley_F:1.2):: ").as_deref(),
+            Some("parsley_f")
+        );
+        assert_eq!(
+            normalized_bare_tag_in_fragment("artist:parsley_f"),
+            None
+        );
+    }
+
+    #[test]
+    fn automatic_artist_prefixing_handles_multiple_names_in_one_pass() {
+        let selected = HashSet::from(["parsley_f".to_owned(), "other_artist".to_owned()]);
+        let (rewritten, matched) = prefix_known_artist_tags_in_prompt(
+            "best quality, 0.7::Parsley_F::, (other_artist:1.2), artist:parsley_f, parsley_fx",
+            &selected,
+        )
+        .unwrap();
+
+        assert_eq!(
+            rewritten,
+            "best quality, 0.7::artist:Parsley_F::, (artist:other_artist:1.2), artist:parsley_f, parsley_fx"
+        );
+        assert_eq!(matched, vec!["other_artist", "parsley_f"]);
     }
 }

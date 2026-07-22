@@ -90,6 +90,8 @@ pub fn run() {
             app::commands::reapply_quick_artist_prefix_changes,
             app::commands::get_artist_dictionary_status,
             app::commands::sync_artist_dictionary,
+            app::commands::preview_auto_artist_prefix,
+            app::commands::apply_auto_artist_prefix,
             app::commands::get_row_thumbnail,
             app::commands::get_row_gallery_preview,
             app::commands::get_row_preview,
