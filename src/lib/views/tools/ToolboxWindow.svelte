@@ -5,6 +5,7 @@
   import FileOutput from "@lucide/svelte/icons/file-output";
   import ListFilter from "@lucide/svelte/icons/list-filter";
   import Search from "@lucide/svelte/icons/search";
+  import ScanSearch from "@lucide/svelte/icons/scan-search";
   import Settings2 from "@lucide/svelte/icons/settings-2";
   import Shuffle from "@lucide/svelte/icons/shuffle";
   import { onMount } from "svelte";
@@ -13,6 +14,7 @@
   import Notice from "../../ui/Notice.svelte";
   import WindowControls from "../../ui/WindowControls.svelte";
   import ArtistGeneratorView from "./ArtistGeneratorView.svelte";
+  import ArtistPrefixTool from "./ArtistPrefixTool.svelte";
   import DataManagementTool from "./DataManagementTool.svelte";
   import ImageExportTool from "./ImageExportTool.svelte";
   import ImageSearchTool from "./ImageSearchTool.svelte";
@@ -22,6 +24,7 @@
 
   type ToolId =
     | "quickEdit"
+    | "artistPrefix"
     | "artist"
     | "imageSearch"
     | "imageExport"
@@ -46,6 +49,14 @@
       group: "常用工具",
       requiresLibrary: true,
       icon: ListFilter,
+    },
+    {
+      id: "artistPrefix",
+      label: "画师前缀修正",
+      description: "用 Danbooru 词典识别并修正裸画师 Tag",
+      group: "常用工具",
+      requiresLibrary: true,
+      icon: ScanSearch,
     },
     {
       id: "artist",
@@ -102,6 +113,7 @@
   let activeTool = $state<ToolId>("quickEdit");
   const visited = $state<Record<ToolId, boolean>>({
     quickEdit: false,
+    artistPrefix: false,
     artist: false,
     imageSearch: false,
     imageExport: false,
@@ -201,6 +213,11 @@
           {#if visited.quickEdit}
             <section class="tool-panel" class:is-active={activeTool === "quickEdit"}>
               <QuickEditTool active={activeTool === "quickEdit"} />
+            </section>
+          {/if}
+          {#if visited.artistPrefix}
+            <section class="tool-panel" class:is-active={activeTool === "artistPrefix"}>
+              <ArtistPrefixTool />
             </section>
           {/if}
           {#if visited.artist}

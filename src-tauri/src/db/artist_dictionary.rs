@@ -339,13 +339,13 @@ fn resolve_alias_target(
     let mut current = start.to_owned();
     let mut seen = HashSet::new();
     for _ in 0..64 {
-        if entries.contains_key(&current) {
-            return Some(current);
-        }
         if !seen.insert(current.clone()) {
             return None;
         }
-        current = aliases.get(&current)?.clone();
+        match aliases.get(&current) {
+            Some(next) => current = next.clone(),
+            None => return entries.contains_key(&current).then_some(current),
+        }
     }
     None
 }
@@ -517,6 +517,36 @@ mod tests {
                 .iter()
                 .any(|entry| entry.match_name == "pending_name")
         );
+    }
+
+    #[test]
+    fn alias_chain_reaches_the_final_artist_identity() {
+        let input = ArtistDictionaryInput {
+            tags: vec![tag(1, "middle_name", 2), tag(2, "current_name", 17)],
+            aliases: vec![
+                DanbooruTagAlias {
+                    id: 1,
+                    antecedent_name: "old_name".into(),
+                    consequent_name: "middle_name".into(),
+                    status: "retired".into(),
+                },
+                DanbooruTagAlias {
+                    id: 2,
+                    antecedent_name: "middle_name".into(),
+                    consequent_name: "current_name".into(),
+                    status: "active".into(),
+                },
+            ],
+            ..ArtistDictionaryInput::default()
+        };
+
+        let entries = build_artist_dictionary(&input);
+        let old = entries
+            .iter()
+            .find(|entry| entry.match_name == "old_name")
+            .unwrap();
+        assert_eq!(old.canonical_name, "current_name");
+        assert_eq!(old.post_count, 17);
     }
 
     #[test]
