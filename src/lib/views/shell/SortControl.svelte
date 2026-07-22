@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ChevronDown from "@lucide/svelte/icons/chevron-down";
   import { tick } from "svelte";
 
   import type { SortMode } from "../../api";
@@ -128,6 +129,12 @@
       onkeydown={onTriggerKeydown}
     >
       <span class="trigger-label">{activeOption.label}</span>
+      <ChevronDown
+        class={open ? "is-open" : undefined}
+        size={14}
+        strokeWidth={2}
+        aria-hidden="true"
+      />
     </button>
 
     {#if open}
@@ -196,6 +203,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    gap: 7px;
     padding: 0 15px;
     border: 1px solid var(--border-strong);
     border-radius: 10px;
@@ -229,6 +237,16 @@
     line-height: 1.1;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .sort-trigger :global(.lucide-chevron-down) {
+    flex: none;
+    color: var(--text-3);
+    transition: transform var(--motion-base) var(--ease-responsive);
+  }
+
+  .sort-trigger :global(.lucide-chevron-down.is-open) {
+    transform: rotate(180deg);
   }
 
   .sort-menu {
@@ -323,6 +341,7 @@
 
   @media (prefers-reduced-motion: reduce) {
     .sort-trigger,
+    .sort-trigger :global(.lucide-chevron-down),
     .sort-option {
       transition-duration: 0ms;
     }
