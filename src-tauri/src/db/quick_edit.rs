@@ -1539,7 +1539,7 @@ mod tests {
                 "best quality, artist:parsley_f".into(),
                 "(artist:parsley_f:1.2), 1girl".into(),
                 "0.7::artist:parsley_f::, lowres".into(),
-                "artist:parsley_f, (artist:parsley_f:1.2)".into(),
+                "artist:parsley_f\n(artist:parsley_f:1.2)".into(),
             )
         );
 

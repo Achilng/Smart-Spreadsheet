@@ -316,7 +316,7 @@ pub(super) fn combined_artists(
         None => positive_prompt.to_owned(),
     };
     let artists = extract_artist_tags(&combined);
-    (!artists.is_empty()).then(|| artists.join(", "))
+    (!artists.is_empty()).then(|| artists.join("\n"))
 }
 
 #[cfg(test)]
@@ -341,7 +341,7 @@ mod tests {
             )
             .unwrap();
         assert_eq!(prompt, "artist:alice, best quality, artist:bob");
-        assert_eq!(artists, "artist:alice, artist:bob");
+        assert_eq!(artists, "artist:alice\nartist:bob");
     }
 
     #[test]
@@ -357,7 +357,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             positive.new_artists.as_deref(),
-            Some("artist:base, artist:character")
+            Some("artist:base\nartist:character")
         );
 
         let row: (String, String, String) = db
@@ -373,7 +373,7 @@ mod tests {
             (
                 "best quality, artist:base".into(),
                 "1girl, artist:character".into(),
-                "artist:base, artist:character".into()
+                "artist:base\nartist:character".into()
             )
         );
     }

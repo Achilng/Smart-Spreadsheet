@@ -346,7 +346,8 @@ impl Database {
                 "({predicate})
                  AND rows.artists IS NOT NULL
                  AND TRIM(rows.artists) != ''
-                 AND INSTR(rows.artists, CHAR(10)) = 0"
+                 AND INSTR(rows.artists, CHAR(10)) = 0
+                 AND INSTR(rows.artists, ',') = 0"
             );
         }
         if has_vibe {
@@ -432,7 +433,8 @@ impl Database {
                 "({predicate})
                  AND rows.artists IS NOT NULL
                  AND TRIM(rows.artists) != ''
-                 AND INSTR(rows.artists, CHAR(10)) = 0"
+                 AND INSTR(rows.artists, CHAR(10)) = 0
+                 AND INSTR(rows.artists, ',') = 0"
             );
         }
         if has_vibe {
@@ -577,7 +579,8 @@ pub(super) fn populate_filtered_rows(
             "({predicate})
              AND rows.artists IS NOT NULL
              AND TRIM(rows.artists) != ''
-             AND INSTR(rows.artists, CHAR(10)) = 0"
+             AND INSTR(rows.artists, CHAR(10)) = 0
+             AND INSTR(rows.artists, ',') = 0"
         );
     }
     if has_vibe {
@@ -1109,6 +1112,41 @@ mod tests {
             vec![2, 4]
         );
         assert_eq!(result.rows[1].vibe_reference_count, Some(3));
+    }
+
+    #[test]
+    fn single_artist_filter_rejects_canonical_and_legacy_multi_artist_strings() {
+        let mut database = database_with_rows(4);
+        database
+            .connection
+            .execute_batch(
+                "UPDATE rows SET artists = CASE id
+                     WHEN 1 THEN 'artist:solo'
+                     WHEN 2 THEN 'artist:a' || CHAR(10) || 'artist:b'
+                     WHEN 3 THEN 'artist:a, artist:b'
+                     ELSE ''
+                 END;",
+            )
+            .unwrap();
+        database.bump_data_version();
+
+        let result = database
+            .query_rows(&RowQuery {
+                offset: 0,
+                limit: 10,
+                tags: Vec::new(),
+                tag_mode: TagMatchMode::And,
+                dedupe: DedupeMode::None,
+                single_artist_only: true,
+                has_vibe: false,
+                group_view: false,
+                hide_grouped: false,
+                search: String::new(),
+            })
+            .unwrap();
+
+        assert_eq!(result.total_count, 1);
+        assert_eq!(result.rows[0].id, 1);
     }
 
     #[test]

@@ -41,8 +41,11 @@ use std::time::Duration;
 use migrations::{
     MIGRATION_9, MIGRATION_10, MIGRATION_11, MINIMUM_UPGRADABLE_SCHEMA_VERSION, SCHEMA_11,
 };
-use rusqlite::{Connection, MAIN_DB, TransactionBehavior};
+use rusqlite::{Connection, MAIN_DB, OptionalExtension, TransactionBehavior};
 use thiserror::Error;
+
+const ARTIST_STRING_FORMAT_SETTING: &str = "artist_string_format_version";
+const CURRENT_ARTIST_STRING_FORMAT_VERSION: &str = "2";
 
 #[derive(Debug, Error)]
 pub enum DatabaseError {
@@ -133,11 +136,69 @@ impl Database {
              PRAGMA temp_store = MEMORY;",
         )?;
         migrate(&mut connection)?;
+        repair_legacy_artist_strings(&mut connection)?;
         Ok(Self {
             connection,
             query_cache: None,
         })
     }
+}
+
+/// 早期提示词编辑会把多画师串保存为逗号分隔，导致“单画师串”筛选把整行
+/// 误判为一个画师。新版首次打开资料库时从现有正向/角色提示词重算这些异常行，
+/// 并写入一次性格式标记；无法从提示词重建的历史值保持原样。
+fn repair_legacy_artist_strings(connection: &mut Connection) -> Result<(), DatabaseError> {
+    let format_version = connection
+        .query_row(
+            "SELECT value FROM settings WHERE key = ?1",
+            [ARTIST_STRING_FORMAT_SETTING],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()?;
+    if format_version.as_deref() == Some(CURRENT_ARTIST_STRING_FORMAT_VERSION) {
+        return Ok(());
+    }
+
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    let candidates = {
+        let mut statement = transaction.prepare(
+            "SELECT id, positive_prompt, character_prompt
+             FROM rows
+             WHERE INSTR(COALESCE(artists, ''), ',') > 0
+             ORDER BY id",
+        )?;
+        statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?
+    };
+    {
+        let mut update = transaction.prepare("UPDATE rows SET artists = ?2 WHERE id = ?1")?;
+        for (row_id, positive_prompt, character_prompt) in candidates {
+            let Some(artists) = prompt_edit::combined_artists(
+                positive_prompt.as_deref().unwrap_or(""),
+                character_prompt.as_deref(),
+            ) else {
+                continue;
+            };
+            update.execute(rusqlite::params![row_id, artists])?;
+        }
+    }
+    transaction.execute(
+        "INSERT INTO settings(key, value) VALUES (?1, ?2)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        [
+            ARTIST_STRING_FORMAT_SETTING,
+            CURRENT_ARTIST_STRING_FORMAT_VERSION,
+        ],
+    )?;
+    transaction.commit()?;
+    Ok(())
 }
 
 fn migrate(connection: &mut Connection) -> Result<(), DatabaseError> {
@@ -344,6 +405,91 @@ mod tests {
             .unwrap();
         assert_eq!(database.schema_version().unwrap(), CURRENT_SCHEMA_VERSION);
         assert_eq!(value, "dark");
+    }
+
+    #[test]
+    fn reopening_repairs_comma_separated_artist_strings_once() {
+        let temporary = TemporaryDatabase::new();
+        {
+            let mut database = Database::open(&temporary.path).unwrap();
+            test_support::append_rows(
+                &mut database,
+                &[
+                    NewRow {
+                        source_ordinal: 1,
+                        identity: "legacy-comma-artists".into(),
+                        positive_prompt: Some(
+                            "1.6::artist:ibuki_satsuki::, 2::artist:satoi::, artist:z3zz4, \
+                             artist:yumenouchi_chiharu, artist:hinatsu, \
+                             1.2::artist:smusmuve::, artist:koujisako, \
+                             2::artist:memuro::, artist:wanke"
+                                .into(),
+                        ),
+                        artists: Some(
+                            "1.6::artist:ibuki_satsuki::, 2::artist:satoi::, artist:z3zz4, \
+                             artist:yumenouchi_chiharu, artist:hinatsu, \
+                             1.2::artist:smusmuve::, artist:koujisako, \
+                             2::artist:memuro::, artist:wanke"
+                                .into(),
+                        ),
+                        ..NewRow::default()
+                    },
+                    NewRow {
+                        source_ordinal: 2,
+                        identity: "canonical-single-artist".into(),
+                        positive_prompt: Some("artist:solo".into()),
+                        artists: Some("artist:solo".into()),
+                        ..NewRow::default()
+                    },
+                ],
+            );
+            database
+                .connection
+                .execute(
+                    "DELETE FROM settings WHERE key = ?1",
+                    [ARTIST_STRING_FORMAT_SETTING],
+                )
+                .unwrap();
+        }
+
+        let mut database = Database::open(&temporary.path).unwrap();
+        let repaired: String = database
+            .connection
+            .query_row("SELECT artists FROM rows WHERE id = 1", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(
+            repaired,
+            "1.6::artist:ibuki_satsuki::\n2::artist:satoi::\nartist:z3zz4\n\
+             artist:yumenouchi_chiharu\nartist:hinatsu\n1.2::artist:smusmuve::\n\
+             artist:koujisako\n2::artist:memuro::\nartist:wanke"
+        );
+        assert_eq!(
+            database
+                .connection
+                .query_row(
+                    "SELECT value FROM settings WHERE key = ?1",
+                    [ARTIST_STRING_FORMAT_SETTING],
+                    |row| row.get::<_, String>(0),
+                )
+                .unwrap(),
+            CURRENT_ARTIST_STRING_FORMAT_VERSION
+        );
+
+        let page = database
+            .query_rows(&RowQuery {
+                offset: 0,
+                limit: 10,
+                tags: Vec::new(),
+                tag_mode: TagMatchMode::And,
+                dedupe: DedupeMode::None,
+                single_artist_only: true,
+                has_vibe: false,
+                group_view: false,
+                hide_grouped: false,
+                search: String::new(),
+            })
+            .unwrap();
+        assert_eq!(page.rows.iter().map(|row| row.id).collect::<Vec<_>>(), vec![2]);
     }
 
     #[test]
