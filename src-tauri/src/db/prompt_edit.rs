@@ -135,6 +135,12 @@ fn prefix_known_artist_tag_in_token(
     if token.is_empty() {
         return None;
     }
+    if let Some((inner, suffix)) = split_novelai_closer(token)
+        && let Some((rewritten, matched_name)) =
+            prefix_known_artist_tag_in_token(inner, selected_names)
+    {
+        return Some((format!("{rewritten}{suffix}"), matched_name));
+    }
     if let Some((prefix, inner, suffix)) = split_novelai_weight(token)
         && let Some((rewritten, matched_name)) =
             prefix_known_artist_tag_in_token(inner, selected_names)
@@ -165,6 +171,9 @@ fn bare_tag_in_token(token: &str) -> Option<&str> {
     if token.is_empty() {
         return None;
     }
+    if let Some((inner, _)) = split_novelai_closer(token) {
+        return bare_tag_in_token(inner);
+    }
     if let Some((_, inner, _)) = split_novelai_weight(token) {
         return bare_tag_in_token(inner);
     }
@@ -180,6 +189,9 @@ fn bare_tag_in_token(token: &str) -> Option<&str> {
 fn explicit_artist_name_in_token(token: &str) -> Option<&str> {
     if token.is_empty() {
         return None;
+    }
+    if let Some((inner, _)) = split_novelai_closer(token) {
+        return explicit_artist_name_in_token(inner);
     }
     if let Some((_, inner, _)) = split_novelai_weight(token) {
         return explicit_artist_name_in_token(inner);
@@ -234,6 +246,12 @@ fn prefix_artist_tag_in_token(token: &str, artist_name: &str) -> Option<String> 
         return None;
     }
 
+    if let Some((inner, suffix)) = split_novelai_closer(token)
+        && let Some(rewritten) = prefix_artist_tag_in_token(inner, artist_name)
+    {
+        return Some(format!("{rewritten}{suffix}"));
+    }
+
     if let Some((prefix, inner, suffix)) = split_novelai_weight(token)
         && let Some(rewritten) = prefix_artist_tag_in_token(inner, artist_name)
     {
@@ -253,6 +271,14 @@ fn prefix_artist_tag_in_token(token: &str, artist_name: &str) -> Option<String> 
     }
 
     (token == artist_name).then(|| format!("artist:{token}"))
+}
+
+fn split_novelai_closer(token: &str) -> Option<(&str, &str)> {
+    // Numerical emphasis can span comma-delimited tags, leaving its closing `::`
+    // attached to a fragment whose opening weight appeared in an earlier fragment.
+    let without_closer = token.strip_suffix("::")?;
+    let inner = without_closer.trim_end();
+    (!inner.is_empty()).then_some((inner, &token[inner.len()..]))
 }
 
 fn split_novelai_weight(token: &str) -> Option<(&str, &str, &str)> {
@@ -726,11 +752,19 @@ mod tests {
             normalized_bare_tag_in_fragment(" 0.7::(Parsley_F:1.2):: ").as_deref(),
             Some("parsley_f")
         );
+        assert_eq!(
+            normalized_bare_tag_in_fragment("rourow ::").as_deref(),
+            Some("rourow")
+        );
         assert_eq!(normalized_bare_tag_in_fragment("artist:parsley_f"), None);
         assert_eq!(
             normalized_explicit_artist_tag_in_fragment(" 0.7::{Artist:Parsley_F:1.2}:: ")
                 .as_deref(),
             Some("parsley_f")
+        );
+        assert_eq!(
+            normalized_explicit_artist_tag_in_fragment("artist:rourow ::").as_deref(),
+            Some("rourow")
         );
         assert_eq!(
             normalized_explicit_artist_tag_in_fragment("parsley_f"),
@@ -752,5 +786,19 @@ mod tests {
             "best quality, 0.7::artist:Parsley_F::, (artist:other_artist:1.2), artist:parsley_f, parsley_fx"
         );
         assert_eq!(matched, vec!["other_artist", "parsley_f"]);
+    }
+
+    #[test]
+    fn artist_prefixing_preserves_cross_comma_numerical_weight_closer() {
+        let prompt = "1::artist:huangdanlan, rourow ::,";
+        assert_eq!(
+            super::prefix_artist_tag_in_prompt(prompt, "rourow").as_deref(),
+            Some("1::artist:huangdanlan, artist:rourow ::,")
+        );
+
+        let selected = HashSet::from(["rourow".to_owned()]);
+        let (rewritten, matched) = prefix_known_artist_tags_in_prompt(prompt, &selected).unwrap();
+        assert_eq!(rewritten, "1::artist:huangdanlan, artist:rourow ::,");
+        assert_eq!(matched, vec!["rourow"]);
     }
 }

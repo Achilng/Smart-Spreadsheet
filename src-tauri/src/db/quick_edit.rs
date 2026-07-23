@@ -1603,6 +1603,45 @@ mod tests {
     }
 
     #[test]
+    fn quick_artist_prefix_handles_numerical_weight_closer_after_comma() {
+        let mut database = Database::open_in_memory().unwrap();
+        append_rows(
+            &mut database,
+            &[NewRow {
+                source_ordinal: 1,
+                identity: "cross-comma-weight".into(),
+                positive_prompt: Some("1::artist:huangdanlan, rourow::,".into()),
+                ..NewRow::default()
+            }],
+        );
+
+        let preview = database.preview_quick_artist_prefix("rourow").unwrap();
+        assert_eq!(preview.scanned_rows, 1);
+        assert_eq!(preview.matched_rows, 1);
+        assert_eq!(preview.prompt_fields_needing_changes, 1);
+
+        let applied = database.apply_quick_artist_prefix("rourow").unwrap();
+        assert_eq!(applied.changed_rows, 1);
+        assert_eq!(applied.prompt_fields_changed, 1);
+
+        let row: (String, String) = database
+            .connection
+            .query_row(
+                "SELECT positive_prompt, artists FROM rows WHERE id = 1",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            row,
+            (
+                "1::artist:huangdanlan, artist:rourow::,".into(),
+                "1::artist:huangdanlan\nartist:rourow::".into(),
+            )
+        );
+    }
+
+    #[test]
     fn quick_artist_prefix_rejects_multiple_names() {
         let database = database_with_rows(1);
         assert!(matches!(
