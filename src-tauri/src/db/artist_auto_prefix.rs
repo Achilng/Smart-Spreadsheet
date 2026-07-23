@@ -11,7 +11,7 @@ use super::prompt_edit::{
 use super::quick_edit::{QuickArtistPrefixChange, QuickEditError};
 
 const PREVIEW_SAMPLE_LIMIT: usize = 12;
-const LOW_USAGE_POST_COUNT: u64 = 5;
+const LOW_USAGE_POST_COUNT: u64 = 20;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -334,7 +334,8 @@ fn candidate_from_accumulator(accumulator: CandidateAccumulator) -> AutoArtistCa
     let is_low_usage = accumulator.entry.post_count < LOW_USAGE_POST_COUNT;
     let is_short_name = significant_character_count(&accumulator.entry.match_name) <= 3;
     let is_common_word = is_common_prompt_word(&accumulator.entry.match_name);
-    let needs_confirmation = accumulator.entry.is_ambiguous || is_short_name || is_common_word;
+    let needs_confirmation =
+        accumulator.entry.is_ambiguous || is_low_usage || is_short_name || is_common_word;
     AutoArtistCandidate {
         match_name: accumulator.entry.match_name,
         display_name: accumulator.entry.display_name,
@@ -532,5 +533,47 @@ mod tests {
             })
             .unwrap();
         assert_eq!(reverted, "parsley_f");
+    }
+
+    #[test]
+    fn fewer_than_twenty_posts_requires_confirmation() {
+        let mut database = Database::open_in_memory().unwrap();
+        database
+            .replace_artist_dictionary(
+                &ArtistDictionaryInput {
+                    tags: vec![
+                        artist_tag(1, "rare_artist_name", 19),
+                        artist_tag(2, "established_artist_name", 20),
+                    ],
+                    ..ArtistDictionaryInput::default()
+                },
+                "2026-07-23T12:00:00Z",
+            )
+            .unwrap();
+        append_rows(
+            &mut database,
+            &[NewRow {
+                source_ordinal: 1,
+                identity: "first".into(),
+                positive_prompt: Some("rare_artist_name, established_artist_name".into()),
+                ..NewRow::default()
+            }],
+        );
+
+        let preview = database.preview_auto_artist_prefix().unwrap();
+        let rare = preview
+            .candidates
+            .iter()
+            .find(|candidate| candidate.match_name == "rare_artist_name")
+            .unwrap();
+        let established = preview
+            .candidates
+            .iter()
+            .find(|candidate| candidate.match_name == "established_artist_name")
+            .unwrap();
+        assert!(rare.is_low_usage);
+        assert!(rare.needs_confirmation);
+        assert!(!established.is_low_usage);
+        assert!(!established.needs_confirmation);
     }
 }

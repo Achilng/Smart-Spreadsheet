@@ -335,7 +335,7 @@
         <div class="apply-bar">
           <div>
             <strong>已选择 {formatCount(selectedCount)} 个候选</strong>
-            <span>橙色项目需要人工确认；低使用量本身不会阻止自动选择。</span>
+            <span>橙色项目需要人工确认；Danbooru 发帖量低于 20 的候选默认不勾选。</span>
           </div>
           <button
             class="btn btn-primary"
