@@ -6,7 +6,8 @@ use serde::Serialize;
 use super::Database;
 use super::artist_dictionary::ArtistDictionaryEntry;
 use super::prompt_edit::{
-    combined_artists, normalized_bare_tag_in_fragment, prefix_known_artist_tags_in_prompt,
+    combined_artists, normalized_bare_tag_in_fragment, normalized_explicit_artist_tag_in_fragment,
+    prefix_known_artist_tags_in_prompt,
 };
 use super::quick_edit::{QuickArtistPrefixChange, QuickEditError};
 
@@ -29,6 +30,8 @@ pub struct AutoArtistCandidate {
     pub is_low_usage: bool,
     pub is_short_name: bool,
     pub is_common_word: bool,
+    pub is_library_confirmed: bool,
+    pub has_danbooru_match: bool,
     pub needs_confirmation: bool,
 }
 
@@ -58,6 +61,8 @@ struct CandidateAccumulator {
     matched_fields: u64,
     last_row_id: Option<i64>,
     sample_row_ids: Vec<i64>,
+    is_library_confirmed: bool,
+    has_danbooru_match: bool,
 }
 
 #[derive(Debug)]
@@ -71,9 +76,6 @@ struct PromptRow {
 
 impl Database {
     pub fn preview_auto_artist_prefix(&self) -> Result<AutoArtistPrefixPreview, QuickEditError> {
-        if self.artist_dictionary_status()?.is_none() {
-            return Err(QuickEditError::ArtistDictionaryUnavailable);
-        }
         let rows = {
             let mut statement = self.connection.prepare(
                 "SELECT id, positive_prompt, character_prompt, negative_prompt, artists
@@ -83,6 +85,10 @@ impl Database {
                 .query_map([], read_prompt_row)?
                 .collect::<Result<Vec<_>, _>>()?
         };
+        let library_confirmed_names = library_confirmed_names(&rows);
+        if self.artist_dictionary_status()?.is_none() && library_confirmed_names.is_empty() {
+            return Err(QuickEditError::ArtistDictionaryUnavailable);
+        }
         let scanned_rows = u64::try_from(rows.len())
             .map_err(|_| QuickEditError::Database(super::DatabaseError::RowCountOverflow))?;
         let prompt_names = rows
@@ -98,11 +104,20 @@ impl Database {
             })
             .flat_map(bare_tag_names)
             .collect::<BTreeSet<_>>();
-        let dictionary = self
+        let mut dictionary = self
             .artist_dictionary_entries_by_names(prompt_names.iter().map(String::as_str))?
             .into_iter()
             .map(|entry| (entry.match_name.clone(), entry))
             .collect::<HashMap<_, _>>();
+        let danbooru_names = dictionary.keys().cloned().collect::<HashSet<_>>();
+        for match_name in prompt_names
+            .iter()
+            .filter(|name| library_confirmed_names.contains(*name))
+        {
+            dictionary
+                .entry(match_name.clone())
+                .or_insert_with(|| library_confirmed_entry(match_name));
+        }
         let mut candidates = HashMap::<String, CandidateAccumulator>::new();
         let mut matched_rows = 0_u64;
         let mut prompt_fields_needing_changes = 0_u64;
@@ -134,6 +149,8 @@ impl Database {
                             matched_fields: 0,
                             last_row_id: None,
                             sample_row_ids: Vec::new(),
+                            is_library_confirmed: library_confirmed_names.contains(&match_name),
+                            has_danbooru_match: danbooru_names.contains(&match_name),
                         }
                     });
                     accumulator.matched_fields += 1;
@@ -157,8 +174,9 @@ impl Database {
             .collect::<Vec<_>>();
         candidates.sort_by(|left, right| {
             right
-                .matched_rows
-                .cmp(&left.matched_rows)
+                .is_library_confirmed
+                .cmp(&left.is_library_confirmed)
+                .then_with(|| right.matched_rows.cmp(&left.matched_rows))
                 .then_with(|| left.match_name.cmp(&right.match_name))
         });
         Ok(AutoArtistPrefixPreview {
@@ -180,11 +198,21 @@ impl Database {
         if selected_names.is_empty() {
             return Err(QuickEditError::EmptyArtistSelection);
         }
-        let known_names = self
+        let mut known_names = self
             .artist_dictionary_entries_by_names(selected_names.iter().map(String::as_str))?
             .into_iter()
             .map(|entry| entry.match_name)
             .collect::<HashSet<_>>();
+        let library_rows = {
+            let mut statement = self.connection.prepare(
+                "SELECT id, positive_prompt, character_prompt, negative_prompt, artists
+                 FROM rows ORDER BY id",
+            )?;
+            statement
+                .query_map([], read_prompt_row)?
+                .collect::<Result<Vec<_>, _>>()?
+        };
+        known_names.extend(library_confirmed_names(&library_rows));
         let mut unknown_names = selected_names
             .difference(&known_names)
             .cloned()
@@ -275,6 +303,41 @@ fn bare_tag_names(prompt: &str) -> BTreeSet<String> {
         .collect()
 }
 
+fn explicit_artist_names(prompt: &str) -> BTreeSet<String> {
+    prompt
+        .split([',', '\n', '\r'])
+        .filter_map(normalized_explicit_artist_tag_in_fragment)
+        .collect()
+}
+
+fn library_confirmed_names(rows: &[PromptRow]) -> HashSet<String> {
+    rows.iter()
+        .flat_map(|row| {
+            [
+                row.positive_prompt.as_deref(),
+                row.character_prompt.as_deref(),
+                row.negative_prompt.as_deref(),
+            ]
+            .into_iter()
+            .flatten()
+        })
+        .flat_map(explicit_artist_names)
+        .collect()
+}
+
+fn library_confirmed_entry(match_name: &str) -> ArtistDictionaryEntry {
+    ArtistDictionaryEntry {
+        match_name: match_name.to_owned(),
+        display_name: match_name.to_owned(),
+        canonical_name: match_name.to_owned(),
+        post_count: 0,
+        is_banned: false,
+        is_deprecated: false,
+        is_ambiguous: false,
+        source_mask: 0,
+    }
+}
+
 fn automatic_change(
     row: PromptRow,
     selected_names: &HashSet<String>,
@@ -331,11 +394,12 @@ fn changed_prompt_field_count(change: &QuickArtistPrefixChange) -> u64 {
 }
 
 fn candidate_from_accumulator(accumulator: CandidateAccumulator) -> AutoArtistCandidate {
-    let is_low_usage = accumulator.entry.post_count < LOW_USAGE_POST_COUNT;
+    let is_low_usage =
+        accumulator.has_danbooru_match && accumulator.entry.post_count < LOW_USAGE_POST_COUNT;
     let is_short_name = significant_character_count(&accumulator.entry.match_name) <= 3;
     let is_common_word = is_common_prompt_word(&accumulator.entry.match_name);
-    let needs_confirmation =
-        accumulator.entry.is_ambiguous || is_low_usage || is_short_name || is_common_word;
+    let needs_confirmation = !accumulator.is_library_confirmed
+        && (accumulator.entry.is_ambiguous || is_low_usage || is_short_name || is_common_word);
     AutoArtistCandidate {
         match_name: accumulator.entry.match_name,
         display_name: accumulator.entry.display_name,
@@ -350,6 +414,8 @@ fn candidate_from_accumulator(accumulator: CandidateAccumulator) -> AutoArtistCa
         is_low_usage,
         is_short_name,
         is_common_word,
+        is_library_confirmed: accumulator.is_library_confirmed,
+        has_danbooru_match: accumulator.has_danbooru_match,
         needs_confirmation,
     }
 }
@@ -533,6 +599,118 @@ mod tests {
             })
             .unwrap();
         assert_eq!(reverted, "parsley_f");
+    }
+
+    #[test]
+    fn library_explicit_artist_confirms_and_applies_unknown_name() {
+        let mut database = Database::open_in_memory().unwrap();
+        append_rows(
+            &mut database,
+            &[
+                NewRow {
+                    source_ordinal: 1,
+                    identity: "explicit".into(),
+                    positive_prompt: Some("artist:xy".into()),
+                    ..NewRow::default()
+                },
+                NewRow {
+                    source_ordinal: 2,
+                    identity: "positive".into(),
+                    positive_prompt: Some("xy".into()),
+                    ..NewRow::default()
+                },
+                NewRow {
+                    source_ordinal: 3,
+                    identity: "character".into(),
+                    character_prompt: Some("{XY}".into()),
+                    ..NewRow::default()
+                },
+                NewRow {
+                    source_ordinal: 4,
+                    identity: "negative".into(),
+                    negative_prompt: Some("0.5::xy::".into()),
+                    ..NewRow::default()
+                },
+                NewRow {
+                    source_ordinal: 5,
+                    identity: "similar".into(),
+                    positive_prompt: Some("xyz".into()),
+                    ..NewRow::default()
+                },
+            ],
+        );
+
+        let preview = database.preview_auto_artist_prefix().unwrap();
+        assert_eq!(preview.candidates.len(), 1);
+        let candidate = &preview.candidates[0];
+        assert_eq!(candidate.match_name, "xy");
+        assert_eq!(candidate.matched_rows, 3);
+        assert!(candidate.is_library_confirmed);
+        assert!(!candidate.has_danbooru_match);
+        assert!(!candidate.is_low_usage);
+        assert!(!candidate.needs_confirmation);
+
+        let applied = database.apply_auto_artist_prefix(&["xy".into()]).unwrap();
+        assert_eq!(applied.changed_rows, 3);
+        let mut statement = database
+            .connection
+            .prepare(
+                "SELECT positive_prompt, character_prompt, negative_prompt
+                 FROM rows WHERE id BETWEEN 2 AND 4 ORDER BY id",
+            )
+            .unwrap();
+        let prompts = statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, Option<String>>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                ))
+            })
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert_eq!(prompts[0].0.as_deref(), Some("artist:xy"));
+        assert_eq!(prompts[1].1.as_deref(), Some("{artist:XY}"));
+        assert_eq!(prompts[2].2.as_deref(), Some("0.5::artist:xy::"));
+    }
+
+    #[test]
+    fn library_evidence_overrides_low_danbooru_post_count() {
+        let mut database = Database::open_in_memory().unwrap();
+        database
+            .replace_artist_dictionary(
+                &ArtistDictionaryInput {
+                    tags: vec![artist_tag(1, "rare_artist_name", 1)],
+                    ..ArtistDictionaryInput::default()
+                },
+                "2026-07-23T12:00:00Z",
+            )
+            .unwrap();
+        append_rows(
+            &mut database,
+            &[
+                NewRow {
+                    source_ordinal: 1,
+                    identity: "explicit".into(),
+                    positive_prompt: Some("artist:rare_artist_name".into()),
+                    ..NewRow::default()
+                },
+                NewRow {
+                    source_ordinal: 2,
+                    identity: "bare".into(),
+                    positive_prompt: Some("rare_artist_name".into()),
+                    ..NewRow::default()
+                },
+            ],
+        );
+
+        let preview = database.preview_auto_artist_prefix().unwrap();
+        let candidate = &preview.candidates[0];
+        assert!(candidate.has_danbooru_match);
+        assert!(candidate.is_low_usage);
+        assert!(candidate.is_library_confirmed);
+        assert!(!candidate.needs_confirmation);
     }
 
     #[test]

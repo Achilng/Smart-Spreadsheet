@@ -57,6 +57,12 @@ pub(super) fn normalized_bare_tag_in_fragment(fragment: &str) -> Option<String> 
     (!normalized.starts_with("artist:")).then_some(normalized)
 }
 
+pub(super) fn normalized_explicit_artist_tag_in_fragment(fragment: &str) -> Option<String> {
+    let token = fragment.trim();
+    let name = explicit_artist_name_in_token(token)?.trim();
+    (!name.is_empty()).then(|| name.to_lowercase())
+}
+
 pub(super) fn prefix_known_artist_tags_in_prompt(
     prompt: &str,
     selected_names: &HashSet<String>,
@@ -169,6 +175,25 @@ fn bare_tag_in_token(token: &str) -> Option<&str> {
         return bare_tag_in_token(name);
     }
     Some(token)
+}
+
+fn explicit_artist_name_in_token(token: &str) -> Option<&str> {
+    if token.is_empty() {
+        return None;
+    }
+    if let Some((_, inner, _)) = split_novelai_weight(token) {
+        return explicit_artist_name_in_token(inner);
+    }
+    if let Some((_, inner, _)) = split_outer_wrapper(token) {
+        return explicit_artist_name_in_token(inner);
+    }
+    if let Some((name, _)) = split_colon_weight(token) {
+        return explicit_artist_name_in_token(name);
+    }
+    token
+        .get(.."artist:".len())
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("artist:"))
+        .then(|| &token["artist:".len()..])
 }
 
 fn append_prefixed_fragment(
@@ -448,7 +473,10 @@ mod tests {
 
     use super::super::tags::RowSelection;
     use super::super::test_support::database_with_rows;
-    use super::{normalized_bare_tag_in_fragment, prefix_known_artist_tags_in_prompt};
+    use super::{
+        normalized_bare_tag_in_fragment, normalized_explicit_artist_tag_in_fragment,
+        prefix_known_artist_tags_in_prompt,
+    };
 
     #[test]
     fn update_single_row_prompt_and_reextracts_artists() {
@@ -698,8 +726,14 @@ mod tests {
             normalized_bare_tag_in_fragment(" 0.7::(Parsley_F:1.2):: ").as_deref(),
             Some("parsley_f")
         );
+        assert_eq!(normalized_bare_tag_in_fragment("artist:parsley_f"), None);
         assert_eq!(
-            normalized_bare_tag_in_fragment("artist:parsley_f"),
+            normalized_explicit_artist_tag_in_fragment(" 0.7::{Artist:Parsley_F:1.2}:: ")
+                .as_deref(),
+            Some("parsley_f")
+        );
+        assert_eq!(
+            normalized_explicit_artist_tag_in_fragment("parsley_f"),
             None
         );
     }

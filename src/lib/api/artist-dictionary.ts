@@ -30,6 +30,8 @@ export interface AutoArtistCandidate {
   isLowUsage: boolean;
   isShortName: boolean;
   isCommonWord: boolean;
+  isLibraryConfirmed: boolean;
+  hasDanbooruMatch: boolean;
   needsConfirmation: boolean;
 }
 

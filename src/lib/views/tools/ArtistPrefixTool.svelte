@@ -212,8 +212,8 @@
       <span class="eyebrow">DANBOORU ARTIST DICTIONARY</span>
       <h3>自动识别裸画师 Tag</h3>
       <p>
-        扫描资料库中的正向、角色和负向提示词，为没有前缀的画师名称补上
-        <code>artist:</code>。下架或受限画师仍会保留识别。
+        结合库内已有的 <code>artist:</code> 证据和 Danbooru 词典，扫描正向、角色和
+        负向提示词，为没有前缀的画师名称补上 <code>artist:</code>。
       </p>
     </div>
     <button class="btn" type="button" disabled={busy} onclick={() => void synchronize()}>
@@ -310,6 +310,7 @@
                   {/if}
                 </div>
                 <div class="badges">
+                  {#if candidate.isLibraryConfirmed}<span class="badge confirmed">库内已有明确标注</span>{/if}
                   {#if candidate.isBanned}<span class="badge restricted">受限／下架仍识别</span>{/if}
                   {#if candidate.isLowUsage}<span class="badge">低使用量</span>{/if}
                   {#if candidate.isDeprecated}<span class="badge">历史 Tag</span>{/if}
@@ -320,7 +321,11 @@
               </div>
               <div class="candidate-stats">
                 <strong>{formatCount(candidate.matchedRows)} 张</strong>
-                <span>Danbooru {formatCount(candidate.postCount)} 帖</span>
+                {#if candidate.hasDanbooruMatch}
+                  <span>Danbooru {formatCount(candidate.postCount)} 帖</span>
+                {:else}
+                  <span>仅使用库内证据</span>
+                {/if}
               </div>
               <button
                 type="button"
@@ -335,7 +340,7 @@
         <div class="apply-bar">
           <div>
             <strong>已选择 {formatCount(selectedCount)} 个候选</strong>
-            <span>橙色项目需要人工确认；Danbooru 发帖量低于 20 的候选默认不勾选。</span>
+            <span>库内已有明确标注的画师优先选中；其余低于 20 帖的候选默认不勾选。</span>
           </div>
           <button
             class="btn btn-primary"
@@ -621,6 +626,11 @@
   .badge.restricted {
     background: color-mix(in srgb, var(--accent) 12%, var(--surface));
     color: var(--accent);
+  }
+
+  .badge.confirmed {
+    background: color-mix(in srgb, #2f9e67 14%, var(--surface));
+    color: #278456;
   }
 
   .candidate-stats {
