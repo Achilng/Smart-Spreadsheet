@@ -910,12 +910,15 @@ impl<'a> PreparedCondition<'a> {
                         .is_some_and(|regex| regex.is_match(&text)),
                 }
             }
-            RuleCondition::Tag { operator, tags } => match operator {
-                TagOperator::HasAll => tags.iter().all(|tag| row.tags.contains(tag.trim())),
-                TagOperator::HasAny => tags.iter().any(|tag| row.tags.contains(tag.trim())),
-                TagOperator::HasNone => tags.iter().all(|tag| !row.tags.contains(tag.trim())),
-                TagOperator::IsEmpty => row.tags.is_empty(),
-            },
+            RuleCondition::Tag { operator, tags } => {
+                let expected = normalized_strings(tags);
+                match operator {
+                    TagOperator::HasAll => expected.iter().all(|tag| row.tags.contains(tag)),
+                    TagOperator::HasAny => expected.iter().any(|tag| row.tags.contains(tag)),
+                    TagOperator::HasNone => expected.iter().all(|tag| !row.tags.contains(tag)),
+                    TagOperator::IsEmpty => row.tags.is_empty(),
+                }
+            }
             RuleCondition::Group { operator, group_id } => match operator {
                 GroupOperator::Is => row.group_id == *group_id,
                 GroupOperator::IsNot => row.group_id != *group_id,
@@ -923,12 +926,13 @@ impl<'a> PreparedCondition<'a> {
             },
             RuleCondition::Artist { operator, artists } => {
                 let available = artist_set(row.artists.as_deref());
+                let expected = normalized_strings(artists);
                 match operator {
-                    ArtistOperator::ContainsAny => artists
+                    ArtistOperator::ContainsAny => expected
                         .iter()
                         .map(|artist| normalize_artist(artist))
                         .any(|artist| available.contains(&artist)),
-                    ArtistOperator::ContainsNone => artists
+                    ArtistOperator::ContainsNone => expected
                         .iter()
                         .map(|artist| normalize_artist(artist))
                         .all(|artist| !available.contains(&artist)),
@@ -1290,12 +1294,10 @@ fn ensure_action_tags(
             RuleAction::AddTags { tags } => Some(tags.as_slice()),
             _ => None,
         })
-        .flatten()
-        .map(|tag| tag.trim())
-        .filter(|tag| !tag.is_empty())
+        .flat_map(normalized_strings)
         .collect::<HashSet<_>>();
     for tag in tags {
-        transaction.execute("INSERT OR IGNORE INTO tags(name) VALUES (?1)", [tag])?;
+        transaction.execute("INSERT OR IGNORE INTO tags(name) VALUES (?1)", [&tag])?;
     }
     Ok(())
 }
@@ -1607,7 +1609,7 @@ fn prompt_scope_text(row: &RuleRow, scope: PromptScope) -> String {
 fn parse_prompt_tokens(value: &str) -> Vec<String> {
     let mut seen = HashSet::new();
     value
-        .split([',', '\n', '\r'])
+        .split([',', '，', '\n', '\r'])
         .map(normalize_prompt_token)
         .filter(|token| !token.is_empty() && seen.insert(token.clone()))
         .collect()
@@ -1615,7 +1617,7 @@ fn parse_prompt_tokens(value: &str) -> Vec<String> {
 
 fn prompt_token_set(value: &str) -> HashSet<String> {
     value
-        .split([',', '\n', '\r'])
+        .split([',', '，', '\n', '\r'])
         .map(normalize_prompt_token)
         .filter(|token| !token.is_empty())
         .collect()
@@ -1656,7 +1658,7 @@ fn normalize_prompt_token(raw: &str) -> String {
 fn artist_set(value: Option<&str>) -> HashSet<String> {
     value
         .unwrap_or("")
-        .split([',', '\n', '\r'])
+        .split([',', '，', '\n', '\r'])
         .map(normalize_artist)
         .filter(|artist| !artist.is_empty())
         .collect()
@@ -1675,6 +1677,7 @@ fn normalized_strings(values: &[String]) -> Vec<String> {
     let mut seen = HashSet::new();
     values
         .iter()
+        .flat_map(|value| value.split([',', '，', '\n', '\r']))
         .map(|value| value.trim().to_owned())
         .filter(|value| !value.is_empty() && seen.insert(value.clone()))
         .collect()
@@ -1682,7 +1685,7 @@ fn normalized_strings(values: &[String]) -> Vec<String> {
 
 fn append_prompt(current: Option<&str>, value: &str) -> Option<String> {
     let additions = value
-        .split([',', '\n', '\r'])
+        .split([',', '，', '\n', '\r'])
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .collect::<Vec<_>>();
@@ -1712,7 +1715,7 @@ fn delete_prompt_tags(current: Option<&str>, targets: &str) -> Option<String> {
         .collect::<HashSet<_>>();
     let current = current?;
     let retained = current
-        .split([',', '\n', '\r'])
+        .split([',', '，', '\n', '\r'])
         .map(str::trim)
         .filter(|fragment| {
             !fragment.is_empty() && !targets.contains(&normalize_prompt_token(fragment))
@@ -2176,6 +2179,50 @@ mod tests {
             });
             assert!(!PreparedConditionSet::new(&set).unwrap().matches(&row));
         }
+    }
+
+    #[test]
+    fn full_width_comma_safely_splits_all_list_style_inputs() {
+        assert_eq!(
+            normalized_strings(&["alice，bob, carol\ndave".into()]),
+            vec!["alice", "bob", "carol", "dave"]
+        );
+
+        let mut database = Database::open_in_memory().unwrap();
+        let row_id = append_row(&mut database, "full-width-comma", "girl, blue eyes");
+        let rule = database
+            .create_automation_rule(&draft(
+                "全角逗号防呆",
+                RuleCondition::Prompt {
+                    scope: PromptScope::Positive,
+                    operator: PromptOperator::ContainsAll,
+                    value: "girl，blue eyes".into(),
+                    case_sensitive: false,
+                },
+                vec![RuleAction::AddTags {
+                    tags: vec!["人物，蓝眼".into()],
+                }],
+            ))
+            .unwrap();
+
+        let result = database.run_automation_rule_on_library(rule.id).unwrap();
+        assert_eq!(result.changed_rows, 1);
+        let tags = {
+            let mut statement = database
+                .connection
+                .prepare(
+                    "SELECT tags.name FROM row_tags
+                     JOIN tags ON tags.id = row_tags.tag_id
+                     WHERE row_tags.row_id = ?1 ORDER BY tags.name",
+                )
+                .unwrap();
+            statement
+                .query_map([row_id], |row| row.get::<_, String>(0))
+                .unwrap()
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap()
+        };
+        assert_eq!(tags, vec!["人物", "蓝眼"]);
     }
 
     #[test]

@@ -47,7 +47,7 @@
   }
 
   function splitValues(value: string): string[] {
-    return [...new Set(value.split(/[,\n\r]/).map(item => item.trim()).filter(Boolean))];
+    return [...new Set(value.split(/[,，\n\r]/).map(item => item.trim()).filter(Boolean))];
   }
 </script>
 
@@ -94,7 +94,7 @@
           </select>
         </label>
       </div>
-      <label class="wide"><span>{condition.operator.startsWith("contains") ? "提示词（逗号或换行分隔）" : "文本"}</span>
+      <label class="wide"><span>{condition.operator.startsWith("contains") ? "提示词（半角/全角逗号或换行分隔）" : "文本"}</span>
         <textarea rows="2" value={condition.value} placeholder="输入要检查的内容" oninput={event => patch({ value: text(event) })}></textarea>
       </label>
       {#if ["textContains", "textEquals", "regex"].includes(condition.operator)}
@@ -108,7 +108,7 @@
         </select>
       </label>
       {#if condition.operator !== "isEmpty"}
-        <label class="wide"><span>Tag（逗号或换行分隔，名称精确匹配）</span>
+        <label class="wide"><span>Tag（半角/全角逗号或换行分隔，名称精确匹配）</span>
           <textarea rows="2" value={condition.tags.join(", ")} oninput={event => patch({ tags: splitValues(text(event)) })}></textarea>
         </label>
       {/if}
@@ -135,7 +135,7 @@
         </select>
       </label>
       {#if ["containsAny", "containsNone"].includes(condition.operator)}
-        <label class="wide"><span>画师名（可省略 artist:，逗号或换行分隔）</span>
+        <label class="wide"><span>画师名（可省略 artist:，半角/全角逗号或换行分隔）</span>
           <textarea rows="2" value={condition.artists.join(", ")} oninput={event => patch({ artists: splitValues(text(event)) })}></textarea>
         </label>
       {/if}

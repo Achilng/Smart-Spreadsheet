@@ -65,7 +65,7 @@
   }
 
   function splitValues(value: string): string[] {
-    return [...new Set(value.split(/[,\n\r]/).map(item => item.trim()).filter(Boolean))];
+    return [...new Set(value.split(/[,，\n\r]/).map(item => item.trim()).filter(Boolean))];
   }
 </script>
 
@@ -87,7 +87,7 @@
 
     <div class="action-body">
       {#if action.type === "addTags" || action.type === "removeTags"}
-        <label class="wide"><span>Tag（逗号或换行分隔；添加时可直接创建新 Tag）</span>
+        <label class="wide"><span>Tag（半角/全角逗号或换行分隔；添加时可直接创建新 Tag）</span>
           <textarea rows="2" value={action.tags.join(", ")} oninput={event => patch({ tags: splitValues(text(event)) })}></textarea>
         </label>
       {:else if action.type === "setGroup"}
@@ -97,13 +97,13 @@
         <p class="description">移除命中图片当前所属的分组，不会删除分组本身。</p>
       {:else if action.type === "appendPrompt" || action.type === "deletePromptTags"}
         <label><span>提示词字段</span><select value={action.field} onchange={event => patch({ field: (event.currentTarget as HTMLSelectElement).value })}><option value="positive">正向提示词</option><option value="character">角色提示词</option><option value="negative">负向提示词</option></select></label>
-        <label class="wide"><span>{action.type === "appendPrompt" ? "追加内容" : "要删除的完整提示词（逗号或换行分隔）"}</span><textarea rows="2" value={action.value} oninput={event => patch({ value: text(event) })}></textarea></label>
+        <label class="wide"><span>{action.type === "appendPrompt" ? "追加提示词（半角/全角逗号或换行分隔）" : "要删除的完整提示词（半角/全角逗号或换行分隔）"}</span><textarea rows="2" value={action.value} oninput={event => patch({ value: text(event) })}></textarea></label>
       {:else if action.type === "replacePrompt"}
         <label><span>提示词字段</span><select value={action.field} onchange={event => patch({ field: (event.currentTarget as HTMLSelectElement).value })}><option value="positive">正向提示词</option><option value="character">角色提示词</option><option value="negative">负向提示词</option></select></label>
         <div class="field-row"><label><span>查找</span><input value={action.find} oninput={event => patch({ find: text(event) })} /></label><label><span>替换为（可留空）</span><input value={action.replace} oninput={event => patch({ replace: text(event) })} /></label></div>
         <label class="check"><input type="checkbox" checked={action.caseSensitive} onchange={event => patch({ caseSensitive: (event.currentTarget as HTMLInputElement).checked })} />区分大小写</label>
       {:else if action.type === "prefixArtist"}
-        <label class="wide"><span>需要修正的画师名（可省略 artist:，逗号或换行分隔）</span><textarea rows="2" value={action.artists.join(", ")} oninput={event => patch({ artists: splitValues(text(event)) })}></textarea></label>
+        <label class="wide"><span>需要修正的画师名（可省略 artist:，半角/全角逗号或换行分隔）</span><textarea rows="2" value={action.artists.join(", ")} oninput={event => patch({ artists: splitValues(text(event)) })}></textarea></label>
         <p class="description">同时检查正向、角色和负向提示词；画师串只根据正向和角色提示词重算。</p>
       {:else if action.type === "setNote" || action.type === "appendNote"}
         <label class="wide"><span>{action.type === "setNote" ? "新备注" : "追加内容"}</span><textarea rows="2" value={action.value} oninput={event => patch({ value: text(event) })}></textarea></label>
