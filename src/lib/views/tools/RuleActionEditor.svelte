@@ -1,0 +1,139 @@
+<script lang="ts">
+  import GripVertical from "@lucide/svelte/icons/grip-vertical";
+  import X from "@lucide/svelte/icons/x";
+
+  import type { GroupSummary, RuleAction } from "../../api";
+
+  let {
+    action,
+    groups,
+    onreplace,
+    onremove,
+    onmoveup,
+    onmovedown,
+    canmoveup,
+    canmovedown,
+  }: {
+    action: RuleAction;
+    groups: GroupSummary[];
+    onreplace: (action: RuleAction) => void;
+    onremove: () => void;
+    onmoveup: () => void;
+    onmovedown: () => void;
+    canmoveup: boolean;
+    canmovedown: boolean;
+  } = $props();
+
+  const actionTypes: { value: RuleAction["type"]; label: string }[] = [
+    { value: "addTags", label: "添加 Tag" },
+    { value: "removeTags", label: "移除 Tag" },
+    { value: "setGroup", label: "移入分组" },
+    { value: "clearGroup", label: "清除分组" },
+    { value: "appendPrompt", label: "追加提示词" },
+    { value: "deletePromptTags", label: "删除指定提示词" },
+    { value: "replacePrompt", label: "查找替换提示词" },
+    { value: "prefixArtist", label: "修正 artist: 前缀" },
+    { value: "setNote", label: "设置备注" },
+    { value: "appendNote", label: "追加备注" },
+    { value: "clearNote", label: "清空备注" },
+    { value: "stopProcessing", label: "停止这张图片的后续规则" },
+  ];
+
+  function defaultAction(type: RuleAction["type"]): RuleAction {
+    switch (type) {
+      case "addTags": return { type, tags: [] };
+      case "removeTags": return { type, tags: [] };
+      case "setGroup": return { type, groupId: groups[0]?.id ?? 0, onlyIfUngrouped: false };
+      case "clearGroup": return { type };
+      case "appendPrompt": return { type, field: "positive", value: "" };
+      case "deletePromptTags": return { type, field: "positive", value: "" };
+      case "replacePrompt": return { type, field: "positive", find: "", replace: "", caseSensitive: true };
+      case "prefixArtist": return { type, artists: [] };
+      case "setNote": return { type, value: "" };
+      case "appendNote": return { type, value: "", separator: "\n" };
+      case "clearNote": return { type };
+      case "stopProcessing": return { type };
+    }
+  }
+
+  function patch(values: Record<string, unknown>): void {
+    onreplace({ ...action, ...values } as RuleAction);
+  }
+
+  function text(event: Event): string {
+    return (event.currentTarget as HTMLInputElement | HTMLTextAreaElement).value;
+  }
+
+  function splitValues(value: string): string[] {
+    return [...new Set(value.split(/[,\n\r]/).map(item => item.trim()).filter(Boolean))];
+  }
+</script>
+
+<article class="action-card">
+  <div class="action-order" aria-label="调整任务顺序">
+    <GripVertical size={16} aria-hidden="true" />
+    <button type="button" title="上移" disabled={!canmoveup} onclick={onmoveup}>↑</button>
+    <button type="button" title="下移" disabled={!canmovedown} onclick={onmovedown}>↓</button>
+  </div>
+  <div class="action-content">
+    <div class="action-head">
+      <label><span>执行任务</span>
+        <select value={action.type} onchange={event => onreplace(defaultAction((event.currentTarget as HTMLSelectElement).value as RuleAction["type"]))}>
+          {#each actionTypes as item}<option value={item.value}>{item.label}</option>{/each}
+        </select>
+      </label>
+      <button type="button" class="icon-btn" title="删除任务" aria-label="删除任务" onclick={onremove}><X size={16} /></button>
+    </div>
+
+    <div class="action-body">
+      {#if action.type === "addTags" || action.type === "removeTags"}
+        <label class="wide"><span>Tag（逗号或换行分隔；添加时可直接创建新 Tag）</span>
+          <textarea rows="2" value={action.tags.join(", ")} oninput={event => patch({ tags: splitValues(text(event)) })}></textarea>
+        </label>
+      {:else if action.type === "setGroup"}
+        <label><span>目标分组</span><select value={action.groupId || ""} onchange={event => patch({ groupId: Number((event.currentTarget as HTMLSelectElement).value) || 0 })}><option value="">请选择分组</option>{#each groups as group}<option value={group.id}>{group.name}</option>{/each}</select></label>
+        <label class="check"><input type="checkbox" checked={action.onlyIfUngrouped} onchange={event => patch({ onlyIfUngrouped: (event.currentTarget as HTMLInputElement).checked })} />仅处理尚未分组的图片</label>
+      {:else if action.type === "clearGroup"}
+        <p class="description">移除命中图片当前所属的分组，不会删除分组本身。</p>
+      {:else if action.type === "appendPrompt" || action.type === "deletePromptTags"}
+        <label><span>提示词字段</span><select value={action.field} onchange={event => patch({ field: (event.currentTarget as HTMLSelectElement).value })}><option value="positive">正向提示词</option><option value="character">角色提示词</option><option value="negative">负向提示词</option></select></label>
+        <label class="wide"><span>{action.type === "appendPrompt" ? "追加内容" : "要删除的完整提示词（逗号或换行分隔）"}</span><textarea rows="2" value={action.value} oninput={event => patch({ value: text(event) })}></textarea></label>
+      {:else if action.type === "replacePrompt"}
+        <label><span>提示词字段</span><select value={action.field} onchange={event => patch({ field: (event.currentTarget as HTMLSelectElement).value })}><option value="positive">正向提示词</option><option value="character">角色提示词</option><option value="negative">负向提示词</option></select></label>
+        <div class="field-row"><label><span>查找</span><input value={action.find} oninput={event => patch({ find: text(event) })} /></label><label><span>替换为（可留空）</span><input value={action.replace} oninput={event => patch({ replace: text(event) })} /></label></div>
+        <label class="check"><input type="checkbox" checked={action.caseSensitive} onchange={event => patch({ caseSensitive: (event.currentTarget as HTMLInputElement).checked })} />区分大小写</label>
+      {:else if action.type === "prefixArtist"}
+        <label class="wide"><span>需要修正的画师名（可省略 artist:，逗号或换行分隔）</span><textarea rows="2" value={action.artists.join(", ")} oninput={event => patch({ artists: splitValues(text(event)) })}></textarea></label>
+        <p class="description">同时检查正向、角色和负向提示词；画师串只根据正向和角色提示词重算。</p>
+      {:else if action.type === "setNote" || action.type === "appendNote"}
+        <label class="wide"><span>{action.type === "setNote" ? "新备注" : "追加内容"}</span><textarea rows="2" value={action.value} oninput={event => patch({ value: text(event) })}></textarea></label>
+        {#if action.type === "appendNote"}<label><span>分隔符</span><select value={action.separator} onchange={event => patch({ separator: (event.currentTarget as HTMLSelectElement).value })}><option value={'\n'}>换行</option><option value="，">中文逗号</option><option value=" | ">竖线</option><option value=" ">空格</option></select></label>{/if}
+      {:else if action.type === "clearNote"}
+        <p class="description">清空命中图片的备注。</p>
+      {:else if action.type === "stopProcessing"}
+        <p class="description">只让命中的图片停止，不影响同一批次中的其他图片；本规则中排在它后面的任务仍会执行。</p>
+      {/if}
+    </div>
+  </div>
+</article>
+
+<style>
+  .action-card { display: flex; gap: 10px; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-s); background: var(--surface); }
+  .action-order { width: 26px; flex: none; display: flex; flex-direction: column; align-items: center; gap: 3px; color: var(--text-3); }
+  .action-order button { width: 24px; height: 23px; border: 0; border-radius: 5px; background: var(--surface-2); color: var(--text-2); }
+  .action-order button:disabled { opacity: .3; }
+  .action-content { min-width: 0; flex: 1; }
+  .action-head { display: flex; align-items: end; justify-content: space-between; gap: 10px; }
+  .action-body { display: grid; gap: 10px; margin-top: 10px; }
+  .field-row { display: flex; flex-wrap: wrap; gap: 10px; }
+  label { min-width: 170px; display: grid; gap: 4px; }
+  label > span { color: var(--text-3); font-size: var(--font-xs); }
+  .wide { width: 100%; }
+  select, input, textarea { min-height: 34px; padding: 6px 9px; border: 1px solid var(--border); border-radius: var(--radius-s); background: var(--surface); color: var(--text); font: inherit; }
+  textarea { resize: vertical; line-height: 1.5; }
+  .icon-btn { width: 32px; height: 32px; display: grid; place-items: center; flex: none; border: 0; border-radius: 7px; background: transparent; color: var(--text-3); }
+  .icon-btn:hover { background: var(--danger-soft, var(--surface-2)); color: var(--danger, #c53d4a); }
+  .check { min-width: 0; display: flex; align-items: center; gap: 7px; color: var(--text-2); font-size: var(--font-sm); }
+  .check input { min-height: 0; }
+  .description { color: var(--text-3); font-size: var(--font-sm); line-height: 1.55; }
+</style>

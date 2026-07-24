@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 import type { AppSnapshot } from "./app";
 import type { DedupeMode, RowSelection, SourceType, TagMatchMode } from "./types";
+import type { RuleExecutionSummary } from "./automation-rules";
 
 export interface ImageImportResult {
   snapshot: AppSnapshot;
@@ -15,6 +16,7 @@ export interface ImageImportResult {
   metadataRejected: number;
   rejectedMoved: number;
   rejectedMoveFailures: number;
+  ruleExecution: RuleExecutionSummary;
 }
 
 export interface ExistingImageUpdateResult {
@@ -30,6 +32,7 @@ export interface ExistingImageUpdateResult {
   unmatched: number;
   metadataRejected: number;
   copyFailures: number;
+  ruleExecution: RuleExecutionSummary;
 }
 
 export type ImageImportStage = "extracting" | "scanning" | "hashing" | "processing" | "perceptualHashing";

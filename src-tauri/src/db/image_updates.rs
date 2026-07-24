@@ -11,7 +11,7 @@ pub struct ExistingImageTarget {
     pub stored_image_path: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ExistingImageUpdate {
     pub row_id: i64,
     pub identity: String,
@@ -28,6 +28,15 @@ pub struct ExistingImageUpdate {
     pub stored_image_path: Option<String>,
     pub stored_image_is_original: bool,
     pub vibe_reference_count: u32,
+    pub image_width: Option<u32>,
+    pub image_height: Option<u32>,
+    pub generation_model: Option<String>,
+    pub generation_sampler: Option<String>,
+    pub generation_steps: Option<u32>,
+    pub generation_seed: Option<String>,
+    pub generation_scale: Option<f64>,
+    pub generation_cfg_rescale: Option<f64>,
+    pub generation_noise_schedule: Option<String>,
 }
 
 impl Database {
@@ -174,7 +183,16 @@ impl Database {
                     metadata_fingerprint = ?12,
                     stored_image_path = ?13,
                     stored_image_is_original = ?14,
-                    vibe_reference_count = ?15
+                    vibe_reference_count = ?15,
+                    image_width = ?16,
+                    image_height = ?17,
+                    generation_model = ?18,
+                    generation_sampler = ?19,
+                    generation_steps = ?20,
+                    generation_seed = ?21,
+                    generation_scale = ?22,
+                    generation_cfg_rescale = ?23,
+                    generation_noise_schedule = ?24
                  WHERE id = ?1",
             )?;
             for update in updates {
@@ -194,6 +212,15 @@ impl Database {
                     update.stored_image_path,
                     update.stored_image_is_original,
                     update.vibe_reference_count,
+                    update.image_width,
+                    update.image_height,
+                    update.generation_model,
+                    update.generation_sampler,
+                    update.generation_steps,
+                    update.generation_seed,
+                    update.generation_scale,
+                    update.generation_cfg_rescale,
+                    update.generation_noise_schedule,
                 ])? as u64;
             }
         }
@@ -249,6 +276,15 @@ mod tests {
                 stored_image_path: None,
                 stored_image_is_original: true,
                 vibe_reference_count: 2,
+                image_width: Some(1024),
+                image_height: Some(1536),
+                generation_model: Some("NovelAI V4".into()),
+                generation_sampler: Some("k_euler".into()),
+                generation_steps: Some(28),
+                generation_seed: Some("123".into()),
+                generation_scale: Some(5.0),
+                generation_cfg_rescale: Some(0.2),
+                generation_noise_schedule: Some("karras".into()),
             }])
             .unwrap();
 

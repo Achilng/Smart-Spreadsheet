@@ -11,3 +11,4 @@ export * from "./import-export";
 export * from "./search";
 export * from "./prompt-docs";
 export * from "./quick-edit";
+export * from "./automation-rules";

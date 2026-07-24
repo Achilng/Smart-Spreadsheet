@@ -12,7 +12,10 @@ use super::content_hash::sha256_file;
 use super::perceptual_hash::compute_phash;
 use super::{DataDirectory, StagingDir, StorageError, canonical_display_path};
 use crate::db::identity::{archive_member_identity, file_identity};
-use crate::db::{DatabaseError, ExistingImageUpdate, NewRow, SourceType};
+use crate::db::{
+    DatabaseError, ExistingImageUpdate, NewRow, RuleExecutionSummary, RuleExecutionTrigger,
+    SourceType,
+};
 use crate::fsx::{replace_output_file, unique_sibling_path};
 use crate::pipeline::archive::{ArchiveError, archive_extension, extract_archive};
 use crate::pipeline::scan::{ScanError, SourceImage, collect_png_files};
@@ -72,6 +75,7 @@ pub struct ImageImportOutcome {
     pub rejected_moved: u64,
     /// 未能移动到用户配置目录的异常图片数；这些图片仍不入库。
     pub rejected_move_failures: u64,
+    pub rule_execution: RuleExecutionSummary,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -94,6 +98,7 @@ pub struct ExistingImageUpdateOutcome {
     pub metadata_rejected: u64,
     /// 已匹配且元数据有效，但受管原图副本刷新失败；保留原行。
     pub copy_failures: u64,
+    pub rule_execution: RuleExecutionSummary,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -239,7 +244,7 @@ impl DataDirectory {
         let mut hash_jobs = Vec::new();
         for (index, inspection) in inspected {
             match inspection {
-                MetadataInspection::Valid(image) => hash_jobs.push((index, image)),
+                MetadataInspection::Valid(image) => hash_jobs.push((index, *image)),
                 MetadataInspection::Rejected(image) => rejected.push(image),
             }
         }
@@ -348,6 +353,15 @@ impl DataDirectory {
             fs::rename(staging.path(), &target)
                 .map_err(|error| format!("无法落位批次文件目录 {}: {error}", target.display()))
         })?;
+        let rule_execution = database
+            .execute_automation_rules(RuleExecutionTrigger::Import, &outcome.added_row_ids)
+            .unwrap_or_else(|error| {
+                RuleExecutionSummary::failed(
+                    RuleExecutionTrigger::Import,
+                    outcome.added_row_ids.len(),
+                    error,
+                )
+            });
 
         let metadata_rejected = u64::try_from(rejected.len()).unwrap_or(u64::MAX);
         let mut rejected_moved = 0_u64;
@@ -372,6 +386,7 @@ impl DataDirectory {
             metadata_rejected,
             rejected_moved,
             rejected_move_failures,
+            rule_execution,
         })
     }
 }
@@ -469,7 +484,7 @@ impl DataDirectory {
         let valid = inspected
             .into_iter()
             .filter_map(|(index, inspection)| match inspection {
-                MetadataInspection::Valid(image) => Some((index, image)),
+                MetadataInspection::Valid(image) => Some((index, *image)),
                 MetadataInspection::Rejected(_) => {
                     if assignments.contains_key(&index) {
                         metadata_rejected += 1;
@@ -630,9 +645,28 @@ impl DataDirectory {
                 stored_image_path: Some(stored_image_path),
                 stored_image_is_original: true,
                 vibe_reference_count: image.vibe_reference_count,
+                image_width: image.image_width,
+                image_height: image.image_height,
+                generation_model: image.generation_model,
+                generation_sampler: image.generation_sampler,
+                generation_steps: image.generation_steps,
+                generation_seed: image.generation_seed,
+                generation_scale: image.generation_scale,
+                generation_cfg_rescale: image.generation_cfg_rescale,
+                generation_noise_schedule: image.generation_noise_schedule,
             });
         }
+        let updated_row_ids = updates.iter().map(|update| update.row_id).collect::<Vec<_>>();
         let updated = database.update_existing_images(&updates)?;
+        let rule_execution = database
+            .execute_automation_rules(RuleExecutionTrigger::Update, &updated_row_ids)
+            .unwrap_or_else(|error| {
+                RuleExecutionSummary::failed(
+                    RuleExecutionTrigger::Update,
+                    updated_row_ids.len(),
+                    error,
+                )
+            });
 
         let matched = u64::try_from(assignments.len()).unwrap_or(u64::MAX);
         let ambiguous = u64::try_from(ambiguous_indices.len()).unwrap_or(u64::MAX);
@@ -656,6 +690,7 @@ impl DataDirectory {
             unmatched,
             metadata_rejected,
             copy_failures,
+            rule_execution,
         })
     }
 }
@@ -707,14 +742,24 @@ struct ParsedImage {
     artists: Option<String>,
     metadata_fingerprint: Option<String>,
     vibe_reference_count: u32,
+    image_width: Option<u32>,
+    image_height: Option<u32>,
+    generation_model: Option<String>,
+    generation_sampler: Option<String>,
+    generation_steps: Option<u32>,
+    generation_seed: Option<String>,
+    generation_scale: Option<f64>,
+    generation_cfg_rescale: Option<f64>,
+    generation_noise_schedule: Option<String>,
 }
 
 enum MetadataInspection {
-    Valid(ParsedImage),
+    Valid(Box<ParsedImage>),
     Rejected(SourceImage),
 }
 
 fn inspect_metadata(image: SourceImage) -> MetadataInspection {
+    let dimensions = ::image::image_dimensions(&image.absolute_path).ok();
     let Ok(mut chunks) = png_text::read_png_text_chunks(&image.absolute_path) else {
         return MetadataInspection::Rejected(image);
     };
@@ -739,7 +784,7 @@ fn inspect_metadata(image: SourceImage) -> MetadataInspection {
     if positive_prompt.is_none() && character_prompt.is_none() && negative_prompt.is_none() {
         return MetadataInspection::Rejected(image);
     }
-    MetadataInspection::Valid(ParsedImage {
+    MetadataInspection::Valid(Box::new(ParsedImage {
         source: image,
         positive_prompt,
         character_prompt,
@@ -747,7 +792,16 @@ fn inspect_metadata(image: SourceImage) -> MetadataInspection {
         artists: nonempty_string(metadata.artist_tags.join("\n")),
         metadata_fingerprint,
         vibe_reference_count: metadata.vibe_reference_count,
-    })
+        image_width: dimensions.map(|(width, _)| width),
+        image_height: dimensions.map(|(_, height)| height),
+        generation_model: metadata.generation_model,
+        generation_sampler: metadata.generation_sampler,
+        generation_steps: metadata.generation_steps,
+        generation_seed: metadata.generation_seed,
+        generation_scale: metadata.generation_scale,
+        generation_cfg_rescale: metadata.generation_cfg_rescale,
+        generation_noise_schedule: metadata.generation_noise_schedule,
+    }))
 }
 
 fn build_new_row(
@@ -808,6 +862,15 @@ fn build_new_row(
         stored_image_rel,
         metadata_failed: false,
         vibe_reference_count: image.vibe_reference_count,
+        image_width: image.image_width,
+        image_height: image.image_height,
+        generation_model: image.generation_model,
+        generation_sampler: image.generation_sampler,
+        generation_steps: image.generation_steps,
+        generation_seed: image.generation_seed,
+        generation_scale: image.generation_scale,
+        generation_cfg_rescale: image.generation_cfg_rescale,
+        generation_noise_schedule: image.generation_noise_schedule,
     })
 }
 
@@ -988,7 +1051,12 @@ mod tests {
     use flate2::{Compression, write::GzEncoder};
 
     use super::*;
-    use crate::db::RowSelection;
+    use crate::db::{
+        AutomationRuleDraft, GenerationNumberField, GenerationTextField, ImageDimensionField,
+        NumericComparison, NumericOperator, PromptOperator, PromptScope, RowSelection,
+        RuleAction, RuleCondition, RuleConditionGroup, RuleConditionSet, RuleMatchMode,
+        TagOperator, TextOperator,
+    };
     use crate::storage::test_fixtures::{metadata_png_bytes, write_metadata_png};
 
     /// 仅含文本元数据的最小 PNG（签名 + tEXt + IEND，CRC 占位即可，
@@ -1790,6 +1858,107 @@ mod tests {
 
         let again = directory.import_images(&archive_path, |_| {}).unwrap();
         assert_eq!(again.added, 1);
+    }
+
+    #[test]
+    fn user_authored_example_rule_runs_only_for_new_matching_imports() {
+        let temporary = TemporaryImageImport::new();
+        let input = temporary.root.join("rule-import");
+        fs::create_dir_all(&input).unwrap();
+        let fixed_form = "girl, white long hair, blue eyes, colored inner hair(blue), hair flower(white flower)";
+        fs::write(
+            input.join("matching.png"),
+            metadata_png_bytes(
+                fixed_form,
+                Some(r#"{"model":"nai-diffusion-4","steps":28,"sampler":"k_euler","seed":123}"#),
+            ),
+        )
+        .unwrap();
+        fs::write(
+            input.join("other.png"),
+            metadata_png_bytes(
+                "boy, black hair, brown eyes",
+                Some(r#"{"model":"nai-diffusion-4","steps":28}"#),
+            ),
+        )
+        .unwrap();
+        let directory = temporary.initialize_directory();
+        let mut database = directory.open_database().unwrap();
+        assert!(database.list_automation_rules().unwrap().is_empty());
+        database
+            .create_automation_rule(&AutomationRuleDraft {
+                name: "测试：识别固定形态".into(),
+                description: "测试数据，不是内置规则".into(),
+                enabled: true,
+                run_on_import: true,
+                run_on_update: false,
+                conditions: RuleConditionSet {
+                    mode: RuleMatchMode::Any,
+                    negate: false,
+                    groups: vec![RuleConditionGroup {
+                        mode: RuleMatchMode::All,
+                        conditions: vec![
+                            RuleCondition::Prompt {
+                                scope: PromptScope::PositiveAndCharacter,
+                                operator: PromptOperator::ContainsAll,
+                                value: fixed_form.into(),
+                                case_sensitive: false,
+                            },
+                            RuleCondition::ImageDimension {
+                                field: ImageDimensionField::Width,
+                                comparison: NumericComparison {
+                                    operator: NumericOperator::Equal,
+                                    value: 16.0,
+                                    second_value: None,
+                                },
+                            },
+                            RuleCondition::GenerationText {
+                                field: GenerationTextField::Model,
+                                operator: TextOperator::Equals,
+                                value: "nai-diffusion-4".into(),
+                                case_sensitive: false,
+                            },
+                            RuleCondition::GenerationNumber {
+                                field: GenerationNumberField::Steps,
+                                comparison: NumericComparison {
+                                    operator: NumericOperator::Equal,
+                                    value: 28.0,
+                                    second_value: None,
+                                },
+                            },
+                            RuleCondition::Tag {
+                                operator: TagOperator::HasNone,
+                                tags: vec!["花绘".into()],
+                            },
+                        ],
+                    }],
+                },
+                actions: vec![RuleAction::AddTags {
+                    tags: vec!["花绘".into()],
+                }],
+            })
+            .unwrap();
+        drop(database);
+
+        let outcome = directory.import_images(&input, |_| {}).unwrap();
+        assert_eq!(outcome.added, 2);
+        assert_eq!(outcome.rule_execution.input_rows, 2);
+        assert_eq!(outcome.rule_execution.changed_rows, 1);
+        assert_eq!(outcome.rule_execution.reports[0].matched_rows, 1);
+
+        let mut database = directory.open_database().unwrap();
+        let row_ids = database.row_ids_for_batch(outcome.batch_id).unwrap();
+        let selected = database
+            .list_selection_tags(&RowSelection::Explicit { row_ids })
+            .unwrap();
+        let example = selected.iter().find(|tag| tag.name == "花绘").unwrap();
+        assert_eq!(example.selected_rows, 1);
+        drop(database);
+
+        let duplicate = directory.import_images(&input, |_| {}).unwrap();
+        assert_eq!(duplicate.added, 0);
+        assert_eq!(duplicate.rule_execution.input_rows, 0);
+        assert_eq!(duplicate.rule_execution.changed_rows, 0);
     }
 
     struct TemporaryImageImport {

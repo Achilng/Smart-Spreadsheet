@@ -100,8 +100,22 @@ async function performImageImport(path: string, showResult: boolean): Promise<Im
       if (result.rejectedMoveFailures > 0) {
         parts.push(`${formatCount(result.rejectedMoveFailures)} 张移动失败（仍未入库）`);
       }
+      const ruleFailures = result.ruleExecution.reports.filter(report => report.error).length;
+      if (result.ruleExecution.reports.length > 0) {
+        const matched = result.ruleExecution.reports.reduce((sum, report) => sum + report.matchedRows, 0);
+        parts.push(
+          `自动规则共命中 ${formatCount(matched)} 次、修改 ${formatCount(result.ruleExecution.changedRows)} 张`,
+        );
+      }
+      if (ruleFailures > 0 || result.ruleExecution.engineError) {
+        parts.push(
+          result.ruleExecution.engineError
+            ? `自动规则引擎失败：${result.ruleExecution.engineError}`
+            : `${formatCount(ruleFailures)} 条自动规则执行失败（图片已正常导入）`,
+        );
+      }
       setNotice({
-        tone: "success",
+        tone: ruleFailures > 0 || Boolean(result.ruleExecution.engineError) ? "error" : "success",
         text: `导入完成（共发现 ${formatCount(result.totalFound)} 张）：${parts.join("，")}。`,
       });
     }
@@ -149,8 +163,22 @@ export async function runExistingImageUpdate(path: string): Promise<void> {
       if (result.copyFailures > 0) {
         parts.push(`${formatCount(result.copyFailures)} 张副本刷新失败（保留原数据）`);
       }
+      const ruleFailures = result.ruleExecution.reports.filter(report => report.error).length;
+      if (result.ruleExecution.reports.length > 0) {
+        const matched = result.ruleExecution.reports.reduce((sum, report) => sum + report.matchedRows, 0);
+        parts.push(
+          `自动规则共命中 ${formatCount(matched)} 次、修改 ${formatCount(result.ruleExecution.changedRows)} 张`,
+        );
+      }
+      if (ruleFailures > 0 || result.ruleExecution.engineError) {
+        parts.push(
+          result.ruleExecution.engineError
+            ? `自动规则引擎失败：${result.ruleExecution.engineError}`
+            : `${formatCount(ruleFailures)} 条自动规则执行失败（图片元数据已正常更新）`,
+        );
+      }
       setNotice({
-        tone: "success",
+        tone: ruleFailures > 0 || Boolean(result.ruleExecution.engineError) ? "error" : "success",
         text: `更新完成（共发现 ${formatCount(result.totalFound)} 张，匹配 ${formatCount(result.matched)} 张）：${parts.join("，")}。`,
       });
     } finally {

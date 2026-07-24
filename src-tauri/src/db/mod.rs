@@ -1,6 +1,7 @@
 mod batches;
 mod artist_dictionary;
 mod artist_auto_prefix;
+mod automation_rules;
 mod delete;
 mod export;
 mod groups;
@@ -27,6 +28,7 @@ pub use artist_dictionary::{
 pub use artist_auto_prefix::{
     AutoArtistCandidate, AutoArtistPrefixApplyResult, AutoArtistPrefixPreview,
 };
+pub use automation_rules::*;
 pub use delete::DeleteOutcome;
 pub use export::ExportRow;
 pub use groups::GroupSummary;
@@ -49,8 +51,8 @@ use std::path::Path;
 use std::time::Duration;
 
 use migrations::{
-    MIGRATION_9, MIGRATION_10, MIGRATION_11, MIGRATION_12, MIGRATION_13,
-    MINIMUM_UPGRADABLE_SCHEMA_VERSION, SCHEMA_13,
+    MIGRATION_9, MIGRATION_10, MIGRATION_11, MIGRATION_12, MIGRATION_13, MIGRATION_14,
+    MINIMUM_UPGRADABLE_SCHEMA_VERSION, SCHEMA_14,
 };
 use rusqlite::{Connection, MAIN_DB, OptionalExtension, TransactionBehavior};
 use thiserror::Error;
@@ -246,8 +248,8 @@ fn apply_pending_migrations(connection: &mut Connection, from_version: u32) -> R
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let mut version = from_version;
     if version == 0 {
-        transaction.execute_batch(SCHEMA_13)?;
-        version = 13;
+        transaction.execute_batch(SCHEMA_14)?;
+        version = 14;
     }
     if version == 8 {
         transaction.execute_batch(MIGRATION_9)?;
@@ -268,6 +270,10 @@ fn apply_pending_migrations(connection: &mut Connection, from_version: u32) -> R
     if version == 12 {
         transaction.execute_batch(MIGRATION_13)?;
         version = 13;
+    }
+    if version == 13 {
+        transaction.execute_batch(MIGRATION_14)?;
+        version = 14;
     }
     debug_assert_eq!(version, CURRENT_SCHEMA_VERSION);
     transaction.pragma_update(None, "user_version", version)?;
@@ -353,6 +359,7 @@ mod tests {
             vec![
                 "artist_dictionary_names",
                 "artist_dictionary_sync",
+                "automation_rules",
                 "dedupe_aliases",
                 "groups",
                 "import_batches",
@@ -577,7 +584,7 @@ mod tests {
     }
 
     #[test]
-    fn upgrades_v8_through_v13_and_marks_folder_copy_as_original() {
+    fn upgrades_v8_through_v14_and_marks_folder_copy_as_original() {
         let mut connection = Connection::open_in_memory().unwrap();
         create_v8_fixture(&connection);
 
@@ -615,10 +622,14 @@ mod tests {
     }
 
     fn create_v9_fixture(connection: &Connection) {
-        let schema = SCHEMA_13
+        let schema = SCHEMA_14
             .split("CREATE TABLE artist_dictionary_names")
             .next()
             .unwrap()
+            .replace(
+                ",\n    image_width INTEGER CHECK (image_width IS NULL OR image_width > 0),\n    image_height INTEGER CHECK (image_height IS NULL OR image_height > 0),\n    generation_model TEXT,\n    generation_sampler TEXT,\n    generation_steps INTEGER CHECK (generation_steps IS NULL OR generation_steps >= 0),\n    generation_seed TEXT,\n    generation_scale REAL,\n    generation_cfg_rescale REAL,\n    generation_noise_schedule TEXT",
+                "",
+            )
             .replace(
                 ",\n    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
                 "",
@@ -651,10 +662,14 @@ mod tests {
     }
 
     fn create_v8_fixture(connection: &Connection) {
-        let schema = SCHEMA_13
+        let schema = SCHEMA_14
             .split("CREATE TABLE artist_dictionary_names")
             .next()
             .unwrap()
+            .replace(
+                ",\n    image_width INTEGER CHECK (image_width IS NULL OR image_width > 0),\n    image_height INTEGER CHECK (image_height IS NULL OR image_height > 0),\n    generation_model TEXT,\n    generation_sampler TEXT,\n    generation_steps INTEGER CHECK (generation_steps IS NULL OR generation_steps >= 0),\n    generation_seed TEXT,\n    generation_scale REAL,\n    generation_cfg_rescale REAL,\n    generation_noise_schedule TEXT",
+                "",
+            )
             .replace(
                 ",\n    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
                 "",

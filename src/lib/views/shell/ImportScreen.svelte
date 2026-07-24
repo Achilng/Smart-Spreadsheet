@@ -5,6 +5,7 @@
     chooseImageFolder,
   } from "../../stores/import-actions.svelte";
   import { softFly } from "../../ui/motion";
+  import { openToolboxWindow } from "../../windows/toolbox";
 </script>
 
 <div class="center-screen">
@@ -26,6 +27,14 @@
         onclick={() => void chooseImageFolder()}
       >
         导入图片文件夹
+      </button>
+      <button
+        type="button"
+        class="btn"
+        disabled={app.busy}
+        onclick={() => void openToolboxWindow()}
+      >
+        编写自动规则
       </button>
       <button
         type="button"

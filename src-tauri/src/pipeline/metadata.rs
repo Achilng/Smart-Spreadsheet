@@ -2,13 +2,20 @@ use super::artist::extract_artist_tags;
 use serde_json::Value;
 use std::collections::BTreeMap;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NovelAiMetadata {
     pub positive_prompt: String,
     pub character_prompt: String,
     pub negative_prompt: String,
     pub artist_tags: Vec<String>,
     pub vibe_reference_count: u32,
+    pub generation_model: Option<String>,
+    pub generation_sampler: Option<String>,
+    pub generation_steps: Option<u32>,
+    pub generation_seed: Option<String>,
+    pub generation_scale: Option<f64>,
+    pub generation_cfg_rescale: Option<f64>,
+    pub generation_noise_schedule: Option<String>,
 }
 
 pub fn parse_novelai_metadata(text_chunks: &BTreeMap<String, String>) -> NovelAiMetadata {
@@ -62,6 +69,36 @@ pub fn parse_novelai_metadata(text_chunks: &BTreeMap<String, String>) -> NovelAi
         .map_or(0, |references| {
             u32::try_from(references.len()).unwrap_or(u32::MAX)
         });
+    let generation_model = first_non_empty([
+        text_chunks.get("Source").cloned(),
+        comment_json
+            .as_ref()
+            .and_then(|json| string_at_path(json, &["model"])),
+        comment_json
+            .as_ref()
+            .and_then(|json| string_at_path(json, &["source"])),
+    ]);
+    let generation_sampler = comment_json
+        .as_ref()
+        .and_then(|json| string_at_path(json, &["sampler"]));
+    let generation_steps = comment_json
+        .as_ref()
+        .and_then(|json| number_at_path(json, &["steps"]))
+        .filter(|value| *value >= 0.0 && *value <= f64::from(u32::MAX))
+        .map(|value| value as u32);
+    let generation_seed = comment_json
+        .as_ref()
+        .and_then(|json| json.get("seed"))
+        .and_then(json_scalar_to_text);
+    let generation_scale = comment_json
+        .as_ref()
+        .and_then(|json| number_at_path(json, &["scale"]));
+    let generation_cfg_rescale = comment_json
+        .as_ref()
+        .and_then(|json| number_at_path(json, &["cfg_rescale"]));
+    let generation_noise_schedule = comment_json
+        .as_ref()
+        .and_then(|json| string_at_path(json, &["noise_schedule"]));
 
     NovelAiMetadata {
         positive_prompt,
@@ -69,6 +106,13 @@ pub fn parse_novelai_metadata(text_chunks: &BTreeMap<String, String>) -> NovelAi
         negative_prompt,
         artist_tags,
         vibe_reference_count,
+        generation_model,
+        generation_sampler,
+        generation_steps,
+        generation_seed,
+        generation_scale,
+        generation_cfg_rescale,
+        generation_noise_schedule,
     }
 }
 
@@ -118,6 +162,24 @@ fn string_at_path(root: &Value, path: &[&str]) -> Option<String> {
     }
 
     json_value_to_text(current)
+}
+
+fn number_at_path(root: &Value, path: &[&str]) -> Option<f64> {
+    let mut current = root;
+    for key in path {
+        current = current.get(key)?;
+    }
+    current
+        .as_f64()
+        .or_else(|| current.as_str()?.trim().parse::<f64>().ok())
+}
+
+fn json_scalar_to_text(value: &Value) -> Option<String> {
+    match value {
+        Value::String(text) => Some(text.clone()),
+        Value::Number(number) => Some(number.to_string()),
+        _ => None,
+    }
 }
 
 fn find_string_key(root: &Value, target_key: &str) -> Option<String> {
@@ -271,5 +333,34 @@ mod tests {
 
         assert_eq!(vibe_reference_count(&chunks), 2);
         assert_eq!(parse_novelai_metadata(&chunks).vibe_reference_count, 2);
+    }
+
+    #[test]
+    fn reads_generation_parameters_without_losing_large_seed() {
+        let mut chunks = BTreeMap::new();
+        chunks.insert("Source".into(), "NovelAI Diffusion V4.5 Full".into());
+        chunks.insert(
+            "Comment".into(),
+            r#"{"sampler":"k_euler_ancestral","steps":28,"seed":18446744073709551615,"scale":5.5,"cfg_rescale":0.2,"noise_schedule":"karras"}"#.into(),
+        );
+
+        let metadata = parse_novelai_metadata(&chunks);
+
+        assert_eq!(
+            metadata.generation_model.as_deref(),
+            Some("NovelAI Diffusion V4.5 Full")
+        );
+        assert_eq!(
+            metadata.generation_sampler.as_deref(),
+            Some("k_euler_ancestral")
+        );
+        assert_eq!(metadata.generation_steps, Some(28));
+        assert_eq!(
+            metadata.generation_seed.as_deref(),
+            Some("18446744073709551615")
+        );
+        assert_eq!(metadata.generation_scale, Some(5.5));
+        assert_eq!(metadata.generation_cfg_rescale, Some(0.2));
+        assert_eq!(metadata.generation_noise_schedule.as_deref(), Some("karras"));
     }
 }

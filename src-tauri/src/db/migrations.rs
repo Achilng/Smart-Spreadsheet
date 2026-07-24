@@ -1,8 +1,8 @@
-pub const CURRENT_SCHEMA_VERSION: u32 = 13;
+pub const CURRENT_SCHEMA_VERSION: u32 = 14;
 pub const MINIMUM_UPGRADABLE_SCHEMA_VERSION: u32 = 8;
 
 /// 新资料库直接创建当前结构，不再重放早期工作簿/XLSX 导入迁移。
-pub(super) const SCHEMA_13: &str = r#"
+pub(super) const SCHEMA_14: &str = r#"
 CREATE TABLE import_batches (
     id INTEGER PRIMARY KEY,
     source_type TEXT NOT NULL CHECK (source_type IN ('legacy', 'folder', 'archive')),
@@ -43,6 +43,15 @@ CREATE TABLE rows (
         CHECK (stored_image_is_original IN (0, 1)),
     vibe_reference_count INTEGER
         CHECK (vibe_reference_count IS NULL OR vibe_reference_count >= 0),
+    image_width INTEGER CHECK (image_width IS NULL OR image_width > 0),
+    image_height INTEGER CHECK (image_height IS NULL OR image_height > 0),
+    generation_model TEXT,
+    generation_sampler TEXT,
+    generation_steps INTEGER CHECK (generation_steps IS NULL OR generation_steps >= 0),
+    generation_seed TEXT,
+    generation_scale REAL,
+    generation_cfg_rescale REAL,
+    generation_noise_schedule TEXT,
     updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 ) STRICT;
 
@@ -89,6 +98,20 @@ CREATE TABLE artist_dictionary_sync (
     artist_count INTEGER NOT NULL CHECK (artist_count >= 0),
     alias_count INTEGER NOT NULL CHECK (alias_count >= 0),
     name_count INTEGER NOT NULL CHECK (name_count >= 0)
+) STRICT;
+
+CREATE TABLE automation_rules (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+    position INTEGER NOT NULL UNIQUE CHECK (position >= 0),
+    run_on_import INTEGER NOT NULL DEFAULT 1 CHECK (run_on_import IN (0, 1)),
+    run_on_update INTEGER NOT NULL DEFAULT 0 CHECK (run_on_update IN (0, 1)),
+    conditions_json TEXT NOT NULL,
+    actions_json TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 ) STRICT;
 
 CREATE INDEX idx_rows_batch ON rows(batch_id);
@@ -241,4 +264,35 @@ CREATE TABLE artist_dictionary_sync (
 
 CREATE INDEX idx_artist_dictionary_canonical
 ON artist_dictionary_names(canonical_name, match_name);
+"#;
+
+/// v13 → v14：保存可复用自动规则，并缓存规则条件需要的图片尺寸与 NovelAI
+/// 生成参数。历史行保持 NULL；重新更新原图后会补齐可读取的字段。
+pub(super) const MIGRATION_14: &str = r#"
+ALTER TABLE rows ADD COLUMN image_width INTEGER
+CHECK (image_width IS NULL OR image_width > 0);
+ALTER TABLE rows ADD COLUMN image_height INTEGER
+CHECK (image_height IS NULL OR image_height > 0);
+ALTER TABLE rows ADD COLUMN generation_model TEXT;
+ALTER TABLE rows ADD COLUMN generation_sampler TEXT;
+ALTER TABLE rows ADD COLUMN generation_steps INTEGER
+CHECK (generation_steps IS NULL OR generation_steps >= 0);
+ALTER TABLE rows ADD COLUMN generation_seed TEXT;
+ALTER TABLE rows ADD COLUMN generation_scale REAL;
+ALTER TABLE rows ADD COLUMN generation_cfg_rescale REAL;
+ALTER TABLE rows ADD COLUMN generation_noise_schedule TEXT;
+
+CREATE TABLE automation_rules (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+    position INTEGER NOT NULL UNIQUE CHECK (position >= 0),
+    run_on_import INTEGER NOT NULL DEFAULT 1 CHECK (run_on_import IN (0, 1)),
+    run_on_update INTEGER NOT NULL DEFAULT 0 CHECK (run_on_update IN (0, 1)),
+    conditions_json TEXT NOT NULL,
+    actions_json TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+) STRICT;
 "#;

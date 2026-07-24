@@ -7,13 +7,14 @@ use tauri::{
 
 use super::runtime::{AppRuntime, RuntimeSnapshot};
 use crate::db::{
-    ArtistDictionaryStatus, AutoArtistPrefixApplyResult, AutoArtistPrefixPreview, BatchSummary,
-    DedupeCluster, DedupeMode, GroupSummary, LibrarySummary, MutableRowState, PromptEditResult,
+    ArtistDictionaryStatus, AutoArtistPrefixApplyResult, AutomationRule, AutomationRuleDraft,
+    AutoArtistPrefixPreview, BatchSummary, DedupeCluster, DedupeMode, GroupSummary,
+    LibrarySummary, MutableRowState, PromptEditResult,
     QuickArtistPrefixApplyResult, QuickArtistPrefixChange, QuickArtistPrefixPreview,
     QuickEditCondition, QuickGroupApplyResult, QuickGroupChange, QuickGroupPreview,
     QuickTagApplyResult, QuickTagAssociation, QuickTagPreview, RowPage, RowQuery, SortMode,
-    RowRecord, RowSelection, SinglePromptEditResult, TagMatchMode, TagMutationResult,
-    TagSelectionSummary, TagSummary,
+    RowRecord, RowSelection, RuleExecutionSummary, RulePreview, SinglePromptEditResult,
+    TagMatchMode, TagMutationResult, TagSelectionSummary, TagSummary,
 };
 use crate::storage::{
     PerceptualHashProgress, PromptDocAsset, PromptDocDetail, PromptDocSummary, SimilarImageMatch,
@@ -72,6 +73,7 @@ pub(crate) struct ImageImportResultDto {
     metadata_rejected: u64,
     rejected_moved: u64,
     rejected_move_failures: u64,
+    rule_execution: RuleExecutionSummary,
 }
 
 #[derive(Debug, Serialize)]
@@ -89,6 +91,7 @@ pub(crate) struct ExistingImageUpdateResultDto {
     unmatched: u64,
     metadata_rejected: u64,
     copy_failures: u64,
+    rule_execution: RuleExecutionSummary,
 }
 
 #[derive(Debug, Serialize)]
@@ -260,6 +263,7 @@ pub(crate) async fn import_images(
                 metadata_rejected: outcome.metadata_rejected,
                 rejected_moved: outcome.rejected_moved,
                 rejected_move_failures: outcome.rejected_move_failures,
+                rule_execution: outcome.rule_execution,
             })
             .map_err(error_text)
     })
@@ -292,6 +296,7 @@ pub(crate) async fn update_existing_images(
                 unmatched: outcome.unmatched,
                 metadata_rejected: outcome.metadata_rejected,
                 copy_failures: outcome.copy_failures,
+                rule_execution: outcome.rule_execution,
             })
             .map_err(error_text)
     })
@@ -760,6 +765,75 @@ pub(crate) fn set_tags_for_row(
 ) -> Result<TagMutationResult, String> {
     runtime
         .set_tags_for_row(row_id, &tags)
+        .map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn list_automation_rules(
+    runtime: State<'_, AppRuntime>,
+) -> Result<Vec<AutomationRule>, String> {
+    runtime.list_automation_rules().map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn create_automation_rule(
+    draft: AutomationRuleDraft,
+    runtime: State<'_, AppRuntime>,
+) -> Result<AutomationRule, String> {
+    runtime.create_automation_rule(&draft).map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn update_automation_rule(
+    id: i64,
+    draft: AutomationRuleDraft,
+    runtime: State<'_, AppRuntime>,
+) -> Result<AutomationRule, String> {
+    runtime.update_automation_rule(id, &draft).map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn set_automation_rule_enabled(
+    id: i64,
+    enabled: bool,
+    runtime: State<'_, AppRuntime>,
+) -> Result<(), String> {
+    runtime
+        .set_automation_rule_enabled(id, enabled)
+        .map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn delete_automation_rule(
+    id: i64,
+    runtime: State<'_, AppRuntime>,
+) -> Result<bool, String> {
+    runtime.delete_automation_rule(id).map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn reorder_automation_rules(
+    ids: Vec<i64>,
+    runtime: State<'_, AppRuntime>,
+) -> Result<(), String> {
+    runtime.reorder_automation_rules(&ids).map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn preview_automation_rule(
+    id: i64,
+    runtime: State<'_, AppRuntime>,
+) -> Result<RulePreview, String> {
+    runtime.preview_automation_rule(id).map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn run_automation_rule_on_library(
+    id: i64,
+    runtime: State<'_, AppRuntime>,
+) -> Result<RuleExecutionSummary, String> {
+    runtime
+        .run_automation_rule_on_library(id)
         .map_err(error_text)
 }
 

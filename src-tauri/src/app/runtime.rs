@@ -7,14 +7,15 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::db::{
-    ArtistDictionaryInput, ArtistDictionaryStatus, AutoArtistPrefixApplyResult,
-    AutoArtistPrefixPreview, BatchSummary, DedupeCluster, DedupeMode, GroupSummary, LibrarySummary,
+    ArtistDictionaryInput, ArtistDictionaryStatus, AutoArtistPrefixApplyResult, AutomationRule,
+    AutomationRuleDraft, AutomationRuleError, AutoArtistPrefixPreview, BatchSummary,
+    DedupeCluster, DedupeMode, GroupSummary, LibrarySummary,
     MutableRowState, QuickArtistPrefixApplyResult, QuickArtistPrefixChange,
     QuickArtistPrefixPreview,
     QuickEditCondition, QuickEditError, QuickGroupApplyResult, QuickGroupChange,
     QuickGroupPreview, QuickTagApplyResult, QuickTagAssociation, QuickTagPreview, RowPage,
     RowQuery, RowSelection, SortMode, TagMatchMode, TagMutationError, TagMutationResult,
-    TagSelectionSummary, TagSummary,
+    RuleExecutionSummary, RulePreview, TagSelectionSummary, TagSummary,
 };
 use crate::images::{ImageVariant, RowImageError};
 use crate::storage::{
@@ -66,6 +67,8 @@ pub(crate) enum AppRuntimeError {
     TagMutation(#[from] TagMutationError),
     #[error("快速整理失败: {0}")]
     QuickEdit(#[from] QuickEditError),
+    #[error("自动规则操作失败: {0}")]
+    AutomationRule(#[from] AutomationRuleError),
     #[error("删除行失败: {0}")]
     RowDeletion(#[from] RowDeletionError),
     #[error("图片读取失败: {0}")]
@@ -317,6 +320,52 @@ impl AppRuntime {
         tags: &[String],
     ) -> Result<TagMutationResult, AppRuntimeError> {
         self.with_database_mut(|db| db.set_tags_for_row(row_id, tags))
+    }
+
+    pub(crate) fn list_automation_rules(&self) -> Result<Vec<AutomationRule>, AppRuntimeError> {
+        self.with_database(|db| db.list_automation_rules())
+    }
+
+    pub(crate) fn create_automation_rule(
+        &self,
+        draft: &AutomationRuleDraft,
+    ) -> Result<AutomationRule, AppRuntimeError> {
+        self.with_database(|db| db.create_automation_rule(draft))
+    }
+
+    pub(crate) fn update_automation_rule(
+        &self,
+        id: i64,
+        draft: &AutomationRuleDraft,
+    ) -> Result<AutomationRule, AppRuntimeError> {
+        self.with_database(|db| db.update_automation_rule(id, draft))
+    }
+
+    pub(crate) fn set_automation_rule_enabled(
+        &self,
+        id: i64,
+        enabled: bool,
+    ) -> Result<(), AppRuntimeError> {
+        self.with_database(|db| db.set_automation_rule_enabled(id, enabled))
+    }
+
+    pub(crate) fn delete_automation_rule(&self, id: i64) -> Result<bool, AppRuntimeError> {
+        self.with_database(|db| db.delete_automation_rule(id))
+    }
+
+    pub(crate) fn reorder_automation_rules(&self, ids: &[i64]) -> Result<(), AppRuntimeError> {
+        self.with_database(|db| db.reorder_automation_rules(ids))
+    }
+
+    pub(crate) fn preview_automation_rule(&self, id: i64) -> Result<RulePreview, AppRuntimeError> {
+        self.with_database(|db| db.preview_automation_rule(id))
+    }
+
+    pub(crate) fn run_automation_rule_on_library(
+        &self,
+        id: i64,
+    ) -> Result<RuleExecutionSummary, AppRuntimeError> {
+        self.with_database_mut(|db| db.run_automation_rule_on_library(id))
     }
 
     pub(crate) fn preview_quick_tag(

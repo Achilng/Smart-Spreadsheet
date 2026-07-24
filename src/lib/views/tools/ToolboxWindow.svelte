@@ -8,6 +8,7 @@
   import ScanSearch from "@lucide/svelte/icons/scan-search";
   import Settings2 from "@lucide/svelte/icons/settings-2";
   import Shuffle from "@lucide/svelte/icons/shuffle";
+  import Workflow from "@lucide/svelte/icons/workflow";
   import { onMount } from "svelte";
 
   import { app, refreshSnapshot } from "../../stores/app-state.svelte";
@@ -15,6 +16,7 @@
   import WindowControls from "../../ui/WindowControls.svelte";
   import ArtistGeneratorView from "./ArtistGeneratorView.svelte";
   import ArtistPrefixTool from "./ArtistPrefixTool.svelte";
+  import AutomationRulesTool from "./AutomationRulesTool.svelte";
   import DataManagementTool from "./DataManagementTool.svelte";
   import ImageExportTool from "./ImageExportTool.svelte";
   import ImageSearchTool from "./ImageSearchTool.svelte";
@@ -23,6 +25,7 @@
   import QuickEditTool from "./QuickEditTool.svelte";
 
   type ToolId =
+    | "automationRules"
     | "quickEdit"
     | "artistPrefix"
     | "artist"
@@ -42,6 +45,14 @@
   }
 
   const tools: ToolDefinition[] = [
+    {
+      id: "automationRules",
+      label: "自动规则",
+      description: "编写导入后自动检查与整理规则",
+      group: "常用工具",
+      requiresLibrary: false,
+      icon: Workflow,
+    },
     {
       id: "quickEdit",
       label: "快速整理",
@@ -110,8 +121,9 @@
 
   const groups = ["常用工具", "文件处理", "资料库维护"] as const;
 
-  let activeTool = $state<ToolId>("quickEdit");
+  let activeTool = $state<ToolId>("automationRules");
   const visited = $state<Record<ToolId, boolean>>({
+    automationRules: false,
     quickEdit: false,
     artistPrefix: false,
     artist: false,
@@ -213,6 +225,11 @@
           {#if visited.quickEdit}
             <section class="tool-panel" class:is-active={activeTool === "quickEdit"}>
               <QuickEditTool active={activeTool === "quickEdit"} />
+            </section>
+          {/if}
+          {#if visited.automationRules}
+            <section class="tool-panel rules-panel" class:is-active={activeTool === "automationRules"}>
+              <AutomationRulesTool />
             </section>
           {/if}
           {#if visited.artistPrefix}
@@ -447,6 +464,10 @@
 
   .tool-panel.is-active {
     display: block;
+  }
+
+  .tool-panel.rules-panel {
+    overflow: hidden;
   }
 
   .loading-state {

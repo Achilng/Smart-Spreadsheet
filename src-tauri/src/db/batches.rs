@@ -51,7 +51,7 @@ pub struct LibrarySummary {
 }
 
 /// 追加导入的一行候选数据。`identity` 为增量跳过的身份键（见 `identity` 模块）。
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct NewRow {
     pub source_ordinal: u32,
     pub identity: String,
@@ -72,6 +72,15 @@ pub struct NewRow {
     pub stored_image_rel: Option<String>,
     pub metadata_failed: bool,
     pub vibe_reference_count: u32,
+    pub image_width: Option<u32>,
+    pub image_height: Option<u32>,
+    pub generation_model: Option<String>,
+    pub generation_sampler: Option<String>,
+    pub generation_steps: Option<u32>,
+    pub generation_seed: Option<String>,
+    pub generation_scale: Option<f64>,
+    pub generation_cfg_rescale: Option<f64>,
+    pub generation_noise_schedule: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -82,6 +91,8 @@ pub struct AppendOutcome {
     pub skipped_content: u64,
     /// 身份键已存在但文件大小/修改时间与库中记录不一致的数量（仅供提示，不改动已入库行）。
     pub changed_existing: u64,
+    /// 本次真正插入的新行；供导入后规则严格限定作用域。
+    pub added_row_ids: Vec<i64>,
 }
 
 impl Database {
@@ -123,6 +134,7 @@ impl Database {
         let mut skipped_existing: u64 = 0;
         let mut skipped_content: u64 = 0;
         let mut changed_existing: u64 = 0;
+        let mut added_row_ids = Vec::new();
         {
             let mut seen_content = transaction
                 .prepare("SELECT content_hash FROM rows WHERE content_hash IS NOT NULL")?
@@ -137,10 +149,14 @@ impl Database {
                     time, positive_prompt, character_prompt, negative_prompt, note, artists,
                     image_folder, image_path, stored_image_path, metadata_failed,
                     content_hash, perceptual_hash, metadata_fingerprint,
-                    stored_image_is_original, vibe_reference_count, updated_at
+                    stored_image_is_original, vibe_reference_count,
+                    image_width, image_height, generation_model, generation_sampler,
+                    generation_steps, generation_seed, generation_scale,
+                    generation_cfg_rescale, generation_noise_schedule, updated_at
                  ) VALUES (
                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
                     ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20,
+                    ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29,
                     strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
                  )",
             )?;
@@ -198,7 +214,17 @@ impl Database {
                     row.metadata_fingerprint,
                     stored_image_path.is_some() && source_type != SourceType::Legacy,
                     row.vibe_reference_count,
+                    row.image_width,
+                    row.image_height,
+                    row.generation_model,
+                    row.generation_sampler,
+                    row.generation_steps,
+                    row.generation_seed,
+                    row.generation_scale,
+                    row.generation_cfg_rescale,
+                    row.generation_noise_schedule,
                 ])?;
+                added_row_ids.push(transaction.last_insert_rowid());
                 added += 1;
             }
         }
@@ -221,6 +247,7 @@ impl Database {
             skipped_existing,
             skipped_content,
             changed_existing,
+            added_row_ids,
         })
     }
 
