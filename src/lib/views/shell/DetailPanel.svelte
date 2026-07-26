@@ -616,7 +616,7 @@
 
   .panel-header h3 {
     font-size: var(--font-lg);
-    font-weight: 650;
+    font-weight: 700;
     letter-spacing: -0.01em;
     color: var(--text);
   }
@@ -651,7 +651,17 @@
     padding: 12px 14px 20px;
     display: flex;
     flex-direction: column;
-    gap: 14px;
+  }
+
+  /* 编辑排版：分节靠上发丝线，形成纸面节奏 */
+  .panel-scroll > :global(section) {
+    padding: 14px 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .panel-scroll > :global(section:first-of-type),
+  .panel-scroll > :global(.preview-box) {
+    border-top: none;
   }
 
   .preview-box {
@@ -695,12 +705,10 @@
 
   .tag-editor h4,
   .field h4 {
-    font-size: var(--font-xs);
-    color: var(--text-3);
-    font-weight: 650;
-    letter-spacing: var(--ls-caps);
-    text-transform: uppercase;
-    margin-bottom: 6px;
+    font-size: 12.5px;
+    color: var(--text);
+    font-weight: 700;
+    margin-bottom: 8px;
   }
 
   .chip-list {

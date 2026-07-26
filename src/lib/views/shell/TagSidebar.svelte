@@ -476,9 +476,9 @@
   }
 
   .sidebar-header h3 {
-    font-size: var(--font-lg);
-    font-weight: 650;
-    letter-spacing: -0.01em;
+    font-size: 19px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
     color: var(--text);
   }
 
@@ -642,7 +642,8 @@
   .tag-count,
   .coverage {
     font-size: var(--font-xs);
-    color: var(--text-3);
+    color: var(--text-4);
+    font-variant-numeric: tabular-nums;
     flex: none;
   }
 

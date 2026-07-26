@@ -325,8 +325,9 @@
   }
 
   .nav-intro h1 {
-    font-size: var(--font-2xl);
-    letter-spacing: -0.01em;
+    font-size: 19px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
     line-height: 1.25;
   }
 
