@@ -90,3 +90,19 @@ export function softPop(
     },
   };
 }
+
+/** 侧向面板宽度滑入/滑出：从元素当前 CSS 宽度插值到 0，配合内衬层防内容挤压 */
+export function panelSlide(
+  node: Element,
+  { delay = 0, duration = 220 }: MotionParams = {},
+): TransitionConfig {
+  const reduced = reducedMotion();
+  const width = Number.parseFloat(getComputedStyle(node).width) || 0;
+  return {
+    delay: reduced ? 0 : delay,
+    duration: reduced ? 0 : duration,
+    easing: responsiveEase,
+    css: t =>
+      `width: ${(t * width).toFixed(1)}px; opacity: ${Math.min(1, t * 1.6)}; overflow: hidden;`,
+  };
+}

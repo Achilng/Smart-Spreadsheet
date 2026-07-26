@@ -47,7 +47,7 @@
   import TagSidebar from "./TagSidebar.svelte";
   import TopBar from "./TopBar.svelte";
   import UpdateImportDialog from "./UpdateImportDialog.svelte";
-  import { softFade, softFly, softPop } from "../../ui/motion";
+  import { panelSlide, softFade, softPop } from "../../ui/motion";
 
   type DataViewMode = Exclude<ViewMode, "promptDocs">;
 
@@ -291,8 +291,10 @@
       </main>
 
       {#if app.detailOpen}
-        <aside class="detail" transition:softFly={{ duration: 190, x: 12, y: 0 }}>
-          <DetailPanel />
+        <aside class="detail" transition:panelSlide={{ duration: 200 }}>
+          <div class="detail-inner">
+            <DetailPanel />
+          </div>
         </aside>
       {:else}
         <button
@@ -439,10 +441,22 @@
   }
 
   .detail {
-    width: 340px;
+    --detail-width: 340px;
+    width: var(--detail-width);
     flex: none;
     background: var(--surface);
     border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: row;
+    justify-content: flex-end;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  /* 内衬层固定为目标宽度：宽度动画期间内容不被挤压，右锚定呈现从右滑入 */
+  .detail-inner {
+    width: var(--detail-width);
+    flex: none;
     display: flex;
     flex-direction: column;
     min-height: 0;
@@ -455,7 +469,7 @@
     }
 
     .detail {
-      width: 300px;
+      --detail-width: 300px;
     }
   }
 
@@ -465,7 +479,7 @@
     }
 
     .detail {
-      width: 270px;
+      --detail-width: 270px;
     }
   }
 
