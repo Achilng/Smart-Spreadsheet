@@ -225,7 +225,8 @@
     z-index: var(--z-nav);
     display: grid;
     align-items: center;
-    background: var(--surface-2);
+    background: color-mix(in srgb, var(--surface-opaque) 55%, transparent);
+    backdrop-filter: blur(12px);
     border-bottom: 1px solid var(--border);
     font-size: var(--font-sm);
     color: var(--text-2);

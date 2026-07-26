@@ -504,7 +504,7 @@
   .rule-controls button:hover:not(:disabled) { background: var(--surface-3); color: var(--text); }
   .rule-controls button:disabled { opacity: .25; }
   .rule-editor { min-width: 0; min-height: 0; overflow-y: auto; background: var(--bg); }
-  .editor-head { position: sticky; top: 0; z-index: 5; min-height: 76px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 24px; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--surface) 94%, transparent); backdrop-filter: blur(10px); }
+  .editor-head { position: sticky; top: 0; z-index: 5; min-height: 76px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 24px; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--surface-opaque) 55%, transparent); backdrop-filter: blur(12px); }
   .eyebrow { color: var(--text-3); font-size: var(--font-xs); }
   .editor-head h2 { margin-top: 2px; font-size: var(--font-lg); }
   .editor-actions { display: flex; gap: 8px; }

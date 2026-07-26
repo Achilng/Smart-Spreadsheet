@@ -278,7 +278,8 @@
     width: 100%;
     padding: 10px 16px;
     border: none;
-    background: var(--surface);
+    background: color-mix(in srgb, var(--surface-opaque) 55%, transparent);
+    backdrop-filter: blur(12px);
     border-bottom: 1px solid var(--border);
     cursor: pointer;
     font-size: var(--font-base);

@@ -130,12 +130,26 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    background: var(--surface);
-    border: 1px solid var(--border-strong);
+    background: var(--glass-solid);
+    backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+    border: 1px solid rgb(255 255 255 / 55%);
     border-radius: var(--radius-full);
-    box-shadow: var(--shadow-2);
+    box-shadow: var(--shadow-2), var(--shadow-lift);
     padding: 8px 10px 8px 16px;
     white-space: nowrap;
+  }
+
+  :global(html:not([data-glass="on"])) .selection-bar {
+    background: var(--surface-opaque);
+    border-color: var(--border-strong);
+    backdrop-filter: none;
+    box-shadow: var(--shadow-2);
+  }
+
+  .selection-bar .btn {
+    padding: 5px 14px;
+    font-size: var(--font-sm);
+    border-radius: var(--radius-full);
   }
 
   .count {
@@ -153,12 +167,6 @@
     display: inline-block;
     min-width: 1ch;
     text-align: center;
-  }
-
-  .selection-bar .btn {
-    padding: 4px 12px;
-    font-size: var(--font-sm);
-    border-radius: var(--radius-full);
   }
 
 </style>

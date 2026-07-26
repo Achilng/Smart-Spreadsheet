@@ -181,7 +181,7 @@
     justify-content: flex-end;
     padding: 0 16px;
     border-bottom: 1px solid var(--border);
-    background: linear-gradient(180deg, var(--surface) 0%, #fbfcfd 100%);
+    background: transparent;
   }
 
   .option-copy {
@@ -257,12 +257,18 @@
     width: 286px;
     max-width: calc(100vw - 32px);
     padding: 6px;
-    border: 1px solid var(--border-strong);
+    border: 1px solid rgb(255 255 255 / 55%);
     border-radius: var(--radius-m);
-    background: color-mix(in srgb, var(--surface) 97%, transparent);
+    background: var(--glass-solid);
     box-shadow: var(--shadow-3);
-    backdrop-filter: blur(14px);
+    backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
     transform-origin: top right;
+  }
+
+  :global(html:not([data-glass="on"])) .sort-menu {
+    background: var(--surface-opaque);
+    border-color: var(--border-strong);
+    backdrop-filter: none;
   }
 
   .menu-heading {

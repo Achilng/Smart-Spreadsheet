@@ -99,34 +99,52 @@
     padding: 10px 14px;
     border-radius: var(--radius-s);
     border: 1px solid;
-    background: var(--surface);
+    background: var(--glass-solid);
+    backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
     box-shadow: var(--shadow-2);
     font-size: var(--font-md);
+  }
+
+  :global(html:not([data-glass="on"])) .toast {
+    background: var(--surface-opaque);
+    backdrop-filter: none;
   }
 
   .toast-success {
     border-color: var(--success);
     color: var(--success);
-    background: var(--success-soft);
+    background: color-mix(in srgb, var(--success) 8%, var(--glass-solid));
   }
 
   .toast-error {
     border-color: var(--danger);
     color: var(--danger);
-    background: var(--danger-soft);
+    background: color-mix(in srgb, var(--danger) 8%, var(--glass-solid));
   }
 
   .toast-progress {
     border-color: var(--accent);
     color: var(--accent);
-    background: var(--accent-soft);
+    background: color-mix(in srgb, var(--accent) 8%, var(--glass-solid));
+  }
+
+  :global(html:not([data-glass="on"])) .toast-success {
+    background: color-mix(in srgb, var(--success) 8%, var(--surface-opaque));
+  }
+
+  :global(html:not([data-glass="on"])) .toast-error {
+    background: color-mix(in srgb, var(--danger) 8%, var(--surface-opaque));
+  }
+
+  :global(html:not([data-glass="on"])) .toast-progress {
+    background: color-mix(in srgb, var(--accent) 8%, var(--surface-opaque));
   }
 
   .progress-track {
     width: 120px;
     height: 6px;
     border-radius: var(--radius-full);
-    background: var(--surface);
+    background: var(--surface-opaque);
     overflow: hidden;
     flex: none;
   }

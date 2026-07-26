@@ -55,7 +55,7 @@
       aria-modal="true"
       tabindex="-1"
       style:width={width}
-      transition:softPop={{ duration: 200, y: 6, start: 0.985 }}
+      transition:softPop={{ duration: 180, y: 6, start: 0.985 }}
     >
       {@render children()}
     </div>
@@ -70,19 +70,27 @@
     display: grid;
     place-items: center;
     padding: 24px;
-    background: rgb(15 20 28 / 55%);
+    background: var(--overlay-modal);
+    backdrop-filter: blur(4px);
   }
 
   .modal-dialog {
     max-width: 90vw;
     max-height: 85vh;
-    background: var(--surface);
-    border: 1px solid var(--border);
+    background: var(--glass-solid);
+    backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+    border: 1px solid rgb(255 255 255 / 55%);
     border-radius: var(--radius-m);
     box-shadow: var(--shadow-2);
     display: flex;
     flex-direction: column;
     overflow: hidden;
     outline: none;
+  }
+
+  :global(html:not([data-glass="on"])) .modal-dialog {
+    background: var(--surface-opaque);
+    border-color: var(--border);
+    backdrop-filter: none;
   }
 </style>

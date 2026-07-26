@@ -47,13 +47,20 @@
     z-index: var(--z-menu);
     min-width: 160px;
     padding: 4px;
-    background: var(--surface);
-    border: 1px solid var(--border-strong);
+    background: var(--glass-solid);
+    backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+    border: 1px solid rgb(255 255 255 / 55%);
     border-radius: var(--radius-s);
     box-shadow: var(--shadow-2);
     display: flex;
     flex-direction: column;
     gap: 1px;
+  }
+
+  :global(html:not([data-glass="on"])) .ctx-menu {
+    background: var(--surface-opaque);
+    border-color: var(--border-strong);
+    backdrop-filter: none;
   }
 
   /* 菜单项通用样式（按钮式） */
@@ -75,7 +82,7 @@
   }
 
   .ctx-menu :global(button:hover:not(:disabled)) {
-    background: var(--surface-2);
+    background: var(--hover-wash);
   }
 
   .ctx-menu :global(button:disabled) {

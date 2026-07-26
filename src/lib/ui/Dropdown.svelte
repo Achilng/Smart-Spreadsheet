@@ -102,13 +102,20 @@
     z-index: var(--z-menu);
     min-width: 200px;
     padding: 4px;
-    background: var(--surface);
-    border: 1px solid var(--border-strong);
+    background: var(--glass-solid);
+    backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+    border: 1px solid rgb(255 255 255 / 55%);
     border-radius: var(--radius-s);
     box-shadow: var(--shadow-2);
     display: flex;
     flex-direction: column;
     gap: 1px;
+  }
+
+  :global(html:not([data-glass="on"])) .menu {
+    background: var(--surface-opaque);
+    border-color: var(--border-strong);
+    backdrop-filter: none;
   }
 
   .menu button {
@@ -130,7 +137,7 @@
   }
 
   .menu button:hover {
-    background: var(--surface-2);
+    background: var(--hover-wash);
   }
 
   .menu button.danger {
