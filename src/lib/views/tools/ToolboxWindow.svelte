@@ -44,6 +44,8 @@
     group: "常用工具" | "文件处理" | "资料库维护";
     requiresLibrary: boolean;
     icon: LucideIcon;
+    /** 页面自带完整头部（如自动规则的 editor-head），外壳不再渲染 content-header */
+    fullBleed?: boolean;
   }
 
   const tools: ToolDefinition[] = [
@@ -54,6 +56,7 @@
       group: "常用工具",
       requiresLibrary: false,
       icon: Workflow,
+      fullBleed: true,
     },
     {
       id: "quickEdit",
@@ -196,16 +199,13 @@
   <header class="titlebar" data-tauri-drag-region>
     <div class="brand" data-tauri-drag-region>
       <span data-tauri-drag-region>工具箱</span>
+      <small data-tauri-drag-region>智能表格</small>
     </div>
     <WindowControls />
   </header>
 
   <div class="toolbox-body">
     <aside class="tool-nav">
-      <div class="nav-intro">
-        <h1>工具箱</h1>
-      </div>
-
       <nav aria-label="工具列表">
         {#each groups as group}
           <section class="nav-group">
@@ -234,16 +234,21 @@
     </aside>
 
     <main class="tool-content">
-      <header class="content-header">
-        <div>
-          <h2>{activeDefinition.label}</h2>
-          <p>{activeDefinition.description}</p>
-        </div>
-      </header>
+      {#if !activeDefinition.fullBleed}
+        <header class="content-header">
+          <div>
+            <h2>{activeDefinition.label}</h2>
+            <p>{activeDefinition.description}</p>
+          </div>
+        </header>
+      {/if}
 
       <div class="tool-stack">
         {#if !app.loaded}
-          <div class="loading-state">正在读取应用状态…</div>
+          <div class="empty-state loading-state">
+            <span class="spinner" aria-hidden="true"></span>
+            正在读取应用状态…
+          </div>
         {:else}
           {#if visited.quickEdit}
             <section class="tool-panel" class:is-active={activeTool === "quickEdit"}>
@@ -307,23 +312,33 @@
   }
 
   .titlebar {
-    height: 40px;
+    height: 52px;
     display: flex;
     align-items: stretch;
     justify-content: space-between;
     flex: none;
-    padding-left: 14px;
+    padding-left: 20px;
     background: var(--surface);
     border-bottom: 1px solid var(--border);
   }
 
   .brand {
     display: flex;
-    align-items: center;
-    color: var(--text-2);
-    font-size: var(--font-sm);
-    font-weight: 600;
-    letter-spacing: 0.02em;
+    align-items: baseline;
+    align-self: center;
+    gap: 7px;
+    color: var(--text);
+    font-size: var(--font-lg);
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    white-space: nowrap;
+  }
+
+  .brand small {
+    font-size: var(--font-xs);
+    font-weight: 400;
+    color: var(--text-3);
+    letter-spacing: 0;
   }
 
   .toolbox-body {
@@ -338,20 +353,9 @@
     display: flex;
     flex-direction: column;
     min-height: 0;
-    padding: 22px 12px 14px;
+    padding: 18px 12px 14px;
     background: var(--surface);
     border-right: 1px solid var(--border);
-  }
-
-  .nav-intro {
-    padding: 0 10px 18px;
-  }
-
-  .nav-intro h1 {
-    font-size: 19px;
-    font-weight: 700;
-    letter-spacing: -0.02em;
-    line-height: 1.25;
   }
 
   nav {
@@ -391,20 +395,11 @@
   }
 
   .nav-group button.is-active {
-    border-color: transparent;
-    background: transparent;
-    color: var(--accent);
+    background: var(--surface-3);
   }
 
-  .nav-group button.is-active::before {
-    content: "";
-    position: absolute;
-    top: 10px;
-    bottom: 10px;
-    left: 1px;
-    width: 3px;
-    border-radius: var(--radius-full);
-    background: var(--accent);
+  .nav-group button.is-active .tool-label strong {
+    font-weight: 700;
   }
 
   .tool-icon {
@@ -413,7 +408,7 @@
     display: grid;
     place-items: center;
     flex: none;
-    border-radius: 8px;
+    border-radius: var(--radius-s);
     background: var(--surface-3);
     color: var(--text-2);
     font-size: var(--font-sm);
@@ -454,23 +449,22 @@
   }
 
   .content-header {
-    min-height: 82px;
     display: flex;
     align-items: center;
     flex: none;
-    padding: 18px 28px;
-    background: var(--surface);
+    padding: 22px 28px 12px;
   }
 
   .content-header h2 {
-    font-size: var(--font-xl);
-    font-weight: 650;
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: -0.022em;
   }
 
   .content-header p {
     margin-top: 2px;
     color: var(--text-3);
-    font-size: var(--font-md);
+    font-size: 12.5px;
   }
 
   .tool-stack {
@@ -496,9 +490,6 @@
 
   .loading-state {
     height: 100%;
-    display: grid;
-    place-items: center;
-    color: var(--text-3);
     font-size: var(--font-md);
   }
 </style>
