@@ -78,7 +78,7 @@
 </script>
 
 <div class="json-page">
-  <div class="json-shell">
+  <div class="json-shell tool-card">
     <div class="json-body">
       <p class="faint">
         按 fixedPrompt 去除重复预设并重新连续编号，原文件不会被修改。
@@ -98,22 +98,20 @@
       {/if}
 
       {#if inspection}
-        <dl class="stats" transition:softFly={{ duration: 165, y: 4 }}>
+        <div class="stats metric-grid tabular" style:--metric-cols="3" transition:softFly={{ duration: 165, y: 4 }}>
           <div>
-            <dt>预设总数</dt>
-            <dd>{formatCount(inspection.originalCount)}</dd>
+            <strong>{formatCount(inspection.originalCount)}</strong>
+            <span>预设总数</span>
+          </div>
+          <div class:is-highlight={inspection.duplicateCount > 0}>
+            <strong>{formatCount(inspection.duplicateCount)}</strong>
+            <span>重复</span>
           </div>
           <div>
-            <dt>重复</dt>
-            <dd class:highlight={inspection.duplicateCount > 0}>
-              {formatCount(inspection.duplicateCount)}
-            </dd>
+            <strong>{formatCount(inspection.uniqueCount)}</strong>
+            <span>去重后</span>
           </div>
-          <div>
-            <dt>去重后</dt>
-            <dd>{formatCount(inspection.uniqueCount)}</dd>
-          </div>
-        </dl>
+        </div>
 
         {#if inspection.preview.length > 0}
           <div class="preview" transition:softFade={{ duration: 150 }}>
@@ -135,7 +133,7 @@
               正在去重 {formatCount(progress.processed)} / {formatCount(progress.total)}，已发现重复
               {formatCount(progress.duplicateCount)} 条…
             </p>
-            <span class="progress-track" aria-hidden="true">
+            <span class="progress" role="progressbar" aria-valuemin={0} aria-valuemax={progress.total} aria-valuenow={progress.processed}>
               <span class="progress-fill" style:transform="scaleX({progress.total > 0 ? progress.processed / progress.total : 0})"></span>
             </span>
           </div>
@@ -166,7 +164,7 @@
         disabled={working || !inspection || inspection.duplicateCount === 0}
         onclick={() => void runDedupe()}
       >
-        {#if working}<span class="button-spinner" aria-hidden="true"></span>{/if}
+        {#if working}<span class="spinner" aria-hidden="true"></span>{/if}
         {working ? "处理中…" : "去重并另存为…"}
       </button>
     </footer>
@@ -182,10 +180,6 @@
   .json-shell {
     width: min(680px, 100%);
     overflow: hidden;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-m);
-    box-shadow: var(--shadow-1);
     display: flex;
     flex-direction: column;
     min-height: 0;
@@ -216,31 +210,6 @@
     overflow: hidden;
     text-overflow: ellipsis;
     color: var(--text-2);
-  }
-
-  .stats {
-    display: flex;
-    gap: 24px;
-    margin: 0;
-    padding: 10px 12px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-s);
-    background: var(--surface);
-  }
-
-  .stats dt {
-    font-size: var(--font-xs);
-    color: var(--text-3);
-  }
-
-  .stats dd {
-    margin: 0;
-    font-size: var(--font-lg);
-    font-weight: 600;
-  }
-
-  .stats dd.highlight {
-    color: var(--accent);
   }
 
   .preview {
@@ -274,33 +243,6 @@
     gap: 7px;
   }
 
-  .progress-track {
-    width: 100%;
-    height: 5px;
-    overflow: hidden;
-    border-radius: var(--radius-full);
-    background: var(--surface-2);
-  }
-
-  .progress-fill {
-    display: block;
-    width: 100%;
-    height: 100%;
-    border-radius: inherit;
-    background: var(--accent);
-    transform-origin: left;
-    transition: transform var(--motion-fast) linear;
-  }
-
-  .button-spinner {
-    width: 12px;
-    height: 12px;
-    border: 2px solid rgb(255 255 255 / 45%);
-    border-top-color: currentColor;
-    border-radius: 50%;
-    animation: button-spin 0.8s linear infinite;
-  }
-
   .json-footer {
     display: flex;
     align-items: center;
@@ -318,17 +260,5 @@
 
   .success-text {
     color: var(--success);
-  }
-
-  @keyframes button-spin {
-    to {
-      transform: rotate(360deg);
-    }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .button-spinner {
-      animation: none;
-    }
   }
 </style>

@@ -208,9 +208,9 @@
 </script>
 
 <div class="artist-prefix-page">
-  <section class="intro-card">
+  <section class="intro-card tool-card">
     <div>
-      <span class="eyebrow">DANBOORU ARTIST DICTIONARY</span>
+      <span class="eyebrow overline">DANBOORU ARTIST DICTIONARY</span>
       <h3>自动识别裸画师 Tag</h3>
       <p>
         结合库内已有的 <code>artist:</code> 证据和 Danbooru 词典，扫描正向、角色和
@@ -222,7 +222,7 @@
     </button>
   </section>
 
-  <section class="status-card">
+  <section class="status-card tool-card">
     {#if loadingStatus}
       <span>正在准备内置画师词典，首次使用可能需要一些时间…</span>
     {:else if status}
@@ -254,7 +254,7 @@
     </div>
   {/if}
 
-  <section class="scan-card">
+  <section class="scan-card tool-card">
     <div>
       <h3>扫描资料库</h3>
       <p>只扫描已经入库的提示词，不重新读取或改写原始图片文件。</p>
@@ -274,8 +274,8 @@
   {/if}
 
   {#if preview}
-    <section class="result-card">
-      <div class="metrics">
+    <section class="result-card tool-card">
+      <div class="metric-grid metrics">
         <div><strong>{formatCount(preview.scannedRows)}</strong><span>扫描图片</span></div>
         <div><strong>{formatCount(preview.matchedRows)}</strong><span>命中图片</span></div>
         <div><strong>{formatCount(preview.candidates.length)}</strong><span>候选名称</span></div>
@@ -301,7 +301,6 @@
                   checked={selectedNames.includes(candidate.matchName)}
                   onchange={() => toggleCandidate(candidate.matchName)}
                 />
-                <span class="checkmark" aria-hidden="true"></span>
               </label>
               <div class="candidate-main">
                 <div class="candidate-name">
@@ -370,15 +369,6 @@
   }
 
   .intro-card,
-  .scan-card,
-  .result-card,
-  .status-card {
-    border: 1px solid var(--border);
-    border-radius: var(--radius-l);
-    background: var(--surface);
-  }
-
-  .intro-card,
   .scan-card {
     display: flex;
     align-items: center;
@@ -405,7 +395,7 @@
 
   code {
     padding: 1px 5px;
-    border-radius: 5px;
+    border-radius: var(--radius-s);
     background: var(--surface-2);
     color: var(--accent);
   }
@@ -414,9 +404,6 @@
     display: block;
     margin-bottom: 7px;
     color: var(--accent);
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.12em;
   }
 
   .status-card {
@@ -469,13 +456,8 @@
     font-size: var(--font-sm);
   }
 
-  .spinner {
-    width: 13px;
-    height: 13px;
-    border: 2px solid color-mix(in srgb, var(--accent) 25%, transparent);
-    border-top-color: var(--accent);
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
+  .progress-line :global(.spinner) {
+    color: var(--accent);
   }
 
   .error-message {
@@ -492,30 +474,8 @@
   }
 
   .metrics {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    padding: 14px 16px;
     border-bottom: 1px solid var(--border);
-  }
-
-  .metrics > div {
-    display: grid;
-    gap: 4px;
-    padding: 17px 20px;
-    border-right: 1px solid var(--border);
-  }
-
-  .metrics > div:last-child {
-    border-right: 0;
-  }
-
-  .metrics strong {
-    color: var(--text);
-    font-size: 22px;
-  }
-
-  .metrics span {
-    color: var(--text-3);
-    font-size: var(--font-xs);
   }
 
   .candidate-toolbar {
@@ -539,13 +499,17 @@
   .sample-button {
     border: 0;
     background: transparent;
+    padding: 4px 8px;
+    border-radius: var(--radius-full);
     color: var(--accent);
+    font-size: 12.5px;
     cursor: pointer;
+    transition: background var(--motion-fast) var(--ease-responsive);
   }
 
-  .text-button:hover,
-  .sample-button:hover {
-    text-decoration: underline;
+  .text-button:hover:not(:disabled),
+  .sample-button:hover:not(:disabled) {
+    background: var(--surface-2);
   }
 
   .candidate-list {
@@ -564,7 +528,7 @@
   }
 
   .candidate-row.needs-review {
-    background: color-mix(in srgb, #d98b25 7%, var(--surface));
+    background: color-mix(in srgb, var(--warning) 7%, var(--surface));
   }
 
   .candidate-row label {
@@ -613,25 +577,26 @@
 
   .badge {
     padding: 2px 6px;
-    border-radius: 999px;
+    border-radius: var(--radius-full);
     background: var(--surface-2);
     color: var(--text-3);
     font-size: 10px;
+    font-weight: 600;
   }
 
   .badge.warning {
-    background: color-mix(in srgb, #d98b25 15%, var(--surface));
-    color: #b26b10;
+    background: var(--warning-soft);
+    color: var(--warning);
   }
 
   .badge.restricted {
-    background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+    background: var(--accent-soft);
     color: var(--accent);
   }
 
   .badge.confirmed {
-    background: color-mix(in srgb, #2f9e67 14%, var(--surface));
-    color: #278456;
+    background: var(--success-soft);
+    color: var(--success);
   }
 
   .candidate-stats {
@@ -678,19 +643,11 @@
   }
 
   .empty-state {
-    display: grid;
-    justify-items: center;
-    gap: 7px;
     padding: 54px 20px;
-    color: var(--text-3);
   }
 
   .empty-state strong {
     color: var(--text-2);
-  }
-
-  @keyframes spin {
-    to { transform: rotate(360deg); }
   }
 
   @media (max-width: 820px) {
@@ -700,10 +657,6 @@
 
     .status-card > div:nth-child(2) {
       border-right: 0;
-    }
-
-    .metrics {
-      grid-template-columns: repeat(2, 1fr);
     }
 
     .candidate-row {
