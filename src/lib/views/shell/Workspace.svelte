@@ -30,6 +30,7 @@
     ToolboxSelectionSnapshot,
   } from "../../windows/toolbox";
   import ContextMenu from "./ContextMenu.svelte";
+  import CanvasHeader from "./CanvasHeader.svelte";
   import DetailPanel from "./DetailPanel.svelte";
   import DeleteDialog from "./DeleteDialog.svelte";
   import DropConfirmDialog from "./DropConfirmDialog.svelte";
@@ -247,6 +248,7 @@
         {#if rowStore.refreshing}
           <div class="refresh-bar" aria-hidden="true"></div>
         {/if}
+        <CanvasHeader />
         <div class="view-stack">
           {#if visitedViews.group}
             <section class="view-panel" class:is-active={app.viewMode === "group"}>

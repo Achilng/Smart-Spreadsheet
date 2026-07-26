@@ -10,7 +10,7 @@
   import { restoreScrollPosition, saveScrollPosition, scrollPositionVersion } from "../../stores/view-state";
   import GalleryCard from "./GalleryCard.svelte";
   import { softFade } from "../../ui/motion";
-  import SortControl from "../shell/SortControl.svelte";
+
 
   let { active = true }: { active?: boolean } = $props();
 
@@ -306,7 +306,6 @@
 </script>
 
 <div class="gallery-view">
-  <SortControl controlId="gallery-sort" />
   <div
     class="gallery-viewport"
     bind:this={viewport}

@@ -2,7 +2,7 @@
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import { untrack } from "svelte";
 
-  import type { DedupeCluster, DedupeMode, RowRecord } from "../../api";
+  import type { DedupeCluster, RowRecord } from "../../api";
   import { app, formatCount } from "../../stores/app-state.svelte";
   import {
     duplicateBrowse,
@@ -63,10 +63,6 @@
     }
   }
 
-  function setMode(mode: DedupeMode): void {
-    duplicateBrowse.dedupeMode = mode;
-  }
-
   const sortedClusters = $derived(
     duplicateBrowse.sortByCount
       ? duplicateBrowse.clusters
@@ -112,32 +108,6 @@
 </script>
 
 <div class="duplicate-browse">
-  <div class="mode-bar">
-    <span class="mode-label">聚合依据：</span>
-    <button
-      type="button"
-      class:is-active={duplicateBrowse.dedupeMode === "artists"}
-      onclick={() => setMode("artists")}
-    >按画师串</button>
-    <button
-      type="button"
-      class:is-active={duplicateBrowse.dedupeMode === "positivePrompt"}
-      onclick={() => setMode("positivePrompt")}
-    >按正向提示词</button>
-    <span class="bar-separator"></span>
-    <span class="mode-label">排序：</span>
-    <button
-      type="button"
-      class:is-active={duplicateBrowse.sortByCount}
-      onclick={() => (duplicateBrowse.sortByCount = true)}
-    >按数量</button>
-    <button
-      type="button"
-      class:is-active={!duplicateBrowse.sortByCount}
-      onclick={() => (duplicateBrowse.sortByCount = false)}
-    >按名称</button>
-  </div>
-
   {#if duplicateBrowse.loading}
     <div class="status empty-state"><p class="muted">正在加载重复项…</p></div>
   {:else if duplicateBrowse.error}
@@ -200,58 +170,6 @@
     padding: 0;
     display: flex;
     flex-direction: column;
-  }
-
-  .mode-bar {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 8px 16px;
-    border-bottom: 1px solid var(--border);
-    background: var(--surface);
-    flex: none;
-  }
-
-  .mode-label {
-    font-size: var(--font-md);
-    color: var(--text-2);
-    margin-right: 4px;
-  }
-
-  .bar-separator {
-    width: 1px;
-    height: 18px;
-    background: var(--border);
-    margin: 0 6px;
-  }
-
-  .mode-bar button {
-    border: 1px solid var(--border);
-    background: transparent;
-    border-radius: var(--radius-s);
-    padding: 4px 12px;
-    font-size: var(--font-sm);
-    color: var(--text-2);
-    cursor: pointer;
-    transition:
-      background var(--motion-fast) var(--ease-responsive),
-      color var(--motion-fast) var(--ease-responsive),
-      border-color var(--motion-fast) var(--ease-responsive),
-      transform var(--motion-press) var(--ease-responsive);
-  }
-
-  .mode-bar button:active {
-    transform: scale(0.98);
-  }
-
-  .mode-bar button:hover {
-    background: var(--surface-2);
-  }
-
-  .mode-bar button.is-active {
-    background: var(--surface-2);
-    color: var(--text);
-    border-color: var(--border-strong);
   }
 
   .status {

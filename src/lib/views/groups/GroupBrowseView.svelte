@@ -150,25 +150,6 @@
 </script>
 
 <div class="group-browse">
-  <div class="group-toolbar">
-    <span class="toolbar-label">排序：</span>
-    <button
-      type="button"
-      class:is-active={!groupBrowse.sortByCount}
-      onclick={() => (groupBrowse.sortByCount = false)}
-    >按名称</button>
-    <button
-      type="button"
-      class:is-active={groupBrowse.sortByCount}
-      onclick={() => (groupBrowse.sortByCount = true)}
-    >按数量</button>
-    <button
-      type="button"
-      class="manage-button"
-      onclick={() => (app.groupManageOpen = true)}
-    >管理分组</button>
-  </div>
-
   {#if groupStore.loading && groupStore.list.length === 0}
     <div class="status empty-state"><p class="muted">正在加载分组…</p></div>
   {:else if groupStore.error}
@@ -272,55 +253,6 @@
 
   .status {
     flex: 1;
-  }
-
-  .group-toolbar {
-    flex: none;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 8px 16px;
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-  }
-
-  .toolbar-label {
-    font-size: var(--font-md);
-    color: var(--text-2);
-    margin-right: 4px;
-  }
-
-  .group-toolbar button {
-    border: 1px solid var(--border);
-    background: transparent;
-    border-radius: var(--radius-s);
-    padding: 4px 12px;
-    font-size: var(--font-sm);
-    color: var(--text-2);
-    cursor: pointer;
-    transition:
-      background var(--motion-fast) var(--ease-responsive),
-      color var(--motion-fast) var(--ease-responsive),
-      border-color var(--motion-fast) var(--ease-responsive),
-      transform var(--motion-press) var(--ease-responsive);
-  }
-
-  .group-toolbar button:active {
-    transform: scale(0.98);
-  }
-
-  .group-toolbar button:hover {
-    background: var(--surface-2);
-  }
-
-  .group-toolbar button.is-active {
-    background: var(--surface-2);
-    color: var(--text);
-    border-color: var(--border-strong);
-  }
-
-  .group-toolbar .manage-button {
-    margin-left: auto;
   }
 
   .group-list {

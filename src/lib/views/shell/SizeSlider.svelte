@@ -8,8 +8,6 @@
   const TABLE_MAX = 128;
 
   const isGallery = $derived(app.viewMode === "gallery");
-  const isTable = $derived(app.viewMode === "table");
-  const visible = $derived(isGallery || isTable);
 
   const min = $derived(isGallery ? GALLERY_MIN : TABLE_MIN);
   const max = $derived(isGallery ? GALLERY_MAX : TABLE_MAX);
@@ -27,9 +25,7 @@
 
 <div
   class="size-slider"
-  class:is-hidden={!visible}
   title={isGallery ? "卡片大小" : "行高"}
-  aria-hidden={!visible}
 >
     <span class="icon" aria-hidden="true">
       <Grid2x2 size={9} strokeWidth={1.8} />
@@ -53,15 +49,6 @@
     align-items: center;
     gap: 4px;
     flex: none;
-    opacity: 1;
-    transition: opacity var(--motion-fast) var(--ease-responsive);
-  }
-
-  /* 非画廊/表格视图下隐藏但保留占位，避免顶栏在切换视图时重排 */
-  .size-slider.is-hidden {
-    visibility: hidden;
-    opacity: 0;
-    pointer-events: none;
   }
 
   .icon {

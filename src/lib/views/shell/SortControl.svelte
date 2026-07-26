@@ -113,74 +113,66 @@
   }}
 />
 
-<div class="sort-toolbar">
-  <div class="sort-picker" bind:this={root}>
-    <button
-      bind:this={trigger}
-      id={controlId}
-      type="button"
-      class="sort-trigger"
-      class:is-open={open}
-      aria-label={`排序方式：${activeOption.label}`}
-      aria-haspopup="menu"
-      aria-expanded={open}
-      aria-controls={`${controlId}-menu`}
-      onclick={() => (open = !open)}
-      onkeydown={onTriggerKeydown}
-    >
-      <span class="trigger-label">{activeOption.label}</span>
-      <ChevronDown
-        class={open ? "is-open" : undefined}
-        size={14}
-        strokeWidth={2}
-        aria-hidden="true"
-      />
-    </button>
+<div class="sort-picker" bind:this={root}>
+  <button
+    bind:this={trigger}
+    id={controlId}
+    type="button"
+    class="sort-trigger"
+    class:is-open={open}
+    aria-label={`排序方式：${activeOption.label}`}
+    aria-haspopup="menu"
+    aria-expanded={open}
+    aria-controls={`${controlId}-menu`}
+    onclick={() => (open = !open)}
+    onkeydown={onTriggerKeydown}
+  >
+    <span class="trigger-label">{activeOption.label}</span>
+    <ChevronDown
+      class={open ? "is-open" : undefined}
+      size={13}
+      strokeWidth={2}
+      aria-hidden="true"
+    />
+  </button>
 
-    {#if open}
-      <div
-        bind:this={menu}
-        id={`${controlId}-menu`}
-        class="sort-menu"
-        role="menu"
-        tabindex="-1"
-        aria-label="选择图片排序方式"
-        onkeydown={onMenuKeydown}
-        transition:softPop={{ duration: 180, y: -7, start: 0.975 }}
-      >
-        <div class="menu-heading">选择图片顺序</div>
-        {#each options as option (option.value)}
-          {@const selected = rowStore.sort === option.value}
-          <button
-            type="button"
-            class="sort-option"
-            class:is-selected={selected}
-            role="menuitemradio"
-            aria-checked={selected}
-            onclick={() => pick(option)}
-          >
-            <span class="option-copy">
-              <span class="option-label">{option.label}</span>
-              <span class="option-description">{option.description}</span>
-            </span>
-          </button>
-        {/each}
-      </div>
-    {/if}
-  </div>
+  {#if open}
+    <div
+      bind:this={menu}
+      id={`${controlId}-menu`}
+      class="sort-menu"
+      role="menu"
+      tabindex="-1"
+      aria-label="选择图片排序方式"
+      onkeydown={onMenuKeydown}
+      transition:softPop={{ duration: 180, y: -7, start: 0.975 }}
+    >
+      <div class="menu-heading">选择图片顺序</div>
+      {#each options as option (option.value)}
+        {@const selected = rowStore.sort === option.value}
+        <button
+          type="button"
+          class="sort-option"
+          class:is-selected={selected}
+          role="menuitemradio"
+          aria-checked={selected}
+          onclick={() => pick(option)}
+        >
+          <span class="option-copy">
+            <span class="option-label">{option.label}</span>
+            <span class="option-description">{option.description}</span>
+          </span>
+        </button>
+      {/each}
+    </div>
+  {/if}
 </div>
 
 <style>
-  .sort-toolbar {
-    height: 48px;
-    flex: none;
+  .sort-picker {
     position: relative;
-    z-index: var(--z-dropdown);
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    padding: 0 16px;
-    background: var(--surface);
+    flex: none;
+    max-width: 100%;
   }
 
   .option-copy {
@@ -189,34 +181,26 @@
     flex-direction: column;
   }
 
-  .sort-picker {
-    position: relative;
-    flex: none;
-    max-width: 100%;
-  }
-
   .sort-trigger {
-    min-width: 92px;
     max-width: 100%;
-    height: 32px;
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    justify-content: center;
-    gap: 7px;
-    padding: 0 15px;
+    gap: 5px;
+    padding: 4px 8px;
     border: none;
     border-radius: var(--radius-full);
-    background: transparent;
-    color: var(--text);
-    text-align: center;
+    background: none;
+    color: var(--text-2);
     transition:
       background var(--motion-fast) var(--ease-responsive),
+      color var(--motion-fast) var(--ease-responsive),
       transform var(--motion-press) var(--ease-responsive);
   }
 
   .sort-trigger:hover,
   .sort-trigger.is-open {
     background: var(--surface-2);
+    color: var(--text);
   }
 
   .sort-trigger:active {
@@ -225,9 +209,8 @@
 
   .trigger-label {
     overflow: hidden;
-    color: var(--text);
-    font-size: var(--font-sm);
-    font-weight: 650;
+    font-size: 12.5px;
+    font-weight: 400;
     line-height: 1.1;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -318,17 +301,6 @@
     line-height: 1.2;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  @media (max-width: 850px) {
-    .sort-toolbar {
-      justify-content: flex-end;
-      padding-inline: 10px;
-    }
-
-    .sort-picker {
-      max-width: 100%;
-    }
   }
 
   @media (prefers-reduced-motion: reduce) {

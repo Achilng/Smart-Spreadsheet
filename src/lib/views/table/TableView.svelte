@@ -8,7 +8,6 @@
   import { restoreScrollPosition, saveScrollPosition, scrollPositionVersion } from "../../stores/view-state";
   import TableRow from "./TableRow.svelte";
   import { softFade } from "../../ui/motion";
-  import SortControl from "../shell/SortControl.svelte";
 
   let { active = true }: { active?: boolean } = $props();
 
@@ -160,7 +159,6 @@
 </script>
 
 <div class="table-view">
-  <SortControl controlId="table-sort" />
   <div
     class="table-viewport"
     bind:this={viewport}
