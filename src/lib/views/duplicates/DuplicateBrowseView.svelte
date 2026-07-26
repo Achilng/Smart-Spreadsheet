@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import { untrack } from "svelte";
 
   import type { DedupeCluster, DedupeMode, RowRecord } from "../../api";
@@ -155,7 +156,7 @@
             onclick={() => void toggleCluster(cluster.key)}
             oncontextmenu={(e) => onHeaderContextMenu(e, cluster)}
           >
-            <span class="expand-icon" class:is-expanded={expanded}>&#9654;</span>
+            <span class="expand-icon" class:is-expanded={expanded}><ChevronRight size={14} strokeWidth={2} /></span>
             <span class="section-name">{cluster.alias ?? cluster.key}</span>
             {#if cluster.alias}
               <span class="section-orig-key" title={cluster.key}>({cluster.key.slice(0, 30)}{cluster.key.length > 30 ? "…" : ""})</span>
@@ -298,7 +299,8 @@
   }
 
   .expand-icon {
-    font-size: var(--font-xs);
+    display: inline-flex;
+    align-items: center;
     color: var(--text-3);
     transition: transform var(--motion-base) var(--ease-responsive);
     flex: none;

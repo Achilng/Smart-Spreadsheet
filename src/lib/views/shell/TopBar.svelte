@@ -1,4 +1,6 @@
 <script lang="ts">
+  import X from "@lucide/svelte/icons/x";
+
   import { app, errorText, setNotice } from "../../stores/app-state.svelte";
   import {
     chooseImageArchive,
@@ -94,7 +96,7 @@
           onclick={clearSearch}
           title="清除搜索"
           transition:softPop={{ duration: 110, y: 0, start: 0.85 }}
-        >&times;</button>
+        ><X size={13} strokeWidth={2} /></button>
       {/if}
     </div>
   {:else}
@@ -180,14 +182,18 @@
     right: 2px;
     top: 50%;
     transform: translateY(-50%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 24px;
+    min-height: 24px;
     border: none;
     background: transparent;
-    color: var(--text-3, #999);
-    font-size: var(--font-lg);
+    color: var(--text-3);
     line-height: 1;
-    padding: 2px 4px;
+    padding: 0;
     cursor: pointer;
-    border-radius: 2px;
+    border-radius: var(--radius-s);
   }
 
   .search-clear:hover {

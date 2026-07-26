@@ -1,4 +1,5 @@
 <script lang="ts">
+  import X from "@lucide/svelte/icons/x";
   import { flip } from "svelte/animate";
 
   import { app, errorText } from "../../stores/app-state.svelte";
@@ -75,7 +76,7 @@
       <h2>管理分组（{groupStore.list.length}）</h2>
       <div class="header-actions">
         <button type="button" class="btn" disabled={busy} onclick={() => void doCleanEmpty()}>清理空分组</button>
-        <button type="button" class="close-btn" onclick={close}>&times;</button>
+        <button type="button" class="close-btn" onclick={close}><X size={15} strokeWidth={2} /></button>
       </div>
     </header>
 

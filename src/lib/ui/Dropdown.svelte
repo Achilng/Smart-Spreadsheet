@@ -8,6 +8,8 @@
 </script>
 
 <script lang="ts">
+  import ChevronDown from "@lucide/svelte/icons/chevron-down";
+
   import { softPop } from "./motion";
 
   let {
@@ -57,7 +59,9 @@
     onclick={() => (open = !open)}
   >
     {label}
-    <span class="caret" class:is-open={open} aria-hidden="true">▾</span>
+    <span class="caret" class:is-open={open} aria-hidden="true">
+      <ChevronDown size={14} strokeWidth={2} />
+    </span>
   </button>
   {#if open}
     <div class="menu" role="menu" transition:softPop={{ duration: 150, y: -4, start: 0.98 }}>
@@ -85,8 +89,8 @@
   }
 
   .caret {
-    display: inline-block;
-    font-size: var(--font-xs);
+    display: inline-flex;
+    align-items: center;
     margin-left: 2px;
     transition: transform var(--motion-fast) var(--ease-responsive);
   }

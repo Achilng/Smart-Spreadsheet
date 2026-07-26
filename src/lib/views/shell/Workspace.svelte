@@ -1,5 +1,6 @@
 <script lang="ts">
   import { emitTo, listen, type UnlistenFn } from "@tauri-apps/api/event";
+  import ChevronsLeft from "@lucide/svelte/icons/chevrons-left";
   import { onMount, untrack } from "svelte";
 
   import { getRowIndex, getRowsByIds } from "../../api";
@@ -283,7 +284,7 @@
           onclick={() => (app.detailOpen = true)}
           transition:softFade={{ duration: 120 }}
         >
-          «
+          <ChevronsLeft size={13} strokeWidth={1.8} />
         </button>
       {/if}
     </div>
@@ -424,10 +425,12 @@
   .detail-strip {
     width: 22px;
     flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     border: none;
     background: var(--surface-2);
     color: var(--text-3);
-    font-size: var(--font-md);
     transition:
       background var(--motion-fast) var(--ease-responsive),
       color var(--motion-fast) var(--ease-responsive);

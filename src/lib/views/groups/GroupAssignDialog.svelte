@@ -1,4 +1,5 @@
 <script lang="ts">
+  import X from "@lucide/svelte/icons/x";
   import { flip } from "svelte/animate";
 
   import type { RowSelection } from "../../api";
@@ -99,7 +100,7 @@
   <div class="dialog-content">
     <header>
       <h3>分组操作（{count} 行）</h3>
-      <button type="button" class="close-btn" onclick={onclose}>&times;</button>
+      <button type="button" class="close-btn" onclick={onclose}><X size={15} strokeWidth={2} /></button>
     </header>
 
     <div class="body">

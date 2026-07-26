@@ -1,4 +1,6 @@
 <script lang="ts">
+  import X from "@lucide/svelte/icons/x";
+
   import { app, formatCount, setNotice } from "../stores/app-state.svelte";
   import { softFly } from "./motion";
 
@@ -81,7 +83,7 @@
 {:else if app.notice}
   <div class="toast toast-{app.notice.tone}" role="status" transition:softFly={{ duration: 180, y: 8 }}>
     <span>{app.notice.text}</span>
-    <button type="button" aria-label="关闭提示" onclick={() => setNotice(null)}>×</button>
+    <button type="button" aria-label="关闭提示" onclick={() => setNotice(null)}><X size={14} strokeWidth={2} /></button>
   </div>
 {/if}
 
@@ -146,12 +148,14 @@
   }
 
   .toast button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
     border: none;
     background: none;
     color: inherit;
-    font-size: var(--font-lg);
     line-height: 1;
-    padding: 0 2px;
+    padding: 2px;
     transition: transform var(--motion-press) var(--ease-responsive);
   }
 

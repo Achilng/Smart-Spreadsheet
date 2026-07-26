@@ -1,4 +1,6 @@
 <script lang="ts">
+  import X from "@lucide/svelte/icons/x";
+
   import { findReplacePrompt, prefixArtistTag, type RowSelection } from "../../api";
   import Modal from "../../ui/Modal.svelte";
   import { errorText } from "../../stores/app-state.svelte";
@@ -71,7 +73,7 @@
   <div class="dialog-content">
     <header>
       <h3>编辑提示词（{count} 行）</h3>
-      <button type="button" class="close-btn" onclick={onclose}>&times;</button>
+      <button type="button" class="close-btn" onclick={onclose}><X size={15} strokeWidth={2} /></button>
     </header>
 
     <nav class="tabs">

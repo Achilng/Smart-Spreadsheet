@@ -1,4 +1,7 @@
 <script lang="ts">
+  import ChevronsRight from "@lucide/svelte/icons/chevrons-right";
+  import X from "@lucide/svelte/icons/x";
+
   import {
     createTag,
     setTagsForRow,
@@ -357,7 +360,7 @@
         title="收起详情面板"
         onclick={() => (app.detailOpen = false)}
       >
-        »
+        <ChevronsRight size={15} strokeWidth={1.8} />
       </button>
     </div>
   </header>
@@ -450,7 +453,7 @@
                 disabled={saving}
                 onclick={() => removeTag(tag)}
               >
-                ×
+                <X size={11} strokeWidth={2.2} />
               </button>
             </span>
           {:else}
@@ -725,12 +728,14 @@
   }
 
   .chip button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     border: none;
     background: none;
     color: inherit;
-    font-size: var(--font-md);
     line-height: 1;
-    padding: 0 2px;
+    padding: 2px;
     border-radius: 50%;
   }
 

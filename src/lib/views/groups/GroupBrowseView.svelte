@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import { untrack } from "svelte";
 
   import type { RowRecord } from "../../api";
@@ -188,7 +189,7 @@
             onclick={() => void toggleGroup(group.id)}
             oncontextmenu={(e) => onHeaderContextMenu(e, group.id, group.name)}
           >
-            <span class="expand-icon" class:is-expanded={expanded}>&#9654;</span>
+            <span class="expand-icon" class:is-expanded={expanded}><ChevronRight size={14} strokeWidth={2} /></span>
             <span class="section-name">{group.name}</span>
             <span class="section-count">{formatCount(group.memberCount)} 张</span>
           </button>
@@ -223,7 +224,7 @@
 
       <section class="group-section ungrouped-section">
         <button type="button" class="section-header" onclick={() => void toggleUngrouped()}>
-          <span class="expand-icon" class:is-expanded={groupBrowse.ungroupedExpanded}>&#9654;</span>
+          <span class="expand-icon" class:is-expanded={groupBrowse.ungroupedExpanded}><ChevronRight size={14} strokeWidth={2} /></span>
           <span class="section-name">未分组</span>
         </button>
         {#if groupBrowse.ungroupedExpanded}
@@ -363,7 +364,8 @@
   }
 
   .expand-icon {
-    font-size: var(--font-xs);
+    display: inline-flex;
+    align-items: center;
     color: var(--text-3);
     transition: transform var(--motion-base) var(--ease-responsive);
     flex: none;

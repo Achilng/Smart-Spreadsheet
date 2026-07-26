@@ -39,7 +39,7 @@
       onclick={() => switchView(view.mode)}
     >
       <span class="nav-icon" aria-hidden="true">
-        <view.icon size={18} strokeWidth={1.7} />
+        <view.icon size={19} strokeWidth={1.7} />
       </span>
     </button>
   {/each}
