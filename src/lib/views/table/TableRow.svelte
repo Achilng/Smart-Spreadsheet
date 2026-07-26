@@ -2,7 +2,7 @@
   import type { RowRecord } from "../../api";
   import { showContextMenu } from "../../stores/context-menu.svelte";
   import { rowStore } from "../../stores/row-store.svelte";
-  import { getSelectedCount, isRowSelected, toggleRow } from "../../stores/selection-store.svelte";
+  import { getSelectedCount, isRowSelected, modifierSelect, toggleRow } from "../../stores/selection-store.svelte";
   import Thumbnail from "../../ui/Thumbnail.svelte";
 
   let {
@@ -33,16 +33,19 @@
   const visibleTags = $derived(row?.tags.slice(0, 3) ?? []);
   const extraTagCount = $derived(Math.max(0, (row?.tags.length ?? 0) - 3));
 
-  function onRowClick(): void {
-    if (row) {
-      rowStore.activeRow = row;
-    }
+  function onRowClick(event: MouseEvent): void {
+    if (!row) return;
+    // Ctrl+单击 = 加选/取消，Shift+单击 = 范围选；普通单击查看详情
+    if (modifierSelect(row.id, index, event)) return;
+    rowStore.activeRow = row;
   }
 
   function onRowKeydown(event: KeyboardEvent): void {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
-      onRowClick();
+      if (row) {
+        rowStore.activeRow = row;
+      }
     }
   }
 
@@ -189,7 +192,8 @@
 
   .table-row:hover .cell-check input,
   .table-row.is-checked .cell-check input,
-  .table-row.selection-active .cell-check input {
+  .table-row.selection-active .cell-check input,
+  .cell-check input:focus-visible {
     opacity: 1;
     transform: scale(1);
   }

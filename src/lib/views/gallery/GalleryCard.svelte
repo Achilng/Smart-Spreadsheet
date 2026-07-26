@@ -3,7 +3,7 @@
   import { showContextMenu } from "../../stores/context-menu.svelte";
   import { beginFileDrag } from "../../stores/file-drag";
   import { rowStore } from "../../stores/row-store.svelte";
-  import { getSelectedCount, isRowSelected, toggleRow } from "../../stores/selection-store.svelte";
+  import { getSelectedCount, isRowSelected, modifierSelect, toggleRow } from "../../stores/selection-store.svelte";
   import Thumbnail from "../../ui/Thumbnail.svelte";
   import { rowFileName, rowResolution } from "../../utils/row-display";
   import { vibeStatuses } from "../../images/vibe-statuses";
@@ -68,7 +68,13 @@
 
   function onThumbMouseDown(event: MouseEvent): void {
     if (!row || !hasImage) return;
-    beginFileDrag(event, row.id, () => { dragging = true; });
+    beginFileDrag(
+      event,
+      row.id,
+      () => { dragging = true; },
+      // 外拖结束后主动复位，避免下一次点击被吞（死点击）
+      () => { dragging = false; },
+    );
   }
 </script>
 
@@ -103,9 +109,13 @@
       style:height="{imageHeight}px"
       aria-label="查看第 {row.sourceOrdinal} 行详情"
       onmousedown={onThumbMouseDown}
-      onclick={() => {
+      onclick={event => {
         if (dragging) { dragging = false; return; }
-        rowStore.activeRow = row ?? null;
+        const current = row;
+        if (!current) return;
+        // Ctrl+单击 = 加选/取消，Shift+单击 = 范围选；普通单击查看详情
+        if (modifierSelect(current.id, index, event)) return;
+        rowStore.activeRow = current;
       }}
     >
       <Thumbnail
@@ -203,7 +213,8 @@
 
   .card:hover .select-box,
   .card.is-checked .select-box,
-  .card.selection-active .select-box {
+  .card.selection-active .select-box,
+  .select-box:focus-visible {
     opacity: 1;
     transform: scale(1);
   }

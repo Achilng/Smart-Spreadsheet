@@ -3,6 +3,7 @@
   import { vibeStatuses } from "../../images/vibe-statuses";
   import { rowStore } from "../../stores/row-store.svelte";
   import Thumbnail from "../../ui/Thumbnail.svelte";
+  import { rowFileName, rowResolution } from "../../utils/row-display";
 
   import { showContextMenu } from "../../stores/context-menu.svelte";
 
@@ -18,9 +19,11 @@
   );
   const isActive = $derived(rowStore.activeRow?.id === row.id);
 
+  // 重复项对比需要文件名与分辨率做决策依据；无文件名时退回画师串
   const label = $derived(
-    row.artists?.split("\n")[0]?.trim() || `#${row.sourceOrdinal}`,
+    rowFileName(row) ?? row.artists?.split("\n")[0]?.trim() ?? `#${row.sourceOrdinal}`,
   );
+  const resolution = $derived(rowResolution(row));
 
   let vibeRefs = $state<number | null>(null);
 
@@ -49,7 +52,7 @@
   type="button"
   class="section-card"
   class:is-active={isActive}
-  title={row.artists || row.positivePrompt?.slice(0, 80) || `#${row.sourceOrdinal}`}
+  title={[rowFileName(row), resolution, row.imagePath].filter(Boolean).join("\n") || `#${row.sourceOrdinal}`}
   onclick={onactivate}
   oncontextmenu={onContextMenu}
 >
@@ -63,6 +66,9 @@
     {/if}
   </div>
   <span class="card-label">{label}</span>
+  {#if resolution}
+    <span class="card-sub tabular">{resolution}</span>
+  {/if}
 </button>
 
 <style>
@@ -124,5 +130,16 @@
     overflow: hidden;
     text-overflow: ellipsis;
     text-align: center;
+  }
+
+  .card-sub {
+    display: block;
+    padding: 1px 3px 0;
+    font-size: var(--font-xs);
+    color: var(--text-3);
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 </style>

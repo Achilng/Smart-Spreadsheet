@@ -118,6 +118,8 @@ export function dismissNotice(id: number): void {
 export function bumpDataVersion(options: { preserveScroll?: boolean } = {}): void {
   app.preserveScrollOnDataChange = options.preserveScroll ?? false;
   app.dataVersion += 1;
+  // 同步告知工具箱窗口资料库已变化（未打开时静默失败）
+  void emitTo("toolbox", "main://library-changed", null).catch(() => {});
 }
 
 export async function refreshSnapshot(): Promise<void> {

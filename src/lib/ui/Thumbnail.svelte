@@ -1,5 +1,6 @@
 <script lang="ts">
   import { beginFileDrag } from "../stores/file-drag";
+  import { isImageLoadCancelled } from "../images/image-loader";
   import { galleryPreviews } from "../images/progressive-images";
   import { thumbnails } from "../images/thumbnails";
 
@@ -21,6 +22,8 @@
   let enhancedUrl = $state<string | null>(null);
   let enhancedReady = $state(false);
   let failed = $state(false);
+  let failReason = $state<string | null>(null);
+  let retryToken = $state(0);
 
   function revealEnhancedImage(event: Event): void {
     const image = event.currentTarget as HTMLImageElement;
@@ -34,16 +37,30 @@
     });
   }
 
+  function retry(): void {
+    retryToken += 1;
+  }
+
   $effect(() => {
+    void retryToken;
     url = null;
     enhancedUrl = null;
     enhancedReady = false;
     failed = false;
+    failReason = null;
     const id = rowId;
     if (!hasImage) {
       return;
     }
+    // 命中缓存时同步取值，避免已缓存的图闪一帧灰块
+    const cachedThumb = thumbnails.cached(id);
+    if (cachedThumb) {
+      url = cachedThumb;
+    }
     enhancedUrl = galleryPreviews.cached(id);
+    if (cachedThumb) {
+      return;
+    }
     let cancelled = false;
     thumbnails.load(id).then(
       loaded => {
@@ -51,9 +68,11 @@
           url = loaded;
         }
       },
-      () => {
-        if (!cancelled) {
+      error => {
+        // 取消（滚出视口/切视图/缓存重置）不算失败：滚回来会重新触发加载。
+        if (!cancelled && !isImageLoadCancelled(error)) {
           failed = true;
+          failReason = error instanceof Error ? error.message : String(error);
         }
       },
     );
@@ -110,7 +129,12 @@
 {:else if !hasImage}
   <span class="note">无图</span>
 {:else if failed}
-  <span class="note">不可用</span>
+  <button
+    type="button"
+    class="note retry"
+    title={failReason ? `${failReason}（点击重试）` : "点击重试"}
+    onclick={retry}
+  >不可用 · 重试</button>
 {:else}
   <span class="loading" aria-hidden="true"></span>
 {/if}
@@ -146,6 +170,19 @@
   .note {
     font-size: var(--font-xs);
     color: var(--text-3);
+  }
+
+  .retry {
+    border: none;
+    background: transparent;
+    padding: 4px 8px;
+    cursor: pointer;
+    border-radius: var(--radius-s);
+  }
+
+  .retry:hover {
+    background: var(--surface-2);
+    color: var(--text);
   }
 
   .loading {

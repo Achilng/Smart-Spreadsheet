@@ -13,6 +13,21 @@ interface QueuedRequest {
 
 type ImageFetcher = (rowId: number) => Promise<ArrayBuffer>;
 
+/**
+ * 取消类失败（离开可视区域、缓存重置、请求过期）。
+ * 与真实加载失败区分开：UI 对取消不应显示“不可用”，重新进入视口会自动重试。
+ */
+export class ImageLoadCancelled extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ImageLoadCancelled";
+  }
+}
+
+export function isImageLoadCancelled(error: unknown): boolean {
+  return error instanceof ImageLoadCancelled;
+}
+
 export class ImageLoader {
   readonly #cache = new Map<number, CachedImage>();
   readonly #pending = new Map<number, Promise<string>>();
@@ -96,7 +111,7 @@ export class ImageLoader {
         retained.push(request);
       } else {
         this.#pending.delete(request.rowId);
-        request.reject(new Error("缩略图已离开可视区域"));
+        request.reject(new ImageLoadCancelled("缩略图已离开可视区域"));
       }
     }
     this.#queue.push(...retained);
@@ -106,7 +121,7 @@ export class ImageLoader {
     this.#disposed = true;
     this.#generation += 1;
     for (const request of this.#queue.splice(0)) {
-      request.reject(new Error("图片加载器已关闭"));
+      request.reject(new ImageLoadCancelled("图片加载器已关闭"));
     }
     for (const image of this.#cache.values()) {
       URL.revokeObjectURL(image.url);
@@ -119,7 +134,7 @@ export class ImageLoader {
   clear(): void {
     this.#generation += 1;
     for (const request of this.#queue.splice(0)) {
-      request.reject(new Error("图片缓存已重置"));
+      request.reject(new ImageLoadCancelled("图片缓存已重置"));
     }
     for (const image of this.#cache.values()) {
       URL.revokeObjectURL(image.url);
@@ -148,7 +163,7 @@ export class ImageLoader {
       const response = await this.#fetch(request.rowId);
       const buffer = binaryBuffer(response);
       if (this.#disposed || request.generation !== this.#generation) {
-        request.reject(new Error("图片请求已过期"));
+        request.reject(new ImageLoadCancelled("图片请求已过期"));
         return;
       }
       const blob = this.#mimeType

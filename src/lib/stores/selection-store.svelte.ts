@@ -8,6 +8,7 @@ import {
   type TagMatchMode,
 } from "../api";
 import { getRow, rowStore } from "./row-store.svelte";
+import { setNotice } from "./app-state.svelte";
 
 /**
  * 选择模型，沿用后端的 explicit / filtered 双模式：
@@ -55,22 +56,49 @@ function setRowSelected(rowId: number, selected: boolean): void {
   }
 }
 
-/** 勾选/取消一行；按住 Shift 时从上一次点击位置整段选中（仅覆盖已加载的行）。 */
+/** 勾选/取消一行；按住 Shift 时从上一次点击位置整段选中。 */
 export function toggleRow(rowId: number, index: number, shiftKey: boolean): void {
   if (shiftKey && anchorIndex !== null && anchorIndex !== index) {
     const from = Math.min(anchorIndex, index);
     const to = Math.max(anchorIndex, index);
+    let missing = 0;
     for (let cursor = from; cursor <= to; cursor += 1) {
       const row = getRow(cursor);
       if (row) {
         setRowSelected(row.id, true);
+      } else {
+        missing += 1;
       }
+    }
+    if (missing > 0) {
+      // 范围跨越尚未加载的分页：明确告知实际选中数，避免用户误以为整段已选
+      setNotice({
+        tone: "error",
+        text: `范围内有 ${missing} 行尚未加载，本次只选中了已加载的 ${to - from + 1 - missing} 行。滚动浏览加载后可再次 Shift 选择补全。`,
+      });
     }
   } else {
     setRowSelected(rowId, !isRowSelected(rowId));
   }
   anchorIndex = index;
   selection.version += 1;
+}
+
+/**
+ * 卡片/行主体的修饰键选择（资源管理器惯例）：
+ * Ctrl+单击 = 切换该行选中；Shift+单击 = 从锚点整段选中。
+ * 返回 true 表示本次点击已作为选择操作消费，调用方不应再当作“查看详情”。
+ */
+export function modifierSelect(rowId: number, index: number, event: MouseEvent): boolean {
+  if (event.shiftKey && anchorIndex !== null) {
+    toggleRow(rowId, index, true);
+    return true;
+  }
+  if (event.ctrlKey || event.metaKey) {
+    toggleRow(rowId, index, false);
+    return true;
+  }
+  return false;
 }
 
 /** 用一组明确行 ID 覆盖当前选择（切换为 explicit 模式）。 */

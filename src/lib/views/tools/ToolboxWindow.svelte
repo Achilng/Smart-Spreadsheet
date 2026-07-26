@@ -10,6 +10,8 @@
   import Shuffle from "@lucide/svelte/icons/shuffle";
   import Workflow from "@lucide/svelte/icons/workflow";
   import { onMount } from "svelte";
+  import { listen } from "@tauri-apps/api/event";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
 
   import { app, refreshSnapshot } from "../../stores/app-state.svelte";
   import { installCloseGuards, registerCloseGuard } from "../../stores/close-guard";
@@ -95,7 +97,8 @@
       label: "导出工具",
       description: "导出主窗口选区或本地图片并按需清除元数据",
       group: "文件处理",
-      requiresLibrary: true,
+      // 纯本地文件的元数据清洗不依赖资料库，空库时也应可用
+      requiresLibrary: false,
       icon: FileOutput,
     },
     {
@@ -154,6 +157,8 @@
     void refreshSnapshot();
     let disposed = false;
     let uninstallGuards: (() => void) | null = null;
+    let unlistenFocus: (() => void) | null = null;
+    let unlistenLibraryChange: (() => void) | null = null;
     // 关窗守卫：进行中的任务与撤回能力都会随窗口关闭而消失，先确认
     const unregisterGuard = registerCloseGuard(() => {
       if (app.busy || history.busy) return "还有后台任务正在进行";
@@ -168,10 +173,33 @@
       if (disposed) fn();
       else uninstallGuards = fn;
     });
+    // 主窗口导入/删除后快照会过时——窗口重获焦点时刷新，
+    // 保证“需要资料库”的工具可用性跟随主窗口实际状态。
+    void getCurrentWindow()
+      .onFocusChanged(({ payload: focused }) => {
+        if (focused && !app.busy) {
+          void refreshSnapshot();
+        }
+      })
+      .then(fn => {
+        if (disposed) fn();
+        else unlistenFocus = fn;
+      });
+    // 主窗口的资料库变更广播（导入完成/删除/重置）也即时刷新
+    void listen("main://library-changed", () => {
+      if (!app.busy) {
+        void refreshSnapshot();
+      }
+    }).then(fn => {
+      if (disposed) fn();
+      else unlistenLibraryChange = fn;
+    });
     return () => {
       disposed = true;
       unregisterGuard();
       uninstallGuards?.();
+      unlistenFocus?.();
+      unlistenLibraryChange?.();
     };
   });
 
@@ -193,7 +221,20 @@
   }
 </script>
 
-<svelte:window oncontextmenu={event => event.preventDefault()} />
+<svelte:window
+  oncontextmenu={event => {
+    // 输入控件放行原生右键菜单（粘贴等），其余位置屏蔽
+    const target = event.target;
+    if (
+      target instanceof HTMLInputElement ||
+      target instanceof HTMLTextAreaElement ||
+      (target instanceof HTMLElement && target.isContentEditable)
+    ) {
+      return;
+    }
+    event.preventDefault();
+  }}
+/>
 
 <div class="toolbox">
   <header class="titlebar" data-tauri-drag-region>

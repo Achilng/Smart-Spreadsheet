@@ -1,11 +1,25 @@
 <script lang="ts">
-  import { app, chooseDirectory } from "../../stores/app-state.svelte";
+  import { app, chooseDirectory, errorText, setNotice } from "../../stores/app-state.svelte";
   import {
     chooseImageArchive,
     chooseImageFolder,
   } from "../../stores/import-actions.svelte";
-  import { softFly } from "../../ui/motion";
+  import { dropState, listenDragDrop } from "../../stores/drop-import.svelte";
+  import { onMount } from "svelte";
+  import { softFade, softFly, softPop } from "../../ui/motion";
   import { openToolboxWindow } from "../../windows/toolbox";
+  import DropConfirmDialog from "./DropConfirmDialog.svelte";
+
+  // 首屏也要支持拖拽导入：新用户的第一反应就是把文件夹拖进来
+  onMount(() => listenDragDrop());
+
+  async function openToolbox(): Promise<void> {
+    try {
+      await openToolboxWindow();
+    } catch (error) {
+      setNotice({ tone: "error", text: `无法打开工具箱：${errorText(error)}` });
+    }
+  }
 </script>
 
 <div class="center-screen">
@@ -32,7 +46,7 @@
         type="button"
         class="btn"
         disabled={app.busy}
-        onclick={() => void openToolboxWindow()}
+        onclick={() => void openToolbox()}
       >
         编写自动规则
       </button>
@@ -45,6 +59,7 @@
         导入压缩包
       </button>
     </div>
+    <p class="drop-tip">也可以直接把图片文件夹或压缩包拖到这个窗口里。</p>
     <p class="flow-hint">
       从旧版升级？
       <button
@@ -57,6 +72,16 @@
   </div>
 </div>
 
+<DropConfirmDialog />
+
+{#if dropState.dragging}
+  <div class="drop-overlay" transition:softFade={{ duration: 120 }}>
+    <div class="drop-hint" transition:softPop={{ duration: 150, y: 4, start: 0.98 }}>
+      松开鼠标以导入图片
+    </div>
+  </div>
+{/if}
+
 <style>
   .directory {
     font-size: var(--font-sm);
@@ -64,6 +89,12 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  .drop-tip {
+    margin-top: 10px;
+    font-size: var(--font-sm);
+    color: var(--text-3);
   }
 
   .link-btn {
@@ -83,5 +114,25 @@
   .link-btn:disabled {
     opacity: 0.5;
     cursor: default;
+  }
+
+  .drop-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-dragdrop);
+    display: grid;
+    place-items: center;
+    background: var(--overlay);
+    pointer-events: none;
+  }
+
+  .drop-hint {
+    padding: 20px 40px;
+    background: var(--surface);
+    border: 2px dashed var(--accent);
+    border-radius: var(--radius-m);
+    font-size: var(--font-xl);
+    font-weight: 600;
+    color: var(--accent);
   }
 </style>

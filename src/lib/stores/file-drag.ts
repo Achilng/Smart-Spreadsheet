@@ -11,6 +11,7 @@ let pending: {
   startX: number;
   startY: number;
   onDragStart?: () => void;
+  onDragEnd?: () => void;
 } | null = null;
 
 function onMouseMove(e: MouseEvent): void {
@@ -19,17 +20,23 @@ function onMouseMove(e: MouseEvent): void {
   const dy = Math.abs(e.clientY - pending.startY);
   if (dx + dy < DRAG_THRESHOLD) return;
 
-  const { rowId, onDragStart } = pending;
+  const { rowId, onDragStart, onDragEnd } = pending;
   cleanup();
   onDragStart?.();
   outboundDrag = true;
   prepareFileDrag(rowId).then(
     (info) =>
       startDrag({ item: [info.filePath], icon: info.iconPath }).finally(
-        () => { outboundDrag = false; },
+        () => {
+          outboundDrag = false;
+          // OS 级拖拽结束后浏览器不会派发 click，必须主动通知调用方复位状态，
+          // 否则下一次点击会被“拖拽后吞 click”的守卫吃掉（死点击）。
+          onDragEnd?.();
+        },
       ),
     (error) => {
       outboundDrag = false;
+      onDragEnd?.();
       setNotice({ tone: "error", text: errorText(error) });
     },
   );
@@ -49,9 +56,10 @@ export function beginFileDrag(
   e: MouseEvent,
   rowId: number,
   onDragStart?: () => void,
+  onDragEnd?: () => void,
 ): void {
   if (e.button !== 0) return;
-  pending = { rowId, startX: e.clientX, startY: e.clientY, onDragStart };
+  pending = { rowId, startX: e.clientX, startY: e.clientY, onDragStart, onDragEnd };
   window.addEventListener("mousemove", onMouseMove);
   window.addEventListener("mouseup", onMouseUp, { once: true });
 }

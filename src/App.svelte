@@ -76,6 +76,15 @@
   );
 
   function suppressDefaultContextMenu(event: MouseEvent): void {
+    // 输入控件放行原生右键菜单：用户需要“粘贴”等系统菜单能力
+    const target = event.target;
+    if (
+      target instanceof HTMLInputElement ||
+      target instanceof HTMLTextAreaElement ||
+      (target instanceof HTMLElement && target.isContentEditable)
+    ) {
+      return;
+    }
     event.preventDefault();
   }
 </script>
