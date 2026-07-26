@@ -9,6 +9,9 @@
   import Trash2 from "@lucide/svelte/icons/trash-2";
   import Zap from "@lucide/svelte/icons/zap";
   import { onMount } from "svelte";
+  import { flip } from "svelte/animate";
+
+  import { flipDuration } from "../../ui/motion";
 
   import {
     createAutomationRule,
@@ -397,14 +400,31 @@
       {:else}
         <div class="rule-list">
           {#each rules as rule, index (rule.id)}
-            <article class:is-selected={selectedId === rule.id} class:is-disabled={!rule.enabled}>
+            <article
+              class:is-selected={selectedId === rule.id}
+              class:is-disabled={!rule.enabled}
+              animate:flip={{ duration: flipDuration(170) }}
+            >
               <button type="button" class="rule-main" onclick={() => loadRule(rule, true)}>
-                <strong>{rule.name}</strong><span>{ruleSubtitle(rule)}</span>
+                <span class="rule-order tabular" aria-hidden="true">{index + 1}</span>
+                <span class="rule-copy">
+                  <strong>{rule.name || "未命名规则"}</strong>
+                  <span class="rule-sub">{ruleSubtitle(rule)}</span>
+                </span>
               </button>
-              <div class="rule-controls">
-                <label title={rule.enabled ? "已启用" : "已停用"}><input type="checkbox" checked={rule.enabled} onchange={event => void toggleRule(rule, (event.currentTarget as HTMLInputElement).checked)} /><span>{rule.enabled ? "启用" : "停用"}</span></label>
-                <button type="button" title="上移" disabled={index === 0} onclick={() => void moveRule(index, -1)}><ArrowUp size={14} /></button>
-                <button type="button" title="下移" disabled={index === rules.length - 1} onclick={() => void moveRule(index, 1)}><ArrowDown size={14} /></button>
+              <div class="rule-side">
+                <div class="rule-move">
+                  <button type="button" title="上移" disabled={index === 0} onclick={() => void moveRule(index, -1)}><ArrowUp size={13} /></button>
+                  <button type="button" title="下移" disabled={index === rules.length - 1} onclick={() => void moveRule(index, 1)}><ArrowDown size={13} /></button>
+                </div>
+                <input
+                  type="checkbox"
+                  class="switch"
+                  title={rule.enabled ? "已启用，点击停用" : "已停用，点击启用"}
+                  aria-label={`${rule.enabled ? "停用" : "启用"}规则「${rule.name}」`}
+                  checked={rule.enabled}
+                  onchange={event => void toggleRule(rule, (event.currentTarget as HTMLInputElement).checked)}
+                />
               </div>
             </article>
           {/each}
@@ -516,18 +536,25 @@
   .empty-rules { min-height: 210px; padding: 20px; text-align: center; }
   .empty-rules strong { margin-top: 10px; color: var(--text-2); }
   .empty-rules p { max-width: 210px; margin-top: 5px; font-size: var(--font-sm); line-height: 1.55; }
-  .rule-list { display: grid; gap: 7px; }
-  .rule-list article { border: 1px solid transparent; border-radius: var(--radius-s); background: var(--surface-2); overflow: hidden; }
-  .rule-list article.is-selected { border-color: var(--accent); background: var(--accent-soft); }
-  .rule-list article.is-disabled { opacity: .65; }
-  .rule-main { width: 100%; display: grid; gap: 3px; padding: 10px; border: 0; background: transparent; text-align: left; color: var(--text); }
-  .rule-main strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--font-sm); }
-  .rule-main span { color: var(--text-3); font-size: var(--font-xs); }
-  .rule-controls { display: flex; align-items: center; justify-content: flex-end; gap: 3px; padding: 0 7px 7px; }
-  .rule-controls label { margin-right: auto; display: flex; align-items: center; gap: 5px; color: var(--text-3); font-size: var(--font-xs); }
-  .rule-controls button { width: 27px; height: 25px; display: grid; place-items: center; border: 0; border-radius: 5px; background: transparent; color: var(--text-3); }
-  .rule-controls button:hover:not(:disabled) { background: var(--surface-3); color: var(--text); }
-  .rule-controls button:disabled { opacity: .25; }
+  .rule-list { display: grid; gap: 2px; }
+  .rule-list article { position: relative; display: flex; align-items: center; gap: 6px; padding-right: 9px; border-radius: var(--radius-s); transition: background var(--motion-fast) var(--ease-responsive); }
+  .rule-list article:hover { background: var(--surface-2); }
+  .rule-list article.is-selected { background: var(--surface-3); }
+  .rule-list article.is-selected .rule-copy strong { font-weight: 700; }
+  .rule-list article.is-disabled .rule-copy strong { color: var(--text-3); }
+  .rule-main { min-width: 0; flex: 1; display: flex; align-items: center; gap: 9px; padding: 9px 0 9px 10px; border: 0; background: transparent; text-align: left; color: var(--text); }
+  .rule-order { flex: none; min-width: 14px; color: var(--text-4); font-size: 11px; font-weight: 600; text-align: center; }
+  .rule-copy { min-width: 0; display: grid; gap: 2px; }
+  .rule-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--font-sm); font-weight: 600; }
+  .rule-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-3); font-size: var(--font-xs); }
+  .rule-side { flex: none; display: flex; align-items: center; gap: 5px; }
+  .rule-move { display: flex; gap: 1px; opacity: 0; transition: opacity var(--motion-fast) var(--ease-responsive); }
+  .rule-list article:hover .rule-move,
+  .rule-move:focus-within { opacity: 1; }
+  .rule-move button { width: 22px; height: 22px; display: grid; place-items: center; border: 0; border-radius: 5px; background: transparent; color: var(--text-3); }
+  .rule-move button:hover:not(:disabled) { background: var(--surface-3); color: var(--text); }
+  .rule-list article.is-selected .rule-move button:hover:not(:disabled) { background: var(--border-strong); }
+  .rule-move button:disabled { opacity: .3; }
   .rule-editor { min-width: 0; min-height: 0; overflow-y: auto; background: var(--bg); }
   .editor-head { position: sticky; top: 0; z-index: 5; min-height: 64px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 24px; border-bottom: 1px solid var(--border); background: var(--surface); }
   .eyebrow { color: var(--text-3); font-size: var(--font-xs); font-weight: 650; letter-spacing: var(--ls-caps); text-transform: uppercase; }

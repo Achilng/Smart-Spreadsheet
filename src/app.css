@@ -219,6 +219,44 @@ input[type="checkbox"]:disabled {
   cursor: not-allowed;
 }
 
+/* ---- 迷你开关（checkbox 加 .switch 类启用；启停类语义用它，勾选类语义用方框） ---- */
+input[type="checkbox"].switch {
+  width: 32px;
+  height: 18px;
+  border: none;
+  border-radius: var(--radius-full);
+  background: var(--surface-3);
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  transition: background var(--motion-fast) var(--ease-responsive);
+}
+
+input[type="checkbox"].switch::before {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 18%);
+  -webkit-mask: none;
+  mask: none;
+  transform: none;
+  transition: transform var(--motion-fast) var(--ease-responsive);
+}
+
+input[type="checkbox"].switch:hover:not(:checked):not(:disabled) {
+  background: var(--border-strong);
+}
+
+input[type="checkbox"].switch:checked {
+  background: var(--primary);
+  border-color: transparent;
+}
+
+input[type="checkbox"].switch:checked::before {
+  transform: translateX(14px);
+}
+
 /* ---- 输入框统一基线 ---- */
 input[type="text"],
 input[type="search"],
