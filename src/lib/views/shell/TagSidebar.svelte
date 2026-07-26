@@ -1,18 +1,15 @@
 <script lang="ts">
   import {
-    addTagsToSelection,
     createTag,
     deleteTag,
-    listSelectionTags,
-    removeTagsFromSelection,
+    renameTag,
     type DedupeMode,
     type TagMatchMode,
-    type TagSelectionSummary,
   } from "../../api";
   import ContextMenuShell from "../../ui/ContextMenuShell.svelte";
   import Modal from "../../ui/Modal.svelte";
   import { app, bumpDataVersion, errorText, formatCount } from "../../stores/app-state.svelte";
-  import { captureSelectionStates, recordRowStateChange, restoreRowStates } from "../../stores/history-actions";
+  import { captureSelectionStates, restoreRowStates } from "../../stores/history-actions";
   import { recordHistory } from "../../stores/history.svelte";
   import {
     resetRows,
@@ -23,34 +20,13 @@
     setHideGrouped,
     setSingleArtistOnly,
   } from "../../stores/row-store.svelte";
-  import {
-    clearSelection,
-    getSelectedCount,
-    materializeSelection,
-    selection,
-    selectionDto,
-  } from "../../stores/selection-store.svelte";
+  import { clearSelection } from "../../stores/selection-store.svelte";
   import { loadTags, tagStore } from "../../stores/tag-store.svelte";
-  import { softFade, softFly } from "../../ui/motion";
+  import { softFade } from "../../ui/motion";
 
-  type SidebarMode = "filter" | "tag";
-  type CoverageState = "all" | "partial" | "none";
-
-  // 侧栏模式提升到 app-state，供底部选择条"打 Tag"联动
-  const sidebarMode = $derived(app.sidebarMode);
-  let newTagName = $state("");
-  let tagging = $state(false);
-  let coverageLoading = $state(false);
-  let coverageError = $state<string | null>(null);
-  let coverage = $state<TagSelectionSummary[]>([]);
   let status = $state<{ text: string; isError: boolean } | null>(null);
-  let coverageGeneration = 0;
 
   const activeTags = $derived(rowStore.tags);
-  const selectedCount = $derived(getSelectedCount());
-  const selectedByTag = $derived.by(
-    () => new Map(coverage.map(summary => [summary.name, summary.selectedRows])),
-  );
 
   /** Tag 库列表 + 仍在筛选中但已被自动清理的 Tag（计数 0） */
   const entries = $derived.by(() => {
@@ -63,28 +39,6 @@
     }
     return merged;
   });
-
-  $effect(() => {
-    void selection.version;
-    const mode = sidebarMode;
-    const count = selectedCount;
-    if (mode !== "tag" || count === 0) {
-      coverageGeneration += 1;
-      coverage = [];
-      coverageLoading = false;
-      coverageError = null;
-      return;
-    }
-    void refreshCoverage();
-  });
-
-  function setSidebarMode(mode: SidebarMode): void {
-    if (app.sidebarMode !== mode) {
-      app.sidebarMode = mode;
-      status = null;
-      newTagName = "";
-    }
-  }
 
   function toggleFilterTag(name: string): void {
     const next = activeTags.includes(name)
@@ -106,100 +60,12 @@
     clearSelection();
   }
 
-  function tagCoverage(name: string): CoverageState {
-    const matched = selectedByTag.get(name) ?? 0;
-    if (selectedCount > 0 && matched >= selectedCount) {
-      return "all";
-    }
-    return matched > 0 ? "partial" : "none";
-  }
-
-  async function refreshCoverage(): Promise<void> {
-    const request = ++coverageGeneration;
-    coverageLoading = true;
-    coverageError = null;
-    try {
-      if (selection.kind === "filtered") {
-        await materializeSelection();
-        return;
-      }
-      const summaries = await listSelectionTags(selectionDto());
-      if (request === coverageGeneration) {
-        coverage = summaries;
-      }
-    } catch (error) {
-      if (request === coverageGeneration) {
-        coverageError = errorText(error);
-      }
-    } finally {
-      if (request === coverageGeneration) {
-        coverageLoading = false;
-      }
-    }
-  }
-
-  async function toggleAssignment(name: string): Promise<void> {
-    if (selectedCount === 0 || tagging || coverageLoading) {
-      return;
-    }
-    tagging = true;
-    status = null;
-    try {
-      const before = await captureSelectionStates(selectionDto());
-      const remove = tagCoverage(name) === "all";
-      const result = remove
-        ? await removeTagsFromSelection(selectionDto(), [name])
-        : await addTagsToSelection(selectionDto(), [name]);
-      status = {
-        text: `${remove ? "已解除" : "已贴上"} Tag"${name}"：处理 ${formatCount(result.affectedRows)} 行，变更 ${formatCount(result.associationsChanged)} 个关联。`,
-        isError: false,
-      };
-      resetRows();
-      await loadTags();
-      await recordRowStateChange(`${remove ? "移除" : "添加"} Tag「${name}」`, before);
-      await refreshCoverage();
-    } catch (error) {
-      status = { text: `打标失败：${errorText(error)}`, isError: true };
-    } finally {
-      tagging = false;
-    }
-  }
-
-  async function createAndAttach(event: SubmitEvent): Promise<void> {
-    event.preventDefault();
-    const name = newTagName.trim();
-    if (!name) {
-      status = { text: "请输入一个非空 Tag。", isError: true };
-      return;
-    }
-    if (selectedCount === 0) {
-      status = { text: "请先选择要打标的行。", isError: true };
-      return;
-    }
-    tagging = true;
-    status = null;
-    try {
-      const before = await captureSelectionStates(selectionDto());
-      const result = await addTagsToSelection(selectionDto(), [name]);
-      newTagName = "";
-      status = {
-        text: `已将 Tag"${name}"贴到 ${formatCount(result.affectedRows)} 行，变更 ${formatCount(result.associationsChanged)} 个关联。`,
-        isError: false,
-      };
-      resetRows();
-      await loadTags();
-      await recordRowStateChange(`添加 Tag「${name}」`, before);
-      await refreshCoverage();
-    } catch (error) {
-      status = { text: `即建即贴失败：${errorText(error)}`, isError: true };
-    } finally {
-      tagging = false;
-    }
-  }
-
   let tagMenu = $state({ open: false, x: 0, y: 0, name: "" });
   let confirmingDelete = $state<string | null>(null);
   let deletingTag = $state(false);
+  let renamingFrom = $state<string | null>(null);
+  let renameTo = $state("");
+  let renamingTag = $state(false);
 
   function onTagContextMenu(event: MouseEvent, name: string): void {
     event.preventDefault();
@@ -213,6 +79,68 @@
   function requestDeleteTag(): void {
     confirmingDelete = tagMenu.name;
     closeTagMenu();
+  }
+
+  function requestRenameTag(): void {
+    renamingFrom = tagMenu.name;
+    renameTo = tagMenu.name;
+    closeTagMenu();
+  }
+
+  /** 筛选条件里引用旧名时同步替换为新名 */
+  function renameInActiveFilter(oldName: string, newName: string): void {
+    if (rowStore.tags.includes(oldName)) {
+      setFilter(
+        rowStore.tags.map(tag => (tag === oldName ? newName : tag)),
+        rowStore.tagMode,
+      );
+    }
+  }
+
+  async function confirmRenameTag(): Promise<void> {
+    const oldName = renamingFrom;
+    const newName = renameTo.trim();
+    if (!oldName || renamingTag) return;
+    if (!newName) {
+      status = { text: "新名称不能为空。", isError: true };
+      return;
+    }
+    if (newName === oldName) {
+      renamingFrom = null;
+      return;
+    }
+    renamingTag = true;
+    try {
+      const renamed = await renameTag(oldName, newName);
+      if (renamed) {
+        renameInActiveFilter(oldName, newName);
+        await loadTags();
+        bumpDataVersion({ preserveScroll: true, preserveSelection: true });
+        status = { text: `已将 Tag"${oldName}"重命名为"${newName}"。`, isError: false };
+        recordHistory({
+          label: `重命名 Tag「${oldName}」为「${newName}」`,
+          undo: async () => {
+            await renameTag(newName, oldName);
+            renameInActiveFilter(newName, oldName);
+            await loadTags();
+            bumpDataVersion({ preserveScroll: true, preserveSelection: true });
+          },
+          redo: async () => {
+            await renameTag(oldName, newName);
+            renameInActiveFilter(oldName, newName);
+            await loadTags();
+            bumpDataVersion({ preserveScroll: true, preserveSelection: true });
+          },
+        });
+      } else {
+        status = { text: `Tag"${oldName}"不存在。`, isError: true };
+      }
+      renamingFrom = null;
+    } catch (error) {
+      status = { text: `重命名失败：${errorText(error)}`, isError: true };
+    } finally {
+      renamingTag = false;
+    }
   }
 
   async function confirmDeleteTag(): Promise<void> {
@@ -285,177 +213,142 @@
 <div class="tag-sidebar">
   <header class="sidebar-header">
     <div class="header-copy">
-      <h3>{sidebarMode === "filter" ? "筛选" : "打标"}</h3>
-      {#if sidebarMode === "filter"}
-        <p class="header-sub tabular">{filterSummary}</p>
-      {/if}
-    </div>
-    <div class="mode-switch" role="group" aria-label="Tag 侧边栏模式">
-      <button
-        type="button"
-        class:is-active={sidebarMode === "filter"}
-        aria-pressed={sidebarMode === "filter"}
-        onclick={() => setSidebarMode("filter")}
-      >
-        筛选
-      </button>
-      <button
-        type="button"
-        class:is-active={sidebarMode === "tag"}
-        aria-pressed={sidebarMode === "tag"}
-        onclick={() => setSidebarMode("tag")}
-      >
-        打标
-      </button>
+      <h3>筛选</h3>
+      <p class="header-sub tabular">{filterSummary}</p>
     </div>
   </header>
 
-  {#if sidebarMode === "filter"}
-    <div class="f-group" role="group" aria-label="去重与筛选" in:softFly={{ duration: 145, x: -4, y: 0 }}>
-      <div class="f-head">显示</div>
-      <label class="check-row" class:on={rowStore.dedupe === "positivePrompt"} class:is-disabled={app.viewMode === "group"}>
-        <input
-          type="checkbox"
-          checked={rowStore.dedupe === "positivePrompt"}
-          disabled={app.viewMode === "group"}
-          onchange={() => toggleDedupe("positivePrompt")}
-        />
-        <span class="cbox" aria-hidden="true"></span>
-        按正向提示词去重
-      </label>
-      <label class="check-row" class:on={rowStore.dedupe === "artists"} class:is-disabled={app.viewMode === "group"}>
-        <input
-          type="checkbox"
-          checked={rowStore.dedupe === "artists"}
-          disabled={app.viewMode === "group"}
-          onchange={() => toggleDedupe("artists")}
-        />
-        <span class="cbox" aria-hidden="true"></span>
-        按画师串去重
-      </label>
-      <label class="check-row" class:on={rowStore.singleArtistOnly}>
-        <input
-          type="checkbox"
-          checked={rowStore.singleArtistOnly}
-          onchange={() => { setSingleArtistOnly(!rowStore.singleArtistOnly); clearSelection(); }}
-        />
-        <span class="cbox" aria-hidden="true"></span>
-        筛选单画师串图片
-      </label>
-      <label class="check-row" class:on={rowStore.hasVibe}>
-        <input
-          type="checkbox"
-          checked={rowStore.hasVibe}
-          onchange={() => { setHasVibe(!rowStore.hasVibe); clearSelection(); }}
-        />
-        <span class="cbox" aria-hidden="true"></span>
-        筛选存在 VIBE 的图片
-      </label>
-      <label class="check-row" class:on={rowStore.hideGrouped} class:is-disabled={app.viewMode === "group"}>
-        <input
-          type="checkbox"
-          checked={rowStore.hideGrouped}
-          disabled={app.viewMode === "group"}
-          onchange={() => { setHideGrouped(!rowStore.hideGrouped); clearSelection(); }}
-        />
-        <span class="cbox" aria-hidden="true"></span>
-        隐藏已分组
-      </label>
-    </div>
+  <div class="f-group" role="group" aria-label="去重与筛选">
+    <div class="f-head">显示</div>
+    <label class="check-row" class:on={rowStore.dedupe === "positivePrompt"} class:is-disabled={app.viewMode === "group"}>
+      <input
+        type="checkbox"
+        checked={rowStore.dedupe === "positivePrompt"}
+        disabled={app.viewMode === "group"}
+        onchange={() => toggleDedupe("positivePrompt")}
+      />
+      <span class="cbox" aria-hidden="true"></span>
+      按正向提示词去重
+    </label>
+    <label class="check-row" class:on={rowStore.dedupe === "artists"} class:is-disabled={app.viewMode === "group"}>
+      <input
+        type="checkbox"
+        checked={rowStore.dedupe === "artists"}
+        disabled={app.viewMode === "group"}
+        onchange={() => toggleDedupe("artists")}
+      />
+      <span class="cbox" aria-hidden="true"></span>
+      按画师串去重
+    </label>
+    <label class="check-row" class:on={rowStore.singleArtistOnly}>
+      <input
+        type="checkbox"
+        checked={rowStore.singleArtistOnly}
+        onchange={() => { setSingleArtistOnly(!rowStore.singleArtistOnly); clearSelection(); }}
+      />
+      <span class="cbox" aria-hidden="true"></span>
+      筛选单画师串图片
+    </label>
+    <label class="check-row" class:on={rowStore.hasVibe}>
+      <input
+        type="checkbox"
+        checked={rowStore.hasVibe}
+        onchange={() => { setHasVibe(!rowStore.hasVibe); clearSelection(); }}
+      />
+      <span class="cbox" aria-hidden="true"></span>
+      筛选存在 VIBE 的图片
+    </label>
+    <label class="check-row" class:on={rowStore.hideGrouped} class:is-disabled={app.viewMode === "group"}>
+      <input
+        type="checkbox"
+        checked={rowStore.hideGrouped}
+        disabled={app.viewMode === "group"}
+        onchange={() => { setHideGrouped(!rowStore.hideGrouped); clearSelection(); }}
+      />
+      <span class="cbox" aria-hidden="true"></span>
+      隐藏已分组
+    </label>
+  </div>
 
-    <div class="f-head tag-head" in:softFly={{ duration: 145, x: -4, y: 0 }}>
-      Tag
-      <button
-        type="button"
-        class="mode-link"
-        title="切换 Tag 筛选的组合方式"
-        onclick={() => setMode(rowStore.tagMode === "and" ? "or" : "and")}
-      >
-        {rowStore.tagMode === "and" ? "AND 模式 ⌄" : "OR 模式 ⌄"}
-      </button>
-    </div>
-  {:else}
-    <div class="tagging-info" in:softFly={{ duration: 145, x: 4, y: 0 }}>
-      {#if selectedCount === 0}
-        <span>请先在画廊或表格中选择要打标的行。</span>
-      {:else if coverageLoading}
-        <span>正在准备 {formatCount(selectedCount)} 行的 Tag 状态…</span>
-      {:else}
-        <span>面向已选 {formatCount(selectedCount)} 行，点击 Tag 可贴上或解除。</span>
-      {/if}
-      {#if coverageError}
-        <span class="is-error">加载覆盖状态失败：{coverageError}</span>
-      {/if}
-    </div>
-  {/if}
+  <div class="f-head tag-head">
+    Tag
+    <button
+      type="button"
+      class="mode-link"
+      title="切换 Tag 筛选的组合方式"
+      onclick={() => setMode(rowStore.tagMode === "and" ? "or" : "and")}
+    >
+      {rowStore.tagMode === "and" ? "AND 模式 ⌄" : "OR 模式 ⌄"}
+    </button>
+  </div>
 
   <div class="tag-list">
     {#if tagStore.error}
       <p class="list-note">Tag 列表加载失败：{tagStore.error}</p>
     {:else if entries.length === 0}
-      <p class="list-note faint">
-        {sidebarMode === "filter" ? "还没有 Tag。切到打标模式可即建即贴。" : "输入新名字即可创建并贴到所选行。"}
-      </p>
+      <p class="list-note faint">还没有 Tag。选中图片后点“编辑 Tag”即可创建。</p>
     {:else}
       {#each entries as entry (entry.name)}
-        {@const state = tagCoverage(entry.name)}
-        {@const filterOn = sidebarMode === "filter" && activeTags.includes(entry.name)}
+        {@const filterOn = activeTags.includes(entry.name)}
         <button
           type="button"
           class="tag-row check-row"
-          class:on={filterOn || (sidebarMode === "tag" && state === "all")}
-          aria-pressed={
-            sidebarMode === "filter" ? activeTags.includes(entry.name) : state === "all"
-          }
-          disabled={sidebarMode === "tag" && (selectedCount === 0 || coverageLoading || tagging)}
-          onclick={() =>
-            sidebarMode === "filter"
-              ? toggleFilterTag(entry.name)
-              : void toggleAssignment(entry.name)}
+          class:on={filterOn}
+          aria-pressed={filterOn}
+          onclick={() => toggleFilterTag(entry.name)}
           oncontextmenu={(e) => onTagContextMenu(e, entry.name)}
         >
-          <span class="cbox" class:is-partial={sidebarMode === "tag" && state === "partial"} aria-hidden="true"></span>
+          <span class="cbox" aria-hidden="true"></span>
           <span class="tag-name" title={entry.name}>{entry.name}</span>
-          {#if sidebarMode === "filter"}
-            <span class="tag-count">{formatCount(entry.rowCount)}</span>
-          {:else}
-            <span class="coverage" class:is-partial={state === "partial"}>
-              {state === "all" ? "全有" : state === "partial" ? "部分" : "无"}
-            </span>
-          {/if}
+          <span class="tag-count">{formatCount(entry.rowCount)}</span>
         </button>
       {/each}
     {/if}
   </div>
 
-  {#if sidebarMode === "tag"}
-    <form class="create-form" onsubmit={createAndAttach} transition:softFly={{ duration: 155, y: 6 }}>
-      <input
-        type="text"
-        placeholder="输入 Tag 名称，即建即贴"
-        bind:value={newTagName}
-        disabled={tagging || coverageLoading || selectedCount === 0}
-        autocomplete="off"
-      />
-      <button
-        type="submit"
-        class="btn"
-        disabled={tagging || coverageLoading || selectedCount === 0}
-      >
-        贴上
-      </button>
-    </form>
-  {/if}
   {#if status}
     <p class="form-status" class:is-error={status.isError} role="status" transition:softFade={{ duration: 140 }}>{status.text}</p>
   {/if}
 </div>
 
 <ContextMenuShell open={tagMenu.open} x={tagMenu.x} y={tagMenu.y} onclose={closeTagMenu}>
+  <button type="button" role="menuitem" onclick={requestRenameTag}>
+    重命名 Tag "{tagMenu.name}"
+  </button>
   <button type="button" role="menuitem" class="danger" onclick={requestDeleteTag}>
     删除 Tag "{tagMenu.name}"
   </button>
 </ContextMenuShell>
+
+<Modal
+  open={renamingFrom !== null}
+  onclose={() => { if (!renamingTag) renamingFrom = null; }}
+  busy={renamingTag}
+  width="400px"
+>
+  <div class="confirm-dialog" aria-label="重命名 Tag">
+    <p>重命名 Tag「{renamingFrom}」：所有关联图片会自动跟随，可用 Ctrl+Z 撤销。自动规则里引用的旧名称不会随之更新。</p>
+    <input
+      type="text"
+      class="rename-input"
+      bind:value={renameTo}
+      disabled={renamingTag}
+      autocomplete="off"
+      onkeydown={e => { if (e.key === "Enter") void confirmRenameTag(); }}
+    />
+    <div class="confirm-actions">
+      <button type="button" class="btn" disabled={renamingTag} onclick={() => (renamingFrom = null)}>取消</button>
+      <button
+        type="button"
+        class="btn btn-primary"
+        disabled={renamingTag || renameTo.trim() === ""}
+        onclick={() => void confirmRenameTag()}
+      >
+        {renamingTag ? "重命名中…" : "重命名"}
+      </button>
+    </div>
+  </div>
+</Modal>
 
 <Modal
   open={confirmingDelete !== null}
@@ -511,40 +404,6 @@
     margin-top: 3px;
     font-size: var(--font-sm);
     color: var(--text-3);
-  }
-
-  .mode-switch {
-    display: flex;
-    background: var(--surface-3);
-    border-radius: var(--radius-full);
-    padding: 3px;
-    gap: 2px;
-    flex: none;
-  }
-
-  .mode-switch button {
-    border: none;
-    background: transparent;
-    border-radius: var(--radius-full);
-    padding: 2px 10px;
-    font-size: var(--font-xs);
-    color: var(--text-2);
-    transition:
-      background var(--motion-fast) var(--ease-responsive),
-      color var(--motion-fast) var(--ease-responsive),
-      box-shadow var(--motion-fast) var(--ease-responsive),
-      transform var(--motion-press) var(--ease-responsive);
-  }
-
-  .mode-switch button:active {
-    transform: scale(0.96);
-  }
-
-  .mode-switch button.is-active {
-    background: var(--surface);
-    color: var(--text);
-    font-weight: 600;
-    box-shadow: 0 1px 4px rgb(0 0 0 / 10%);
   }
 
   /* ---- 小节头（显示 / Tag） ---- */
@@ -648,28 +507,6 @@
     border-color: var(--primary);
   }
 
-  .cbox.is-partial {
-    background-color: var(--primary);
-    background-image: linear-gradient(#ffffff, #ffffff);
-    background-position: center;
-    background-size: 8px 2px;
-    background-repeat: no-repeat;
-    border-color: var(--primary);
-  }
-
-  .tagging-info {
-    display: grid;
-    gap: 4px;
-    padding: 0 16px 10px;
-    color: var(--text-2);
-    font-size: var(--font-sm);
-    line-height: 1.45;
-  }
-
-  .tagging-info .is-error {
-    color: var(--danger);
-  }
-
   .tag-list {
     flex: 1;
     min-height: 0;
@@ -702,44 +539,15 @@
     white-space: nowrap;
   }
 
-  .tag-count,
-  .coverage {
+  .tag-count {
     font-size: 11.5px;
     color: var(--text-4);
     font-variant-numeric: tabular-nums;
     flex: none;
   }
 
-  .check-row.on .tag-count,
-  .check-row.on .coverage {
+  .check-row.on .tag-count {
     color: var(--text-3);
-  }
-
-  .coverage.is-partial {
-    color: var(--warning);
-  }
-
-  .create-form {
-    display: flex;
-    gap: 6px;
-    padding: 10px 12px 4px;
-    flex: none;
-  }
-
-  .create-form input {
-    flex: 1;
-    min-width: 0;
-    padding: 5px 9px;
-    font-size: var(--font-sm);
-  }
-
-  .create-form input:focus {
-    outline: none;
-  }
-
-  .create-form .btn {
-    padding: 4px 10px;
-    font-size: var(--font-sm);
   }
 
   .form-status {
@@ -764,6 +572,11 @@
     margin: 0 0 16px;
     font-size: var(--font-base);
     line-height: 1.5;
+  }
+
+  .rename-input {
+    width: 100%;
+    margin-bottom: 16px;
   }
 
   .confirm-actions {

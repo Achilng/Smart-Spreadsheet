@@ -35,8 +35,6 @@ export const app = $state({
   notices: [] as QueuedNotice[],
   viewMode: "gallery" as ViewMode,
   detailOpen: true,
-  /** 侧栏模式：筛选 / 打标（底部选择条"打 Tag"会切到打标） */
-  sidebarMode: "filter" as "filter" | "tag",
   galleryCardSize: 190,
   tableRowHeight: 64,
   /** 资料库行集合变化（导入/删除）时 +1，数据视图据此整体重载 */
