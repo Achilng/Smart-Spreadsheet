@@ -561,18 +561,6 @@
         </div>
       </section>
 
-      <section class="field">
-        <div class="field-head">
-          <h4>时间</h4>
-          {#if row.time}
-            <button type="button" class="copy-btn" onclick={() => void copyField("时间", row.time ?? "")}>
-              {copiedField === "时间" ? "已复制" : "复制"}
-            </button>
-          {/if}
-        </div>
-        <pre class:is-empty={!row.time}>{row.time ?? "—"}</pre>
-      </section>
-
       {#each [
         { label: "正向提示词", text: row.positivePrompt, editor: promptEditor },
         { label: "角色提示词", text: row.characterPrompt, editor: characterPromptEditor },
@@ -623,6 +611,29 @@
           {/if}
         </section>
       {/each}
+
+      {#if row.generationModel || row.generationSampler || row.generationSteps != null || row.generationSeed}
+        <section class="field">
+          <div class="field-head">
+            <h4>生成信息</h4>
+          </div>
+          <div class="kv tabular">
+            {#if row.generationModel}
+              <span class="k">模型</span><span class="v">{row.generationModel}</span>
+            {/if}
+            {#if row.generationSampler}
+              <span class="k">采样器</span><span class="v">{row.generationSampler}</span>
+            {/if}
+            {#if row.generationSteps != null || row.generationScale}
+              <span class="k">步数 / CFG</span>
+              <span class="v">{row.generationSteps ?? "—"} / {row.generationScale ?? "—"}</span>
+            {/if}
+            {#if row.generationSeed}
+              <span class="k">种子</span><span class="v">{row.generationSeed}</span>
+            {/if}
+          </div>
+        </section>
+      {/if}
 
       {#each [{ label: "画师串", value: row.artists }, { label: "图片文件夹", value: row.imageFolder }, { label: "图片路径", value: row.imagePath }] as field (field.label)}
         <section class="field">
@@ -747,15 +758,18 @@
     border-top: none;
   }
 
+  /* 画册式预览：白底 + 柔影浮起（对齐设计稿 d-preview） */
   .preview-box {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: var(--surface-2);
+    background: var(--surface);
     border-radius: var(--radius-m);
+    box-shadow: var(--shadow-1);
     height: clamp(180px, 36vh, 320px);
     flex: none;
     overflow: hidden;
+    margin-bottom: 2px;
   }
 
   .preview-btn {
@@ -887,6 +901,23 @@
     align-items: center;
     gap: 8px;
     font-size: var(--font-sm);
+  }
+
+  /* 生成信息 kv 表（设计稿 .kv） */
+  .kv {
+    display: grid;
+    grid-template-columns: 84px 1fr;
+    row-gap: 7px;
+    font-size: 12.5px;
+  }
+
+  .kv .k {
+    color: var(--text-3);
+  }
+
+  .kv .v {
+    color: var(--text);
+    overflow-wrap: anywhere;
   }
 
   .group-badge {

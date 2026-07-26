@@ -84,6 +84,12 @@ pub struct RowRecord {
     pub stored_image_path: Option<String>,
     pub image_width: Option<i64>,
     pub image_height: Option<i64>,
+    pub generation_model: Option<String>,
+    pub generation_sampler: Option<String>,
+    pub generation_steps: Option<u32>,
+    pub generation_seed: Option<String>,
+    /// CFG scale；REAL 列在此格式化为文本以保持结构体 Eq
+    pub generation_scale: Option<String>,
     pub metadata_failed: bool,
     pub vibe_reference_count: Option<u32>,
     pub group_id: Option<i64>,
@@ -755,12 +761,23 @@ fn query_total_count(connection: &Connection, table: &str) -> Result<u64, Databa
     u64::try_from(count).map_err(|_| DatabaseError::CountOverflow)
 }
 
+/// CFG scale 展示格式：整数值不带小数点，其余保留原精度。
+fn format_generation_scale(scale: f64) -> String {
+    if scale.fract() == 0.0 {
+        format!("{}", scale as i64)
+    } else {
+        format!("{scale}")
+    }
+}
+
 fn query_page_metadata(connection: &Connection) -> Result<Vec<RowRecord>, DatabaseError> {
     let mut statement = connection.prepare(&format!(
         "SELECT rows.id, rows.batch_id, rows.source_ordinal, rows.time,
                 rows.positive_prompt, rows.character_prompt, rows.negative_prompt, rows.note,
                 rows.artists, rows.image_folder, rows.image_path, rows.stored_image_path,
                 rows.image_width, rows.image_height,
+                rows.generation_model, rows.generation_sampler, rows.generation_steps,
+                rows.generation_seed, rows.generation_scale,
                 rows.metadata_failed, rows.vibe_reference_count, rows.group_id, groups.name
          FROM {PAGE_ROWS_TABLE} AS page
          JOIN rows ON rows.id = page.id
@@ -784,10 +801,17 @@ fn query_page_metadata(connection: &Connection) -> Result<Vec<RowRecord>, Databa
                 stored_image_path: row.get(11)?,
                 image_width: row.get(12)?,
                 image_height: row.get(13)?,
-                metadata_failed: row.get(14)?,
-                vibe_reference_count: row.get(15)?,
-                group_id: row.get(16)?,
-                group_name: row.get(17)?,
+                generation_model: row.get(14)?,
+                generation_sampler: row.get(15)?,
+                generation_steps: row.get(16)?,
+                generation_seed: row.get(17)?,
+                generation_scale: row
+                    .get::<_, Option<f64>>(18)?
+                    .map(|scale| format_generation_scale(scale)),
+                metadata_failed: row.get(19)?,
+                vibe_reference_count: row.get(20)?,
+                group_id: row.get(21)?,
+                group_name: row.get(22)?,
                 tags: Vec::new(),
             })
         })?

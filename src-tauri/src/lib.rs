@@ -83,6 +83,7 @@ pub fn run() {
             app::commands::delete_automation_rule,
             app::commands::reorder_automation_rules,
             app::commands::preview_automation_rule,
+            app::commands::preview_automation_rule_draft,
             app::commands::run_automation_rule_on_library,
             app::commands::preview_quick_tag,
             app::commands::apply_quick_tag,

@@ -361,6 +361,13 @@ impl AppRuntime {
         self.with_database(|db| db.preview_automation_rule(id))
     }
 
+    pub(crate) fn preview_automation_rule_draft(
+        &self,
+        draft: &AutomationRuleDraft,
+    ) -> Result<RulePreview, AppRuntimeError> {
+        self.with_database(|db| db.preview_automation_rule_draft(draft))
+    }
+
     pub(crate) fn run_automation_rule_on_library(
         &self,
         id: i64,

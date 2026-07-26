@@ -632,9 +632,24 @@ impl Database {
 
     pub fn preview_automation_rule(&self, id: i64) -> Result<RulePreview, AutomationRuleError> {
         let rule = self.automation_rule(id)?;
-        validate_draft(&draft_from_rule(&rule))?;
-        validate_group_targets(&self.connection, &rule.actions)?;
-        let prepared = PreparedConditionSet::new(&rule.conditions)?;
+        self.preview_rule_draft_internal(&draft_from_rule(&rule))
+    }
+
+    /// 未保存草稿的只读预览：允许在保存（并可能立即生效）之前先看命中效果。
+    pub fn preview_automation_rule_draft(
+        &self,
+        draft: &AutomationRuleDraft,
+    ) -> Result<RulePreview, AutomationRuleError> {
+        self.preview_rule_draft_internal(draft)
+    }
+
+    fn preview_rule_draft_internal(
+        &self,
+        draft: &AutomationRuleDraft,
+    ) -> Result<RulePreview, AutomationRuleError> {
+        validate_draft(draft)?;
+        validate_group_targets(&self.connection, &draft.actions)?;
+        let prepared = PreparedConditionSet::new(&draft.conditions)?;
         let rows = load_rule_rows(&self.connection, None)?;
         let mut matched = Vec::new();
         let mut needing_changes = 0_u64;
@@ -644,7 +659,7 @@ impl Database {
                 continue;
             }
             matched.push(row.id);
-            let (_, changed_actions, should_stop) = simulate_actions(row, &rule.actions)?;
+            let (_, changed_actions, should_stop) = simulate_actions(row, &draft.actions)?;
             if changed_actions > 0 {
                 needing_changes += 1;
             }
@@ -2435,6 +2450,64 @@ mod tests {
             )
             .unwrap();
         assert_eq!(cleared, (None, None));
+    }
+
+    #[test]
+    fn unsaved_draft_preview_is_read_only_and_matches_saved_preview() {
+        let mut database = Database::open_in_memory().unwrap();
+        let row_id = append_row(&mut database, "draft-preview", "target, other");
+        let rule_draft = draft(
+            "未保存草稿",
+            RuleCondition::Prompt {
+                scope: PromptScope::Positive,
+                operator: PromptOperator::ContainsAll,
+                value: "target".into(),
+                case_sensitive: false,
+            },
+            vec![RuleAction::AddTags {
+                tags: vec!["草稿标签".into()],
+            }],
+        );
+
+        // 草稿预览：不要求先入库
+        let preview = database.preview_automation_rule_draft(&rule_draft).unwrap();
+        assert_eq!(preview.matched_rows, 1);
+        assert_eq!(preview.rows_needing_changes, 1);
+        assert_eq!(preview.sample_row_ids, vec![row_id]);
+
+        // 只读：不产生任何规则记录，也不修改行
+        let rules = database.list_automation_rules().unwrap();
+        assert!(rules.is_empty());
+        let tags = database
+            .list_selection_tags(&RowSelection::Explicit {
+                row_ids: vec![row_id],
+            })
+            .unwrap();
+        assert!(tags.iter().all(|tag| tag.selected_rows == 0));
+
+        // 与保存后的预览结果一致
+        let saved = database.create_automation_rule(&rule_draft).unwrap();
+        let saved_preview = database.preview_automation_rule(saved.id).unwrap();
+        assert_eq!(saved_preview.matched_rows, preview.matched_rows);
+        assert_eq!(
+            saved_preview.rows_needing_changes,
+            preview.rows_needing_changes
+        );
+
+        // 校验仍然生效：空值草稿被拒绝
+        let invalid = draft(
+            "无效草稿",
+            RuleCondition::Prompt {
+                scope: PromptScope::Positive,
+                operator: PromptOperator::ContainsAll,
+                value: "  ".into(),
+                case_sensitive: false,
+            },
+            vec![RuleAction::AddTags {
+                tags: vec!["x".into()],
+            }],
+        );
+        assert!(database.preview_automation_rule_draft(&invalid).is_err());
     }
 
     #[test]

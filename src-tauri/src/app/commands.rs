@@ -828,6 +828,16 @@ pub(crate) fn preview_automation_rule(
 }
 
 #[tauri::command]
+pub(crate) fn preview_automation_rule_draft(
+    draft: AutomationRuleDraft,
+    runtime: State<'_, AppRuntime>,
+) -> Result<RulePreview, String> {
+    runtime
+        .preview_automation_rule_draft(&draft)
+        .map_err(error_text)
+}
+
+#[tauri::command]
 pub(crate) fn run_automation_rule_on_library(
     id: i64,
     runtime: State<'_, AppRuntime>,

@@ -90,6 +90,11 @@ export interface RowRecord {
   storedImagePath: string | null;
   imageWidth: number | null;
   imageHeight: number | null;
+  generationModel: string | null;
+  generationSampler: string | null;
+  generationSteps: number | null;
+  generationSeed: string | null;
+  generationScale: string | null;
   metadataFailed: boolean;
   vibeReferenceCount: number | null;
   tags: string[];
