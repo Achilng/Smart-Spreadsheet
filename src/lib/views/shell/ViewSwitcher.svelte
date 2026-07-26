@@ -5,6 +5,10 @@
   import { clearSelection } from "../../stores/selection-store.svelte";
   import { VIEW_MODES } from "./view-modes";
 
+  let segmentedEl = $state<HTMLElement | null>(null);
+  let buttonEls: HTMLButtonElement[] = $state([]);
+  let indicator = $state<{ x: number; w: number } | null>(null);
+
   function switchView(mode: ViewMode): void {
     const wasGroup = app.viewMode === "group";
     const isGroup = mode === "group";
@@ -28,10 +32,39 @@
     const count = countFor(mode);
     return count != null ? `${label}，${formatCount(count)} 个` : label;
   }
+
+  // 指示器跟随激活按钮：切换视图 / 计数变化 / 媒体查询与窗口尺寸变化时重测。
+  // 兄弟按钮宽度变化必然改变收缩包裹的父容器宽度，父级 ResizeObserver 兜底。
+  $effect(() => {
+    const index = VIEW_MODES.findIndex(view => view.mode === app.viewMode);
+    void groupStore.list.length;
+    void duplicateBrowse.clusters.length;
+    const el = buttonEls[index];
+    const parent = segmentedEl;
+    if (!el || !parent) {
+      return;
+    }
+    const measure = () => {
+      indicator = { x: el.offsetLeft, w: el.offsetWidth };
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    observer.observe(parent);
+    return () => observer.disconnect();
+  });
 </script>
 
-<nav class="segmented" aria-label="视图切换">
-  {#each VIEW_MODES as view (view.mode)}
+<nav class="segmented" aria-label="视图切换" bind:this={segmentedEl}>
+  {#if indicator}
+    <span
+      class="indicator"
+      aria-hidden="true"
+      style:transform="translateX({indicator.x}px)"
+      style:width="{indicator.w}px"
+    ></span>
+  {/if}
+  {#each VIEW_MODES as view, index (view.mode)}
     <button
       type="button"
       class="seg"
@@ -39,6 +72,7 @@
       aria-pressed={app.viewMode === view.mode}
       aria-label={ariaLabelFor(view.mode, view.label)}
       onclick={() => switchView(view.mode)}
+      bind:this={buttonEls[index]}
     >
       {view.label}
       {#if countFor(view.mode) != null}
@@ -50,6 +84,7 @@
 
 <style>
   .segmented {
+    position: relative;
     display: flex;
     background: var(--surface-3);
     border-radius: var(--radius-full);
@@ -58,7 +93,22 @@
     flex: none;
   }
 
+  .indicator {
+    position: absolute;
+    top: 3px;
+    bottom: 3px;
+    left: 0;
+    background: var(--surface);
+    border-radius: var(--radius-full);
+    box-shadow: 0 1px 4px rgb(0 0 0 / 10%);
+    transition:
+      transform var(--motion-base) var(--ease-responsive),
+      width var(--motion-base) var(--ease-responsive);
+  }
+
   .seg {
+    position: relative;
+    z-index: 1;
     height: 28px;
     padding: 0 16px;
     border: none;
@@ -69,10 +119,7 @@
     font-size: 12.5px;
     color: var(--text-2);
     white-space: nowrap;
-    transition:
-      background var(--motion-fast) var(--ease-responsive),
-      color var(--motion-fast) var(--ease-responsive),
-      box-shadow var(--motion-fast) var(--ease-responsive);
+    transition: color var(--motion-fast) var(--ease-responsive);
   }
 
   .seg:hover:not(.is-active) {
@@ -80,10 +127,8 @@
   }
 
   .seg.is-active {
-    background: var(--surface);
     color: var(--text);
     font-weight: 600;
-    box-shadow: 0 1px 4px rgb(0 0 0 / 10%);
   }
 
   .seg .n {
