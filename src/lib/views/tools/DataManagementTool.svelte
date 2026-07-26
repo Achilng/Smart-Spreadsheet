@@ -7,9 +7,9 @@
 </script>
 
 <div class="tool-page">
-  <section class="data-card">
+  <section class="data-card tool-card">
     <div class="card-copy">
-      <span class="eyebrow">数据目录</span>
+      <span class="eyebrow overline">数据目录</span>
       <h3>迁移资料库</h3>
       <p>将数据库、受管图片和缓存复制并校验到一个新的空文件夹，成功后自动切换。</p>
       {#if app.snapshot?.dataDirectory}
@@ -26,9 +26,9 @@
     </button>
   </section>
 
-  <section class="data-card danger-card">
+  <section class="data-card danger-card tool-card">
     <div class="card-copy">
-      <span class="eyebrow danger">危险操作</span>
+      <span class="eyebrow danger overline">危险操作</span>
       <h3>重置表格</h3>
       <p>清空数据库、受管图片和缩略图，回到初始导入页面。外部原始图片不会被删除。</p>
     </div>
@@ -58,14 +58,10 @@
     justify-content: space-between;
     gap: 28px;
     padding: 22px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-m);
-    background: var(--surface);
-    box-shadow: var(--shadow-1);
   }
 
   .danger-card {
-    border-color: #f2cbd2;
+    border-color: color-mix(in srgb, var(--danger) 22%, var(--surface));
   }
 
   .card-copy {
@@ -75,10 +71,6 @@
   .eyebrow {
     display: block;
     margin-bottom: 4px;
-    color: var(--accent);
-    font-size: var(--font-xs);
-    font-weight: 700;
-    letter-spacing: 0.08em;
   }
 
   .eyebrow.danger {

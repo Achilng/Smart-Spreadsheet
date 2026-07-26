@@ -1,8 +1,12 @@
 <script lang="ts">
+  import FolderOpen from "@lucide/svelte/icons/folder-open";
+  import RefreshCw from "@lucide/svelte/icons/refresh-cw";
+
   import { openRejectedImagesDirectory } from "../../api";
   import {
     app,
     errorText,
+    formatCount,
     runAction,
     runPhashBackfill,
     setNotice,
@@ -17,11 +21,24 @@
 </script>
 
 <div class="tool-page">
-  <section class="maintenance-card">
-    <div class="card-icon">↻</div>
+  <section class="maintenance-card tool-card">
+    <div class="card-icon"><RefreshCw size={20} strokeWidth={1.7} /></div>
     <div class="card-copy">
       <h3>刷新感知哈希</h3>
       <p>为缺少或过期的图片重新计算感知哈希。以图搜图依赖这项数据。</p>
+      {#if app.phashProgress}
+        <div class="phash-progress">
+          <span class="progress" role="progressbar" aria-valuemin={0} aria-valuemax={app.phashProgress.total} aria-valuenow={app.phashProgress.processed}>
+            <span
+              class="progress-fill"
+              style:transform="scaleX({app.phashProgress.total > 0 ? app.phashProgress.processed / app.phashProgress.total : 0})"
+            ></span>
+          </span>
+          <span class="progress-text tabular">
+            {formatCount(app.phashProgress.processed)} / {formatCount(app.phashProgress.total)}
+          </span>
+        </div>
+      {/if}
     </div>
     <button
       type="button"
@@ -33,8 +50,8 @@
     </button>
   </section>
 
-  <section class="maintenance-card">
-    <div class="card-icon">↗</div>
+  <section class="maintenance-card tool-card">
+    <div class="card-icon"><FolderOpen size={20} strokeWidth={1.7} /></div>
     <div class="card-copy">
       <h3>失败图片目录</h3>
       <p>查看导入时因元数据异常而被移出的图片，便于手动检查和整理。</p>
@@ -74,10 +91,6 @@
     align-items: center;
     gap: 16px;
     padding: 20px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-m);
-    background: var(--surface);
-    box-shadow: var(--shadow-1);
   }
 
   .card-icon {
@@ -85,11 +98,23 @@
     height: 42px;
     display: grid;
     place-items: center;
-    border-radius: 12px;
+    border-radius: var(--radius-m);
     background: var(--accent-soft);
     color: var(--accent);
-    font-size: var(--font-xl);
-    font-weight: 600;
+  }
+
+  .phash-progress {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+    max-width: 320px;
+  }
+
+  .progress-text {
+    flex: none;
+    font-size: var(--font-xs);
+    color: var(--text-3);
   }
 
   .card-copy {

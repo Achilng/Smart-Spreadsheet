@@ -117,7 +117,7 @@
 </script>
 
 <div class="ag-page">
-    <div class="ag-body">
+    <div class="ag-body tool-card">
       {#if loading}
         <p class="faint" transition:softFade={{ duration: 130 }}>正在加载画师池…</p>
       {:else if loadError}
@@ -142,7 +142,7 @@
 
         {#if useCustom}
           <div class="custom-box" transition:softFly={{ duration: 175, y: 6 }}>
-            <label class="field-label" for="ag-custom">自定义名单（一行一个，自动保存）</label>
+            <label class="field-label overline" for="ag-custom">自定义名单（一行一个，自动保存）</label>
             <textarea
               id="ag-custom"
               rows="4"
@@ -154,7 +154,7 @@
         {/if}
 
         <div class="controls">
-          <label class="field-label" for="ag-count">数量</label>
+          <label class="field-label overline" for="ag-count">数量</label>
           <input
             id="ag-count"
             type="number"
@@ -194,10 +194,6 @@
   .ag-body {
     width: min(680px, 100%);
     padding: 20px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-m);
-    box-shadow: var(--shadow-1);
     display: flex;
     flex-direction: column;
     gap: 16px;
@@ -228,7 +224,6 @@
   }
 
   .field-label {
-    font-size: var(--font-sm);
     color: var(--text-3);
   }
 
@@ -236,19 +231,10 @@
     width: 100%;
     box-sizing: border-box;
     resize: vertical;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-s);
-    background: var(--bg);
-    color: var(--text);
     font-size: var(--font-md);
     font-family: inherit;
     padding: 8px;
     outline: none;
-  }
-
-  textarea:focus {
-    border-color: var(--accent);
-    box-shadow: var(--focus-ring);
   }
 
   .controls {
@@ -260,11 +246,7 @@
 
   .count-input {
     width: 64px;
-    height: 28px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-s);
-    background: var(--bg);
-    color: var(--text);
+    height: 32px;
     font-size: var(--font-md);
     padding: 0 8px;
     box-sizing: border-box;

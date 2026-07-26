@@ -3,7 +3,8 @@
 
   import type { RowRecord } from "../../api";
   import { app } from "../../stores/app-state.svelte";
-  import { PAGE_SIZE, ensurePage, getRow, resetRows, rowStore } from "../../stores/row-store.svelte";
+  import { PAGE_SIZE, clearAllFilters, ensurePage, getRow, resetRows, rowStore } from "../../stores/row-store.svelte";
+  import { emptyResultText } from "../../utils/empty-state";
   import { thumbnails } from "../../images/thumbnails";
   import { restoreScrollPosition, saveScrollPosition, scrollPositionVersion } from "../../stores/view-state";
   import TableRow from "./TableRow.svelte";
@@ -175,10 +176,12 @@
         <p class="muted">正在加载…</p>
       </div>
     {:else if rowStore.totalCount === 0}
+      {@const empty = emptyResultText()}
       <div class="table-status empty-state" transition:softFade={{ duration: 140 }}>
-        <p class="muted">
-          {rowStore.tags.length > 0 ? "当前筛选没有匹配记录。" : "工作簿没有数据行。"}
-        </p>
+        <p class="muted">{empty.text}</p>
+        {#if empty.canClear}
+          <button type="button" class="btn" onclick={() => clearAllFilters()}>清除全部筛选</button>
+        {/if}
       </div>
     {:else}
       <div class="table-header" style:height="{HEADER_HEIGHT}px" style:grid-template-columns={gridCols} role="row">
