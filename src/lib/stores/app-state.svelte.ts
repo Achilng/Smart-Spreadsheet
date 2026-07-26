@@ -43,6 +43,8 @@ export const app = $state({
   dataVersion: 0,
   /** 本次行集合变化是否应保留视图滚动位置 */
   preserveScrollOnDataChange: false,
+  /** 本次变化只改行内值（撤销/重做等），选区与缩略图缓存仍有效 */
+  preserveSelectionOnDataChange: false,
   /** 文件夹/压缩包导入进行中的进度，空闲时为 null */
   importProgress: null as ImageImportProgress | null,
   /** “更新现有图片”说明与来源选择弹窗 */
@@ -114,12 +116,19 @@ export function dismissNotice(id: number): void {
 /**
  * 通知数据视图重载行集合。删除只是就地移除行，可保留滚动位置；
  * 导入、换库等数据集整体变化继续回顶。
+ * preserveSelection：仅值变化（撤销/重做、批量编辑）时为 true——行集合没变，
+ * 选区与缩略图缓存仍然有效，不应被清空（否则每次 Ctrl+Z 都会丢选区、闪图）。
  */
-export function bumpDataVersion(options: { preserveScroll?: boolean } = {}): void {
+export function bumpDataVersion(
+  options: { preserveScroll?: boolean; preserveSelection?: boolean; origin?: "main" | "toolbox" } = {},
+): void {
   app.preserveScrollOnDataChange = options.preserveScroll ?? false;
+  app.preserveSelectionOnDataChange = options.preserveSelection ?? false;
   app.dataVersion += 1;
-  // 同步告知工具箱窗口资料库已变化（未打开时静默失败）
-  void emitTo("toolbox", "main://library-changed", null).catch(() => {});
+  // 同步告知工具箱窗口资料库已变化（未打开时静默失败）。
+  // origin 让工具箱区分“主窗口自己的编辑”（需失效工具箱撤销栈）与
+  // “工具箱操作回流的通知”（不能反过来清掉工具箱刚记下的撤销）。
+  void emitTo("toolbox", "main://library-changed", options.origin ?? "main").catch(() => {});
 }
 
 export async function refreshSnapshot(): Promise<void> {

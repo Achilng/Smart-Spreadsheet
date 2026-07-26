@@ -72,16 +72,25 @@
   });
 
   // 首次挂载和工作簿替换时：清缩略图缓存（行 ID 可能复用）、重载数据、刷新 Tag 库、清空选择。
+  // 撤销/重做等仅值变化（preserveSelection）时行集合未变：只重载数据与 Tag 库，
+  // 保留选区和缩略图缓存——否则每按一次 Ctrl+Z 选区就被清空、整屏图闪烁。
   // untrack：这些调用内部有”读-改-写”（如 pagesVersion += 1），不能注册为本 effect 的依赖。
   $effect(() => {
     void app.dataVersion;
     const preserveScroll = app.preserveScrollOnDataChange;
+    const preserveSelection = app.preserveSelectionOnDataChange;
     untrack(() => {
-      thumbnails.clear();
-      clearProgressiveImages();
-      vibeStatuses.clear();
-      resetRows({ keepStale: preserveScroll, resetScroll: !preserveScroll });
-      clearSelection();
+      if (!preserveSelection) {
+        thumbnails.clear();
+        clearProgressiveImages();
+        vibeStatuses.clear();
+        clearSelection();
+      }
+      resetRows({
+        keepStale: preserveScroll,
+        resetScroll: !preserveScroll,
+        keepActive: preserveSelection,
+      });
       void loadTags();
     });
   });

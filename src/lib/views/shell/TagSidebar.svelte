@@ -256,7 +256,7 @@
           redo: async () => {
             await deleteTag(name);
             await loadTags();
-            bumpDataVersion({ preserveScroll: true });
+            bumpDataVersion({ preserveScroll: true, preserveSelection: true });
           },
         });
       } else {

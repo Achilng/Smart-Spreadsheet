@@ -50,7 +50,8 @@
   import Thumbnail from "../../ui/Thumbnail.svelte";
   import { focusMainWindow, type ToolboxRowRequest } from "../../windows/toolbox";
 
-  let { active = false }: { active?: boolean } = $props();
+  // 撤销快捷键已上移到 ToolboxWindow 窗口级；本面板不再需要 active prop
+  // （父组件仍传入 active，多余 prop 会被忽略）。
 
   type Operation = "tag" | "group" | "artist";
   type ActivePreview = QuickTagPreview | QuickGroupPreview | QuickArtistPrefixPreview;
@@ -529,32 +530,7 @@
     const path = row.imagePath ?? row.storedImagePath;
     return path?.split(/[\\/]/).pop() ?? `图片 #${row.id}`;
   }
-
-  function onKeydown(event: KeyboardEvent): void {
-    if (!active || history.busy || applying || previewing) return;
-    const target = event.target;
-    const isTextEditing =
-      target instanceof HTMLInputElement ||
-      target instanceof HTMLTextAreaElement ||
-      (target instanceof HTMLElement && target.isContentEditable);
-    if (!(event.ctrlKey || event.metaKey) || event.altKey || isTextEditing) return;
-
-    const key = event.key.toLocaleLowerCase();
-    if (key === "z") {
-      event.preventDefault();
-      if (event.shiftKey) {
-        void redoLastAction();
-      } else {
-        void undoLastAction();
-      }
-    } else if (key === "y" && !event.shiftKey) {
-      event.preventDefault();
-      void redoLastAction();
-    }
-  }
 </script>
-
-<svelte:window onkeydown={onKeydown} />
 
 <div class="quick-edit-page">
   <div class="operation-bar">

@@ -93,11 +93,16 @@ export function clearHistory(): void {
 registerHistoryClearer(clearHistory);
 
 export async function undoLastAction(): Promise<void> {
-  if (history.busy || app.busy || activeGroup) {
+  if (history.busy || activeGroup) {
+    return;
+  }
+  if (app.busy) {
+    setNotice({ tone: "error", text: "当前有任务进行中，暂时无法撤销。" });
     return;
   }
   const action = undoStack.pop();
   if (!action) {
+    setNotice({ tone: "success", text: "没有可撤销的操作。" });
     return;
   }
   history.busy = true;
@@ -118,11 +123,16 @@ export async function undoLastAction(): Promise<void> {
 }
 
 export async function redoLastAction(): Promise<void> {
-  if (history.busy || app.busy || activeGroup) {
+  if (history.busy || activeGroup) {
+    return;
+  }
+  if (app.busy) {
+    setNotice({ tone: "error", text: "当前有任务进行中，暂时无法重做。" });
     return;
   }
   const action = redoStack.pop();
   if (!action) {
+    setNotice({ tone: "success", text: "没有可重做的操作。" });
     return;
   }
   history.busy = true;

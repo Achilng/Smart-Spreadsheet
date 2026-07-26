@@ -15,7 +15,12 @@
 
   import { app, refreshSnapshot } from "../../stores/app-state.svelte";
   import { installCloseGuards, registerCloseGuard } from "../../stores/close-guard";
-  import { history } from "../../stores/history.svelte";
+  import {
+    clearHistory,
+    history,
+    redoLastAction,
+    undoLastAction,
+  } from "../../stores/history.svelte";
   import Notice from "../../ui/Notice.svelte";
   import WindowControls from "../../ui/WindowControls.svelte";
   import ArtistGeneratorView from "./ArtistGeneratorView.svelte";
@@ -185,8 +190,14 @@
         if (disposed) fn();
         else unlistenFocus = fn;
       });
-    // 主窗口的资料库变更广播（导入完成/删除/重置）也即时刷新
-    void listen("main://library-changed", () => {
+    // 主窗口的资料库变更广播（导入完成/删除/编辑/撤销）也即时刷新。
+    // origin=main 表示主窗口自己改了库：工具箱撤销栈里记录的 rowId/前后状态
+    // 已不可信，必须清空，否则在这里撤回会把主窗口的手工修改一并抹掉。
+    // origin=toolbox 是本窗口操作的回流通知，不能清自己刚记的撤销。
+    void listen<string>("main://library-changed", event => {
+      if (event.payload !== "toolbox" && history.undoCount + history.redoCount > 0) {
+        clearHistory();
+      }
       if (!app.busy) {
         void refreshSnapshot();
       }
@@ -219,9 +230,37 @@
     activeTool = tool.id;
     visited[tool.id] = true;
   }
+
+  /**
+   * 窗口级撤销/重做快捷键：撤销栈是工具箱全窗口共享的（快速整理、画师前缀
+   * 修正都往里记），快捷键不能只挂在单个工具面板上——否则在别的面板按
+   * Ctrl+Z 是死键，用户没有任何入口撤回刚做的全库修改。
+   */
+  function onWindowKeydown(event: KeyboardEvent): void {
+    const target = event.target;
+    const isTextEditing =
+      target instanceof HTMLInputElement ||
+      target instanceof HTMLTextAreaElement ||
+      (target instanceof HTMLElement && target.isContentEditable);
+    if (!(event.ctrlKey || event.metaKey) || event.altKey || isTextEditing) return;
+
+    const key = event.key.toLocaleLowerCase();
+    if (key === "z") {
+      event.preventDefault();
+      if (event.shiftKey) {
+        void redoLastAction();
+      } else {
+        void undoLastAction();
+      }
+    } else if (key === "y" && !event.shiftKey) {
+      event.preventDefault();
+      void redoLastAction();
+    }
+  }
 </script>
 
 <svelte:window
+  onkeydown={onWindowKeydown}
   oncontextmenu={event => {
     // 输入控件放行原生右键菜单（粘贴等），其余位置屏蔽
     const target = event.target;
@@ -241,6 +280,22 @@
     <div class="brand" data-tauri-drag-region>
       <span data-tauri-drag-region>工具箱</span>
       <small data-tauri-drag-region>智能表格</small>
+    </div>
+    <div class="titlebar-history">
+      <button
+        type="button"
+        class="btn btn-ghost history-btn"
+        disabled={history.undoCount === 0 || history.busy || app.busy}
+        title={history.undoLabel ? `撤回：${history.undoLabel}（Ctrl+Z）` : "没有可撤回的操作"}
+        onclick={() => void undoLastAction()}
+      >↶ 撤回</button>
+      <button
+        type="button"
+        class="btn btn-ghost history-btn"
+        disabled={history.redoCount === 0 || history.busy || app.busy}
+        title={history.redoLabel ? `重做：${history.redoLabel}（Ctrl+Y）` : "没有可重做的操作"}
+        onclick={() => void redoLastAction()}
+      >↷ 重做</button>
     </div>
     <WindowControls />
   </header>
@@ -293,7 +348,7 @@
         {:else}
           {#if visited.quickEdit}
             <section class="tool-panel" class:is-active={activeTool === "quickEdit"}>
-              <QuickEditTool active={activeTool === "quickEdit"} />
+              <QuickEditTool />
             </section>
           {/if}
           {#if visited.automationRules}
@@ -380,6 +435,25 @@
     font-weight: 400;
     color: var(--text-3);
     letter-spacing: 0;
+  }
+
+  .titlebar-history {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
+    margin-right: 8px;
+  }
+
+  .history-btn {
+    min-height: 30px;
+    padding: 4px 12px;
+    font-size: var(--font-sm);
+    white-space: nowrap;
+  }
+
+  .history-btn:disabled {
+    opacity: 0.4;
   }
 
   .toolbox-body {

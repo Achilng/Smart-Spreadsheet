@@ -52,13 +52,13 @@ export async function createNewGroup(name: string): Promise<GroupSummary | null>
         await deleteGroup(group.id);
         bumpGroupMembership();
         await loadGroups();
-        bumpDataVersion({ preserveScroll: true });
+        bumpDataVersion({ preserveScroll: true, preserveSelection: true });
       },
       redo: async () => {
         await restoreGroup(group);
         bumpGroupMembership();
         await loadGroups();
-        bumpDataVersion({ preserveScroll: true });
+        bumpDataVersion({ preserveScroll: true, preserveSelection: true });
       },
     });
     return group;
@@ -111,7 +111,7 @@ export async function removeGroup(groupId: number): Promise<boolean> {
             } else {
               bumpGroupMembership();
               await loadGroups();
-              bumpDataVersion({ preserveScroll: true });
+              bumpDataVersion({ preserveScroll: true, preserveSelection: true });
             }
           } catch (error) {
             // 行状态恢复失败时撤回分组定义，保证下次撤销可重试。
@@ -123,7 +123,7 @@ export async function removeGroup(groupId: number): Promise<boolean> {
           await deleteGroup(group.id);
           bumpGroupMembership();
           await loadGroups();
-          bumpDataVersion({ preserveScroll: true });
+          bumpDataVersion({ preserveScroll: true, preserveSelection: true });
         },
       });
     }
@@ -216,5 +216,5 @@ async function restoreGroupMemberStates(states: MutableRowState[]): Promise<void
   await restoreMutableRowStates(states);
   bumpGroupMembership();
   await Promise.all([loadGroups(), loadTags()]);
-  bumpDataVersion({ preserveScroll: true });
+  bumpDataVersion({ preserveScroll: true, preserveSelection: true });
 }

@@ -32,7 +32,8 @@ export async function restoreRowStates(states: MutableRowState[]): Promise<void>
   await restoreMutableRowStates(states);
   bumpGroupMembership();
   await Promise.all([loadGroups(), loadTags()]);
-  bumpDataVersion({ preserveScroll: true });
+  // 撤销/重做只改行内值，不增删行：保留滚动、选区与缩略图缓存
+  bumpDataVersion({ preserveScroll: true, preserveSelection: true });
 }
 
 /**

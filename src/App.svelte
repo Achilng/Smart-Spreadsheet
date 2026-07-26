@@ -41,7 +41,9 @@
     void listen<MainStateChange>("toolbox://app-state-changed", event => {
       if (event.payload === "libraryEdited") {
         clearHistory();
-        bumpDataVersion({ preserveScroll: true });
+        // origin=toolbox：这次变化来自工具箱自己的操作，
+        // 回流通知不能反过来清掉工具箱刚记下的撤销栈。
+        bumpDataVersion({ preserveScroll: true, origin: "toolbox" });
         return;
       }
       void refreshSnapshot().then(() => {

@@ -2,6 +2,7 @@
   import ChevronsRight from "@lucide/svelte/icons/chevrons-right";
   import { rowFileName, rowResolution } from "../../utils/row-display";
   import X from "@lucide/svelte/icons/x";
+  import { untrack } from "svelte";
 
   import {
     createTag,
@@ -178,8 +179,12 @@
     (id, value) => patchRowFields(id, { note: value.trim() || null }),
   );
 
-  // 切换行时重置并加载图片：先用缓存缩略图占位，大图就绪后替换
+  // 切换行时重置并加载图片：先用缓存缩略图占位，大图就绪后替换。
+  // 编辑器 reset 内部会读取 editing/value（脏状态判断），必须 untrack，
+  // 否则 effect 依赖 editing——点“编辑”会触发本 effect 重跑并立刻把编辑器关掉。
   $effect(() => {
+    const current = row;
+    void hasImage;
     thumbUrl = null;
     galleryUrl = null;
     previewUrl = null;
@@ -190,11 +195,12 @@
     lightboxOpen = false;
     tagQuery = "";
     saveError = null;
-    promptEditor.reset();
-    characterPromptEditor.reset();
-    negPromptEditor.reset();
-    noteEditor.reset();
-    const current = row;
+    untrack(() => {
+      promptEditor.reset();
+      characterPromptEditor.reset();
+      negPromptEditor.reset();
+      noteEditor.reset();
+    });
     if (!current || !hasImage) {
       detailPreviews.retain(new Set());
       return;
