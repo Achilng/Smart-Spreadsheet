@@ -10,7 +10,12 @@
   const group = $derived(groupDeleteConfirm.group);
 </script>
 
-<Modal open={groupDeleteConfirm.open && group !== null} onclose={cancelGroupDelete} width="420px">
+<Modal
+  open={groupDeleteConfirm.open && group !== null}
+  onclose={cancelGroupDelete}
+  busy={groupDeleteConfirm.busy}
+  width="420px"
+>
   {#if group}
     <div class="dialog">
       <header>

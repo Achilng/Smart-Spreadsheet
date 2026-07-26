@@ -15,7 +15,7 @@
   import { app, errorText, setNotice } from "../../stores/app-state.svelte";
   import { beginFileDrag } from "../../stores/file-drag";
   import { requestDelete } from "../../stores/delete-actions.svelte";
-  import { removeFromGroup } from "../../stores/group-store.svelte";
+  import { removeFromGroup, groupStore } from "../../stores/group-store.svelte";
   import { patchRowFields, patchRowTags, resetRows, rowStore } from "../../stores/row-store.svelte";
   import { loadTags, tagStore } from "../../stores/tag-store.svelte";
   import { thumbnails } from "../../images/thumbnails";
@@ -336,7 +336,13 @@
     const current = row;
     if (!current) return;
     const before = mutableRowState(current);
-    await removeFromGroup({ kind: "explicit", rowIds: [current.id] });
+    groupStore.error = null;
+    const affected = await removeFromGroup({ kind: "explicit", rowIds: [current.id] });
+    if (affected === 0 && groupStore.error) {
+      // removeFromGroup 内部吞掉异常并写入 groupStore.error：失败时不能记撤销历史
+      setNotice({ tone: "error", text: `取消分组失败：${groupStore.error}` });
+      return;
+    }
     resetRows();
     await recordOrWarn("取消分组", [before]);
   }
@@ -361,6 +367,7 @@
       }, 1200);
     } catch {
       copiedField = null;
+      setNotice({ tone: "error", text: "复制失败，请检查剪贴板权限。" });
     }
   }
 

@@ -23,11 +23,16 @@ export interface Notice {
   text: string;
 }
 
+export interface QueuedNotice extends Notice {
+  id: number;
+}
+
 export const app = $state({
   snapshot: null as AppSnapshot | null,
   loaded: false,
   busy: false,
-  notice: null as Notice | null,
+  /** 通知队列：最多同时展示 3 条；error 不自动消失，success 5 秒后过期 */
+  notices: [] as QueuedNotice[],
   viewMode: "gallery" as ViewMode,
   detailOpen: true,
   /** 侧栏模式：筛选 / 打标（底部选择条"打 Tag"会切到打标） */
@@ -52,7 +57,8 @@ export const app = $state({
   groupManageOpen: false,
 });
 
-let noticeTimer = 0;
+let noticeSerial = 1;
+const noticeTimers = new Map<number, number>();
 let clearHistoryCallback: () => void = () => {};
 
 /** 由历史模块在加载时注册，避免 app-state 反向依赖历史执行器。 */
@@ -60,14 +66,49 @@ export function registerHistoryClearer(clearer: () => void): void {
   clearHistoryCallback = clearer;
 }
 
+/**
+ * 入队一条通知（null 表示清空全部）。
+ * 通知按队列堆叠而不是互相覆盖；success 5 秒后自动过期，error 常驻到手动关闭。
+ */
 export function setNotice(notice: Notice | null): void {
-  app.notice = notice;
-  window.clearTimeout(noticeTimer);
-  if (notice?.tone === "success") {
-    noticeTimer = window.setTimeout(() => {
-      app.notice = null;
-    }, 5000);
+  if (notice === null) {
+    for (const timer of noticeTimers.values()) {
+      window.clearTimeout(timer);
+    }
+    noticeTimers.clear();
+    app.notices = [];
+    return;
   }
+  const queued: QueuedNotice = { ...notice, id: noticeSerial };
+  noticeSerial += 1;
+  // 最多同时保留 3 条，挤掉最旧的一条
+  const next = [...app.notices, queued];
+  while (next.length > 3) {
+    const removed = next.shift();
+    if (removed) {
+      const timer = noticeTimers.get(removed.id);
+      if (timer !== undefined) {
+        window.clearTimeout(timer);
+        noticeTimers.delete(removed.id);
+      }
+    }
+  }
+  app.notices = next;
+  if (queued.tone === "success") {
+    const timer = window.setTimeout(() => {
+      dismissNotice(queued.id);
+    }, 5000);
+    noticeTimers.set(queued.id, timer);
+  }
+}
+
+export function dismissNotice(id: number): void {
+  const timer = noticeTimers.get(id);
+  if (timer !== undefined) {
+    window.clearTimeout(timer);
+    noticeTimers.delete(id);
+  }
+  app.notices = app.notices.filter(notice => notice.id !== id);
 }
 
 /**

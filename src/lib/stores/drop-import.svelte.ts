@@ -1,6 +1,6 @@
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 
-import { app } from "./app-state.svelte";
+import { app, formatCount, setNotice } from "./app-state.svelte";
 import { outboundDrag } from "./file-drag";
 import { runImageImport } from "./import-actions.svelte";
 
@@ -13,7 +13,11 @@ export const dropState = $state({
   dragging: false,
   open: false,
   paths: [] as string[],
+  /** 本次拖入中被过滤掉的不支持文件数，确认对话框里说明 */
+  ignoredCount: 0,
   busy: false,
+  /** 逐项导入进度：当前第几个（1 起）/共几个 */
+  currentIndex: 0,
 });
 
 function isAcceptedPath(p: string): boolean {
@@ -28,10 +32,21 @@ export function filterDroppedPaths(raw: string[]): string[] {
 }
 
 export function requestDropImport(paths: string[]): void {
-  if (dropState.busy || app.busy) return;
+  if (dropState.busy) return;
+  if (app.busy) {
+    setNotice({ tone: "error", text: "当前有任务进行中，请等它完成后再拖入导入。" });
+    return;
+  }
   const valid = filterDroppedPaths(paths);
-  if (valid.length === 0) return;
+  if (valid.length === 0) {
+    setNotice({
+      tone: "error",
+      text: `本次拖入的 ${formatCount(paths.length)} 个文件都不受支持：只支持 PNG 图片、文件夹和 zip / 7z / rar 压缩包。`,
+    });
+    return;
+  }
   dropState.paths = valid;
+  dropState.ignoredCount = paths.length - valid.length;
   dropState.open = true;
 }
 
@@ -39,6 +54,7 @@ export function cancelDropImport(): void {
   if (!dropState.busy) {
     dropState.open = false;
     dropState.paths = [];
+    dropState.ignoredCount = 0;
   }
 }
 
@@ -47,13 +63,16 @@ export async function confirmDropImport(): Promise<void> {
 
   dropState.busy = true;
   try {
-    for (const path of dropState.paths) {
+    for (const [index, path] of dropState.paths.entries()) {
+      dropState.currentIndex = index + 1;
       await runImageImport(path);
     }
   } finally {
     dropState.busy = false;
     dropState.open = false;
     dropState.paths = [];
+    dropState.ignoredCount = 0;
+    dropState.currentIndex = 0;
   }
 }
 

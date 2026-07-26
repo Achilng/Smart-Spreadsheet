@@ -8,15 +8,21 @@ import {
   type ImageImportResult,
   type ImageImportProgress,
 } from "../api";
-import { app, bumpDataVersion, formatCount, runAction, setNotice } from "./app-state.svelte";
+import { app, bumpDataVersion, errorText, formatCount, runAction, setNotice } from "./app-state.svelte";
 import { clearHistory, recordHistory } from "./history.svelte";
 
 export async function chooseImageFolder(): Promise<void> {
-  const selection = await open({
-    directory: true,
-    multiple: false,
-    title: "选择要导入的图片文件夹（追加进资料库）",
-  });
+  let selection: unknown;
+  try {
+    selection = await open({
+      directory: true,
+      multiple: false,
+      title: "选择要导入的图片文件夹（追加进资料库）",
+    });
+  } catch (error) {
+    setNotice({ tone: "error", text: `无法打开文件夹选择器：${errorText(error)}` });
+    return;
+  }
   if (typeof selection !== "string") {
     return;
   }
@@ -24,12 +30,18 @@ export async function chooseImageFolder(): Promise<void> {
 }
 
 export async function chooseImageArchive(): Promise<void> {
-  const selection = await open({
-    multiple: false,
-    directory: false,
-    title: "选择要导入的压缩包（追加进资料库）",
-    filters: [{ name: "压缩包", extensions: ["zip", "7z", "rar"] }],
-  });
+  let selection: unknown;
+  try {
+    selection = await open({
+      multiple: false,
+      directory: false,
+      title: "选择要导入的压缩包（追加进资料库）",
+      filters: [{ name: "压缩包", extensions: ["zip", "7z", "rar"] }],
+    });
+  } catch (error) {
+    setNotice({ tone: "error", text: `无法打开文件选择器：${errorText(error)}` });
+    return;
+  }
   if (typeof selection !== "string") {
     return;
   }
@@ -114,8 +126,14 @@ async function performImageImport(path: string, showResult: boolean): Promise<Im
             : `${formatCount(ruleFailures)} 条自动规则执行失败（图片已正常导入）`,
         );
       }
+      // 含有任何失败/拒收计数时用 error 色调：error 通知不会自动消失，避免用户错过
+      const hasFailures =
+        ruleFailures > 0 ||
+        Boolean(result.ruleExecution.engineError) ||
+        result.metadataRejected > 0 ||
+        result.rejectedMoveFailures > 0;
       setNotice({
-        tone: ruleFailures > 0 || Boolean(result.ruleExecution.engineError) ? "error" : "success",
+        tone: hasFailures ? "error" : "success",
         text: `导入完成（共发现 ${formatCount(result.totalFound)} 张）：${parts.join("，")}。`,
       });
     }
@@ -177,8 +195,14 @@ export async function runExistingImageUpdate(path: string): Promise<void> {
             : `${formatCount(ruleFailures)} 条自动规则执行失败（图片元数据已正常更新）`,
         );
       }
+      const updateHasFailures =
+        ruleFailures > 0 ||
+        Boolean(result.ruleExecution.engineError) ||
+        result.ambiguous > 0 ||
+        result.metadataRejected > 0 ||
+        result.copyFailures > 0;
       setNotice({
-        tone: ruleFailures > 0 || Boolean(result.ruleExecution.engineError) ? "error" : "success",
+        tone: updateHasFailures ? "error" : "success",
         text: `更新完成（共发现 ${formatCount(result.totalFound)} 张，匹配 ${formatCount(result.matched)} 张）：${parts.join("，")}。`,
       });
     } finally {

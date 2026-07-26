@@ -199,6 +199,7 @@
 
   let tagMenu = $state({ open: false, x: 0, y: 0, name: "" });
   let confirmingDelete = $state<string | null>(null);
+  let deletingTag = $state(false);
 
   function onTagContextMenu(event: MouseEvent, name: string): void {
     event.preventDefault();
@@ -216,8 +217,9 @@
 
   async function confirmDeleteTag(): Promise<void> {
     const name = confirmingDelete;
-    if (!name) return;
-    confirmingDelete = null;
+    if (!name || deletingTag) return;
+    // 保持对话框可见并置 busy：捕获行状态在大库上可能耗时数秒
+    deletingTag = true;
     try {
       const before = await captureSelectionStates({
         kind: "filtered",
@@ -262,6 +264,9 @@
       }
     } catch (error) {
       status = { text: `删除 Tag 失败：${errorText(error)}`, isError: true };
+    } finally {
+      deletingTag = false;
+      confirmingDelete = null;
     }
   }
   const switchCount = $derived(
@@ -452,12 +457,25 @@
   </button>
 </ContextMenuShell>
 
-<Modal open={confirmingDelete !== null} onclose={() => (confirmingDelete = null)} width="400px">
+<Modal
+  open={confirmingDelete !== null}
+  onclose={() => { if (!deletingTag) confirmingDelete = null; }}
+  busy={deletingTag}
+  width="400px"
+>
   <div class="confirm-dialog" aria-label="确认删除">
-    <p>确定删除 Tag「{confirmingDelete}」吗？所有行上的该 Tag 关联将被同时移除。</p>
+    <p>
+      确定删除 Tag「{confirmingDelete}」吗？
+      {#if confirmingDelete}
+        {@const affected = entries.find(e => e.name === confirmingDelete)?.rowCount ?? 0}
+        将从 {formatCount(affected)} 行上移除该 Tag 关联。可用 Ctrl+Z 撤销。
+      {/if}
+    </p>
     <div class="confirm-actions">
-      <button type="button" class="btn" onclick={() => (confirmingDelete = null)}>取消</button>
-      <button type="button" class="btn btn-danger" onclick={() => void confirmDeleteTag()}>删除</button>
+      <button type="button" class="btn" disabled={deletingTag} onclick={() => (confirmingDelete = null)}>取消</button>
+      <button type="button" class="btn btn-danger" disabled={deletingTag} onclick={() => void confirmDeleteTag()}>
+        {deletingTag ? "删除中…" : "删除"}
+      </button>
     </div>
   </div>
 </Modal>

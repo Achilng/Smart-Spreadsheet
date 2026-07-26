@@ -35,10 +35,20 @@
     result = null;
     try {
       const before = await captureSelectionStates(selection);
+      groupStore.error = null;
       const affected = await assignToGroup(selection, groupId);
-      result = `已将 ${affected} 行分配到「${groupName}」`;
+      if (affected === 0 && groupStore.error) {
+        // store 层吞掉了异常，失败信息在 groupStore.error 里
+        error = `分配失败：${groupStore.error}`;
+        return;
+      }
+      result = affected > 0
+        ? `已将 ${affected} 行分配到「${groupName}」`
+        : `所选图片已在「${groupName}」中，没有产生修改`;
       resetRows();
-      await recordRowStateChange(`分配到分组「${groupName}」`, before);
+      if (affected > 0) {
+        await recordRowStateChange(`分配到分组「${groupName}」`, before);
+      }
     } catch (e) {
       error = errorText(e);
     } finally {
@@ -84,10 +94,17 @@
     result = null;
     try {
       const before = await captureSelectionStates(selection);
+      groupStore.error = null;
       const affected = await removeFromGroup(selection);
-      result = `已取消 ${affected} 行的分组`;
+      if (affected === 0 && groupStore.error) {
+        error = `取消分组失败：${groupStore.error}`;
+        return;
+      }
+      result = affected > 0 ? `已取消 ${affected} 行的分组` : "所选图片本来就没有分组";
       resetRows();
-      await recordRowStateChange("取消分组", before);
+      if (affected > 0) {
+        await recordRowStateChange("取消分组", before);
+      }
     } catch (e) {
       error = errorText(e);
     } finally {
@@ -96,11 +113,11 @@
   }
 </script>
 
-<Modal open={true} {onclose} width="400px">
+<Modal open={true} {onclose} {busy} width="400px">
   <div class="dialog-content">
     <header>
       <h3>分组操作（{count} 行）</h3>
-      <button type="button" class="close-btn" onclick={onclose}><X size={15} strokeWidth={2} /></button>
+      <button type="button" class="close-btn" disabled={busy} onclick={onclose}><X size={15} strokeWidth={2} /></button>
     </header>
 
     <div class="body">
@@ -122,7 +139,12 @@
         </button>
       </div>
 
-      {#if groupStore.list.length > 0}
+      {#if groupStore.loading && groupStore.list.length === 0}
+        <div class="group-list">
+          <h4>分配到已有分组</h4>
+          <p class="loading-hint">正在读取分组…</p>
+        </div>
+      {:else if groupStore.list.length > 0}
         <div class="group-list">
           <h4>分配到已有分组</h4>
           {#each groupStore.list as group (group.id)}
@@ -243,6 +265,12 @@
     color: var(--text-2);
     font-weight: 600;
     margin-bottom: 4px;
+  }
+
+  .loading-hint {
+    padding: 8px 0;
+    font-size: var(--font-sm);
+    color: var(--text-3);
   }
 
   .group-item {

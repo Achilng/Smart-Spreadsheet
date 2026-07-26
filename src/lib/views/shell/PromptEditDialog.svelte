@@ -69,11 +69,11 @@
   }
 </script>
 
-<Modal open={true} {onclose} width="420px">
+<Modal open={true} {onclose} {busy} width="420px">
   <div class="dialog-content">
     <header>
       <h3>编辑提示词（{count} 行）</h3>
-      <button type="button" class="close-btn" onclick={onclose}><X size={15} strokeWidth={2} /></button>
+      <button type="button" class="close-btn" disabled={busy} onclick={onclose}><X size={15} strokeWidth={2} /></button>
     </header>
 
     <nav class="tabs">

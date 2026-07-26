@@ -88,7 +88,7 @@
   }
 </script>
 
-<Modal open={app.groupManageOpen} onclose={close} width="480px">
+<Modal open={app.groupManageOpen} onclose={close} busy={busy} width="480px">
   <div class="panel">
     <header>
       <h2>管理分组（{groupStore.list.length}）</h2>

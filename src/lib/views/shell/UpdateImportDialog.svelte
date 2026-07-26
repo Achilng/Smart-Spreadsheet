@@ -33,8 +33,8 @@
   }
 </script>
 
-<Modal open={app.updateImportOpen} onclose={close} width="520px">
-  <div class="update-dialog" aria-labelledby="update-import-title">
+<Modal open={app.updateImportOpen} onclose={close} labelledby="update-import-title" width="520px">
+  <div class="update-dialog">
     <header>
       <h2 id="update-import-title">更新现有图片</h2>
       <p>重新读取原图中的 NovelAI 元数据，并更新资料库中已经存在的对应记录。</p>
@@ -50,15 +50,16 @@
         <li>原有 Tag、分组和行 ID 全部保留。</li>
         <li>来源中的新图片会被忽略，不会追加进资料库。</li>
         <li>来源里缺失的旧图片不会删除；读取失败时保留原数据。</li>
+        <li><strong>若有图片被更新，会清空当前的撤销/重做记录。</strong></li>
       </ul>
     </div>
 
     <p class="tip">请选择图片原来所在的文件夹，或原来的压缩包路径。</p>
 
     <footer>
-      <button type="button" class="btn" onclick={close}>取消</button>
-      <button type="button" class="btn" onclick={() => void chooseArchive()}>选择压缩包</button>
-      <button type="button" class="btn btn-primary" onclick={() => void chooseFolder()}>选择文件夹</button>
+      <button type="button" class="btn" disabled={app.busy} onclick={close}>取消</button>
+      <button type="button" class="btn" disabled={app.busy} onclick={() => void chooseArchive()}>选择压缩包</button>
+      <button type="button" class="btn btn-primary" disabled={app.busy} onclick={() => void chooseFolder()}>选择文件夹</button>
     </footer>
   </div>
 </Modal>

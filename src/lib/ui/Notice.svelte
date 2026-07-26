@@ -1,7 +1,7 @@
 <script lang="ts">
   import X from "@lucide/svelte/icons/x";
 
-  import { app, formatCount, setNotice } from "../stores/app-state.svelte";
+  import { app, dismissNotice, formatCount } from "../stores/app-state.svelte";
   import { softFly } from "./motion";
 
   const progressText = $derived.by(() => {
@@ -71,39 +71,56 @@
   });
 </script>
 
-{#if progressText}
-  <div class="toast toast-progress" role="status" transition:softFly={{ duration: 180, y: 8 }}>
-    <span>{progressText}</span>
-    {#if progressPercent != null}
-      <span class="progress-track" aria-hidden="true">
-        <span class="progress-fill" style:transform="scaleX({progressPercent / 100})"></span>
-      </span>
-    {/if}
-  </div>
-{:else if app.notice}
-  <div class="toast toast-{app.notice.tone}" role="status" transition:softFly={{ duration: 180, y: 8 }}>
-    <span>{app.notice.text}</span>
-    <button type="button" aria-label="关闭提示" onclick={() => setNotice(null)}><X size={14} strokeWidth={2} /></button>
-  </div>
-{/if}
+<!-- 通知与进度分栏共存：右下角纵向堆叠，不压住底部选择条 -->
+<div class="toast-stack">
+  {#each app.notices as notice (notice.id)}
+    <div
+      class="toast toast-{notice.tone}"
+      role={notice.tone === "error" ? "alert" : "status"}
+      transition:softFly={{ duration: 180, y: 8 }}
+    >
+      <span>{notice.text}</span>
+      <button type="button" aria-label="关闭提示" onclick={() => dismissNotice(notice.id)}><X size={14} strokeWidth={2} /></button>
+    </div>
+  {/each}
+  {#if progressText}
+    <div class="toast toast-progress" role="status" transition:softFly={{ duration: 180, y: 8 }}>
+      <span>{progressText}</span>
+      {#if progressPercent != null}
+        <span class="progress-track" aria-hidden="true">
+          <span class="progress-fill" style:transform="scaleX({progressPercent / 100})"></span>
+        </span>
+      {/if}
+    </div>
+  {/if}
+</div>
 
 <style>
-  .toast {
+  .toast-stack {
     position: fixed;
-    bottom: 20px;
-    left: 50%;
-    transform: translateX(-50%);
+    right: 16px;
+    /* 底部选择条高 52px；抬高到它之上，两者互不遮挡 */
+    bottom: 64px;
     z-index: var(--z-toast);
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 8px;
+    pointer-events: none;
+  }
+
+  .toast {
     display: flex;
     align-items: center;
     gap: 10px;
-    max-width: min(640px, calc(100vw - 48px));
+    max-width: min(560px, calc(100vw - 48px));
     padding: 10px 14px;
     border-radius: var(--radius-s);
     border: 1px solid;
     background: var(--surface);
     box-shadow: var(--shadow-2);
     font-size: var(--font-md);
+    pointer-events: auto;
   }
 
   .toast-success {

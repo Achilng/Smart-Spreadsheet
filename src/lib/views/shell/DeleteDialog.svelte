@@ -4,8 +4,8 @@
   import { cancelDelete, confirmDelete, deletion } from "../../stores/delete-actions.svelte";
 </script>
 
-<Modal open={deletion.open} onclose={cancelDelete} width="440px">
-  <div class="delete-dialog" aria-labelledby="delete-title">
+<Modal open={deletion.open} onclose={cancelDelete} busy={deletion.busy} labelledby="delete-title" width="440px">
+  <div class="delete-dialog">
     <header>
       <h2 id="delete-title">删除 {formatCount(deletion.count)} 行？</h2>
       <p class="irreversible-warning">

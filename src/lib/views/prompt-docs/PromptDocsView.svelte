@@ -377,8 +377,12 @@
   async function copyPlainText(): Promise<void> {
     if (!editor) return;
     const text = editor.getText({ blockSeparator: "\n" });
-    await navigator.clipboard.writeText(text);
-    setNotice({ tone: "success", text: "提示词文本已复制。" });
+    try {
+      await navigator.clipboard.writeText(text);
+      setNotice({ tone: "success", text: "提示词文本已复制。" });
+    } catch (error) {
+      setNotice({ tone: "error", text: `复制失败：${errorText(error)}` });
+    }
   }
 
   function registerAsset(asset: PromptDocAsset): string {
@@ -527,7 +531,7 @@
           </span>
         {/key}
       </span>
-      <button type="button" class="btn" disabled={!activeDoc || loading} onclick={copyPlainText}>
+      <button type="button" class="btn" disabled={!activeDoc || loading} onclick={() => void copyPlainText()}>
         复制全文纯文本
       </button>
       <button type="button" class="btn btn-danger" disabled={!activeDoc || loading} onclick={() => void deleteActiveDoc()}>
