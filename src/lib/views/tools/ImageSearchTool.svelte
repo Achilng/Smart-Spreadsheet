@@ -89,7 +89,7 @@
 </script>
 
 <div class="tool-page">
-  <section class="intro-card">
+  <section class="intro-card tool-card">
     <div>
       <h3>选择一张参考图片</h3>
       <p>工具会计算参考图的感知哈希，并返回距离不超过 10 的库内图片。</p>
@@ -126,7 +126,7 @@
   {:else if error}
     <p class="message error" transition:softFly={{ duration: 150, y: 4 }}>{error}</p>
   {:else if searched && matches.length === 0}
-    <div class="empty-result" transition:softFly={{ duration: 160, y: 4 }}>
+    <div class="empty-result empty-state" transition:softFly={{ duration: 160, y: 4 }}>
       <strong>没有找到相似图片</strong>
       <span>可以先到“资料库维护”刷新感知哈希后再试。</span>
     </div>
@@ -156,7 +156,7 @@
             </span>
           </span>
           {#if openingRowId === match.rowId}
-            <span class="opening-indicator" aria-label="正在主窗口中打开"></span>
+            <span class="opening-indicator spinner" aria-label="正在主窗口中打开"></span>
           {/if}
         </button>
       {/each}
@@ -176,10 +176,6 @@
     justify-content: space-between;
     gap: 24px;
     padding: 20px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-m);
-    background: var(--surface);
-    box-shadow: var(--shadow-1);
   }
 
   .intro-card h3 {
@@ -222,12 +218,7 @@
   }
 
   .empty-result {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
     margin-top: 40px;
-    color: var(--text-3);
     font-size: var(--font-md);
   }
 
@@ -317,10 +308,7 @@
     inset: 8px 8px auto auto;
     width: 16px;
     height: 16px;
-    border: 2px solid var(--accent-soft-border);
-    border-top-color: var(--accent);
-    border-radius: 50%;
-    animation: result-spin 0.8s linear infinite;
+    color: var(--accent);
   }
 
   .thumbnail {
@@ -363,18 +351,5 @@
 
   .card-info span.exact {
     color: var(--success);
-  }
-
-  @keyframes result-spin {
-    to {
-      transform: rotate(360deg);
-    }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .opening-indicator {
-      animation: none;
-      border-color: var(--accent);
-    }
   }
 </style>

@@ -3,6 +3,7 @@
   import { getCurrentWebview } from "@tauri-apps/api/webview";
   import { open } from "@tauri-apps/plugin-dialog";
   import FolderInput from "@lucide/svelte/icons/folder-input";
+  import Folder from "@lucide/svelte/icons/folder";
   import Trash2 from "@lucide/svelte/icons/trash-2";
   import X from "@lucide/svelte/icons/x";
   import { onMount } from "svelte";
@@ -242,7 +243,7 @@
 
 <div class="export-page">
   <section class="selection-card" class:is-ready={selectedCount > 0}>
-    <span class="step">1</span>
+    <span class="step step-badge">1</span>
     <div class="card-copy">
       <h3>选择需要导出的图片</h3>
       {#if selectedCount > 0}
@@ -305,7 +306,7 @@
 
   <section class="option-card">
     <div class="option-heading">
-      <span class="step">2</span>
+      <span class="step step-badge">2</span>
       <div>
         <h3>选择导出位置 <em>必选</em></h3>
         <p>图片会直接写入所选文件夹；遇到同名文件时自动追加序号，不会覆盖已有文件。</p>
@@ -317,7 +318,7 @@
       class:has-value={Boolean(destination)}
       onclick={() => void chooseDestination()}
     >
-      <span class="folder-icon" aria-hidden="true">▱</span>
+      <span class="folder-icon" aria-hidden="true"><Folder size={22} strokeWidth={1.6} /></span>
       <span class="folder-copy">
         <strong>{destination ? folderName(destination) : "选择导出文件夹…"}</strong>
         <small title={destination ?? undefined}>{destination ?? "尚未选择"}</small>
@@ -328,7 +329,7 @@
 
   <section class="option-card">
     <div class="option-heading">
-      <span class="step">3</span>
+      <span class="step step-badge">3</span>
       <div>
         <h3>文件名</h3>
         <p>默认保留原文件名；同名文件会自动追加序号。</p>
@@ -375,7 +376,7 @@
 
   <section class="option-card metadata-card">
     <div class="option-heading">
-      <span class="step">4</span>
+      <span class="step step-badge">4</span>
       <div>
         <h3>图片元数据</h3>
         <p>重新编码导出副本，移除 PNG 附加块及 NovelAI Alpha 通道隐写元数据。</p>
@@ -402,7 +403,9 @@
         <strong>正在导出图片…</strong>
         <span>{formatCount(progress.processed)} / {formatCount(progress.total)}</span>
       </div>
-      <progress value={progress.processed} max={Math.max(1, progress.total)}></progress>
+      <span class="progress export-progress" role="progressbar" aria-valuemin={0} aria-valuemax={Math.max(1, progress.total)} aria-valuenow={progress.processed}>
+        <span class="progress-fill" style:transform="scaleX({progress.total > 0 ? progress.processed / progress.total : 0})"></span>
+      </span>
     </div>
   {/if}
 
@@ -420,13 +423,13 @@
   <footer class="action-bar">
     <div>
       {#if selectedCount === 0}
-        <span>请选择文件夹、拖入图片，或在主窗口选择图片</span>
+        <span class="bar-hint">请选择文件夹、拖入图片，或在主窗口选择图片</span>
       {:else if !destination}
-        <span>请选择导出文件夹</span>
+        <span class="bar-hint">请选择导出文件夹</span>
       {:else if !customNameValid}
-        <span>请输入自定义文件名前缀</span>
+        <span class="bar-hint">请输入自定义文件名前缀</span>
       {:else}
-        <span>准备导出 {formatCount(selectedCount)} 张图片</span>
+        <span class="bar-hint">准备导出 {formatCount(selectedCount)} 张图片</span>
       {/if}
     </div>
     <button
@@ -455,6 +458,8 @@
     background: var(--surface);
     box-shadow: var(--shadow-1);
   }
+
+  /* source-drop-zone 是真实拖放接收区，保留 dashed 作为示能 */
 
   .selection-card {
     display: grid;
@@ -516,7 +521,7 @@
   }
 
   .source-drop-zone strong {
-    color: var(--text-1);
+    color: var(--text);
     font-size: var(--font-sm);
   }
 
@@ -602,14 +607,6 @@
   .step {
     width: 30px;
     height: 30px;
-    display: grid;
-    place-items: center;
-    flex: none;
-    border-radius: 50%;
-    background: var(--accent-soft);
-    color: var(--accent);
-    font-size: var(--font-sm);
-    font-weight: 700;
   }
 
   .card-copy,
@@ -689,7 +686,7 @@
   }
 
   .folder-copy strong {
-    color: var(--text-1);
+    color: var(--text);
     font-size: var(--font-md);
   }
 
@@ -709,15 +706,6 @@
     white-space: nowrap;
   }
 
-  .switch-row input {
-    width: 17px;
-    height: 17px;
-    accent-color: var(--accent);
-  }
-
-  .danger-switch input {
-    accent-color: var(--danger);
-  }
 
   .rename-options {
     display: grid;
@@ -743,7 +731,6 @@
 
   .rename-options input {
     margin-top: 3px;
-    accent-color: var(--accent);
   }
 
   .rename-options span {
@@ -785,7 +772,7 @@
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-s);
     background: var(--surface);
-    color: var(--text-1);
+    color: var(--text);
   }
 
   .custom-name code {
@@ -839,11 +826,8 @@
     font-size: var(--font-sm);
   }
 
-  .progress-card progress {
-    width: 100%;
-    height: 6px;
+  .progress-card .export-progress {
     margin-top: 10px;
-    accent-color: var(--accent);
   }
 
   .result-card span,
@@ -860,20 +844,7 @@
   }
 
   .action-bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
     margin-top: 18px;
-    padding: 14px 16px;
-    border-radius: var(--radius-m);
-    background: var(--surface);
-    box-shadow: var(--shadow-2);
-  }
-
-  .action-bar span {
-    color: var(--text-2);
-    font-size: var(--font-sm);
   }
 
   .export-button {
