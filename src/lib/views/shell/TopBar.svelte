@@ -1,7 +1,8 @@
 <script lang="ts">
   import X from "@lucide/svelte/icons/x";
+  import { untrack } from "svelte";
 
-  import { app, errorText, setNotice } from "../../stores/app-state.svelte";
+  import { app, errorText, formatCount, setNotice } from "../../stores/app-state.svelte";
   import {
     chooseImageArchive,
     chooseImageFolder,
@@ -13,10 +14,10 @@
     exportScopeLabel,
   } from "../../stores/export-actions";
   import { clearSelection } from "../../stores/selection-store.svelte";
-  import { setSearch } from "../../stores/row-store.svelte";
+  import { rowStore, setSearch } from "../../stores/row-store.svelte";
   import Dropdown, { type DropdownItem } from "../../ui/Dropdown.svelte";
   import { openToolboxWindow } from "../../windows/toolbox";
-  import SizeSlider from "./SizeSlider.svelte";
+  import ViewSwitcher from "./ViewSwitcher.svelte";
   import WindowControls from "../../ui/WindowControls.svelte";
   import { softPop } from "../../ui/motion";
 
@@ -39,6 +40,17 @@
     setSearch("");
     clearSelection();
   }
+
+  // 搜索词的权威 state 在 rowStore；外部（筛选 chip 删除等）改动时回流输入框
+  $effect(() => {
+    const external = rowStore.search;
+    untrack(() => {
+      if (external !== searchInput) {
+        searchInput = external;
+        clearTimeout(debounceTimer);
+      }
+    });
+  });
 
   const library = $derived(app.snapshot?.library ?? null);
 
@@ -80,11 +92,22 @@
 </script>
 
 <header class="topbar" data-tauri-drag-region>
+  <div class="brand" data-tauri-drag-region>
+    <span data-tauri-drag-region>智能表格</span>
+    {#if library && library.rowCount > 0}
+      <small data-tauri-drag-region>{formatCount(library.rowCount)} 张图片</small>
+    {/if}
+  </div>
+
+  <ViewSwitcher />
+
+  <div class="title-spacer" data-tauri-drag-region></div>
+
   {#if app.viewMode !== "promptDocs"}
     <div class="search-box" data-tauri-drag-region>
       <input
         type="text"
-        placeholder="搜索文件名 / 正向 / 角色 / 负向 / 画师…"
+        placeholder="搜索文件名 / 提示词 / 画师…"
         value={searchInput}
         oninput={onSearchInput}
         class:has-value={searchInput.length > 0}
@@ -99,26 +122,21 @@
         ><X size={13} strokeWidth={2} /></button>
       {/if}
     </div>
-  {:else}
-    <div class="topbar-spacer" data-tauri-drag-region></div>
   {/if}
 
-  <div class="topbar-right" data-tauri-drag-region>
-    <SizeSlider />
-    <div class="actions">
-      <button
-        type="button"
-        class="btn"
-        disabled={app.busy}
-        onclick={() => void openToolbox()}
-      >
-        工具箱
-      </button>
-      <Dropdown label="导入" items={importItems} disabled={app.busy} />
-      <Dropdown label="导出" items={exportItems} disabled={exportDisabled} primary />
-    </div>
-    <WindowControls />
+  <div class="actions">
+    <button
+      type="button"
+      class="btn btn-ghost"
+      disabled={app.busy}
+      onclick={() => void openToolbox()}
+    >
+      工具箱
+    </button>
+    <Dropdown label="导入" items={importItems} disabled={app.busy} ghost />
+    <Dropdown label="导出" items={exportItems} disabled={exportDisabled} primary />
   </div>
+  <WindowControls />
 </header>
 
 <style>
@@ -126,22 +144,36 @@
     display: flex;
     align-items: center;
     gap: 16px;
-    height: 44px;
-    padding: 0 0 0 12px;
+    height: 52px;
+    padding: 0 0 0 20px;
     background: var(--surface);
     border-bottom: 1px solid var(--border);
     flex: none;
   }
 
-  .topbar-spacer {
-    flex: 1;
+  .brand {
+    display: flex;
+    align-items: baseline;
+    gap: 7px;
+    flex: none;
+    font-size: var(--font-lg);
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--text);
+    white-space: nowrap;
   }
 
-  .topbar-right {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    margin-left: auto;
+  .brand small {
+    font-size: var(--font-xs);
+    font-weight: 400;
+    color: var(--text-3);
+    letter-spacing: 0;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .title-spacer {
+    flex: 1;
+    min-width: 40px;
   }
 
   .search-box {
@@ -208,9 +240,8 @@
 
   .actions {
     display: flex;
-    gap: 8px;
+    gap: 4px;
     flex: none;
     margin-right: 4px;
   }
-
 </style>

@@ -108,11 +108,11 @@
     top: 0;
     left: 0;
     right: 0;
-    height: 40px;
+    height: 52px;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding-left: 14px;
+    padding-left: 20px;
     z-index: var(--z-nav);
   }
 

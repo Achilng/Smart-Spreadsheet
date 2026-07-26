@@ -17,11 +17,13 @@
     items,
     disabled = false,
     primary = false,
+    ghost = false,
   }: {
     label: string;
     items: DropdownItem[];
     disabled?: boolean;
     primary?: boolean;
+    ghost?: boolean;
   } = $props();
 
   let open = $state(false);
@@ -53,6 +55,7 @@
     type="button"
     class="btn"
     class:btn-primary={primary}
+    class:btn-ghost={ghost}
     aria-haspopup="menu"
     aria-expanded={open}
     {disabled}

@@ -21,6 +21,7 @@
     rowStore,
   } from "../../stores/row-store.svelte";
   import { loadTags } from "../../stores/tag-store.svelte";
+  import { loadGroups } from "../../stores/group-store.svelte";
   import { thumbnails } from "../../images/thumbnails";
   import { clearProgressiveImages } from "../../images/progressive-images";
   import { vibeStatuses } from "../../images/vibe-statuses";
@@ -36,7 +37,6 @@
   import GalleryView from "../gallery/GalleryView.svelte";
   import GroupBrowseView from "../groups/GroupBrowseView.svelte";
   import GroupManageView from "../groups/GroupManageView.svelte";
-  import NavRail from "./NavRail.svelte";
   import PromptDocsView from "../prompt-docs/PromptDocsView.svelte";
   import SectionContextMenu from "./SectionContextMenu.svelte";
   import SelectionBar from "./SelectionBar.svelte";
@@ -123,6 +123,8 @@
 
   onMount(() => {
     const stopDragDrop = listenDragDrop();
+    // 预载分组列表，供标题栏分段控件显示分组计数
+    void loadGroups();
     let disposed = false;
     let unlistenNavigation: UnlistenFn | null = null;
     let unlistenSelectionRequest: UnlistenFn | null = null;
@@ -219,10 +221,8 @@
 <svelte:window onkeydown={onKeydown} />
 
 <div class="workspace">
-  <NavRail />
-  <div class="workspace-inner">
-    <TopBar />
-    {#if visitedViews.promptDocs}
+  <TopBar />
+  {#if visitedViews.promptDocs}
       <div
         class="workspace-body prompt-docs-body"
         class:is-active={app.viewMode === "promptDocs"}
@@ -288,7 +288,6 @@
         </button>
       {/if}
     </div>
-  </div>
 </div>
 
 <GroupManageView />
@@ -310,13 +309,6 @@
 <style>
   .workspace {
     height: 100%;
-    display: flex;
-    flex-direction: row;
-  }
-
-  .workspace-inner {
-    flex: 1;
-    min-width: 0;
     display: flex;
     flex-direction: column;
   }
