@@ -1,31 +1,40 @@
 :root {
   color-scheme: light;
 
-  /* ---- 色彩 ---- */
-  --bg: #f4f5f7;
+  /* ---- 色彩：冷灰阶梯，画布压深让白面浮起 ---- */
+  --bg: #edeff3;
   --surface: #ffffff;
-  --surface-2: #f7f8fa;
-  --surface-3: #eff1f4;
-  --border: #e8eaef;
-  --border-strong: #d4d9e1;
-  --text: #1d2531;
-  --text-2: #5a6572;
-  --text-3: #98a2b0;
-  --accent: #3163e8;
-  --accent-hover: #2a55c9;
-  --accent-soft: #e9effd;
-  --accent-soft-border: #c6d4f7;
-  --danger: #d23b54;
-  --danger-soft: #fbe9ec;
+  --surface-2: #f4f5f8;
+  --surface-3: #e9ebf1;
+  --border: #e3e6ec;
+  --border-strong: #cdd3dd;
+  --border-faint: #eef0f4;
+  --text: #10151f;
+  --text-2: #4c5564;
+  --text-3: #8a93a3;
+  --accent: #4f5bd0;
+  --accent-hover: #4350bd;
+  --accent-soft: #edeffc;
+  --accent-soft-border: #d5daf6;
+  --danger: #c93a52;
+  --danger-soft: #fceef0;
   --success: #178256;
-  --success-soft: #e6f5ee;
+  --success-soft: #e5f4ec;
+  --warning: #a16207;
+  --warning-soft: #faf0dc;
+  --vibe-badge-bg: rgb(86 62 158 / 90%);
+  --vibe-badge-shadow: 0 1px 3px rgb(25 18 45 / 25%);
+  --overlay: rgb(15 18 28 / 42%);
+  --overlay-heavy: rgb(12 15 24 / 72%);
+  --scrollbar-thumb: #c2c8d3;
+  --scrollbar-thumb-hover: #a6aebd;
 
-  /* ---- 阴影（柔和分层） ---- */
-  --shadow-1: 0 1px 2px rgb(23 30 42 / 4%), 0 1px 3px rgb(23 30 42 / 6%);
-  --shadow-2: 0 4px 12px rgb(23 30 42 / 8%), 0 2px 4px rgb(23 30 42 / 5%);
-  --shadow-3: 0 12px 32px rgb(23 30 42 / 14%), 0 4px 8px rgb(23 30 42 / 6%);
-  --shadow-hover: 0 6px 16px rgb(23 30 42 / 10%);
-  --focus-ring: 0 0 0 3px rgb(49 99 232 / 18%);
+  /* ---- 阴影：首项 1px 发丝环承担轮廓，替代装饰性边框 ---- */
+  --shadow-1: 0 0 0 1px rgb(23 27 43 / 4%), 0 1px 2px rgb(23 27 43 / 5%), 0 2px 8px rgb(23 27 43 / 5%);
+  --shadow-2: 0 0 0 1px rgb(23 27 43 / 5%), 0 4px 10px rgb(23 27 43 / 7%), 0 12px 28px rgb(23 27 43 / 9%);
+  --shadow-3: 0 0 0 1px rgb(23 27 43 / 4%), 0 12px 24px rgb(23 27 43 / 10%), 0 32px 64px rgb(23 27 43 / 16%);
+  --shadow-hover: 0 0 0 1px rgb(23 27 43 / 5%), 0 4px 12px rgb(23 27 43 / 9%), 0 10px 24px rgb(23 27 43 / 7%);
+  --focus-ring: 0 0 0 3px rgb(79 91 208 / 18%);
 
   /* ---- 动效 ---- */
   --motion-press: 70ms;
@@ -35,19 +44,21 @@
   --ease-responsive: cubic-bezier(0.2, 0.8, 0.2, 1);
   --ease-exit: cubic-bezier(0.4, 0, 1, 1);
 
-  /* ---- 圆角 ---- */
+  /* ---- 圆角（8/10/14 三档） ---- */
   --radius-s: 8px;
-  --radius-m: 12px;
-  --radius-l: 16px;
+  --radius-m: 10px;
+  --radius-l: 14px;
   --radius-full: 999px;
 
-  /* ---- 字号阶梯 ---- */
+  /* ---- 字号阶梯：11(overline)→13(正文)→15(面板标题)→17(对话框)→20(大标题) ---- */
   --font-xs: 11px;
   --font-sm: 12px;
   --font-md: 13px;
   --font-base: 14px;
-  --font-lg: 16px;
-  --font-xl: 19px;
+  --font-lg: 15px;
+  --font-xl: 17px;
+  --font-2xl: 20px;
+  --ls-caps: 0.05em;
 
   /* ---- 间距阶梯（供后续阶段与新代码使用） ---- */
   --space-1: 4px;
@@ -87,14 +98,14 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #c7cfd9;
+  background: var(--scrollbar-thumb);
   border-radius: var(--radius-s);
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #a9b4c2;
+  background: var(--scrollbar-thumb-hover);
   border: 2px solid transparent;
   background-clip: padding-box;
 }
@@ -167,10 +178,12 @@ textarea:focus-visible {
   gap: 6px;
   padding: 6px 14px;
   border-radius: var(--radius-s);
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text);
+  font-weight: 500;
   white-space: nowrap;
+  box-shadow: 0 1px 2px rgb(23 27 43 / 4%);
   transition:
     background var(--motion-fast) var(--ease-responsive),
     border-color var(--motion-fast) var(--ease-responsive),
@@ -181,23 +194,24 @@ textarea:focus-visible {
 
 .btn:hover:not(:disabled) {
   background: var(--surface-2);
-  border-color: var(--text-3);
+  border-color: var(--border-strong);
 }
 
 .btn:active:not(:disabled) {
-  background: var(--bg);
+  background: var(--surface-3);
   transform: translateY(1px) scale(0.985);
 }
 
 .btn-primary {
   background: var(--accent);
-  border-color: var(--accent);
+  border-color: transparent;
   color: #ffffff;
+  box-shadow: 0 1px 2px rgb(23 27 43 / 12%);
 }
 
 .btn-primary:hover:not(:disabled) {
   background: var(--accent-hover);
-  border-color: var(--accent-hover);
+  border-color: transparent;
 }
 
 .btn-primary:active:not(:disabled) {
@@ -206,18 +220,20 @@ textarea:focus-visible {
 
 .btn-danger {
   background: var(--surface);
-  border-color: var(--danger);
+  border-color: var(--border);
   color: var(--danger);
 }
 
 .btn-danger:hover:not(:disabled) {
   background: var(--danger-soft);
+  border-color: var(--danger);
 }
 
 .btn-ghost {
   border-color: transparent;
   background: transparent;
   color: var(--text-2);
+  box-shadow: none;
 }
 
 .btn-ghost:hover:not(:disabled) {
@@ -233,6 +249,15 @@ textarea:focus-visible {
   color: var(--text-3);
 }
 
+/* ---- overline 小节标签（字段标题 / 表头 / 分组名共用） ---- */
+.overline {
+  font-size: var(--font-xs);
+  font-weight: 650;
+  letter-spacing: var(--ls-caps);
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
 /* ---- 居中流程页（首次设置 / 导入 / 错误） ---- */
 .center-screen {
   height: 100%;
@@ -245,9 +270,8 @@ textarea:focus-visible {
 .flow-card {
   width: min(460px, 100%);
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-m);
-  box-shadow: var(--shadow-1);
+  border-radius: var(--radius-l);
+  box-shadow: var(--shadow-2);
   padding: 32px;
   display: flex;
   flex-direction: column;
@@ -255,7 +279,8 @@ textarea:focus-visible {
 }
 
 .flow-card h2 {
-  font-size: var(--font-xl);
+  font-size: var(--font-2xl);
+  letter-spacing: -0.01em;
 }
 
 .flow-card .flow-actions {
