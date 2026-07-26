@@ -1,24 +1,42 @@
 :root {
   color-scheme: light;
 
-  /* ---- 色彩 ---- */
+  /* ---- 玻璃三档蒙层（Acrylic 之上：画布 35% / 承载面 55% / 实体面 75%） ---- */
+  --glass-canvas: rgb(255 255 255 / 35%);
+  --glass-raised: rgb(255 255 255 / 55%);
+  --glass-solid: rgb(255 255 255 / 75%);
+  --glass-blur: 20px;
+
+  /* ---- 色彩（默认为不透明保底态；html[data-glass="on"] 时核心面切换为玻璃蒙层） ---- */
   --bg: #f4f5f7;
   --surface: #ffffff;
   --surface-2: #f7f8fa;
   --surface-3: #eff1f4;
-  --border: #e8eaef;
-  --border-strong: #d4d9e1;
+  --surface-opaque: #ffffff; /* 永远不透明：缩略图底、反色文字等 */
+  --border: rgb(29 37 49 / 9%);
+  --border-strong: rgb(29 37 49 / 18%);
   --text: #1d2531;
-  --text-2: #5a6572;
-  --text-3: #98a2b0;
+  --text-2: #4d5866;
+  --text-3: #8a94a3;
   --accent: #3163e8;
   --accent-hover: #2a55c9;
-  --accent-soft: #e9effd;
-  --accent-soft-border: #c6d4f7;
+  --accent-soft: rgb(49 99 232 / 10%);
+  --accent-soft-border: rgb(49 99 232 / 28%);
   --danger: #d23b54;
-  --danger-soft: #fbe9ec;
+  --danger-soft: rgb(210 59 84 / 10%);
+  --danger-border-soft: #f2cbd2;
   --success: #178256;
-  --success-soft: #e6f5ee;
+  --success-soft: rgb(23 130 86 / 10%);
+  --warning: #c88a1a;
+  --on-accent: #ffffff;
+  --badge-vibe: rgb(90 60 160 / 88%);
+  --overlay: rgb(15 20 28 / 45%);
+  --overlay-modal: rgb(15 20 28 / 40%);
+  --overlay-heavy: rgb(15 20 28 / 78%);
+  --close-hover: #e81123;
+  --hover-wash: rgb(16 24 40 / 7%);
+  --scrollbar-thumb: rgb(29 37 49 / 22%);
+  --scrollbar-thumb-hover: rgb(29 37 49 / 35%);
 
   /* ---- 阴影（柔和分层） ---- */
   --shadow-1: 0 1px 2px rgb(23 30 42 / 4%), 0 1px 3px rgb(23 30 42 / 6%);
@@ -27,12 +45,21 @@
   --shadow-hover: 0 6px 16px rgb(23 30 42 / 10%);
   --focus-ring: 0 0 0 3px rgb(49 99 232 / 18%);
 
+  /* ---- 悬停浮起阴影（透明起点 → 悬停时插值出柔影） ---- */
+  --shadow-lift-rest: 4px 4px 0 0 rgb(113 113 113 / 0%);
+  --shadow-lift: 4px 4px 10px 0 rgb(113 113 113 / 44%);
+  --shadow-lift-soft: 2px 2px 8px 0 rgb(113 113 113 / 28%);
+
   /* ---- 动效 ---- */
   --motion-press: 70ms;
   --motion-fast: 120ms;
   --motion-base: 180ms;
-  --motion-panel: 220ms;
+  --motion-panel: 200ms;
+  --motion-lift: 225ms;
+  --motion-reveal: 450ms;
+  /* ease-responsive：≤120ms 的颜色/背景微反馈；ease-fluent：阴影/位移/光晕等物理感动效 */
   --ease-responsive: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-fluent: cubic-bezier(0.1, 0.9, 0.2, 1);
   --ease-exit: cubic-bezier(0.4, 0, 1, 1);
 
   /* ---- 圆角 ---- */
@@ -72,6 +99,14 @@
   --font: "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif;
 }
 
+/* ---- 玻璃开启态：仅在启动检测确认系统透明效果可用后设置 data-glass ---- */
+html[data-glass="on"] {
+  --bg: var(--glass-canvas);
+  --surface: var(--glass-raised);
+  --surface-2: rgb(255 255 255 / 45%);
+  --surface-3: rgb(238 241 245 / 55%);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -87,14 +122,14 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #c7cfd9;
+  background: var(--scrollbar-thumb);
   border-radius: var(--radius-s);
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #a9b4c2;
+  background: var(--scrollbar-thumb-hover);
   border: 2px solid transparent;
   background-clip: padding-box;
 }
@@ -111,6 +146,15 @@ html,
 body,
 #app {
   height: 100%;
+}
+
+html {
+  background: transparent;
+}
+
+/* 保底实色：未确认玻璃可用时绝不露出桌面 */
+html:not([data-glass="on"]) body {
+  background: #f4f5f7;
 }
 
 body {
@@ -166,33 +210,40 @@ textarea:focus-visible {
   justify-content: center;
   gap: 6px;
   padding: 6px 14px;
+  min-height: 30px;
   border-radius: var(--radius-s);
   border: 1px solid var(--border-strong);
   background: var(--surface);
   color: var(--text);
   white-space: nowrap;
+  box-shadow: var(--shadow-lift-rest);
   transition:
     background var(--motion-fast) var(--ease-responsive),
     border-color var(--motion-fast) var(--ease-responsive),
     color var(--motion-fast) var(--ease-responsive),
-    box-shadow var(--motion-fast) var(--ease-responsive),
+    box-shadow var(--motion-lift) var(--ease-fluent),
     transform var(--motion-press) var(--ease-responsive);
 }
 
 .btn:hover:not(:disabled) {
   background: var(--surface-2);
   border-color: var(--text-3);
+  box-shadow: var(--shadow-lift-soft);
 }
 
 .btn:active:not(:disabled) {
   background: var(--bg);
   transform: translateY(1px) scale(0.985);
+  box-shadow: var(--shadow-lift-rest);
+  /* 按下瞬间全部动效切短时长，反馈立即回落 */
+  transition-duration: var(--motion-press);
 }
 
 .btn-primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #ffffff;
+  color: var(--on-accent);
+  --reveal-alpha: 25%;
 }
 
 .btn-primary:hover:not(:disabled) {
@@ -300,6 +351,69 @@ textarea:focus-visible {
   color: var(--text-2);
 }
 
+/* ---- 玻璃面板抽象 ---- */
+/* 实体面板：内容区卡片用。不带 backdrop-filter（性能红线），靠 75% 蒙层保证可读 */
+.panel {
+  background: var(--glass-solid);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+  box-shadow: var(--shadow-1);
+}
+
+html:not([data-glass="on"]) .panel {
+  background: var(--surface-opaque);
+}
+
+/* 浮层玻璃：弹窗 / 菜单 / sticky 表头 / 浮动工具条专用，带应用内二次模糊 */
+.glass-float {
+  background: var(--glass-solid);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  border: 1px solid rgb(255 255 255 / 55%);
+  box-shadow: var(--shadow-2);
+}
+
+html:not([data-glass="on"]) .glass-float {
+  background: var(--surface-opaque);
+  border-color: var(--border-strong);
+  backdrop-filter: none;
+}
+
+/* 悬停浮起：透明阴影插值出柔影 */
+.lift {
+  box-shadow: var(--shadow-lift-rest);
+  transition:
+    box-shadow var(--motion-lift) var(--ease-fluent),
+    transform var(--motion-lift) var(--ease-fluent);
+}
+
+.lift:hover {
+  box-shadow: var(--shadow-lift);
+}
+
+/* ---- Reveal 光晕（跟随鼠标的径向高光，圆心由 reveal.ts 写入 --mx/--my） ---- */
+[data-reveal] {
+  position: relative;
+}
+
+[data-reveal]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(
+    circle var(--reveal-size, 120px) at var(--mx, 50%) var(--my, 50%),
+    rgb(255 255 255 / var(--reveal-alpha, 65%)),
+    transparent 70%
+  );
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--motion-reveal) var(--ease-fluent);
+}
+
+[data-reveal]:hover::after {
+  opacity: 1;
+}
+
 /* ---- 工具箱保活面板切换 ---- */
 .toolbox .tool-panel {
   display: block;
@@ -369,6 +483,8 @@ textarea:focus-visible {
     --motion-fast: 0ms;
     --motion-base: 0ms;
     --motion-panel: 0ms;
+    --motion-lift: 0ms;
+    --motion-reveal: 0ms;
   }
 
   *,
@@ -379,6 +495,10 @@ textarea:focus-visible {
 
   .shimmer {
     animation: none !important;
+  }
+
+  [data-reveal]::after {
+    display: none;
   }
 
   .toolbox .nav-group button.is-active::before {
