@@ -447,18 +447,18 @@
     z-index: var(--z-dragdrop);
     display: grid;
     place-items: center;
-    background: rgb(15 20 28 / 45%);
+    background: var(--overlay);
     pointer-events: none;
   }
 
   .drop-hint {
     padding: 20px 40px;
     background: var(--surface);
-    border: 2px dashed var(--accent, #5b9ef4);
+    border: 2px dashed var(--accent);
     border-radius: var(--radius-m);
     font-size: var(--font-xl);
     font-weight: 600;
-    color: var(--accent, #5b9ef4);
+    color: var(--accent);
   }
 
   @media (prefers-reduced-motion: reduce) {

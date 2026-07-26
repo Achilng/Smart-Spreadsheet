@@ -70,15 +70,15 @@
     display: grid;
     place-items: center;
     padding: 24px;
-    background: rgb(15 20 28 / 55%);
+    background: var(--overlay);
   }
 
   .modal-dialog {
     max-width: 90vw;
     max-height: 85vh;
     background: var(--surface);
-    border-radius: var(--radius-m);
-    box-shadow: var(--shadow-2);
+    border-radius: var(--radius-l);
+    box-shadow: var(--shadow-3);
     display: flex;
     flex-direction: column;
     overflow: hidden;

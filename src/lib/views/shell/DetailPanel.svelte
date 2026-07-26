@@ -682,14 +682,6 @@
     position: absolute;
     top: 6px;
     right: 6px;
-    padding: 2px 8px;
-    border-radius: var(--radius-m);
-    background: rgba(90, 60, 160, 0.85);
-    color: #fff;
-    font-size: var(--font-sm);
-    font-weight: 600;
-    letter-spacing: 0.5px;
-    pointer-events: none;
   }
 
   .preview-btn img {
@@ -891,7 +883,7 @@
     position: fixed;
     inset: 0;
     z-index: var(--z-lightbox);
-    background: rgb(15 20 28 / 78%);
+    background: var(--overlay-heavy);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -904,6 +896,6 @@
     max-height: 100%;
     object-fit: contain;
     border-radius: var(--radius-s);
-    box-shadow: var(--shadow-2);
+    box-shadow: var(--shadow-3);
   }
 </style>

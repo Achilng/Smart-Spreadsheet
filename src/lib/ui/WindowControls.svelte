@@ -84,11 +84,12 @@
   }
 
   .window-controls button:hover {
-    background: rgb(16 24 40 / 7%);
+    background: var(--surface-3);
     color: var(--text);
   }
 
   .window-controls button.close:hover {
+    /* Windows 系统标题栏关闭键的官方红，保持系统一致性，不走主题 token */
     background: #e81123;
     color: #ffffff;
   }

@@ -866,11 +866,9 @@
     gap: 16px;
     margin-top: 18px;
     padding: 14px 16px;
-    border: 1px solid var(--border);
     border-radius: var(--radius-m);
-    background: color-mix(in srgb, var(--surface) 92%, transparent);
+    background: var(--surface);
     box-shadow: var(--shadow-2);
-    backdrop-filter: blur(10px);
   }
 
   .action-bar span {

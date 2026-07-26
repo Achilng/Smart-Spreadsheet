@@ -48,7 +48,7 @@
     min-width: 160px;
     padding: 4px;
     background: var(--surface);
-    border-radius: var(--radius-s);
+    border-radius: var(--radius-m);
     box-shadow: var(--shadow-2);
     display: flex;
     flex-direction: column;

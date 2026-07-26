@@ -138,7 +138,7 @@
   {:else}
     <div class="thumb shimmer" style:height="{imageHeight}px"></div>
     <div class="footer">
-      <span class="skeleton-line"></span>
+      <span class="skeleton-line shimmer"></span>
     </div>
   {/if}
 </div>
@@ -221,16 +221,6 @@
     top: 8px;
     right: 8px;
     z-index: 1;
-    padding: 2px 7px;
-    border-radius: var(--radius-m);
-    background: rgba(90, 60, 160, 0.88);
-    box-shadow: 0 1px 3px rgb(25 18 45 / 24%);
-    color: #fff;
-    font-size: var(--font-xs);
-    font-weight: 600;
-    line-height: 1.4;
-    letter-spacing: 0.3px;
-    pointer-events: none;
   }
 
   .footer {

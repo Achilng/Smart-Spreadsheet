@@ -110,13 +110,13 @@
     </div>
   {:else}
     <div class="cell cell-check"></div>
-    <div class="cell cell-thumb"><span class="skeleton-line"></span></div>
-    <div class="cell"><span class="skeleton-line"></span></div>
-    <div class="cell"><span class="skeleton-line"></span></div>
-    <div class="cell"><span class="skeleton-line wide"></span></div>
-    <div class="cell"><span class="skeleton-line wide"></span></div>
-    <div class="cell"><span class="skeleton-line"></span></div>
-    <div class="cell"><span class="skeleton-line"></span></div>
+    <div class="cell cell-thumb"><span class="skeleton-line shimmer"></span></div>
+    <div class="cell"><span class="skeleton-line shimmer"></span></div>
+    <div class="cell"><span class="skeleton-line shimmer"></span></div>
+    <div class="cell"><span class="skeleton-line wide shimmer"></span></div>
+    <div class="cell"><span class="skeleton-line wide shimmer"></span></div>
+    <div class="cell"><span class="skeleton-line shimmer"></span></div>
+    <div class="cell"><span class="skeleton-line shimmer"></span></div>
   {/if}
 </div>
 

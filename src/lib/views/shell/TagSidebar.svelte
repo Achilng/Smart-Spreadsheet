@@ -651,7 +651,7 @@
   }
 
   .coverage.is-partial {
-    color: var(--warning, #a56700);
+    color: var(--warning);
   }
 
   .create-form {
@@ -690,7 +690,6 @@
   .confirm-dialog {
     background: var(--surface);
     border-radius: var(--radius-l);
-    box-shadow: var(--shadow-3);
     padding: 20px 24px;
     max-width: 400px;
     width: 90vw;

@@ -204,8 +204,8 @@
     justify-content: center;
     gap: 7px;
     padding: 0 15px;
-    border: 1px solid var(--border-strong);
-    border-radius: 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-s);
     background: var(--surface);
     color: var(--text);
     box-shadow: var(--shadow-1);
@@ -257,9 +257,8 @@
     max-width: calc(100vw - 32px);
     padding: 6px;
     border-radius: var(--radius-m);
-    background: color-mix(in srgb, var(--surface) 97%, transparent);
-    box-shadow: var(--shadow-3);
-    backdrop-filter: blur(14px);
+    background: var(--surface);
+    box-shadow: var(--shadow-2);
     transform-origin: top right;
   }
 
@@ -280,7 +279,7 @@
     gap: 9px;
     padding: 7px 8px;
     border: 1px solid transparent;
-    border-radius: 9px;
+    border-radius: var(--radius-s);
     background: transparent;
     text-align: left;
     transition:
