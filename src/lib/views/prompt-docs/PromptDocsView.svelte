@@ -23,7 +23,7 @@
   import { errorText, setNotice } from "../../stores/app-state.svelte";
   import { registerCloseGuard } from "../../stores/close-guard";
   import { lastPromptDoc, rememberPromptDoc } from "../../stores/view-state";
-  import { softFade } from "../../ui/motion";
+  import { flipDuration, softFade } from "../../ui/motion";
 
   const IMAGE_MIME_TYPES = [
     "image/png",
@@ -490,7 +490,7 @@
             class="doc-item"
             class:is-active={activeDoc?.id === doc.id}
             onclick={() => void selectDoc(doc.id)}
-            animate:flip={{ duration: 170 }}
+            animate:flip={{ duration: flipDuration(170) }}
             transition:softFade={{ duration: 130 }}
           >
             <span class="doc-title">{doc.title}</span>

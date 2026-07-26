@@ -193,7 +193,10 @@
     color: var(--text);
     outline: none;
     box-sizing: border-box;
-    transition: border-color 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+    transition:
+      border-color var(--motion-fast) var(--ease-responsive),
+      box-shadow var(--motion-fast) var(--ease-responsive),
+      background var(--motion-fast) var(--ease-responsive);
   }
 
   .search-box input:hover:not(:focus) {

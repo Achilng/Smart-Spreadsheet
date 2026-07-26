@@ -13,6 +13,11 @@ function reducedMotion(): boolean {
     window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
+/** animate:flip 的时长：svelte/animate 不读系统偏好，统一从这里取值归零 */
+export function flipDuration(duration: number): number {
+  return reducedMotion() ? 0 : duration;
+}
+
 function responsiveEase(t: number): number {
   return 1 - Math.pow(1 - t, 4);
 }

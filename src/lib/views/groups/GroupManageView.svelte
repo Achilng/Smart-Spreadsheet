@@ -7,7 +7,7 @@
   import { requestGroupDelete } from "../../stores/group-delete-confirm.svelte";
   import { resetRows } from "../../stores/row-store.svelte";
   import Modal from "../../ui/Modal.svelte";
-  import { softFade } from "../../ui/motion";
+  import { flipDuration, softFade } from "../../ui/motion";
 
   let editingId = $state<number | null>(null);
   let editName = $state("");
@@ -107,7 +107,7 @@
 
     <div class="list">
       {#each groupStore.list as group (group.id)}
-        <div class="group-row" animate:flip={{ duration: 170 }} transition:softFade={{ duration: 130 }}>
+        <div class="group-row" animate:flip={{ duration: flipDuration(170) }} transition:softFade={{ duration: 130 }}>
           {#if editingId === group.id}
             <input
               type="text"

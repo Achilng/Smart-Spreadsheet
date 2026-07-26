@@ -3,7 +3,8 @@
   import { invoke } from "@tauri-apps/api/core";
 
   import { app, dismissNotice, formatCount, setNotice } from "../stores/app-state.svelte";
-  import { softFly } from "./motion";
+  import { flipDuration, softFly } from "./motion";
+  import { flip } from "svelte/animate";
 
   let cancelling = $state(false);
 
@@ -100,6 +101,7 @@
     <div
       class="toast toast-{notice.tone}"
       role={notice.tone === "error" ? "alert" : "status"}
+      animate:flip={{ duration: flipDuration(170) }}
       transition:softFly={{ duration: 180, y: 8 }}
     >
       <span>{notice.text}</span>

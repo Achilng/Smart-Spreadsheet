@@ -600,7 +600,8 @@
     cursor: pointer;
     transition:
       background var(--motion-fast) var(--ease-responsive),
-      color var(--motion-fast) var(--ease-responsive);
+      color var(--motion-fast) var(--ease-responsive),
+      transform var(--motion-press) var(--ease-responsive);
   }
 
   .check-row:hover:not(:disabled):not(.is-disabled) {

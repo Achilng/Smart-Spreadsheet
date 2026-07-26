@@ -9,7 +9,7 @@
   import { beginHistoryGroup, commitHistoryGroup } from "../../stores/history.svelte";
   import { assignToGroup, createNewGroup, groupStore, loadGroups, removeFromGroup } from "../../stores/group-store.svelte";
   import { resetRows } from "../../stores/row-store.svelte";
-  import { softFade } from "../../ui/motion";
+  import { flipDuration, softFade } from "../../ui/motion";
 
   interface Props {
     selection: RowSelection;
@@ -153,7 +153,7 @@
               class="group-item"
               disabled={busy}
               onclick={() => void assignTo(group.id, group.name)}
-              animate:flip={{ duration: 160 }}
+              animate:flip={{ duration: flipDuration(160) }}
             >
               <span class="group-name">{group.name}</span>
               <span class="group-count">{group.memberCount} 行</span>

@@ -495,7 +495,10 @@
     background: var(--surface-2);
     color: var(--accent);
     text-align: left;
-    transition: border-color 120ms ease, background 120ms ease, transform 120ms ease;
+    transition:
+      border-color var(--motion-fast) var(--ease-responsive),
+      background var(--motion-fast) var(--ease-responsive),
+      transform var(--motion-fast) var(--ease-responsive);
   }
 
   .source-drop-zone:hover,
@@ -653,7 +656,9 @@
     background: var(--surface-2);
     color: var(--text-2);
     text-align: left;
-    transition: border-color 120ms ease, background 120ms ease;
+    transition:
+      border-color var(--motion-fast) var(--ease-responsive),
+      background var(--motion-fast) var(--ease-responsive);
   }
 
   .folder-picker:hover {

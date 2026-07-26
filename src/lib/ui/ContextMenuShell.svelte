@@ -20,6 +20,9 @@
   let menuEl = $state<HTMLDivElement | null>(null);
   let posX = $state(0);
   let posY = $state(0);
+  // 缩放生长的锚点：默认从点击点（左上）生长，翻转时换到对应边
+  let originX = $state<"left" | "right">("left");
+  let originY = $state<"top" | "bottom">("top");
 
   // 打开期间登记为模态层：全局 Delete/Ctrl+Z 等快捷键短路，Esc 只关本菜单。
   $effect(() => {
@@ -37,6 +40,8 @@
     }
     posX = x;
     posY = y;
+    originX = "left";
+    originY = "top";
     void tick().then(() => {
       if (!menuEl) return;
       const margin = 8;
@@ -45,6 +50,7 @@
       let nextY = y;
       if (nextX + rect.width + margin > window.innerWidth) {
         nextX = Math.max(margin, window.innerWidth - rect.width - margin);
+        originX = "right";
       }
       if (nextY + rect.height + margin > window.innerHeight) {
         // 优先在鼠标上方翻转；空间仍不足时夹取到底部
@@ -52,6 +58,7 @@
         nextY = flipped >= margin
           ? flipped
           : Math.max(margin, window.innerHeight - rect.height - margin);
+        originY = "bottom";
       }
       posX = nextX;
       posY = nextY;
@@ -119,6 +126,7 @@
     tabindex="-1"
     style:left="{posX}px"
     style:top="{posY}px"
+    style:transform-origin="{originY} {originX}"
     transition:softPop={{ duration: 145, y: -4, start: 0.98 }}
     onkeydown={onMenuKeydown}
   >
