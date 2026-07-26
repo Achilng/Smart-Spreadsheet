@@ -570,7 +570,7 @@
   .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   label { display: grid; gap: 4px; }
   label > span { color: var(--text-3); font-size: var(--font-xs); }
-  input { min-height: 32px; padding: 5px 9px; font: inherit; }
+  input:not([type="checkbox"]) { min-height: 32px; padding: 5px 9px; font: inherit; }
   .trigger-row { display: flex; flex-wrap: wrap; gap: 9px 18px; margin-top: 13px; }
   .trigger-row label { display: flex; align-items: center; gap: 7px; color: var(--text-2); font-size: var(--font-sm); }
   .trigger-row input { min-height: 0; }
