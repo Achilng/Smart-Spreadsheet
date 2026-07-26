@@ -24,6 +24,8 @@
   let failed = $state(false);
   let failReason = $state<string | null>(null);
   let retryToken = $state(0);
+  // 仅异步加载完成的图淡入；缓存命中同步取值时元素被复用，不得重播动画
+  let animateIn = $state(false);
 
   function revealEnhancedImage(event: Event): void {
     const image = event.currentTarget as HTMLImageElement;
@@ -55,6 +57,7 @@
     // 命中缓存时同步取值，避免已缓存的图闪一帧灰块
     const cachedThumb = thumbnails.cached(id);
     if (cachedThumb) {
+      animateIn = false;
       url = cachedThumb;
     }
     enhancedUrl = galleryPreviews.cached(id);
@@ -65,6 +68,7 @@
     thumbnails.load(id).then(
       loaded => {
         if (!cancelled) {
+          animateIn = true;
           url = loaded;
         }
       },
@@ -106,6 +110,7 @@
   <span class="thumbnail-stack">
     <img
       class="base"
+      class:fade-in={animateIn}
       src={url}
       {alt}
       loading="lazy"
@@ -159,12 +164,23 @@
     border-radius: var(--radius-s);
   }
 
+  .base.fade-in {
+    animation: thumb-in var(--motion-base) var(--ease-responsive);
+  }
+
+  @keyframes thumb-in {
+    from {
+      opacity: 0;
+    }
+  }
+
   .enhanced {
-    visibility: hidden;
+    opacity: 0;
+    transition: opacity var(--motion-base) var(--ease-responsive);
   }
 
   .enhanced.is-ready {
-    visibility: visible;
+    opacity: 1;
   }
 
   .note {
