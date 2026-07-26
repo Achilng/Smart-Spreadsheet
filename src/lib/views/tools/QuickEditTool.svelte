@@ -599,9 +599,9 @@
 
   <div class="editor-layout">
     <div class="rule-column">
-      <section class="rule-card">
+      <section class="rule-card tool-card">
         <div class="step-heading">
-          <span>1</span>
+          <span class="step-badge">1</span>
           <div>
             <h3>{operation === "artist" ? "输入需要修正的画师名" : "输入提示词组合"}</h3>
             <p>{operation === "artist"
@@ -650,9 +650,9 @@
       </section>
 
       {#if operation === "tag"}
-        <section class="rule-card tag-card">
+        <section class="rule-card tag-card tool-card">
           <div class="step-heading">
-            <span>2</span>
+            <span class="step-badge">2</span>
             <div>
               <h3>选择要添加的 Tag</h3>
               <p>可以多选；图片原有 Tag 不会被移除。</p>
@@ -728,9 +728,7 @@
                   aria-pressed={selectedTags.includes(tag.name)}
                   onclick={() => toggleTag(tag.name)}
                 >
-                  <span class="check" aria-hidden="true">
-                    {selectedTags.includes(tag.name) ? "✓" : ""}
-                  </span>
+                  <span class="check" aria-hidden="true"></span>
                   <strong title={tag.name}>{tag.name}</strong>
                   <small>{formatCount(tag.rowCount)}</small>
                 </button>
@@ -743,9 +741,9 @@
           {/if}
         </section>
       {:else if operation === "group"}
-        <section class="rule-card group-card">
+        <section class="rule-card group-card tool-card">
           <div class="step-heading">
-            <span>2</span>
+            <span class="step-badge">2</span>
             <div>
               <h3>选择目标分组</h3>
               <p>命中图片会统一移入这个分组；原分组关系将被替换。</p>
@@ -821,9 +819,7 @@
                   aria-pressed={selectedGroupId === group.id}
                   onclick={() => selectGroup(group.id)}
                 >
-                  <span class="check" aria-hidden="true">
-                    {selectedGroupId === group.id ? "✓" : ""}
-                  </span>
+                  <span class="check" aria-hidden="true"></span>
                   <strong title={group.name}>{group.name}</strong>
                   <small>{formatCount(group.memberCount)} 张</small>
                 </button>
@@ -852,7 +848,7 @@
       {/if}
     </div>
 
-    <section class="preview-card">
+    <section class="preview-card tool-card">
       <div class="preview-heading">
         <div>
           <h3>执行预览</h3>
@@ -1064,25 +1060,31 @@
   .operation-switcher {
     display: inline-flex;
     padding: 3px;
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    background: var(--surface-2);
+    gap: 2px;
+    border-radius: var(--radius-full);
+    background: var(--surface-3);
   }
 
   .operation-switcher button {
     min-width: 92px;
-    padding: 6px 12px;
+    height: 28px;
+    padding: 0 16px;
     border: 0;
-    border-radius: 7px;
+    border-radius: var(--radius-full);
     background: transparent;
-    color: var(--text-3);
-    font-size: var(--font-sm);
+    color: var(--text-2);
+    font-size: 12.5px;
+  }
+
+  .operation-switcher button:hover:not(.is-active) {
+    color: var(--text);
   }
 
   .operation-switcher button.is-active {
     background: var(--surface);
     color: var(--text);
-    box-shadow: var(--shadow-1);
+    font-weight: 600;
+    box-shadow: 0 1px 4px rgb(0 0 0 / 10%);
   }
 
   .history-actions {
@@ -1112,10 +1114,6 @@
   .rule-card,
   .preview-card {
     min-width: 0;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-m);
-    background: var(--surface);
-    box-shadow: var(--shadow-1);
   }
 
   .rule-card {
@@ -1129,18 +1127,6 @@
     margin-bottom: 14px;
   }
 
-  .step-heading > span {
-    width: 25px;
-    height: 25px;
-    display: grid;
-    place-items: center;
-    flex: none;
-    border-radius: 8px;
-    background: var(--accent-soft);
-    color: var(--accent);
-    font-size: var(--font-sm);
-    font-weight: 700;
-  }
 
   .step-heading h3,
   .preview-heading h3 {
@@ -1159,10 +1145,6 @@
   .target-search,
   .create-target-panel input {
     width: 100%;
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-s);
-    background: var(--surface);
-    color: var(--text);
   }
 
   textarea {
@@ -1296,26 +1278,31 @@
   }
 
   .target-list button.is-selected {
-    background: var(--accent-soft);
-    color: var(--accent);
+    color: var(--text);
   }
 
-  .target-list .check {
-    width: 17px;
-    height: 17px;
-    display: grid;
-    place-items: center;
-    border: 1px solid var(--border-strong);
-    border-radius: 5px;
-    background: var(--surface);
-    font-size: 11px;
+  .target-list button.is-selected strong {
     font-weight: 700;
   }
 
+  .target-list .check {
+    width: 16px;
+    height: 16px;
+    border: 1.5px solid var(--border-strong);
+    border-radius: 5px;
+    background: var(--surface);
+    transition:
+      background var(--motion-fast) var(--ease-responsive),
+      border-color var(--motion-fast) var(--ease-responsive);
+  }
+
   .target-list button.is-selected .check {
-    border-color: var(--accent);
-    background: var(--accent);
-    color: white;
+    background-color: var(--primary);
+    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M4 8.5 6.8 11 12 5.5" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>');
+    background-position: center;
+    background-size: 12px;
+    background-repeat: no-repeat;
+    border-color: var(--primary);
   }
 
   .target-list strong {
@@ -1361,11 +1348,8 @@
   }
 
   .group-scope-option input {
-    width: 17px;
-    height: 17px;
     flex: none;
     margin-top: 1px;
-    accent-color: var(--accent);
   }
 
   .group-scope-option span,
@@ -1556,7 +1540,7 @@
     display: grid;
     place-items: center;
     margin-bottom: 8px;
-    border-radius: 12px;
+    border-radius: var(--radius-m);
     background: var(--surface-3);
     color: var(--text-3);
     font-size: 20px;
