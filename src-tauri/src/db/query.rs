@@ -807,7 +807,7 @@ fn query_page_metadata(connection: &Connection) -> Result<Vec<RowRecord>, Databa
                 generation_seed: row.get(17)?,
                 generation_scale: row
                     .get::<_, Option<f64>>(18)?
-                    .map(|scale| format_generation_scale(scale)),
+                    .map(format_generation_scale),
                 metadata_failed: row.get(19)?,
                 vibe_reference_count: row.get(20)?,
                 group_id: row.get(21)?,
