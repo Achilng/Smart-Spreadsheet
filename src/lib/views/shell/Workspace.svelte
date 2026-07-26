@@ -22,6 +22,7 @@
   } from "../../stores/row-store.svelte";
   import { loadTags } from "../../stores/tag-store.svelte";
   import { loadGroups } from "../../stores/group-store.svelte";
+  import { anyModalOpen } from "../../stores/modal-layer.svelte";
   import { thumbnails } from "../../images/thumbnails";
   import { clearProgressiveImages } from "../../images/progressive-images";
   import { vibeStatuses } from "../../images/vibe-statuses";
@@ -157,6 +158,11 @@
   });
 
   function onKeydown(event: KeyboardEvent): void {
+    // 任何模态浮层（管理分组、批量编辑、删除确认、灯箱等）打开时，
+    // 资料库级快捷键一律短路，避免在对话框里按 Delete/Ctrl+Z 误操作底层数据。
+    if (anyModalOpen()) {
+      return;
+    }
     const target = event.target;
     const isTextEditing =
       target instanceof HTMLInputElement ||

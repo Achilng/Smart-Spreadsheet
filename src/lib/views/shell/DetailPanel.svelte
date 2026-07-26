@@ -1,5 +1,6 @@
 <script lang="ts">
   import ChevronsRight from "@lucide/svelte/icons/chevrons-right";
+  import { rowFileName, rowResolution } from "../../utils/row-display";
   import X from "@lucide/svelte/icons/x";
 
   import {
@@ -25,6 +26,10 @@
   } from "../../images/progressive-images";
   import { vibeStatuses } from "../../images/vibe-statuses";
   import { recordRowStateChange } from "../../stores/history-actions";
+  import {
+    popModalLayer,
+    pushModalLayer,
+  } from "../../stores/modal-layer.svelte";
   import { softFade, softPop } from "../../ui/motion";
 
   const row = $derived(rowStore.activeRow);
@@ -331,11 +336,22 @@
       copiedField = null;
     }
   }
+
+  // 灯箱作为模态层登记：打开期间全局 Delete/Ctrl+Z 等快捷键短路。
+  $effect(() => {
+    if (!lightboxOpen) {
+      return;
+    }
+    const token = pushModalLayer();
+    return () => popModalLayer(token);
+  });
 </script>
 
 <svelte:window
   onkeydown={event => {
     if (event.key === "Escape" && lightboxOpen) {
+      // 消费本次 Esc：只关灯箱，不连带触发下层浮层/选区清除。
+      event.preventDefault();
       lightboxOpen = false;
     }
   }}
@@ -343,7 +359,19 @@
 
 <div class="detail-panel">
   <header class="panel-header">
-    <h3>{row ? `第 ${row.sourceOrdinal} 行` : "详情"}</h3>
+    <div class="header-copy">
+      <h3 title={row ? (rowFileName(row) ?? "") : ""}>
+        {row ? (rowFileName(row) ?? `第 ${row.sourceOrdinal} 行`) : "详情"}
+      </h3>
+      {#if row}
+        {@const resolution = rowResolution(row)}
+        {#if resolution || row.time}
+          <p class="header-sub tabular">
+            {[resolution, row.time].filter(Boolean).join(" · ")}
+          </p>
+        {/if}
+      {/if}
+    </div>
     <div class="panel-actions">
       {#if row}
         <button
@@ -608,10 +636,21 @@
 
   .panel-header {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
-    padding: 8px 8px 8px 14px;
+    gap: 8px;
+    padding: 12px 8px 8px 14px;
     flex: none;
+  }
+
+  .panel-header .header-copy {
+    min-width: 0;
+  }
+
+  .panel-header .header-sub {
+    margin-top: 2px;
+    font-size: var(--font-sm);
+    color: var(--text-3);
   }
 
   .panel-header h3 {
@@ -619,6 +658,9 @@
     font-weight: 700;
     letter-spacing: -0.01em;
     color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .collapse-btn {

@@ -2,6 +2,7 @@
   import { app, formatCount } from "../../stores/app-state.svelte";
   import { deletion, requestDelete } from "../../stores/delete-actions.svelte";
   import { buildExportItems } from "../../stores/export-actions";
+  import { anyModalOpen } from "../../stores/modal-layer.svelte";
   import {
     clearSelection,
     getSelectedCount,
@@ -46,7 +47,14 @@
 
 <svelte:window
   onkeydown={event => {
-    if (event.key === "Escape" && count > 0 && !deletion.open) {
+    // 模态浮层打开时 Esc 归浮层处理，不清空选区（否则依赖选区的对话框会被强制卸载）。
+    if (
+      event.key === "Escape" &&
+      count > 0 &&
+      !deletion.open &&
+      !anyModalOpen() &&
+      !event.defaultPrevented
+    ) {
       clearSelection();
     }
   }}

@@ -95,7 +95,12 @@
               disabled={busy}
               onkeydown={e => {
                 if (e.key === "Enter") void saveRename();
-                if (e.key === "Escape") editingId = null;
+                if (e.key === "Escape") {
+                  // 消费掉这次 Esc：只取消本次重命名，不关闭整个对话框。
+                  e.preventDefault();
+                  e.stopPropagation();
+                  editingId = null;
+                }
               }}
             />
             <button type="button" class="btn btn-sm" disabled={busy} onclick={() => (editingId = null)}>取消</button>

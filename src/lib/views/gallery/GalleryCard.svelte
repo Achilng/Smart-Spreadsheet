@@ -5,6 +5,7 @@
   import { rowStore } from "../../stores/row-store.svelte";
   import { getSelectedCount, isRowSelected, toggleRow } from "../../stores/selection-store.svelte";
   import Thumbnail from "../../ui/Thumbnail.svelte";
+  import { rowFileName, rowResolution } from "../../utils/row-display";
   import { vibeStatuses } from "../../images/vibe-statuses";
 
   let {
@@ -32,12 +33,8 @@
   const isChecked = $derived(row != null && isRowSelected(row.id));
   const selectionActive = $derived(getSelectedCount() > 0);
 
-  const fileName = $derived(
-    (row?.imagePath ?? row?.storedImagePath)?.split(/[\\/]/).pop() ?? null,
-  );
-  const resolution = $derived(
-    row?.imageWidth && row?.imageHeight ? `${row.imageWidth} × ${row.imageHeight}` : null,
-  );
+  const fileName = $derived(row ? rowFileName(row) : null);
+  const resolution = $derived(row ? rowResolution(row) : null);
 
   let dragging = $state(false);
   let vibeRefs = $state<number | null>(null);

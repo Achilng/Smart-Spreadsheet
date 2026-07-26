@@ -1,6 +1,11 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import type { Snippet } from "svelte";
+  import {
+    isTopModalLayer,
+    popModalLayer,
+    pushModalLayer,
+  } from "../stores/modal-layer.svelte";
   import { softFade, softPop } from "./motion";
 
   interface Props {
@@ -14,6 +19,22 @@
   let { open, onclose, width = "440px", children }: Props = $props();
 
   let dialogEl = $state<HTMLDivElement | null>(null);
+  let layerToken = -1;
+
+  // 打开时登记模态层并记录来源焦点；关闭时注销并归还焦点。
+  $effect(() => {
+    if (!open) {
+      return;
+    }
+    const opener =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    layerToken = pushModalLayer();
+    return () => {
+      popModalLayer(layerToken);
+      layerToken = -1;
+      opener?.focus();
+    };
+  });
 
   // 挂载时把焦点移进 dialog
   onMount(() => {
@@ -32,7 +53,13 @@
 
 <svelte:window
   onkeydown={event => {
-    if (event.key === "Escape" && open) {
+    // 只有位于模态栈顶的实例响应 Esc，且不响应已被内层（如内联编辑）消费的按键。
+    if (
+      event.key === "Escape" &&
+      open &&
+      !event.defaultPrevented &&
+      isTopModalLayer(layerToken)
+    ) {
       event.preventDefault();
       onclose();
     }
