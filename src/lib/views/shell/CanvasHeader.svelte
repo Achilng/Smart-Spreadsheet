@@ -1,9 +1,21 @@
 <script lang="ts">
+  import X from "@lucide/svelte/icons/x";
+
   import { app, formatCount } from "../../stores/app-state.svelte";
   import { duplicateBrowse } from "../../stores/duplicate-browse-store.svelte";
   import { groupBrowse } from "../../stores/group-browse-store.svelte";
   import { groupStore } from "../../stores/group-store.svelte";
-  import { rowStore } from "../../stores/row-store.svelte";
+  import {
+    clearAllFilters,
+    rowStore,
+    setDedupe,
+    setFilter,
+    setHasVibe,
+    setHideGrouped,
+    setSearch,
+    setSingleArtistOnly,
+  } from "../../stores/row-store.svelte";
+  import { clearSelection } from "../../stores/selection-store.svelte";
   import type { DedupeMode } from "../../api";
   import SizeSlider from "./SizeSlider.svelte";
   import SortControl from "./SortControl.svelte";
@@ -29,6 +41,26 @@
 
   function setDedupeMode(mode: DedupeMode): void {
     duplicateBrowse.dedupeMode = mode;
+  }
+
+  const searchTerm = $derived(rowStore.search.trim());
+  const hasAnyFilter = $derived(
+    searchTerm !== "" ||
+      rowStore.tags.length > 0 ||
+      rowStore.dedupe !== "none" ||
+      rowStore.singleArtistOnly ||
+      rowStore.hasVibe ||
+      rowStore.hideGrouped,
+  );
+
+  function removeTag(tag: string): void {
+    setFilter(rowStore.tags.filter(t => t !== tag), rowStore.tagMode);
+    clearSelection();
+  }
+
+  function clearAll(): void {
+    clearAllFilters();
+    clearSelection();
   }
 </script>
 
@@ -96,6 +128,62 @@
     {/if}
   </div>
 </div>
+
+{#if hasAnyFilter}
+  <div class="chips">
+    {#if searchTerm !== ""}
+      <span class="chip-f">
+        <span class="chip-text">“{searchTerm}”</span>
+        <button type="button" class="x" title="清除搜索" onclick={() => { setSearch(""); clearSelection(); }}>
+          <X size={11} strokeWidth={2.2} />
+        </button>
+      </span>
+    {/if}
+    {#each rowStore.tags as tag (tag)}
+      <span class="chip-f">
+        <b class="chip-text">{tag}</b>
+        <button type="button" class="x" title="移除 Tag 筛选" onclick={() => removeTag(tag)}>
+          <X size={11} strokeWidth={2.2} />
+        </button>
+      </span>
+    {/each}
+    {#if rowStore.dedupe === "positivePrompt"}
+      <span class="chip-f">按正向去重
+        <button type="button" class="x" title="取消去重" onclick={() => { setDedupe("none"); clearSelection(); }}>
+          <X size={11} strokeWidth={2.2} />
+        </button>
+      </span>
+    {:else if rowStore.dedupe === "artists"}
+      <span class="chip-f">按画师串去重
+        <button type="button" class="x" title="取消去重" onclick={() => { setDedupe("none"); clearSelection(); }}>
+          <X size={11} strokeWidth={2.2} />
+        </button>
+      </span>
+    {/if}
+    {#if rowStore.singleArtistOnly}
+      <span class="chip-f">单画师串
+        <button type="button" class="x" title="取消筛选" onclick={() => { setSingleArtistOnly(false); clearSelection(); }}>
+          <X size={11} strokeWidth={2.2} />
+        </button>
+      </span>
+    {/if}
+    {#if rowStore.hasVibe}
+      <span class="chip-f">VIBE
+        <button type="button" class="x" title="取消筛选" onclick={() => { setHasVibe(false); clearSelection(); }}>
+          <X size={11} strokeWidth={2.2} />
+        </button>
+      </span>
+    {/if}
+    {#if rowStore.hideGrouped}
+      <span class="chip-f">隐藏已分组
+        <button type="button" class="x" title="取消筛选" onclick={() => { setHideGrouped(false); clearSelection(); }}>
+          <X size={11} strokeWidth={2.2} />
+        </button>
+      </span>
+    {/if}
+    <button type="button" class="chip-clear" onclick={clearAll}>清除全部</button>
+  </div>
+{/if}
 
 <style>
   .canvas-head {
@@ -177,5 +265,75 @@
     width: 1px;
     height: 14px;
     background: var(--border-strong);
+  }
+
+  /* ---- 筛选 chips 行 ---- */
+  .chips {
+    flex: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    padding: 12px 26px 0;
+    align-items: center;
+    position: relative;
+    z-index: 1;
+  }
+
+  .chip-f {
+    height: 26px;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 0 6px 0 11px;
+    border-radius: var(--radius-full);
+    font-size: var(--font-sm);
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    color: var(--text);
+    white-space: nowrap;
+  }
+
+  .chip-f b,
+  .chip-f .chip-text {
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .chip-f b {
+    font-weight: 600;
+  }
+
+  .chip-f .x {
+    width: 16px;
+    height: 16px;
+    flex: none;
+    border-radius: 50%;
+    border: none;
+    background: none;
+    display: grid;
+    place-items: center;
+    color: var(--text-3);
+    padding: 0;
+    cursor: pointer;
+  }
+
+  .chip-f .x:hover {
+    background: var(--surface-3);
+    color: var(--text);
+  }
+
+  .chip-clear {
+    border: none;
+    background: none;
+    font-size: var(--font-sm);
+    color: var(--accent);
+    padding: 2px 4px;
+    margin-left: 4px;
+  }
+
+  .chip-clear:hover {
+    text-decoration: underline;
   }
 </style>

@@ -213,6 +213,25 @@ export function setSearch(value: string): void {
   }
 }
 
+/** 一次性清空全部筛选条件（Tag/开关/搜索），只触发一次刷新；不动 tagMode 与排序。 */
+export function clearAllFilters(): void {
+  const dirty =
+    rowStore.tags.length > 0 ||
+    rowStore.dedupe !== "none" ||
+    rowStore.singleArtistOnly ||
+    rowStore.hasVibe ||
+    rowStore.hideGrouped ||
+    rowStore.search !== "";
+  if (!dirty) return;
+  rowStore.tags = [];
+  rowStore.dedupe = "none";
+  rowStore.singleArtistOnly = false;
+  rowStore.hasVibe = false;
+  rowStore.hideGrouped = false;
+  rowStore.search = "";
+  resetRows({ keepStale: true, resetScroll: true });
+}
+
 export function setSort(sort: SortMode): void {
   if (rowStore.sort !== sort) {
     rowStore.sort = sort;
