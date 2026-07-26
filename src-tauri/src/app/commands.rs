@@ -1076,10 +1076,38 @@ pub(crate) async fn open_toolbox_window(app: tauri::AppHandle) -> Result<(), Str
     .center()
     .resizable(true)
     .decorations(false)
+    .transparent(true)
+    .effects(tauri::utils::config::WindowEffectsConfig {
+        effects: vec![tauri::utils::WindowEffect::Acrylic],
+        state: None,
+        radius: None,
+        color: None,
+    })
     .skip_taskbar(false)
     .build()
     .map_err(error_text)?;
     Ok(())
+}
+
+/// 读取系统“透明效果”开关，供前端决定是否启用玻璃视觉。
+///
+/// 任何读取失败都按“未开启”处理，前端将回退到不透明保底底色。
+#[tauri::command]
+pub(crate) fn is_transparency_enabled() -> bool {
+    use std::os::windows::process::CommandExt;
+
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    std::process::Command::new("reg")
+        .args([
+            "query",
+            r"HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize",
+            "/v",
+            "EnableTransparency",
+        ])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .map(|output| String::from_utf8_lossy(&output.stdout).contains("0x1"))
+        .unwrap_or(false)
 }
 
 #[tauri::command]

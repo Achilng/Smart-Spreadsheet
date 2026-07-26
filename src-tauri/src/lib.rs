@@ -23,6 +23,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             app::commands::open_toolbox_window,
             app::commands::focus_main_window,
+            app::commands::is_transparency_enabled,
             app::commands::get_app_snapshot,
             app::commands::reset_configuration,
             app::commands::reset_data,
