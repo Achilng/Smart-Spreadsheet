@@ -223,7 +223,7 @@
   label { min-width: 170px; display: grid; gap: 4px; }
   label > span { color: var(--text-3); font-size: var(--font-xs); }
   .wide { width: 100%; }
-  select, input, textarea { min-height: 34px; padding: 6px 9px; border: 1px solid var(--border); border-radius: var(--radius-s); background: var(--surface); color: var(--text); font: inherit; }
+  input, textarea { min-height: 34px; padding: 6px 9px; border: 1px solid var(--border); border-radius: var(--radius-s); background: var(--surface); color: var(--text); font: inherit; }
   textarea { resize: vertical; line-height: 1.5; }
   .icon-btn { width: 32px; height: 32px; display: grid; place-items: center; flex: none; border: 0; border-radius: 7px; background: transparent; color: var(--text-3); }
   .icon-btn:hover { background: var(--danger-soft, var(--surface-2)); color: var(--danger, #c53d4a); }

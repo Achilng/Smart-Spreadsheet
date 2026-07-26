@@ -33,6 +33,7 @@
     type RulePreview,
   } from "../../api";
   import {
+    app,
     errorText,
     formatCount,
     notifyMainStateChanged,
@@ -313,7 +314,7 @@
   }
 
   async function testRule(): Promise<void> {
-    if (testing) return;
+    if (testing || app.busy) return;
     testing = true;
     error = null;
     execution = null;
@@ -333,7 +334,7 @@
   }
 
   async function runOnLibrary(): Promise<void> {
-    if (selectedId === null || dirty || !preview || running || preview.rowsNeedingChanges === 0) return;
+    if (selectedId === null || dirty || !preview || running || app.busy || preview.rowsNeedingChanges === 0) return;
     if (!window.confirm(
       `规则将修改现有资料库中 ${formatCount(preview.rowsNeedingChanges)} 张图片（命中 ${formatCount(preview.matchedRows)} 张）。本操作不进入撤销记录，若产生修改会清空当前撤销/重做记录。确定执行吗？`,
     )) return;
@@ -544,7 +545,7 @@
   .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   label { display: grid; gap: 4px; }
   label > span { color: var(--text-3); font-size: var(--font-xs); }
-  input, select { min-height: 34px; padding: 6px 9px; border: 1px solid var(--border); border-radius: var(--radius-s); background: var(--surface); color: var(--text); font: inherit; }
+  input { min-height: 34px; padding: 6px 9px; border: 1px solid var(--border); border-radius: var(--radius-s); background: var(--surface); color: var(--text); font: inherit; }
   .trigger-row { display: flex; flex-wrap: wrap; gap: 9px 18px; margin-top: 13px; }
   .trigger-row label { display: flex; align-items: center; gap: 7px; color: var(--text-2); font-size: var(--font-sm); }
   .trigger-row input { min-height: 0; }

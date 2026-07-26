@@ -79,7 +79,6 @@
     font-size: var(--font-xs);
   }
 
-  select,
   input {
     min-height: 34px;
     padding: 6px 9px;
