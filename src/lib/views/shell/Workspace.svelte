@@ -342,6 +342,11 @@
     display: none;
   }
 
+  /* display:none → flex 恢复渲染盒时 animation 会重放，零 JS 进场 */
+  .workspace-body.is-active {
+    animation: view-panel-in var(--motion-base) var(--ease-responsive);
+  }
+
   .sidebar {
     width: 240px;
     flex: none;
@@ -378,6 +383,14 @@
 
   .view-panel.is-active {
     display: flex;
+    animation: view-panel-in var(--motion-base) var(--ease-responsive);
+  }
+
+  @keyframes view-panel-in {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
   }
 
   /* 筛选/搜索刷新中的细进度条：旧内容保持显示，仅顶部提示加载中 */
