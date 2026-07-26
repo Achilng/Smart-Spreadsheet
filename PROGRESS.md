@@ -44,8 +44,14 @@
   另补全局模态层栈（modal-layer），模态打开时资料库级快捷键短路、Esc 分层关闭。
   前两轮的纸感 token（白纸面/墨黑主按钮/系统蓝/柔和大阴影/胶囊控件）与
   画册式卡片全部保留。
-- 工具箱九个大页面仍只吃 token 红利，逐页精修留待下一阶段；详情面板"生成信息"
-  kv 表（模型/采样器/步数/种子）依赖 batches 表字段暴露，列入后续方向。
+- 工具箱窗口完成"画纸"语言精修（7 个 commit）：全局层新增 select/radio 接管
+  （appearance:none + 自绘箭头/墨黑圆点）、自绘 .progress 进度条、currentColor
+  .spinner、.tool-card/.step-badge/.metric-grid/.action-bar/.sample-grid/.txt-*
+  共性组件类；外壳 52px 标题栏 + 24px 画布标题 + 侧栏灰选中态 + 自动规则页
+  fullBleed 单头；九个大页面逐页收编全局类，清零硬编码警示色（琥珀/绿系换
+  --warning/--success token）、文本字符图标换 Lucide、三份 spinner keyframes
+  与四份指标宫格实现合一；维护页补上感知哈希进度条渲染。
+- 详情面板"生成信息"kv 表已上线（模型/采样器/步数 CFG/种子，Rust 暴露五字段）。
 - 工具箱快速整理的画师前缀操作已支持跨逗号的 NovelAI 数值权重区段；例如输入
   `rourow` 可将 `1::artist:huangdanlan, rourow::,` 正确改为
   `1::artist:huangdanlan, artist:rourow::,`，同时保留结束符与原始空格。

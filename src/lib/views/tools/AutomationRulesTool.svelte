@@ -383,7 +383,7 @@
 </script>
 
 {#if loading}
-  <div class="center-state">正在读取规则…</div>
+  <div class="center-state empty-state"><span class="spinner" aria-hidden="true"></span>正在读取规则…</div>
 {:else}
   <div class="rules-layout">
     <aside class="rules-sidebar">
@@ -393,7 +393,7 @@
       </div>
 
       {#if rules.length === 0}
-        <div class="empty-rules"><Zap size={24} /><strong>还没有规则</strong><p>新建一条规则后，导入图片时就能自动整理。</p></div>
+        <div class="empty-rules empty-state"><Zap size={24} /><strong>还没有规则</strong><p>新建一条规则后，导入图片时就能自动整理。</p></div>
       {:else}
         <div class="rule-list">
           {#each rules as rule, index (rule.id)}
@@ -424,8 +424,8 @@
       {#if error}<div class="error-banner" role="alert">{error}</div>{/if}
 
       <div class="editor-body">
-        <section class="editor-section basics">
-          <div class="section-title"><span>1</span><div><h3>名称与触发时机</h3><p>说明这条规则何时参与自动处理。</p></div></div>
+        <section class="editor-section basics tool-card">
+          <div class="section-title"><span class="step-badge">1</span><div><h3>名称与触发时机</h3><p>说明这条规则何时参与自动处理。</p></div></div>
           <div class="field-grid">
             <label><span>规则名称</span><input value={draft.name} placeholder="例如：识别某个角色" oninput={event => { draft.name = (event.currentTarget as HTMLInputElement).value; resetResult(); }} /></label>
             <label><span>说明（可选）</span><input value={draft.description} placeholder="记录这条规则的用途" oninput={event => { draft.description = (event.currentTarget as HTMLInputElement).value; resetResult(); }} /></label>
@@ -437,8 +437,8 @@
           </div>
         </section>
 
-        <section class="editor-section">
-          <div class="section-title"><span>2</span><div><h3>条件检查</h3><p>每张图片单独判断；条件组可以表达 AND 与 OR。</p></div></div>
+        <section class="editor-section tool-card">
+          <div class="section-title"><span class="step-badge">2</span><div><h3>条件检查</h3><p>每张图片单独判断；条件组可以表达 AND 与 OR。</p></div></div>
           <div class="logic-toolbar">
             <label><span>条件组之间</span><select value={draft.conditions.mode} onchange={event => { draft.conditions.mode = (event.currentTarget as HTMLSelectElement).value as "all" | "any"; resetResult(); }}><option value="any">满足任意一组（OR）</option><option value="all">必须满足全部组（AND）</option></select></label>
             <label><span>执行时机</span><select value={draft.conditions.negate ? "notMatched" : "matched"} onchange={event => { draft.conditions.negate = (event.currentTarget as HTMLSelectElement).value === "notMatched"; resetResult(); }}><option value="matched">条件成立时执行</option><option value="notMatched">条件不成立时执行</option></select></label>
@@ -461,8 +461,8 @@
           <button type="button" class="btn" onclick={addGroup}><Plus size={15} />添加条件组</button>
         </section>
 
-        <section class="editor-section">
-          <div class="section-title"><span>3</span><div><h3>执行任务</h3><p>任务按从上到下的顺序执行；后续规则能看到这些修改。</p></div></div>
+        <section class="editor-section tool-card">
+          <div class="section-title"><span class="step-badge">3</span><div><h3>执行任务</h3><p>任务按从上到下的顺序执行；后续规则能看到这些修改。</p></div></div>
           <div class="action-list">
             {#each draft.actions as action, index (`action-${index}`)}
               <RuleActionEditor {action} {groups} onreplace={value => replaceAction(index, value)} onremove={() => removeAction(index)} onmoveup={() => moveAction(index, -1)} onmovedown={() => moveAction(index, 1)} canmoveup={index > 0} canmovedown={index < draft.actions.length - 1} />
@@ -471,8 +471,8 @@
           <div class="add-action"><select bind:value={newActionType}>{#each actionOptions as item}<option value={item[0]}>{item[1]}</option>{/each}</select><button type="button" class="btn" onclick={addAction}><Plus size={15} />添加任务</button></div>
         </section>
 
-        <section class="editor-section test-section">
-          <div class="section-title"><span>4</span><div><h3>测试与应用</h3><p>测试只读取资料库，未保存的草稿也能直接测试；应用现有图片前会再次确认。</p></div></div>
+        <section class="editor-section test-section tool-card">
+          <div class="section-title"><span class="step-badge">4</span><div><h3>测试与应用</h3><p>测试只读取资料库，未保存的草稿也能直接测试；应用现有图片前会再次确认。</p></div></div>
           {#if selectedId === null || dirty}
             <p class="test-hint">当前是{selectedId === null ? "未保存的新规则" : "有未保存修改的规则"}：可以直接测试查看命中效果；“应用到现有图片”与导入时自动执行需要先保存。</p>
           {/if}
@@ -482,7 +482,7 @@
           </div>
 
           {#if preview}
-            <div class="preview-summary"><div><span>扫描</span><strong>{formatCount(preview.scannedRows)}</strong></div><div><span>命中</span><strong>{formatCount(preview.matchedRows)}</strong></div><div><span>需要修改</span><strong>{formatCount(preview.rowsNeedingChanges)}</strong></div><div><span>停止后续</span><strong>{formatCount(preview.stoppedRows)}</strong></div></div>
+            <div class="preview-summary metric-grid tabular"><div><span>扫描</span><strong>{formatCount(preview.scannedRows)}</strong></div><div><span>命中</span><strong>{formatCount(preview.matchedRows)}</strong></div><div><span>需要修改</span><strong>{formatCount(preview.rowsNeedingChanges)}</strong></div><div><span>停止后续</span><strong>{formatCount(preview.stoppedRows)}</strong></div></div>
             {#if preview.matchedRows === 0}<div class="result-empty">没有图片命中当前规则。</div>{/if}
             {#if preview.matchedRows > 0 && preview.rowsNeedingChanges === 0}<div class="result-empty">当前规则不会对现有图片产生可保存的修改，无需手动应用。</div>{/if}
           {/if}
@@ -505,7 +505,7 @@
 {/if}
 
 <style>
-  .center-state { height: 100%; display: grid; place-items: center; color: var(--text-3); }
+  .center-state { height: 100%; }
   .rules-layout { height: 100%; min-height: 0; display: grid; grid-template-columns: 292px minmax(0, 1fr); }
   .rules-sidebar { min-height: 0; overflow-y: auto; padding: 18px 12px; border-right: 1px solid var(--border); background: var(--surface); }
   .sidebar-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 6px 14px; }
@@ -513,8 +513,7 @@
   .sidebar-head strong { font-size: var(--font-md); }
   .sidebar-head span { color: var(--text-3); font-size: var(--font-xs); }
   .compact { min-height: 32px; padding: 5px 9px; }
-  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
-  .empty-rules { min-height: 210px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; text-align: center; color: var(--text-3); }
+  .empty-rules { min-height: 210px; padding: 20px; text-align: center; }
   .empty-rules strong { margin-top: 10px; color: var(--text-2); }
   .empty-rules p { max-width: 210px; margin-top: 5px; font-size: var(--font-sm); line-height: 1.55; }
   .rule-list { display: grid; gap: 7px; }
@@ -530,33 +529,33 @@
   .rule-controls button:hover:not(:disabled) { background: var(--surface-3); color: var(--text); }
   .rule-controls button:disabled { opacity: .25; }
   .rule-editor { min-width: 0; min-height: 0; overflow-y: auto; background: var(--bg); }
-  .editor-head { position: sticky; top: 0; z-index: 5; min-height: 76px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 24px; border-bottom: 1px solid var(--border); background: var(--surface); }
-  .eyebrow { color: var(--text-3); font-size: var(--font-xs); }
-  .editor-head h2 { margin-top: 2px; font-size: var(--font-lg); }
+  .editor-head { position: sticky; top: 0; z-index: 5; min-height: 64px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 24px; border-bottom: 1px solid var(--border); background: var(--surface); }
+  .eyebrow { color: var(--text-3); font-size: var(--font-xs); font-weight: 650; letter-spacing: var(--ls-caps); text-transform: uppercase; }
+  .editor-head h2 { margin-top: 2px; font-size: var(--font-xl); font-weight: 650; }
   .editor-actions { display: flex; gap: 8px; }
-  .danger-ghost { color: var(--danger, #c53d4a); }
-  .error-banner { margin: 16px 24px 0; padding: 10px 12px; border: 1px solid color-mix(in srgb, #d1495b 35%, var(--border)); border-radius: var(--radius-s); background: color-mix(in srgb, #d1495b 9%, var(--surface)); color: #c83d51; font-size: var(--font-sm); }
+  .danger-ghost { color: var(--danger); }
+  .error-banner { margin: 16px 24px 0; padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--border)); border-radius: var(--radius-s); background: var(--danger-soft); color: var(--danger); font-size: var(--font-sm); }
   .editor-body { max-width: 980px; display: grid; gap: 16px; padding: 20px 24px 42px; }
-  .editor-section { padding: 18px; border: 1px solid var(--border); border-radius: var(--radius-m); background: var(--surface); }
+  .editor-section { padding: 18px; }
   .section-title { display: flex; align-items: flex-start; gap: 11px; margin-bottom: 15px; }
-  .section-title > span { width: 25px; height: 25px; display: grid; place-items: center; flex: none; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-size: var(--font-xs); font-weight: 700; }
-  .section-title h3 { font-size: var(--font-md); }
+  .section-title h3 { font-size: var(--font-lg); }
   .section-title p { margin-top: 2px; color: var(--text-3); font-size: var(--font-sm); }
   .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   label { display: grid; gap: 4px; }
   label > span { color: var(--text-3); font-size: var(--font-xs); }
-  input { min-height: 34px; padding: 6px 9px; border: 1px solid var(--border); border-radius: var(--radius-s); background: var(--surface); color: var(--text); font: inherit; }
+  input { min-height: 32px; padding: 5px 9px; font: inherit; }
   .trigger-row { display: flex; flex-wrap: wrap; gap: 9px 18px; margin-top: 13px; }
   .trigger-row label { display: flex; align-items: center; gap: 7px; color: var(--text-2); font-size: var(--font-sm); }
   .trigger-row input { min-height: 0; }
   .logic-toolbar { display: flex; align-items: end; flex-wrap: wrap; gap: 10px; padding: 11px; border-radius: var(--radius-s); background: var(--surface-2); }
   .logic-summary { min-height: 34px; display: inline-flex; align-items: center; margin-left: auto; color: var(--text-3); font-size: var(--font-sm); }
   .condition-groups { display: grid; gap: 12px; margin: 12px 0; }
-  .condition-group { padding: 12px; border: 1px dashed color-mix(in srgb, var(--accent) 35%, var(--border)); border-radius: var(--radius-m); background: color-mix(in srgb, var(--accent-soft) 25%, var(--surface)); }
+  .condition-group { padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-m); background: var(--surface-2); }
   .condition-group > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 9px; }
   .condition-group > header > div { display: flex; align-items: center; gap: 10px; }
   .condition-group > header strong { font-size: var(--font-sm); }
-  .text-danger { border: 0; background: transparent; color: var(--danger, #c53d4a); font-size: var(--font-xs); }
+  .text-danger { border: 0; background: transparent; padding: 4px 8px; border-radius: var(--radius-full); color: var(--danger); font-size: 12.5px; transition: background var(--motion-fast) var(--ease-responsive); }
+  .text-danger:hover:not(:disabled) { background: var(--danger-soft); }
   .text-danger:disabled { opacity: .35; }
   .condition-list, .action-list { display: grid; gap: 9px; }
   .add-inline { display: inline-flex; align-items: center; gap: 5px; margin-top: 9px; padding: 5px 8px; border: 0; border-radius: 6px; background: transparent; color: var(--accent); font-size: var(--font-sm); }
@@ -564,16 +563,12 @@
   .add-action { display: flex; align-items: center; gap: 8px; margin-top: 11px; }
   .test-actions { display: flex; gap: 8px; }
   .test-hint { margin-bottom: 10px; color: var(--text-3); font-size: var(--font-sm); }
-  .preview-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 14px; }
-  .preview-summary div { display: grid; gap: 2px; padding: 10px; border-radius: var(--radius-s); background: var(--surface-2); }
-  .preview-summary span { color: var(--text-3); font-size: var(--font-xs); }
-  .preview-summary strong { font-size: var(--font-lg); }
+  .preview-summary { margin-top: 14px; }
   .result-empty { margin-top: 10px; color: var(--text-3); font-size: var(--font-sm); }
-  .execution-result { display: flex; gap: 9px; margin-top: 12px; padding: 12px; border-radius: var(--radius-s); background: color-mix(in srgb, #2aa876 10%, var(--surface)); color: #25855f; }
+  .execution-result { display: flex; gap: 9px; margin-top: 12px; padding: 12px; border-radius: var(--radius-s); background: var(--success-soft); color: var(--success); }
   .execution-result p { margin-top: 3px; color: var(--text-2); font-size: var(--font-xs); }
-  .execution-result .error-line { color: var(--danger, #c53d4a); }
-  .sample-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(82px, 1fr)); gap: 8px; margin-top: 12px; }
-  .sample-grid button { min-width: 0; display: grid; gap: 4px; padding: 5px; border: 1px solid var(--border); border-radius: var(--radius-s); background: var(--surface-2); color: var(--text-3); font-size: var(--font-xs); }
+  .execution-result .error-line { color: var(--danger); }
+  .sample-grid { margin-top: 12px; }
   .sample-grid :global(.thumbnail-stack) { width: 100%; aspect-ratio: 1; border-radius: 6px; overflow: hidden; }
-  @media (max-width: 920px) { .rules-layout { grid-template-columns: 230px minmax(0, 1fr); } .field-grid { grid-template-columns: 1fr; } .preview-summary { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 920px) { .rules-layout { grid-template-columns: 230px minmax(0, 1fr); } .field-grid { grid-template-columns: 1fr; } }
 </style>

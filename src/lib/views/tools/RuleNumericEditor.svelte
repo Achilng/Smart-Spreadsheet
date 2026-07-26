@@ -80,15 +80,8 @@
   }
 
   input {
-    min-height: 34px;
-    padding: 6px 9px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-s);
-    background: var(--surface);
-    color: var(--text);
-  }
-
-  input {
+    min-height: 32px;
+    padding: 5px 9px;
     width: 130px;
   }
 
