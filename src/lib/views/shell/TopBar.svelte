@@ -7,12 +7,7 @@
     chooseImageArchive,
     chooseImageFolder,
   } from "../../stores/import-actions.svelte";
-  import {
-    chooseImageFilesExport,
-    chooseJsonExport,
-    chooseXlsxExport,
-    exportScopeLabel,
-  } from "../../stores/export-actions";
+  import { buildExportItems } from "../../stores/export-actions";
   import { clearSelection } from "../../stores/selection-store.svelte";
   import { rowStore, setSearch } from "../../stores/row-store.svelte";
   import Dropdown, { type DropdownItem } from "../../ui/Dropdown.svelte";
@@ -64,21 +59,7 @@
     },
   ]);
 
-  const scopeHint = $derived(`导出${exportScopeLabel()}`);
-  const exportItems = $derived<DropdownItem[]>([
-    { label: "导出 xlsx", hint: scopeHint, action: () => void chooseXlsxExport() },
-    { label: "导出智绘姬 JSON", hint: scopeHint, action: () => void chooseJsonExport() },
-    {
-      label: "导出图片（复制）",
-      hint: scopeHint,
-      action: () => void chooseImageFilesExport("copy"),
-    },
-    {
-      label: "导出图片（硬链接）",
-      hint: `${scopeHint} · 同盘秒出，失败自动复制`,
-      action: () => void chooseImageFilesExport("hardlink"),
-    },
-  ]);
+  const exportItems = $derived<DropdownItem[]>(buildExportItems());
 
   const exportDisabled = $derived(app.busy || !library || library.rowCount === 0);
 

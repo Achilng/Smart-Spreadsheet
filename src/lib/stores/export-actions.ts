@@ -50,6 +50,29 @@ export function exportScopeLabel(): string {
   return filtered ? "当前筛选结果" : "全部行";
 }
 
+/** 四种导出方式的菜单项工厂（TopBar 导出 / 底部选择条"导出所选"共用）。 */
+export function buildExportItems(): {
+  label: string;
+  hint?: string;
+  action: () => void;
+}[] {
+  const scopeHint = `导出${exportScopeLabel()}`;
+  return [
+    { label: "导出 xlsx", hint: scopeHint, action: () => void chooseXlsxExport() },
+    { label: "导出智绘姬 JSON", hint: scopeHint, action: () => void chooseJsonExport() },
+    {
+      label: "导出图片（复制）",
+      hint: scopeHint,
+      action: () => void chooseImageFilesExport("copy"),
+    },
+    {
+      label: "导出图片（硬链接）",
+      hint: `${scopeHint} · 同盘秒出，失败自动复制`,
+      action: () => void chooseImageFilesExport("hardlink"),
+    },
+  ];
+}
+
 export async function chooseXlsxExport(): Promise<void> {
   if (!hasRows()) {
     return;

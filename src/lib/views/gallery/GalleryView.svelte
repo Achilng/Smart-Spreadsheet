@@ -360,6 +360,8 @@
     min-height: 0;
     overflow-y: auto;
     position: relative;
+    /* 底部选择条（52px 通栏）出现时不遮住最后一行 */
+    padding-bottom: 64px;
   }
 
   .gallery-spacer {

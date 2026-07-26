@@ -18,12 +18,14 @@
     disabled = false,
     primary = false,
     ghost = false,
+    direction = "down",
   }: {
     label: string;
     items: DropdownItem[];
     disabled?: boolean;
     primary?: boolean;
     ghost?: boolean;
+    direction?: "down" | "up";
   } = $props();
 
   let open = $state(false);
@@ -67,7 +69,12 @@
     </span>
   </button>
   {#if open}
-    <div class="menu" role="menu" transition:softPop={{ duration: 150, y: -4, start: 0.98 }}>
+    <div
+      class="menu"
+      class:opens-up={direction === "up"}
+      role="menu"
+      transition:softPop={{ duration: 150, y: direction === "up" ? 4 : -4, start: 0.98 }}
+    >
       {#each items as item (item.label)}
         <button
           type="button"
@@ -115,6 +122,11 @@
     display: flex;
     flex-direction: column;
     gap: 1px;
+  }
+
+  .menu.opens-up {
+    top: auto;
+    bottom: calc(100% + 4px);
   }
 
   .menu button {
