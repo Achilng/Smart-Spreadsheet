@@ -483,6 +483,10 @@ textarea:focus-visible {
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 128px;
+  transition:
+    background var(--motion-fast) var(--ease-responsive),
+    border-color var(--motion-fast) var(--ease-responsive),
+    color var(--motion-fast) var(--ease-responsive);
 }
 
 .chip-more {
@@ -688,34 +692,27 @@ textarea:focus-visible {
   border-radius: var(--radius-full);
   font-size: 12.5px;
   color: var(--accent);
+  transition:
+    background var(--motion-fast) var(--ease-responsive),
+    color var(--motion-fast) var(--ease-responsive);
 }
 
 .txt-action:hover:not(:disabled) {
   background: var(--surface-2);
 }
 
-/* ---- 工具箱保活面板切换 ---- */
-.toolbox .tool-panel {
-  display: block;
-  visibility: hidden;
-  opacity: 0;
-  pointer-events: none;
-  transform: translateX(7px);
-  transition:
-    opacity 130ms var(--ease-exit),
-    transform 130ms var(--ease-exit),
-    visibility 0s linear 130ms;
+/* ---- 工具箱保活面板切换 ----
+   面板由 scoped 样式做 display:none/block 保活切换；
+   display 恢复渲染盒时 CSS animation 会重新播放，借此做零 JS 进场。 */
+.toolbox .tool-panel.is-active {
+  animation: tool-panel-in var(--motion-panel) var(--ease-responsive);
 }
 
-.toolbox .tool-panel.is-active {
-  visibility: visible;
-  opacity: 1;
-  pointer-events: auto;
-  transform: translateX(0);
-  transition:
-    opacity var(--motion-base) var(--ease-responsive),
-    transform var(--motion-base) var(--ease-responsive),
-    visibility 0s linear;
+@keyframes tool-panel-in {
+  from {
+    opacity: 0;
+    transform: translateX(7px);
+  }
 }
 
 .toolbox .nav-group button {
@@ -742,13 +739,6 @@ textarea:focus-visible {
   }
   to {
     background-position: -200% 0;
-  }
-}
-
-@keyframes toolbox-indicator-in {
-  from {
-    opacity: 0;
-    transform: scaleY(0.45);
   }
 }
 
