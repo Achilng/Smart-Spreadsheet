@@ -1,40 +1,43 @@
 :root {
   color-scheme: light;
 
-  /* ---- 色彩：冷灰阶梯，画布压深让白面浮起 ---- */
-  --bg: #edeff3;
+  /* ---- 色彩：纸感画布——白纸面 + 微灰画布 + 发丝线分区 ---- */
+  --bg: #f7f7f8;
   --surface: #ffffff;
-  --surface-2: #f4f5f8;
-  --surface-3: #e9ebf1;
-  --border: #e3e6ec;
-  --border-strong: #cdd3dd;
-  --border-faint: #eef0f4;
-  --text: #10151f;
-  --text-2: #4c5564;
-  --text-3: #8a93a3;
-  --accent: #4f5bd0;
-  --accent-hover: #4350bd;
-  --accent-soft: #edeffc;
-  --accent-soft-border: #d5daf6;
+  --surface-2: #f7f7f8;
+  --surface-3: #f0f0f2;
+  --border: #e5e5e8;
+  --border-strong: #d9d9de;
+  --border-faint: #ececef;
+  --text: #1d1d1f;
+  --text-2: #515154;
+  --text-3: #86868b;
+  --text-4: #b9b9be;
+  --primary: #1d1d1f;
+  --primary-hover: #000000;
+  --accent: #0071e3;
+  --accent-hover: #0077ed;
+  --accent-soft: #eaf3fe;
+  --accent-soft-border: #c8e0fa;
   --danger: #c93a52;
   --danger-soft: #fceef0;
   --success: #178256;
   --success-soft: #e5f4ec;
   --warning: #a16207;
   --warning-soft: #faf0dc;
-  --vibe-badge-bg: rgb(86 62 158 / 90%);
-  --vibe-badge-shadow: 0 1px 3px rgb(25 18 45 / 25%);
-  --overlay: rgb(15 18 28 / 42%);
-  --overlay-heavy: rgb(12 15 24 / 72%);
-  --scrollbar-thumb: #c2c8d3;
-  --scrollbar-thumb-hover: #a6aebd;
+  --vibe-badge-bg: rgb(255 255 255 / 90%);
+  --vibe-badge-shadow: 0 1px 4px rgb(0 0 0 / 14%);
+  --overlay: rgb(0 0 0 / 38%);
+  --overlay-heavy: rgb(0 0 0 / 70%);
+  --scrollbar-thumb: #d3d3d8;
+  --scrollbar-thumb-hover: #b9b9be;
 
-  /* ---- 阴影：首项 1px 发丝环承担轮廓，替代装饰性边框 ---- */
-  --shadow-1: 0 0 0 1px rgb(23 27 43 / 4%), 0 1px 2px rgb(23 27 43 / 5%), 0 2px 8px rgb(23 27 43 / 5%);
-  --shadow-2: 0 0 0 1px rgb(23 27 43 / 5%), 0 4px 10px rgb(23 27 43 / 7%), 0 12px 28px rgb(23 27 43 / 9%);
-  --shadow-3: 0 0 0 1px rgb(23 27 43 / 4%), 0 12px 24px rgb(23 27 43 / 10%), 0 32px 64px rgb(23 27 43 / 16%);
-  --shadow-hover: 0 0 0 1px rgb(23 27 43 / 5%), 0 4px 12px rgb(23 27 43 / 9%), 0 10px 24px rgb(23 27 43 / 7%);
-  --focus-ring: 0 0 0 3px rgb(79 91 208 / 18%);
+  /* ---- 阴影：柔和大扩散（画纸质感） ---- */
+  --shadow-1: 0 2px 12px rgb(0 0 0 / 6%);
+  --shadow-2: 0 20px 50px rgb(0 0 0 / 14%), 0 4px 12px rgb(0 0 0 / 6%);
+  --shadow-3: 0 28px 64px rgb(0 0 0 / 18%), 0 6px 16px rgb(0 0 0 / 7%);
+  --shadow-hover: 0 10px 28px rgb(0 0 0 / 12%);
+  --focus-ring: 0 0 0 3px rgb(0 113 227 / 20%);
 
   /* ---- 动效 ---- */
   --motion-press: 70ms;
@@ -44,10 +47,10 @@
   --ease-responsive: cubic-bezier(0.2, 0.8, 0.2, 1);
   --ease-exit: cubic-bezier(0.4, 0, 1, 1);
 
-  /* ---- 圆角（8/10/14 三档） ---- */
+  /* ---- 圆角（8/12/16 + 胶囊） ---- */
   --radius-s: 8px;
-  --radius-m: 10px;
-  --radius-l: 14px;
+  --radius-m: 12px;
+  --radius-l: 16px;
   --radius-full: 999px;
 
   /* ---- 字号阶梯：11(overline)→13(正文)→15(面板标题)→17(对话框)→20(大标题) ---- */
@@ -169,7 +172,7 @@ input[type="checkbox"] {
   display: inline-grid;
   place-content: center;
   border: 1.5px solid var(--border-strong);
-  border-radius: 4px;
+  border-radius: 5px;
   background: var(--surface);
   cursor: pointer;
   transition:
@@ -194,8 +197,8 @@ input[type="checkbox"]:hover:not(:checked):not(:disabled) {
 
 input[type="checkbox"]:checked,
 input[type="checkbox"]:indeterminate {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--primary);
+  border-color: var(--primary);
 }
 
 input[type="checkbox"]:checked::before {
@@ -255,20 +258,21 @@ textarea:focus-visible {
   outline: none;
 }
 
-/* ---- 通用控件 ---- */
+/* ---- 通用控件（胶囊按钮） ---- */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 6px 14px;
-  border-radius: var(--radius-s);
-  border: 1px solid var(--border);
+  gap: 7px;
+  min-height: 32px;
+  padding: 5px 16px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-strong);
   background: var(--surface);
   color: var(--text);
-  font-weight: 500;
+  font-weight: 600;
+  font-size: var(--font-md);
   white-space: nowrap;
-  box-shadow: 0 1px 2px rgb(23 27 43 / 4%);
   transition:
     background var(--motion-fast) var(--ease-responsive),
     border-color var(--motion-fast) var(--ease-responsive),
@@ -278,34 +282,37 @@ textarea:focus-visible {
 }
 
 .btn:hover:not(:disabled) {
-  background: var(--surface-2);
-  border-color: var(--border-strong);
+  border-color: var(--text-4);
 }
 
 .btn:active:not(:disabled) {
-  background: var(--surface-3);
+  background: var(--surface-2);
   transform: translateY(1px) scale(0.985);
 }
 
 .btn-primary {
-  background: var(--accent);
-  border-color: transparent;
+  background: var(--primary);
+  border-color: var(--primary);
   color: #ffffff;
-  box-shadow: 0 1px 2px rgb(23 27 43 / 12%);
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: var(--accent-hover);
-  border-color: transparent;
+  background: var(--primary-hover);
+  border-color: var(--primary-hover);
 }
 
 .btn-primary:active:not(:disabled) {
-  background: var(--accent-hover);
+  background: var(--primary-hover);
+}
+
+.btn-primary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .btn-danger {
   background: var(--surface);
-  border-color: var(--border);
+  border-color: var(--border-strong);
   color: var(--danger);
 }
 
@@ -317,13 +324,12 @@ textarea:focus-visible {
 .btn-ghost {
   border-color: transparent;
   background: transparent;
-  color: var(--text-2);
-  box-shadow: none;
+  color: var(--text);
+  font-weight: 400;
 }
 
 .btn-ghost:hover:not(:disabled) {
   background: var(--surface-2);
-  color: var(--text);
 }
 
 .muted {
@@ -332,6 +338,11 @@ textarea:focus-visible {
 
 .faint {
   color: var(--text-3);
+}
+
+/* ---- 表格数字对齐 ---- */
+.tabular {
+  font-variant-numeric: tabular-nums;
 }
 
 /* ---- overline 小节标签（字段标题 / 表头 / 分组名共用） ---- */
@@ -379,38 +390,40 @@ textarea:focus-visible {
   color: var(--text-3);
 }
 
-/* ---- 标签胶囊（画廊卡片 / 表格行 / 详情面板共用） ---- */
+/* ---- 标签胶囊（画廊卡片 / 表格行 / 详情面板共用）——中性灰 d-tag 风格 ---- */
 .chip {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  background: var(--accent-soft);
-  color: var(--accent);
+  background: var(--surface-3);
+  color: var(--text);
+  font-weight: 600;
   border-radius: var(--radius-full);
-  padding: 1px 8px;
+  padding: 1px 10px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 110px;
+  max-width: 128px;
 }
 
 .chip-more {
   background: var(--surface-2);
-  color: var(--text-2);
+  color: var(--text-3);
+  font-weight: 400;
   flex: none;
 }
 
-/* ---- VIBE 徽章（画廊卡片 / 详情面板 / 分组卡片共用；定位由各组件自定） ---- */
+/* ---- VIBE 徽章（白纸底墨字，浮于图面） ---- */
 .vibe-badge {
-  padding: 2px 7px;
+  padding: 2px 8px;
   border-radius: var(--radius-full);
   background: var(--vibe-badge-bg);
   box-shadow: var(--vibe-badge-shadow);
-  color: #fff;
-  font-size: var(--font-xs);
-  font-weight: 650;
-  line-height: 1.4;
-  letter-spacing: 0.3px;
+  color: var(--text);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.5;
+  letter-spacing: 0.02em;
   pointer-events: none;
   white-space: nowrap;
 }
