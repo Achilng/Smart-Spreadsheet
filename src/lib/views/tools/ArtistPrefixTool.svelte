@@ -15,6 +15,7 @@
     type AutoArtistPrefixPreview,
   } from "../../api";
   import {
+    app,
     errorText,
     formatCount,
     notifyMainStateChanged,
@@ -44,7 +45,7 @@
     }),
   );
   const selectedCount = $derived(selectedNames.length);
-  const busy = $derived(loadingStatus || syncing || previewing || applying || history.busy);
+  const busy = $derived(loadingStatus || syncing || previewing || applying || history.busy || app.busy);
 
   onMount(() => {
     void loadStatus();

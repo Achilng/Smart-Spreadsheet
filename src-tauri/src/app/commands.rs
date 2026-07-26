@@ -188,13 +188,18 @@ pub(crate) fn reset_configuration(
 }
 
 #[tauri::command]
-pub(crate) fn reset_data(
-    runtime: State<'_, AppRuntime>,
+pub(crate) async fn reset_data(
+    app: tauri::AppHandle,
 ) -> Result<AppSnapshotDto, String> {
-    runtime
-        .reset_data()
-        .map(AppSnapshotDto::from)
-        .map_err(error_text)
+    tauri::async_runtime::spawn_blocking(move || {
+        let runtime = app.state::<AppRuntime>();
+        runtime
+            .reset_data()
+            .map(AppSnapshotDto::from)
+            .map_err(error_text)
+    })
+    .await
+    .map_err(|error| format!("重置任务异常中止: {error}"))?
 }
 
 #[tauri::command]
@@ -245,6 +250,7 @@ pub(crate) async fn import_images(
     path: String,
     app: tauri::AppHandle,
 ) -> Result<ImageImportResultDto, String> {
+    crate::pipeline::cancel::begin();
     tauri::async_runtime::spawn_blocking(move || {
         let runtime = app.state::<AppRuntime>();
         runtime
@@ -269,6 +275,12 @@ pub(crate) async fn import_images(
     })
     .await
     .map_err(|error| format!("导入任务异常中止: {error}"))?
+}
+
+/// 请求取消当前长任务（导入等支持取消的任务会在阶段边界响应）。
+#[tauri::command]
+pub(crate) fn cancel_current_task() {
+    crate::pipeline::cancel::request();
 }
 
 /// 仅更新身份键已存在的图片；进度复用 `import-images://progress`。
@@ -819,54 +831,80 @@ pub(crate) fn reorder_automation_rules(
     runtime.reorder_automation_rules(&ids).map_err(error_text)
 }
 
+/// 规则预览要全库扫描，大库上是秒级到分钟级任务，放阻塞线程避免卡住两个窗口。
 #[tauri::command]
-pub(crate) fn preview_automation_rule(
+pub(crate) async fn preview_automation_rule(
     id: i64,
-    runtime: State<'_, AppRuntime>,
+    app: tauri::AppHandle,
 ) -> Result<RulePreview, String> {
-    runtime.preview_automation_rule(id).map_err(error_text)
+    tauri::async_runtime::spawn_blocking(move || {
+        let runtime = app.state::<AppRuntime>();
+        runtime.preview_automation_rule(id).map_err(error_text)
+    })
+    .await
+    .map_err(|error| format!("规则预览任务异常中止: {error}"))?
 }
 
 #[tauri::command]
-pub(crate) fn preview_automation_rule_draft(
+pub(crate) async fn preview_automation_rule_draft(
     draft: AutomationRuleDraft,
-    runtime: State<'_, AppRuntime>,
+    app: tauri::AppHandle,
 ) -> Result<RulePreview, String> {
-    runtime
-        .preview_automation_rule_draft(&draft)
-        .map_err(error_text)
+    tauri::async_runtime::spawn_blocking(move || {
+        let runtime = app.state::<AppRuntime>();
+        runtime
+            .preview_automation_rule_draft(&draft)
+            .map_err(error_text)
+    })
+    .await
+    .map_err(|error| format!("规则预览任务异常中止: {error}"))?
 }
 
 #[tauri::command]
-pub(crate) fn run_automation_rule_on_library(
+pub(crate) async fn run_automation_rule_on_library(
     id: i64,
-    runtime: State<'_, AppRuntime>,
+    app: tauri::AppHandle,
 ) -> Result<RuleExecutionSummary, String> {
-    runtime
-        .run_automation_rule_on_library(id)
-        .map_err(error_text)
+    tauri::async_runtime::spawn_blocking(move || {
+        let runtime = app.state::<AppRuntime>();
+        runtime
+            .run_automation_rule_on_library(id)
+            .map_err(error_text)
+    })
+    .await
+    .map_err(|error| format!("规则执行任务异常中止: {error}"))?
 }
 
 #[tauri::command]
-pub(crate) fn preview_quick_tag(
+pub(crate) async fn preview_quick_tag(
     condition: QuickEditCondition,
     tags: Vec<String>,
-    runtime: State<'_, AppRuntime>,
+    app: tauri::AppHandle,
 ) -> Result<QuickTagPreview, String> {
-    runtime
-        .preview_quick_tag(&condition, &tags)
-        .map_err(error_text)
+    tauri::async_runtime::spawn_blocking(move || {
+        let runtime = app.state::<AppRuntime>();
+        runtime
+            .preview_quick_tag(&condition, &tags)
+            .map_err(error_text)
+    })
+    .await
+    .map_err(|error| format!("快速整理预览任务异常中止: {error}"))?
 }
 
 #[tauri::command]
-pub(crate) fn apply_quick_tag(
+pub(crate) async fn apply_quick_tag(
     condition: QuickEditCondition,
     tags: Vec<String>,
-    runtime: State<'_, AppRuntime>,
+    app: tauri::AppHandle,
 ) -> Result<QuickTagApplyResult, String> {
-    runtime
-        .apply_quick_tag(&condition, &tags)
-        .map_err(error_text)
+    tauri::async_runtime::spawn_blocking(move || {
+        let runtime = app.state::<AppRuntime>();
+        runtime
+            .apply_quick_tag(&condition, &tags)
+            .map_err(error_text)
+    })
+    .await
+    .map_err(|error| format!("快速打标任务异常中止: {error}"))?
 }
 
 #[tauri::command]
@@ -890,27 +928,37 @@ pub(crate) fn reapply_quick_tag_changes(
 }
 
 #[tauri::command]
-pub(crate) fn preview_quick_group(
+pub(crate) async fn preview_quick_group(
     condition: QuickEditCondition,
     group_id: i64,
     only_ungrouped: bool,
-    runtime: State<'_, AppRuntime>,
+    app: tauri::AppHandle,
 ) -> Result<QuickGroupPreview, String> {
-    runtime
-        .preview_quick_group(&condition, group_id, only_ungrouped)
-        .map_err(error_text)
+    tauri::async_runtime::spawn_blocking(move || {
+        let runtime = app.state::<AppRuntime>();
+        runtime
+            .preview_quick_group(&condition, group_id, only_ungrouped)
+            .map_err(error_text)
+    })
+    .await
+    .map_err(|error| format!("快速整理预览任务异常中止: {error}"))?
 }
 
 #[tauri::command]
-pub(crate) fn apply_quick_group(
+pub(crate) async fn apply_quick_group(
     condition: QuickEditCondition,
     group_id: i64,
     only_ungrouped: bool,
-    runtime: State<'_, AppRuntime>,
+    app: tauri::AppHandle,
 ) -> Result<QuickGroupApplyResult, String> {
-    runtime
-        .apply_quick_group(&condition, group_id, only_ungrouped)
-        .map_err(error_text)
+    tauri::async_runtime::spawn_blocking(move || {
+        let runtime = app.state::<AppRuntime>();
+        runtime
+            .apply_quick_group(&condition, group_id, only_ungrouped)
+            .map_err(error_text)
+    })
+    .await
+    .map_err(|error| format!("批量分组任务异常中止: {error}"))?
 }
 
 #[tauri::command]
@@ -934,23 +982,33 @@ pub(crate) fn reapply_quick_group_changes(
 }
 
 #[tauri::command]
-pub(crate) fn preview_quick_artist_prefix(
+pub(crate) async fn preview_quick_artist_prefix(
     artist_name: String,
-    runtime: State<'_, AppRuntime>,
+    app: tauri::AppHandle,
 ) -> Result<QuickArtistPrefixPreview, String> {
-    runtime
-        .preview_quick_artist_prefix(&artist_name)
-        .map_err(error_text)
+    tauri::async_runtime::spawn_blocking(move || {
+        let runtime = app.state::<AppRuntime>();
+        runtime
+            .preview_quick_artist_prefix(&artist_name)
+            .map_err(error_text)
+    })
+    .await
+    .map_err(|error| format!("画师前缀预览任务异常中止: {error}"))?
 }
 
 #[tauri::command]
-pub(crate) fn apply_quick_artist_prefix(
+pub(crate) async fn apply_quick_artist_prefix(
     artist_name: String,
-    runtime: State<'_, AppRuntime>,
+    app: tauri::AppHandle,
 ) -> Result<QuickArtistPrefixApplyResult, String> {
-    runtime
-        .apply_quick_artist_prefix(&artist_name)
-        .map_err(error_text)
+    tauri::async_runtime::spawn_blocking(move || {
+        let runtime = app.state::<AppRuntime>();
+        runtime
+            .apply_quick_artist_prefix(&artist_name)
+            .map_err(error_text)
+    })
+    .await
+    .map_err(|error| format!("画师前缀修正任务异常中止: {error}"))?
 }
 
 #[tauri::command]
@@ -1540,20 +1598,26 @@ fn open_path_in_explorer(path: &Path) {
     }
 }
 
+/// 迁移会整目录复制多 GB 数据，放阻塞线程执行避免拖住 UI 事件循环。
 #[tauri::command]
-pub(crate) fn migrate_data_directory(
+pub(crate) async fn migrate_data_directory(
     path: String,
-    runtime: State<'_, AppRuntime>,
+    app: tauri::AppHandle,
 ) -> Result<MigrationResultDto, String> {
-    runtime
-        .migrate_directory(PathBuf::from(path))
-        .map(|outcome| MigrationResultDto {
-            snapshot: outcome.snapshot.into(),
-            retired_source: outcome
-                .retired_source
-                .map(|path| path.to_string_lossy().into_owned()),
-        })
-        .map_err(error_text)
+    tauri::async_runtime::spawn_blocking(move || {
+        let runtime = app.state::<AppRuntime>();
+        runtime
+            .migrate_directory(PathBuf::from(path))
+            .map(|outcome| MigrationResultDto {
+                snapshot: outcome.snapshot.into(),
+                retired_source: outcome
+                    .retired_source
+                    .map(|path| path.to_string_lossy().into_owned()),
+            })
+            .map_err(error_text)
+    })
+    .await
+    .map_err(|error| format!("迁移任务异常中止: {error}"))?
 }
 
 impl From<RuntimeSnapshot> for AppSnapshotDto {

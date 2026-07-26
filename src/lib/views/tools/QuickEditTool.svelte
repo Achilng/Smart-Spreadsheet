@@ -35,6 +35,7 @@
     type TagSummary,
   } from "../../api";
   import {
+    app,
     errorText,
     formatCount,
     notifyMainStateChanged,
@@ -113,7 +114,8 @@
       !applying &&
       !creatingTag &&
       !creatingGroup &&
-      !history.busy,
+      !history.busy &&
+      !app.busy,
   );
 
   onMount(() => {
@@ -371,7 +373,7 @@
   }
 
   async function runApply(): Promise<void> {
-    if (!preview || preview.rowsNeedingChanges === 0 || applying || history.busy) return;
+    if (!preview || preview.rowsNeedingChanges === 0 || applying || history.busy || app.busy) return;
     // 全库批量写操作，执行前必须确认；文案写明张数与后果。
     const changeCount = formatCount(preview.rowsNeedingChanges);
     const confirmText =

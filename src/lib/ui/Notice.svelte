@@ -1,8 +1,31 @@
 <script lang="ts">
   import X from "@lucide/svelte/icons/x";
+  import { invoke } from "@tauri-apps/api/core";
 
-  import { app, dismissNotice, formatCount } from "../stores/app-state.svelte";
+  import { app, dismissNotice, formatCount, setNotice } from "../stores/app-state.svelte";
   import { softFly } from "./motion";
+
+  let cancelling = $state(false);
+
+  /** 目前只有导入管线支持取消；其余进度不显示取消按钮。 */
+  const cancellable = $derived(Boolean(app.importProgress));
+
+  async function cancelTask(): Promise<void> {
+    if (cancelling) return;
+    cancelling = true;
+    try {
+      await invoke("cancel_current_task");
+    } catch {
+      setNotice({ tone: "error", text: "取消请求发送失败。" });
+    }
+  }
+
+  // 进度条消失（任务结束）后复位取消按钮状态
+  $effect(() => {
+    if (!app.importProgress) {
+      cancelling = false;
+    }
+  });
 
   const progressText = $derived.by(() => {
     const hashing = app.hashProgress;
@@ -91,6 +114,14 @@
           <span class="progress-fill" style:transform="scaleX({progressPercent / 100})"></span>
         </span>
       {/if}
+      {#if cancellable}
+        <button
+          type="button"
+          class="cancel-btn"
+          disabled={cancelling}
+          onclick={() => void cancelTask()}
+        >{cancelling ? "正在取消…" : "取消"}</button>
+      {/if}
     </div>
   {/if}
 </div>
@@ -178,5 +209,21 @@
 
   .toast button:active {
     transform: translateY(1px) scale(0.9);
+  }
+
+  .cancel-btn {
+    flex: none;
+    padding: 3px 10px;
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-full);
+    background: var(--surface);
+    color: var(--accent);
+    font-size: var(--font-xs);
+    cursor: pointer;
+  }
+
+  .cancel-btn:disabled {
+    opacity: 0.6;
+    cursor: default;
   }
 </style>

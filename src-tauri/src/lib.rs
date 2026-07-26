@@ -85,6 +85,7 @@ pub fn run() {
             app::commands::preview_automation_rule,
             app::commands::preview_automation_rule_draft,
             app::commands::run_automation_rule_on_library,
+            app::commands::cancel_current_task,
             app::commands::preview_quick_tag,
             app::commands::apply_quick_tag,
             app::commands::revert_quick_tag_changes,

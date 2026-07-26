@@ -51,7 +51,17 @@ export async function chooseImageArchive(): Promise<void> {
 export async function runImageImport(path: string): Promise<void> {
   await runAction(async () => {
     let batchId = 0;
-    const initial = await performImageImport(path, true);
+    let initial: ImageImportResult;
+    try {
+      initial = await performImageImport(path, true);
+    } catch (error) {
+      // 用户主动取消不是失败：给一条温和的提示并正常返回
+      if (errorText(error).includes("已被用户取消")) {
+        setNotice({ tone: "success", text: "导入已取消，未写入任何数据。" });
+        return;
+      }
+      throw error;
+    }
     if (initial.added === 0) {
       return;
     }

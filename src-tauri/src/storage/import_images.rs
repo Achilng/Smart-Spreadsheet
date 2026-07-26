@@ -20,7 +20,7 @@ use crate::fsx::{replace_output_file, unique_sibling_path};
 use crate::pipeline::archive::{ArchiveError, archive_extension, extract_archive};
 use crate::pipeline::scan::{ScanError, SourceImage, collect_png_files};
 use crate::pipeline::{
-    metadata_fingerprint, parallel, parse_novelai_metadata, png_text, stealth_png,
+    cancel, metadata_fingerprint, parallel, parse_novelai_metadata, png_text, stealth_png,
 };
 
 const PROGRESS_INTERVAL: Duration = Duration::from_millis(100);
@@ -124,6 +124,8 @@ pub enum ImageImportError {
     NoImagesFound(PathBuf),
     #[error("异常图片输出目录不能等于或位于导入文件夹内部: {0}")]
     RejectedDirectoryInsideInput(PathBuf),
+    #[error("导入已被用户取消，未写入任何数据")]
+    Cancelled,
 }
 
 impl DataDirectory {
@@ -168,11 +170,17 @@ impl DataDirectory {
             (input.to_owned(), SourceType::Folder)
         };
         validate_rejected_directory(input, source_type, &rejected_root)?;
+        if cancel::is_requested() {
+            return Err(ImageImportError::Cancelled);
+        }
 
         reporter.emit(ImageImportStage::Scanning, 0, 0, true);
         let images = collect_png_files(&scan_root)?;
         if images.is_empty() {
             return Err(ImageImportError::NoImagesFound(input.to_owned()));
+        }
+        if cancel::is_requested() {
+            return Err(ImageImportError::Cancelled);
         }
         let total_found = images.len();
         reporter.emit(ImageImportStage::Scanning, total_found, total_found, true);
@@ -225,11 +233,13 @@ impl DataDirectory {
         }
 
         // 身份键全新的图片先读取 metadata；异常图片不进入数据库候选，也不参与内容去重。
+        // 各并行阶段支持用户取消：取消只发生在写库之前，不会留下半截数据。
         let metadata_total = metadata_jobs.len();
         reporter.emit(ImageImportStage::Processing, 0, metadata_total, true);
-        let inspected = parallel::parallel_map(
+        let inspected = parallel::parallel_map_cancellable(
             metadata_jobs,
             parallel::worker_count(metadata_total),
+            cancel::flag(),
             |_, (index, image)| (index, inspect_metadata(image)),
             |completed| {
                 reporter.emit(
@@ -239,7 +249,8 @@ impl DataDirectory {
                     completed == metadata_total,
                 );
             },
-        );
+        )
+        .ok_or(ImageImportError::Cancelled)?;
         let mut rejected = Vec::new();
         let mut hash_jobs = Vec::new();
         for (index, inspection) in inspected {
@@ -253,9 +264,10 @@ impl DataDirectory {
         // 库内或本批次重复项只构造最小候选供追加事务计数，不复制副本。
         let hash_total = hash_jobs.len();
         reporter.emit(ImageImportStage::Hashing, 0, hash_total, true);
-        let hashed = parallel::parallel_map(
+        let hashed = parallel::parallel_map_cancellable(
             hash_jobs,
             parallel::worker_count(hash_total),
+            cancel::flag(),
             |_, (index, image)| {
                 let content_hash = sha256_file(&image.source.absolute_path).ok();
                 (index, image, content_hash)
@@ -268,7 +280,8 @@ impl DataDirectory {
                     completed == hash_total,
                 );
             },
-        );
+        )
+        .ok_or(ImageImportError::Cancelled)?;
         let candidate_hashes = hashed
             .iter()
             .filter_map(|(_, _, hash)| hash.clone())
@@ -305,9 +318,10 @@ impl DataDirectory {
             .iter()
             .map(|(_, img, _)| img.source.absolute_path.clone())
             .collect();
-        let phashes = parallel::parallel_map(
+        let phashes = parallel::parallel_map_cancellable(
             phash_jobs,
             parallel::worker_count(phash_total),
+            cancel::flag(),
             |_, path| compute_phash(&path).ok(),
             |completed| {
                 reporter.emit(
@@ -317,7 +331,8 @@ impl DataDirectory {
                     completed == phash_total,
                 );
             },
-        );
+        )
+        .ok_or(ImageImportError::Cancelled)?;
 
         let staging = StagingDir::create(&self.files_path())?;
         let process_context = ProcessImageContext {
@@ -345,6 +360,10 @@ impl DataDirectory {
 
         let files_root = self.files_path();
         let has_staged_files = fs::read_dir(staging.path())?.next().is_some();
+        // 最后一个可取消检查点：从这里开始进入写库事务，不再响应取消。
+        if cancel::is_requested() {
+            return Err(ImageImportError::Cancelled);
+        }
         let outcome = database.append_batch(source_type, &input_display, &rows, |batch_id| {
             if !has_staged_files {
                 return Ok(());

@@ -4,6 +4,7 @@
 
 pub mod archive;
 mod artist;
+pub mod cancel;
 pub mod json_dedupe;
 mod metadata;
 mod metadata_fingerprint;
