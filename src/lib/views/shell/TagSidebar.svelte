@@ -601,7 +601,8 @@
     border: none;
     background: none;
     border-radius: var(--radius-s);
-    padding: 5px 8px;
+    padding: 6px 8px;
+    min-height: 28px;
     font-size: var(--font-md);
     text-align: left;
     color: var(--text);
@@ -616,7 +617,7 @@
   }
 
   .tag-row:hover:not(:disabled) {
-    background: var(--surface-2);
+    background: var(--hover-wash);
   }
 
   .tag-row.is-active,
@@ -718,7 +719,7 @@
   .confirm-actions .btn-danger {
     background: var(--danger);
     border-color: var(--danger);
-    color: #fff;
+    color: var(--on-accent);
   }
 
   .confirm-actions .btn-danger:hover {

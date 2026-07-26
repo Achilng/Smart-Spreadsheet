@@ -391,11 +391,14 @@ html:not([data-glass="on"]) .glass-float {
 }
 
 /* ---- Reveal 光晕（跟随鼠标的径向高光，圆心由 reveal.ts 写入 --mx/--my） ---- */
+/* 默认画在 ::after；当宿主的伪元素已被占用（如带 tooltip 的导航项）时，
+   在宿主内放一个 <span class="reveal-glow"></span> 代替 */
 [data-reveal] {
   position: relative;
 }
 
-[data-reveal]::after {
+[data-reveal]::after,
+[data-reveal] .reveal-glow {
   content: "";
   position: absolute;
   inset: 0;
@@ -410,8 +413,14 @@ html:not([data-glass="on"]) .glass-float {
   transition: opacity var(--motion-reveal) var(--ease-fluent);
 }
 
-[data-reveal]:hover::after {
+[data-reveal]:hover::after,
+[data-reveal]:hover .reveal-glow {
   opacity: 1;
+}
+
+/* 宿主自带 .reveal-glow 时，::after 保持关闭，避免双重光晕 */
+[data-reveal]:has(> .reveal-glow)::after {
+  content: none;
 }
 
 /* ---- 工具箱保活面板切换 ---- */
@@ -497,7 +506,8 @@ html:not([data-glass="on"]) .glass-float {
     animation: none !important;
   }
 
-  [data-reveal]::after {
+  [data-reveal]::after,
+  [data-reveal] .reveal-glow {
     display: none;
   }
 

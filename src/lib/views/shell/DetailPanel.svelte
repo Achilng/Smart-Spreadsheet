@@ -681,8 +681,8 @@
     right: 6px;
     padding: 2px 8px;
     border-radius: var(--radius-m);
-    background: rgba(90, 60, 160, 0.85);
-    color: #fff;
+    background: var(--badge-vibe);
+    color: var(--on-accent);
     font-size: var(--font-sm);
     font-weight: 600;
     letter-spacing: 0.5px;
@@ -906,7 +906,7 @@
     position: fixed;
     inset: 0;
     z-index: var(--z-lightbox);
-    background: rgb(15 20 28 / 78%);
+    background: var(--overlay-heavy);
     display: flex;
     align-items: center;
     justify-content: center;

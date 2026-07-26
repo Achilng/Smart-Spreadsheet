@@ -36,8 +36,10 @@
       class:is-active={app.viewMode === view.mode}
       aria-pressed={app.viewMode === view.mode}
       data-tooltip={view.label}
+      data-reveal
       onclick={() => switchView(view.mode)}
     >
+      <span class="reveal-glow" aria-hidden="true"></span>
       <span class="nav-icon" aria-hidden="true">
         <view.icon size={18} strokeWidth={1.7} />
       </span>
@@ -51,7 +53,7 @@
   .nav-rail {
     width: 52px;
     flex: none;
-    background: var(--surface);
+    background: transparent;
     border-right: 1px solid var(--border);
     display: flex;
     flex-direction: column;
@@ -84,7 +86,7 @@
   }
 
   .nav-item:hover {
-    background: var(--surface-2);
+    background: var(--hover-wash);
     color: var(--text-2);
   }
 
@@ -126,7 +128,7 @@
     transform: translate(-4px, -50%);
     padding: 4px 10px;
     background: var(--text);
-    color: var(--surface);
+    color: var(--on-accent);
     font-size: var(--font-xs);
     border-radius: var(--radius-s);
     white-space: nowrap;

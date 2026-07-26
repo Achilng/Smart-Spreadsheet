@@ -346,7 +346,8 @@
     min-height: 0;
     display: flex;
     flex-direction: column;
-    background: var(--bg);
+    /* 35% 画布蒙层由 body 统一承担，这里保持透明避免蒙层叠乘变浑 */
+    background: transparent;
     position: relative;
   }
 
@@ -403,7 +404,7 @@
   }
 
   .prompt-docs-body {
-    background: var(--bg);
+    background: transparent;
   }
 
   .prompt-docs-main {
@@ -424,7 +425,7 @@
   }
 
   .detail-strip {
-    width: 22px;
+    width: 28px;
     flex: none;
     border: none;
     border-left: 1px solid var(--border);
@@ -437,7 +438,7 @@
   }
 
   .detail-strip:hover {
-    background: var(--surface-2);
+    background: var(--hover-wash);
     color: var(--text);
   }
 
@@ -447,13 +448,13 @@
     z-index: var(--z-dragdrop);
     display: grid;
     place-items: center;
-    background: rgb(15 20 28 / 45%);
+    background: var(--overlay);
     pointer-events: none;
   }
 
   .drop-hint {
     padding: 20px 40px;
-    background: var(--surface);
+    background: var(--surface-opaque);
     border: 2px dashed var(--accent, #5b9ef4);
     border-radius: var(--radius-m);
     font-size: var(--font-xl);

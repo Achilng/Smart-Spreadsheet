@@ -107,6 +107,7 @@
       <button
         type="button"
         class="btn"
+        data-reveal
         disabled={app.busy}
         onclick={() => void openToolbox()}
       >
@@ -126,7 +127,7 @@
     gap: 16px;
     height: 40px;
     padding: 0 0 0 12px;
-    background: var(--surface);
+    background: transparent;
     border-bottom: 1px solid var(--border);
     flex: none;
   }
@@ -150,11 +151,11 @@
 
   .search-box input {
     width: 100%;
-    height: 28px;
-    padding: 0 26px 0 8px;
+    height: 30px;
+    padding: 0 28px 0 8px;
     border: 1px solid var(--border);
     border-radius: var(--radius-s);
-    background: var(--bg);
+    background: var(--surface-2);
     font-size: var(--font-sm);
     color: var(--text);
     outline: none;
@@ -179,12 +180,17 @@
     transform: translateY(-50%);
     border: none;
     background: transparent;
-    color: var(--text-3, #999);
+    color: var(--text-3);
     font-size: var(--font-lg);
     line-height: 1;
-    padding: 2px 4px;
+    min-width: 24px;
+    min-height: 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
     cursor: pointer;
-    border-radius: 2px;
+    border-radius: var(--radius-s);
   }
 
   .search-clear:hover {

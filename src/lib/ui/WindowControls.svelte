@@ -84,13 +84,13 @@
   }
 
   .window-controls button:hover {
-    background: rgb(16 24 40 / 7%);
+    background: var(--hover-wash);
     color: var(--text);
   }
 
   .window-controls button.close:hover {
-    background: #e81123;
-    color: #ffffff;
+    background: var(--close-hover);
+    color: var(--on-accent);
   }
 
   .window-icon {

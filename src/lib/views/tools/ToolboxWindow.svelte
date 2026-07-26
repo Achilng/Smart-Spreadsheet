@@ -193,6 +193,7 @@
                 class:is-active={activeTool === tool.id}
                 disabled={tool.requiresLibrary && !hasLibrary}
                 title={tool.requiresLibrary && !hasLibrary ? "需要先在主窗口导入资料库" : tool.description}
+                data-reveal
                 onclick={() => selectTool(tool)}
               >
                 <span class="tool-icon" aria-hidden="true">
@@ -280,7 +281,7 @@
     height: 100%;
     display: flex;
     flex-direction: column;
-    background: var(--bg);
+    background: transparent;
   }
 
   .titlebar {
@@ -290,7 +291,7 @@
     justify-content: space-between;
     flex: none;
     padding-left: 14px;
-    background: var(--surface);
+    background: transparent;
     border-bottom: 1px solid var(--border);
   }
 
@@ -325,7 +326,7 @@
   }
 
   .nav-intro h1 {
-    font-size: 22px;
+    font-size: var(--font-xl);
     line-height: 1.25;
   }
 
@@ -362,7 +363,7 @@
   }
 
   .nav-group button:hover:not(:disabled) {
-    background: var(--surface-2);
+    background: var(--hover-wash);
   }
 
   .nav-group button.is-active {
@@ -434,7 +435,7 @@
     align-items: center;
     flex: none;
     padding: 18px 28px;
-    background: var(--surface);
+    background: transparent;
     border-bottom: 1px solid var(--border);
   }
 
