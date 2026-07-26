@@ -612,8 +612,10 @@
   }
 
   .panel-header h3 {
-    font-size: var(--font-md);
-    font-weight: 600;
+    font-size: var(--font-lg);
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    color: var(--text);
   }
 
   .collapse-btn {
@@ -698,9 +700,11 @@
 
   .tag-editor h4,
   .field h4 {
-    font-size: var(--font-sm);
-    color: var(--text-2);
-    font-weight: 600;
+    font-size: var(--font-xs);
+    color: var(--text-3);
+    font-weight: 650;
+    letter-spacing: var(--ls-caps);
+    text-transform: uppercase;
     margin-bottom: 6px;
   }
 

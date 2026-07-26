@@ -268,7 +268,7 @@
     color: var(--text-3);
     font-size: var(--font-xs);
     font-weight: 650;
-    letter-spacing: 0.04em;
+    letter-spacing: var(--ls-caps);
   }
 
   .sort-option {

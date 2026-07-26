@@ -237,6 +237,11 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    font-size: var(--font-xs);
+    font-weight: 650;
+    letter-spacing: var(--ls-caps);
+    text-transform: uppercase;
+    color: var(--text-3);
   }
 
   .table-spacer {

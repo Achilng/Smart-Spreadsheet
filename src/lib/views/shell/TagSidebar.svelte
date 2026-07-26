@@ -476,8 +476,10 @@
   }
 
   .sidebar-header h3 {
-    font-size: var(--font-md);
-    font-weight: 600;
+    font-size: var(--font-lg);
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    color: var(--text);
   }
 
   .mode-switch,

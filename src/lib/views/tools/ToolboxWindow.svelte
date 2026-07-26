@@ -323,7 +323,8 @@
   }
 
   .nav-intro h1 {
-    font-size: 22px;
+    font-size: var(--font-2xl);
+    letter-spacing: -0.01em;
     line-height: 1.25;
   }
 
@@ -341,8 +342,8 @@
     padding: 0 10px 5px;
     color: var(--text-3);
     font-size: var(--font-xs);
-    font-weight: 600;
-    letter-spacing: 0.08em;
+    font-weight: 650;
+    letter-spacing: var(--ls-caps);
   }
 
   .nav-group button {
