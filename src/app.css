@@ -159,6 +159,91 @@ textarea {
   font: inherit;
 }
 
+/* ---- 自定义 checkbox（全局接管原生外观） ---- */
+input[type="checkbox"] {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  flex: none;
+  display: inline-grid;
+  place-content: center;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--surface);
+  cursor: pointer;
+  transition:
+    background var(--motion-fast) var(--ease-responsive),
+    border-color var(--motion-fast) var(--ease-responsive);
+}
+
+input[type="checkbox"]::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  background: #fff;
+  transform: scale(0);
+  transition: transform var(--motion-press) var(--ease-responsive);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 12.5l5 5L20 6.5'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 12.5l5 5L20 6.5'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+input[type="checkbox"]:hover:not(:checked):not(:disabled) {
+  border-color: var(--text-3);
+}
+
+input[type="checkbox"]:checked,
+input[type="checkbox"]:indeterminate {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+input[type="checkbox"]:checked::before {
+  transform: scale(1);
+}
+
+input[type="checkbox"]:indeterminate::before {
+  transform: scale(1);
+  -webkit-mask: none;
+  mask: none;
+  width: 8px;
+  height: 2px;
+  border-radius: 1px;
+}
+
+input[type="checkbox"]:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ---- 输入框统一基线 ---- */
+input[type="text"],
+input[type="search"],
+input[type="number"],
+textarea {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  color: var(--text);
+  transition:
+    border-color var(--motion-fast) var(--ease-responsive),
+    box-shadow var(--motion-fast) var(--ease-responsive),
+    background var(--motion-fast) var(--ease-responsive);
+}
+
+input[type="text"]:focus,
+input[type="search"]:focus,
+input[type="number"]:focus,
+textarea:focus {
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-3);
+}
+
 /* 统一键盘焦点环（鼠标点击不出现） */
 :focus-visible {
   outline: 2px solid var(--accent);

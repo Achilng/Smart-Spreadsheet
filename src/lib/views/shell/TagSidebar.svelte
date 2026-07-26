@@ -561,7 +561,6 @@
 
   .dedupe-options input {
     margin: 0;
-    accent-color: var(--accent);
   }
 
   .tagging-info {
@@ -666,15 +665,11 @@
     flex: 1;
     min-width: 0;
     padding: 5px 9px;
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-s);
     font-size: var(--font-sm);
   }
 
   .create-form input:focus {
     outline: none;
-    border-color: var(--accent);
-    box-shadow: var(--focus-ring);
   }
 
   .create-form .btn {
@@ -711,15 +706,5 @@
     display: flex;
     justify-content: flex-end;
     gap: 8px;
-  }
-
-  .confirm-actions .btn-danger {
-    background: var(--danger);
-    border-color: var(--danger);
-    color: #fff;
-  }
-
-  .confirm-actions .btn-danger:hover {
-    opacity: 0.9;
   }
 </style>

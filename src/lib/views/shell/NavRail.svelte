@@ -60,7 +60,7 @@
   }
 
   .drag-spacer {
-    height: 40px;
+    height: 44px;
     width: 100%;
     flex: none;
   }

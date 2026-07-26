@@ -745,16 +745,11 @@
   .tag-input-wrap input {
     width: 100%;
     padding: 6px 10px;
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-s);
-    background: var(--surface);
     font-size: var(--font-md);
   }
 
   .tag-input-wrap input:focus {
     outline: none;
-    border-color: var(--accent);
-    box-shadow: var(--focus-ring);
   }
 
   .suggestions {
@@ -831,16 +826,11 @@
     padding: 8px 10px;
     font-family: inherit;
     font-size: var(--font-sm);
-    border: 1px solid var(--accent);
-    border-radius: var(--radius-s);
-    background: var(--surface);
     resize: vertical;
   }
 
   .prompt-textarea:focus {
     outline: none;
-    border-color: var(--accent);
-    box-shadow: 0 0 0 2px var(--accent-soft);
   }
 
   .note-textarea {
@@ -857,16 +847,6 @@
   .btn-sm {
     padding: 3px 10px;
     font-size: var(--font-sm);
-  }
-
-  .btn-primary {
-    background: var(--accent);
-    color: white;
-    border-color: var(--accent);
-  }
-
-  .btn-primary:hover:not(:disabled) {
-    filter: brightness(1.1);
   }
 
   .copy-btn {

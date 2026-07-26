@@ -189,7 +189,6 @@
     width: 18px;
     height: 18px;
     margin: 0;
-    accent-color: var(--accent);
     cursor: pointer;
     opacity: 0;
     transform: scale(0.85);

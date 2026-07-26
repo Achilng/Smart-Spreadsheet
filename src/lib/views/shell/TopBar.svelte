@@ -124,7 +124,7 @@
     display: flex;
     align-items: center;
     gap: 16px;
-    height: 40px;
+    height: 44px;
     padding: 0 0 0 12px;
     background: var(--surface);
     flex: none;
@@ -144,21 +144,25 @@
   .search-box {
     position: relative;
     flex: none;
-    width: 220px;
+    width: 260px;
   }
 
   .search-box input {
     width: 100%;
-    height: 28px;
-    padding: 0 26px 0 8px;
-    border: 1px solid var(--border);
+    height: 30px;
+    padding: 0 26px 0 10px;
+    border: 1px solid transparent;
     border-radius: var(--radius-s);
-    background: var(--bg);
+    background: var(--surface-2);
     font-size: var(--font-sm);
     color: var(--text);
     outline: none;
     box-sizing: border-box;
     transition: border-color 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+  }
+
+  .search-box input:hover:not(:focus) {
+    background: var(--surface-3);
   }
 
   .search-box input:focus {
