@@ -225,7 +225,7 @@
     z-index: var(--z-nav);
     display: grid;
     align-items: center;
-    background: var(--surface-2);
+    background: var(--surface);
     border-bottom: 1px solid var(--border);
     font-size: var(--font-sm);
     color: var(--text-2);

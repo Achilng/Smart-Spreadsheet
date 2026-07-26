@@ -149,18 +149,16 @@
     display: flex;
     flex-direction: column;
     background: var(--surface);
-    border: 1px solid var(--border);
     border-radius: var(--radius-m);
     overflow: hidden;
+    box-shadow: var(--shadow-1);
     transition:
       background var(--motion-fast) var(--ease-responsive),
-      border-color var(--motion-fast) var(--ease-responsive),
       box-shadow var(--motion-fast) var(--ease-responsive),
       transform var(--motion-fast) var(--ease-responsive);
   }
 
   .card:hover:not(.is-skeleton) {
-    border-color: var(--border-strong);
     box-shadow: var(--shadow-hover);
     transform: translateY(-1px);
   }
@@ -171,13 +169,16 @@
   }
 
   .card.is-active {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 2px var(--accent-soft-border);
+    box-shadow: 0 0 0 2px var(--accent), var(--shadow-hover);
   }
 
   .card.is-checked {
-    border-color: var(--accent);
     background: var(--accent-soft);
+    box-shadow: 0 0 0 1px var(--accent-soft-border), var(--shadow-1);
+  }
+
+  .card.is-active.is-checked {
+    box-shadow: 0 0 0 2px var(--accent), var(--shadow-hover);
   }
 
   .select-box {

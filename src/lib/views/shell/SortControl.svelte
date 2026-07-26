@@ -180,8 +180,7 @@
     align-items: center;
     justify-content: flex-end;
     padding: 0 16px;
-    border-bottom: 1px solid var(--border);
-    background: linear-gradient(180deg, var(--surface) 0%, #fbfcfd 100%);
+    background: var(--surface);
   }
 
   .option-copy {
@@ -257,7 +256,6 @@
     width: 286px;
     max-width: calc(100vw - 32px);
     padding: 6px;
-    border: 1px solid var(--border-strong);
     border-radius: var(--radius-m);
     background: color-mix(in srgb, var(--surface) 97%, transparent);
     box-shadow: var(--shadow-3);

@@ -483,8 +483,7 @@
   .mode-switch,
   .filter-mode {
     display: flex;
-    background: var(--bg);
-    border: 1px solid var(--border);
+    background: var(--surface-3);
     border-radius: var(--radius-s);
     padding: 2px;
     gap: 2px;
@@ -546,7 +545,6 @@
     display: grid;
     gap: 5px;
     padding: 0 12px 10px;
-    border-bottom: 1px solid var(--border);
     font-size: var(--font-sm);
     color: var(--text-2);
     flex: none;
@@ -568,7 +566,6 @@
     display: grid;
     gap: 4px;
     padding: 0 12px 10px;
-    border-bottom: 1px solid var(--border);
     color: var(--text-2);
     font-size: var(--font-sm);
     line-height: 1.45;
@@ -660,7 +657,6 @@
     display: flex;
     gap: 6px;
     padding: 10px 12px 4px;
-    border-top: 1px solid var(--border);
     flex: none;
   }
 

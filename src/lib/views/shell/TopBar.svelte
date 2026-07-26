@@ -127,7 +127,6 @@
     height: 40px;
     padding: 0 0 0 12px;
     background: var(--surface);
-    border-bottom: 1px solid var(--border);
     flex: none;
   }
 

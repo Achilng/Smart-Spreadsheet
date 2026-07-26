@@ -48,7 +48,6 @@
     min-width: 160px;
     padding: 4px;
     background: var(--surface);
-    border: 1px solid var(--border-strong);
     border-radius: var(--radius-s);
     box-shadow: var(--shadow-2);
     display: flex;

@@ -77,7 +77,6 @@
     max-width: 90vw;
     max-height: 85vh;
     background: var(--surface);
-    border: 1px solid var(--border);
     border-radius: var(--radius-m);
     box-shadow: var(--shadow-2);
     display: flex;

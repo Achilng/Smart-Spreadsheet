@@ -290,8 +290,7 @@
     justify-content: space-between;
     flex: none;
     padding-left: 14px;
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
+    background: var(--surface-2);
   }
 
   .brand {
@@ -316,8 +315,7 @@
     flex-direction: column;
     min-height: 0;
     padding: 22px 12px 14px;
-    background: var(--surface);
-    border-right: 1px solid var(--border);
+    background: var(--surface-2);
   }
 
   .nav-intro {
@@ -362,7 +360,7 @@
   }
 
   .nav-group button:hover:not(:disabled) {
-    background: var(--surface-2);
+    background: var(--surface-3);
   }
 
   .nav-group button.is-active {
@@ -389,7 +387,8 @@
     place-items: center;
     flex: none;
     border-radius: 8px;
-    background: var(--surface-3);
+    background: var(--surface);
+    box-shadow: var(--shadow-1);
     color: var(--text-2);
     font-size: var(--font-sm);
     font-weight: 700;
@@ -435,7 +434,6 @@
     flex: none;
     padding: 18px 28px;
     background: var(--surface);
-    border-bottom: 1px solid var(--border);
   }
 
   .content-header h2 {

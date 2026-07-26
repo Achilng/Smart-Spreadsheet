@@ -128,7 +128,7 @@
     display: grid;
     align-items: center;
     background: var(--surface);
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--border-faint);
     cursor: default;
     transition: background var(--motion-fast) var(--ease-responsive);
   }
