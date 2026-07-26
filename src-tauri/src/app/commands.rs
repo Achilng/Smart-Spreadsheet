@@ -289,6 +289,7 @@ pub(crate) async fn update_existing_images(
     path: String,
     app: tauri::AppHandle,
 ) -> Result<ExistingImageUpdateResultDto, String> {
+    crate::pipeline::cancel::begin();
     tauri::async_runtime::spawn_blocking(move || {
         let runtime = app.state::<AppRuntime>();
         runtime

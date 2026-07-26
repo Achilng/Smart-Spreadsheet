@@ -163,7 +163,17 @@ export async function runExistingImageUpdate(path: string): Promise<void> {
       },
     );
     try {
-      const result = await updateExistingImages(path);
+      let result: Awaited<ReturnType<typeof updateExistingImages>>;
+      try {
+        result = await updateExistingImages(path);
+      } catch (error) {
+        // 用户主动取消不是失败：给一条温和的提示并正常返回
+        if (errorText(error).includes("已被用户取消")) {
+          setNotice({ tone: "success", text: "更新已取消，未修改任何数据。" });
+          return;
+        }
+        throw error;
+      }
       app.snapshot = result.snapshot;
       if (result.updated > 0) {
         clearHistory();

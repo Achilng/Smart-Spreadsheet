@@ -34,10 +34,12 @@ pub enum ImageImportStage {
     Scanning,
     /// 为身份键全新的图片计算内容哈希。
     Hashing,
-    /// 读取元数据并落位副本。
+    /// 读取元数据。
     Processing,
     /// 计算感知哈希（pHash）。
     PerceptualHashing,
+    /// 把新图片复制/搬移进受管目录（落位副本）。
+    Copying,
 }
 
 impl ImageImportStage {
@@ -48,6 +50,7 @@ impl ImageImportStage {
             Self::Hashing => "hashing",
             Self::Processing => "processing",
             Self::PerceptualHashing => "perceptualHashing",
+            Self::Copying => "copying",
         }
     }
 }
@@ -126,6 +129,8 @@ pub enum ImageImportError {
     RejectedDirectoryInsideInput(PathBuf),
     #[error("导入已被用户取消，未写入任何数据")]
     Cancelled,
+    #[error("更新已被用户取消，未修改任何数据")]
+    UpdateCancelled,
 }
 
 impl DataDirectory {
@@ -341,7 +346,16 @@ impl DataDirectory {
             scan_root_display: &scan_root_display,
             staging_root: staging.path(),
         };
-        for ((index, image, content_hash), perceptual_hash) in new_jobs.into_iter().zip(phashes) {
+        // 落位副本是纯串行文件复制，大批量导入时耗时可观：
+        // 逐张响应取消（staging 由 Drop 清理），并让进度条走 Copying 阶段。
+        let copy_total = new_jobs.len();
+        reporter.emit(ImageImportStage::Copying, 0, copy_total, true);
+        for (copied, ((index, image, content_hash), perceptual_hash)) in
+            new_jobs.into_iter().zip(phashes).enumerate()
+        {
+            if cancel::is_requested() {
+                return Err(ImageImportError::Cancelled);
+            }
             let row = build_new_row(
                 image,
                 &identities[index],
@@ -351,6 +365,12 @@ impl DataDirectory {
                 perceptual_hash,
             )?;
             indexed_rows.push((index, row));
+            reporter.emit(
+                ImageImportStage::Copying,
+                copied + 1,
+                copy_total,
+                copied + 1 == copy_total,
+            );
         }
         indexed_rows.sort_by_key(|(index, _)| *index);
         let rows = indexed_rows
@@ -432,11 +452,17 @@ impl DataDirectory {
         } else {
             (input.to_owned(), SourceType::Folder)
         };
+        if cancel::is_requested() {
+            return Err(ImageImportError::UpdateCancelled);
+        }
 
         reporter.emit(ImageImportStage::Scanning, 0, 0, true);
         let images = collect_png_files(&scan_root)?;
         if images.is_empty() {
             return Err(ImageImportError::NoImagesFound(input.to_owned()));
+        }
+        if cancel::is_requested() {
+            return Err(ImageImportError::UpdateCancelled);
         }
         let total_found = images.len();
         reporter.emit(ImageImportStage::Scanning, total_found, total_found, true);
@@ -486,9 +512,10 @@ impl DataDirectory {
         // 完整文件 SHA-256 和完整 NovelAI 元数据指纹匹配。
         let processing_total = images.len();
         reporter.emit(ImageImportStage::Processing, 0, processing_total, true);
-        let inspected = parallel::parallel_map(
+        let inspected = parallel::parallel_map_cancellable(
             images.into_iter().enumerate().collect::<Vec<_>>(),
             parallel::worker_count(processing_total),
+            cancel::flag(),
             |_, (index, image)| (index, inspect_metadata(image)),
             |completed| {
                 reporter.emit(
@@ -498,7 +525,8 @@ impl DataDirectory {
                     completed == processing_total,
                 );
             },
-        );
+        )
+        .ok_or(ImageImportError::UpdateCancelled)?;
         let mut metadata_rejected = 0_u64;
         let valid = inspected
             .into_iter()
@@ -515,9 +543,10 @@ impl DataDirectory {
 
         let hash_total = valid.len();
         reporter.emit(ImageImportStage::Hashing, 0, hash_total, true);
-        let hashed = parallel::parallel_map(
+        let hashed = parallel::parallel_map_cancellable(
             valid,
             parallel::worker_count(hash_total),
+            cancel::flag(),
             |_, (index, image)| {
                 let content_hash = sha256_file(&image.source.absolute_path).ok();
                 (index, image, content_hash)
@@ -530,7 +559,8 @@ impl DataDirectory {
                     completed == hash_total,
                 );
             },
-        );
+        )
+        .ok_or(ImageImportError::UpdateCancelled)?;
 
         let content_candidates = hashed
             .iter()
@@ -611,9 +641,10 @@ impl DataDirectory {
 
         let phash_total = prepared_jobs.len();
         reporter.emit(ImageImportStage::PerceptualHashing, 0, phash_total, true);
-        let prepared = parallel::parallel_map(
+        let prepared = parallel::parallel_map_cancellable(
             prepared_jobs,
             parallel::worker_count(phash_total),
+            cancel::flag(),
             |_, (image, target, content_hash, identity, image_path)| {
                 let perceptual_hash = compute_phash(&image.source.absolute_path).ok();
                 (
@@ -633,17 +664,34 @@ impl DataDirectory {
                     completed == phash_total,
                 );
             },
-        );
+        )
+        .ok_or(ImageImportError::UpdateCancelled)?;
 
         let mut copy_failures = 0_u64;
         let mut updates = Vec::with_capacity(prepared.len());
-        for (image, target, content_hash, perceptual_hash, identity, image_path) in prepared {
+        let copy_total = prepared.len();
+        reporter.emit(ImageImportStage::Copying, 0, copy_total, true);
+        for (copied, (image, target, content_hash, perceptual_hash, identity, image_path)) in
+            prepared.into_iter().enumerate()
+        {
+            // 逐张响应取消：刷新受管副本是就地覆盖旧文件，已刷新的部分与
+            // 数据库并无不一致（元数据尚未写库，副本内容与原图一致），
+            // 因此取消时直接放弃剩余部分即可。
+            if cancel::is_requested() {
+                return Err(ImageImportError::UpdateCancelled);
+            }
             let stored_image_path = target
                 .stored_image_path
                 .clone()
                 .unwrap_or_else(|| format!("files/relinked/row-{}.png", target.row_id));
             if refresh_stored_copy(self, &image.source.absolute_path, &stored_image_path).is_err() {
                 copy_failures += 1;
+                reporter.emit(
+                    ImageImportStage::Copying,
+                    copied + 1,
+                    copy_total,
+                    copied + 1 == copy_total,
+                );
                 continue;
             }
             // 缓存删除失败不应阻止元数据更新；下次图片加载仍会按文件签名生成新缓存。
@@ -674,6 +722,16 @@ impl DataDirectory {
                 generation_cfg_rescale: image.generation_cfg_rescale,
                 generation_noise_schedule: image.generation_noise_schedule,
             });
+            reporter.emit(
+                ImageImportStage::Copying,
+                copied + 1,
+                copy_total,
+                copied + 1 == copy_total,
+            );
+        }
+        // 最后一个可取消检查点：从这里开始进入写库事务，不再响应取消。
+        if cancel::is_requested() {
+            return Err(ImageImportError::UpdateCancelled);
         }
         let updated_row_ids = updates.iter().map(|update| update.row_id).collect::<Vec<_>>();
         let updated = database.update_existing_images(&updates)?;

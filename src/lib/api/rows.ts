@@ -35,7 +35,7 @@ export interface ExistingImageUpdateResult {
   ruleExecution: RuleExecutionSummary;
 }
 
-export type ImageImportStage = "extracting" | "scanning" | "hashing" | "processing" | "perceptualHashing";
+export type ImageImportStage = "extracting" | "scanning" | "hashing" | "processing" | "perceptualHashing" | "copying";
 
 export interface ImageImportProgress {
   stage: ImageImportStage;

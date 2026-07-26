@@ -8,7 +8,7 @@
 
   let cancelling = $state(false);
 
-  /** 目前只有导入管线支持取消；其余进度不显示取消按钮。 */
+  /** 导入与“更新现有图片”管线均支持取消；其余进度不显示取消按钮。 */
   const cancellable = $derived(Boolean(app.importProgress));
 
   async function cancelTask(): Promise<void> {
@@ -51,6 +51,8 @@
           return `正在读取元数据 ${formatCount(progress.processed)} / ${formatCount(progress.total)}`;
         case "perceptualHashing":
           return `正在计算感知哈希 ${formatCount(progress.processed)} / ${formatCount(progress.total)}`;
+        case "copying":
+          return `正在复制图片进资料库 ${formatCount(progress.processed)} / ${formatCount(progress.total)}`;
         default:
           return null;
       }
@@ -76,7 +78,7 @@
     const importing = app.importProgress;
     if (importing) {
       if (
-        (importing.stage !== "hashing" && importing.stage !== "processing" && importing.stage !== "perceptualHashing") ||
+        (importing.stage !== "hashing" && importing.stage !== "processing" && importing.stage !== "perceptualHashing" && importing.stage !== "copying") ||
         importing.total === 0
       ) {
         return null;

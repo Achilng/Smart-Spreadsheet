@@ -358,21 +358,21 @@ impl AppRuntime {
     }
 
     pub(crate) fn preview_automation_rule(&self, id: i64) -> Result<RulePreview, AppRuntimeError> {
-        self.with_database(|db| db.preview_automation_rule(id))
+        self.with_cloned_database(|db| db.preview_automation_rule(id))
     }
 
     pub(crate) fn preview_automation_rule_draft(
         &self,
         draft: &AutomationRuleDraft,
     ) -> Result<RulePreview, AppRuntimeError> {
-        self.with_database(|db| db.preview_automation_rule_draft(draft))
+        self.with_cloned_database(|db| db.preview_automation_rule_draft(draft))
     }
 
     pub(crate) fn run_automation_rule_on_library(
         &self,
         id: i64,
     ) -> Result<RuleExecutionSummary, AppRuntimeError> {
-        self.with_database_mut(|db| db.run_automation_rule_on_library(id))
+        self.with_cloned_database_mut(|db| db.run_automation_rule_on_library(id))
     }
 
     pub(crate) fn preview_quick_tag(
@@ -380,7 +380,7 @@ impl AppRuntime {
         condition: &QuickEditCondition,
         tags: &[String],
     ) -> Result<QuickTagPreview, AppRuntimeError> {
-        self.with_database(|db| db.preview_quick_tag(condition, tags))
+        self.with_cloned_database(|db| db.preview_quick_tag(condition, tags))
     }
 
     pub(crate) fn apply_quick_tag(
@@ -388,7 +388,7 @@ impl AppRuntime {
         condition: &QuickEditCondition,
         tags: &[String],
     ) -> Result<QuickTagApplyResult, AppRuntimeError> {
-        self.with_database_mut(|db| db.apply_quick_tag(condition, tags))
+        self.with_cloned_database_mut(|db| db.apply_quick_tag(condition, tags))
     }
 
     pub(crate) fn revert_quick_tag_changes(
@@ -411,7 +411,7 @@ impl AppRuntime {
         group_id: i64,
         only_ungrouped: bool,
     ) -> Result<QuickGroupPreview, AppRuntimeError> {
-        self.with_database(|db| db.preview_quick_group(condition, group_id, only_ungrouped))
+        self.with_cloned_database(|db| db.preview_quick_group(condition, group_id, only_ungrouped))
     }
 
     pub(crate) fn apply_quick_group(
@@ -420,7 +420,9 @@ impl AppRuntime {
         group_id: i64,
         only_ungrouped: bool,
     ) -> Result<QuickGroupApplyResult, AppRuntimeError> {
-        self.with_database_mut(|db| db.apply_quick_group(condition, group_id, only_ungrouped))
+        self.with_cloned_database_mut(|db| {
+            db.apply_quick_group(condition, group_id, only_ungrouped)
+        })
     }
 
     pub(crate) fn revert_quick_group_changes(
@@ -441,14 +443,14 @@ impl AppRuntime {
         &self,
         artist_name: &str,
     ) -> Result<QuickArtistPrefixPreview, AppRuntimeError> {
-        self.with_database(|db| db.preview_quick_artist_prefix(artist_name))
+        self.with_cloned_database(|db| db.preview_quick_artist_prefix(artist_name))
     }
 
     pub(crate) fn apply_quick_artist_prefix(
         &self,
         artist_name: &str,
     ) -> Result<QuickArtistPrefixApplyResult, AppRuntimeError> {
-        self.with_database_mut(|db| db.apply_quick_artist_prefix(artist_name))
+        self.with_cloned_database_mut(|db| db.apply_quick_artist_prefix(artist_name))
     }
 
     pub(crate) fn revert_quick_artist_prefix_changes(
@@ -483,14 +485,14 @@ impl AppRuntime {
     pub(crate) fn preview_auto_artist_prefix(
         &self,
     ) -> Result<AutoArtistPrefixPreview, AppRuntimeError> {
-        self.with_database(|db| db.preview_auto_artist_prefix())
+        self.with_cloned_database(|db| db.preview_auto_artist_prefix())
     }
 
     pub(crate) fn apply_auto_artist_prefix(
         &self,
         selected_names: &[String],
     ) -> Result<AutoArtistPrefixApplyResult, AppRuntimeError> {
-        self.with_database_mut(|db| db.apply_auto_artist_prefix(selected_names))
+        self.with_cloned_database_mut(|db| db.apply_auto_artist_prefix(selected_names))
     }
 
     pub(crate) fn delete_rows(
@@ -929,6 +931,35 @@ impl AppRuntime {
         let database = state.database()?;
         let result = f(database)?;
         database.bump_data_version();
+        Ok(result)
+    }
+
+    /// 全库扫描级长任务专用：克隆数据目录后立即释放状态锁，在独立连接上
+    /// 执行只读操作。期间查询等其它命令不会被本任务阻塞。
+    fn with_cloned_database<T, E>(
+        &self,
+        f: impl FnOnce(&mut crate::db::Database) -> Result<T, E>,
+    ) -> Result<T, AppRuntimeError>
+    where
+        AppRuntimeError: From<E>,
+    {
+        let directory = self.active_directory()?;
+        let mut database = directory.open_database()?;
+        Ok(f(&mut database)?)
+    }
+
+    /// 与 `with_cloned_database` 相同，但写入完成后使常驻连接的查询缓存失效。
+    fn with_cloned_database_mut<T, E>(
+        &self,
+        f: impl FnOnce(&mut crate::db::Database) -> Result<T, E>,
+    ) -> Result<T, AppRuntimeError>
+    where
+        AppRuntimeError: From<E>,
+    {
+        let directory = self.active_directory()?;
+        let mut database = directory.open_database()?;
+        let result = f(&mut database)?;
+        self.lock_state()?.invalidate_query_cache();
         Ok(result)
     }
 
