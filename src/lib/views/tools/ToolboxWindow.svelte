@@ -12,6 +12,8 @@
   import { onMount } from "svelte";
 
   import { app, refreshSnapshot } from "../../stores/app-state.svelte";
+  import { installCloseGuards, registerCloseGuard } from "../../stores/close-guard";
+  import { history } from "../../stores/history.svelte";
   import Notice from "../../ui/Notice.svelte";
   import WindowControls from "../../ui/WindowControls.svelte";
   import ArtistGeneratorView from "./ArtistGeneratorView.svelte";
@@ -147,6 +149,27 @@
 
   onMount(() => {
     void refreshSnapshot();
+    let disposed = false;
+    let uninstallGuards: (() => void) | null = null;
+    // 关窗守卫：进行中的任务与撤回能力都会随窗口关闭而消失，先确认
+    const unregisterGuard = registerCloseGuard(() => {
+      if (app.busy || history.busy) return "还有后台任务正在进行";
+      if (app.phashProgress) return "感知哈希刷新尚未完成";
+      if (app.exportProgress) return "导出任务尚未完成";
+      if (history.undoCount > 0) {
+        return `关闭后将无法撤回本窗口的 ${history.undoCount} 步批量修改`;
+      }
+      return null;
+    });
+    void installCloseGuards().then(fn => {
+      if (disposed) fn();
+      else uninstallGuards = fn;
+    });
+    return () => {
+      disposed = true;
+      unregisterGuard();
+      uninstallGuards?.();
+    };
   });
 
   $effect(() => {

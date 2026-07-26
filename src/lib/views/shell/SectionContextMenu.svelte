@@ -2,7 +2,8 @@
   import { setDedupeAlias } from "../../api";
   import ContextMenuShell from "../../ui/ContextMenuShell.svelte";
   import { setNotice } from "../../stores/app-state.svelte";
-  import { removeGroup, renameExistingGroup } from "../../stores/group-store.svelte";
+  import { groupStore, removeGroup, renameExistingGroup } from "../../stores/group-store.svelte";
+  import { requestGroupDelete } from "../../stores/group-delete-confirm.svelte";
   import {
     sectionMenu,
     hideSectionMenu,
@@ -24,6 +25,11 @@
       const ok = await renameExistingGroup(target.groupId, newName.trim());
       if (ok) {
         setNotice({ tone: "success", text: `已重命名分组为「${newName.trim()}」` });
+      } else {
+        setNotice({
+          tone: "error",
+          text: `重命名失败：${groupStore.error ?? "未知错误"}`,
+        });
       }
     } else {
       try {
@@ -42,13 +48,22 @@
     }
   }
 
-  async function handleDelete(): Promise<void> {
+  function handleDelete(): void {
     if (!target || target.kind !== "group") return;
     hideSectionMenu();
-    const ok = await removeGroup(target.groupId);
-    if (ok) {
-      setNotice({ tone: "success", text: `已删除分组「${target.name}」` });
-    }
+    const group = groupStore.list.find(g => g.id === target.groupId);
+    if (!group) return;
+    requestGroupDelete(group, async () => {
+      const ok = await removeGroup(group.id);
+      if (ok) {
+        setNotice({ tone: "success", text: `已删除分组「${group.name}」，组内图片已回到未分组。` });
+      } else {
+        setNotice({
+          tone: "error",
+          text: `删除分组失败：${groupStore.error ?? "未知错误"}`,
+        });
+      }
+    });
   }
 </script>
 
@@ -63,7 +78,7 @@
         type="button"
         role="menuitem"
         class="danger"
-        onclick={() => void handleDelete()}
+        onclick={handleDelete}
       >
         删除分组
       </button>

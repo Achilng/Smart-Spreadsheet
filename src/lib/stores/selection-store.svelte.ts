@@ -103,6 +103,11 @@ export function clearSelection(): void {
   selection.version += 1;
 }
 
+/** 排序等重排操作后调用：清掉 Shift 范围选择的锚点，避免按旧顺序选错行。 */
+export function resetSelectionAnchor(): void {
+  anchorIndex = null;
+}
+
 /** 全选当前筛选结果；行数在后端按当前筛选统计。 */
 export async function selectAllFiltered(): Promise<number> {
   const dto: RowSelection = {
@@ -115,14 +120,28 @@ export async function selectAllFiltered(): Promise<number> {
     search: rowStore.search,
     excludedRowIds: [],
   };
+  const requestVersion = selection.version;
   const totalCount = await countSelectedRows(dto);
+  // 统计期间筛选或选区已变化：丢弃过期结果，避免“显示旧筛选行数、实际按新筛选执行”。
+  if (
+    selection.version !== requestVersion ||
+    rowStore.tags.length !== dto.tags.length ||
+    dto.tags.some((tag, i) => rowStore.tags[i] !== tag) ||
+    rowStore.tagMode !== dto.tagMode ||
+    rowStore.dedupe !== dto.dedupe ||
+    rowStore.singleArtistOnly !== dto.singleArtistOnly ||
+    rowStore.hasVibe !== dto.hasVibe ||
+    rowStore.search !== dto.search
+  ) {
+    return getSelectedCount();
+  }
   selection.kind = "filtered";
-  selection.filteredTags = [...rowStore.tags];
-  selection.filteredMode = rowStore.tagMode;
-  selection.filteredDedupe = rowStore.dedupe;
-  selection.filteredSingleArtistOnly = rowStore.singleArtistOnly;
-  selection.filteredHasVibe = rowStore.hasVibe;
-  selection.filteredSearch = rowStore.search;
+  selection.filteredTags = dto.tags;
+  selection.filteredMode = dto.tagMode;
+  selection.filteredDedupe = dto.dedupe;
+  selection.filteredSingleArtistOnly = dto.singleArtistOnly;
+  selection.filteredHasVibe = dto.hasVibe;
+  selection.filteredSearch = dto.search;
   selection.filteredTotal = totalCount;
   selectionIds.clear();
   anchorIndex = null;

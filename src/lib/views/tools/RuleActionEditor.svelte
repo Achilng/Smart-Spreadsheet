@@ -67,6 +67,45 @@
   function splitValues(value: string): string[] {
     return [...new Set(value.split(/[,，\n\r]/).map(item => item.trim()).filter(Boolean))];
   }
+
+  /** 当前任务是否已填了会因切换类型而丢失的内容 */
+  function actionHasContent(value: RuleAction): boolean {
+    switch (value.type) {
+      case "addTags":
+      case "removeTags": return value.tags.length > 0;
+      case "appendPrompt":
+      case "deletePromptTags":
+      case "setNote":
+      case "appendNote": return value.value.trim() !== "";
+      case "replacePrompt": return value.find.trim() !== "" || value.replace.trim() !== "";
+      case "prefixArtist": return value.artists.length > 0;
+      default: return false;
+    }
+  }
+
+  function onTypeChange(event: Event): void {
+    const select = event.currentTarget as HTMLSelectElement;
+    const nextType = select.value as RuleAction["type"];
+    if (nextType === action.type) return;
+    if (
+      actionHasContent(action) &&
+      !window.confirm("切换任务类型会清空这个任务里已填写的内容，确定切换吗？")
+    ) {
+      select.value = action.type;
+      return;
+    }
+    onreplace(defaultAction(nextType));
+  }
+
+  function onRemoveClick(): void {
+    if (
+      actionHasContent(action) &&
+      !window.confirm("这个任务已填写内容，确定删除吗？")
+    ) {
+      return;
+    }
+    onremove();
+  }
 </script>
 
 <article class="action-card">
@@ -78,11 +117,11 @@
   <div class="action-content">
     <div class="action-head">
       <label><span>执行任务</span>
-        <select value={action.type} onchange={event => onreplace(defaultAction((event.currentTarget as HTMLSelectElement).value as RuleAction["type"]))}>
+        <select value={action.type} onchange={onTypeChange}>
           {#each actionTypes as item}<option value={item.value}>{item.label}</option>{/each}
         </select>
       </label>
-      <button type="button" class="icon-btn" title="删除任务" aria-label="删除任务" onclick={onremove}><X size={16} /></button>
+      <button type="button" class="icon-btn" title="删除任务" aria-label="删除任务" onclick={onRemoveClick}><X size={16} /></button>
     </div>
 
     <div class="action-body">

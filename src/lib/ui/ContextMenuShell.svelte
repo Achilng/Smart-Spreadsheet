@@ -1,5 +1,9 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
+  import {
+    popModalLayer,
+    pushModalLayer,
+  } from "../stores/modal-layer.svelte";
   import { softPop } from "./motion";
 
   interface Props {
@@ -14,6 +18,15 @@
 
   let menuEl = $state<HTMLDivElement | null>(null);
 
+  // 打开期间登记为模态层：全局 Delete/Ctrl+Z 等快捷键短路，Esc 只关本菜单。
+  $effect(() => {
+    if (!open) {
+      return;
+    }
+    const token = pushModalLayer();
+    return () => popModalLayer(token);
+  });
+
   function handlePointerDown(event: PointerEvent): void {
     if (open && menuEl && !menuEl.contains(event.target as Node)) {
       onclose();
@@ -24,7 +37,10 @@
 <svelte:window
   onpointerdown={handlePointerDown}
   onkeydown={event => {
-    if (event.key === "Escape" && open) onclose();
+    if (event.key === "Escape" && open) {
+      event.preventDefault();
+      onclose();
+    }
   }}
 />
 

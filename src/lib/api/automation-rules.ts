@@ -130,6 +130,11 @@ export function previewAutomationRule(id: number): Promise<RulePreview> {
   return invoke<RulePreview>("preview_automation_rule", { id });
 }
 
+/** 未保存草稿的只读预览：不要求先保存，也不会让草稿生效。 */
+export function previewAutomationRuleDraft(draft: AutomationRuleDraft): Promise<RulePreview> {
+  return invoke<RulePreview>("preview_automation_rule_draft", { draft });
+}
+
 export function runAutomationRuleOnLibrary(id: number): Promise<RuleExecutionSummary> {
   return invoke<RuleExecutionSummary>("run_automation_rule_on_library", { id });
 }

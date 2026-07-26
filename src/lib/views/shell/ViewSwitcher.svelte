@@ -92,4 +92,15 @@
     margin-left: 6px;
     font-variant-numeric: tabular-nums;
   }
+
+  /* 窄窗口：收紧分段控件内距，隐藏计数角标 */
+  @media (max-width: 1100px) {
+    .seg {
+      padding: 0 11px;
+    }
+
+    .seg .n {
+      display: none;
+    }
+  }
 </style>

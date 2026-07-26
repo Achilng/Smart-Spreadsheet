@@ -141,15 +141,22 @@
     left: 0;
     right: 0;
     bottom: 0;
-    height: 52px;
+    min-height: 52px;
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 6px;
-    padding: 0 26px;
+    padding: 8px 26px;
     background: var(--surface);
     border-top: 1px solid var(--border);
     z-index: var(--z-nav);
     white-space: nowrap;
+  }
+
+  @media (max-width: 1080px) {
+    .selection-bar {
+      padding: 8px 14px;
+    }
   }
 
   .count {

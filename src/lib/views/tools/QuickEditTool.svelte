@@ -130,7 +130,8 @@
   function parseRequiredTokens(value: string): string[] {
     const seen = new Set<string>();
     const tokens: string[] = [];
-    for (const part of value.split(/[,\n\r]+/)) {
+    // 与自动规则编辑器一致：半角逗号、全角逗号、换行都是分隔符
+    for (const part of value.split(/[,，\n\r]+/)) {
       const token = part.trim();
       const identity = token.toLocaleLowerCase();
       if (token && !seen.has(identity)) {
@@ -371,6 +372,17 @@
 
   async function runApply(): Promise<void> {
     if (!preview || preview.rowsNeedingChanges === 0 || applying || history.busy) return;
+    // 全库批量写操作，执行前必须确认；文案写明张数与后果。
+    const changeCount = formatCount(preview.rowsNeedingChanges);
+    const confirmText =
+      operation === "tag"
+        ? `将为 ${changeCount} 张图片添加所选 Tag。可撤回。是否执行？`
+        : operation === "group"
+          ? (preview as QuickGroupPreview).onlyUngrouped
+            ? `将把 ${changeCount} 张未分组图片移入目标分组。可撤回。是否执行？`
+            : `将把 ${changeCount} 张图片移入目标分组，命中图片原有的分组关系会被替换。可撤回。是否执行？`
+          : `将修改 ${changeCount} 张图片的提示词，为「${artistName.trim()}」补全 artist: 前缀。可撤回。是否执行？`;
+    if (!window.confirm(confirmText)) return;
     applying = true;
     error = null;
     try {
@@ -610,8 +622,8 @@
           <textarea
             value={promptText}
             rows="4"
-            placeholder="例如：genshin, hutao"
-            aria-label="必须同时存在的提示词组合"
+            placeholder="例如：genshin, hutao（用逗号或换行分隔）"
+            aria-label="必须同时存在的提示词组合，支持半角逗号、全角逗号或换行分隔"
             oninput={updatePromptText}
           ></textarea>
 

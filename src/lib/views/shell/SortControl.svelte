@@ -4,6 +4,7 @@
 
   import type { SortMode } from "../../api";
   import { rowStore, setSort } from "../../stores/row-store.svelte";
+  import { resetSelectionAnchor } from "../../stores/selection-store.svelte";
   import { softPop } from "../../ui/motion";
 
   interface SortOption {
@@ -57,6 +58,11 @@
 
   function pick(option: SortOption): void {
     closeMenu();
+    if (rowStore.sort !== option.value) {
+      // 列表顺序整体变化后，旧的 Shift 范围锚点索引已失效，必须清掉，
+      // 否则下一次 Shift 选择会按新顺序选中一段不相干的行。
+      resetSelectionAnchor();
+    }
     setSort(option.value);
   }
 

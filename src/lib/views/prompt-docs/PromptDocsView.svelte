@@ -21,6 +21,7 @@
     type PromptDocSummary,
   } from "../../api";
   import { errorText, setNotice } from "../../stores/app-state.svelte";
+  import { registerCloseGuard } from "../../stores/close-guard";
   import { lastPromptDoc, rememberPromptDoc } from "../../stores/view-state";
   import { softFade } from "../../ui/motion";
 
@@ -79,9 +80,21 @@
     window.addEventListener("prompt-doc-path-drop", pathDropHandler);
     void initialize();
 
+    // 关窗前：未保存的文档先落盘；保存不掉的情况下拦截确认
+    const unregisterGuard = registerCloseGuard(async () => {
+      if (saveState === "dirty" || saveState === "saving") {
+        await flushSave();
+      }
+      if (saveState === "dirty" || saveState === "error") {
+        return `提示词文档「${activeDoc?.title ?? "未命名"}」有未保存的修改`;
+      }
+      return null;
+    });
+
     return () => {
       window.removeEventListener("prompt-doc-path-drop", pathDropHandler);
       window.clearTimeout(saveTimer);
+      unregisterGuard();
       void flushSave();
       editor?.destroy();
     };
@@ -151,7 +164,7 @@
   }
 
   async function createNewDoc(): Promise<void> {
-    await flushSave();
+    if (!(await flushSaveOrConfirm())) return;
     loading = true;
     try {
       const detail = await createPromptDoc("未命名文档");
@@ -166,7 +179,7 @@
 
   async function selectDoc(docId: string): Promise<void> {
     if (activeDoc?.id === docId) return;
-    await flushSave();
+    if (!(await flushSaveOrConfirm())) return;
     loading = true;
     switchingDoc = true;
     try {
@@ -177,6 +190,18 @@
       loading = false;
       switchingDoc = false;
     }
+  }
+
+  /**
+   * 保存当前文档；保存失败时阻塞询问用户，避免带着未保存内容切换文档后被
+   * 旧内容静默覆盖。返回 false 表示用户选择留在当前文档处理。
+   */
+  async function flushSaveOrConfirm(): Promise<boolean> {
+    await flushSave();
+    if (saveState !== "error") return true;
+    return window.confirm(
+      "当前文档保存失败，此时切换将丢失未保存的修改。确定放弃这些修改吗？（取消可留在本文档重试保存）",
+    );
   }
 
   function applyDoc(detail: PromptDocDetail): void {

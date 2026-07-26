@@ -18,6 +18,7 @@
     listAutomationRules,
     listGroups,
     previewAutomationRule,
+    previewAutomationRuleDraft,
     reorderAutomationRules,
     runAutomationRuleOnLibrary,
     setAutomationRuleEnabled,
@@ -37,6 +38,7 @@
     notifyMainStateChanged,
     setNotice,
   } from "../../stores/app-state.svelte";
+  import { registerCloseGuard } from "../../stores/close-guard";
   import { clearHistory } from "../../stores/history.svelte";
   import Thumbnail from "../../ui/Thumbnail.svelte";
   import { focusMainWindow, type ToolboxRowRequest } from "../../windows/toolbox";
@@ -79,10 +81,22 @@
 
   onMount(() => {
     void initialize();
+    // 规则草稿有未保存修改时，拦截关窗
+    return registerCloseGuard(() =>
+      dirty ? `自动规则「${draft.name.trim() || "未命名规则"}」有未保存的修改` : null,
+    );
   });
 
   function plainClone<T>(value: T): T {
     return JSON.parse(JSON.stringify(value)) as T;
+  }
+
+  /** 设置错误并把顶部错误横幅滚进视野——长表单里报错点可能在屏幕外。 */
+  function showError(message: string): void {
+    error = message;
+    requestAnimationFrame(() => {
+      document.querySelector(".error-banner")?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    });
   }
 
   async function initialize(): Promise<void> {
@@ -151,7 +165,7 @@
       loadRule(current);
       setNotice({ tone: "success", text: `规则「${current.name}」已保存。` });
     } catch (cause) {
-      error = errorText(cause);
+      showError(errorText(cause));
     } finally {
       saving = false;
     }
@@ -224,7 +238,7 @@
   function removeCondition(groupIndex: number, conditionIndex: number): void {
     const conditions = draft.conditions.groups[groupIndex].conditions;
     if (conditions.length === 1) {
-      error = "每个条件组至少需要一个条件；如不需要整组，请删除条件组。";
+      showError("每个条件组至少需要一个条件；如不需要整组，请删除条件组。");
       return;
     }
     conditions.splice(conditionIndex, 1);
@@ -241,7 +255,14 @@
 
   function removeGroup(index: number): void {
     if (draft.conditions.groups.length === 1) {
-      error = "规则至少需要一个条件组。";
+      showError("规则至少需要一个条件组。");
+      return;
+    }
+    const group = draft.conditions.groups[index];
+    if (
+      group.conditions.length > 1 &&
+      !window.confirm(`条件组 ${index + 1} 里有 ${group.conditions.length} 个条件，删除整组会一并移除，确定吗？`)
+    ) {
       return;
     }
     draft.conditions.groups.splice(index, 1);
@@ -277,7 +298,7 @@
 
   function removeAction(index: number): void {
     if (draft.actions.length === 1) {
-      error = "规则至少需要一个执行任务。";
+      showError("规则至少需要一个执行任务。");
       return;
     }
     draft.actions.splice(index, 1);
@@ -292,12 +313,15 @@
   }
 
   async function testRule(): Promise<void> {
-    if (selectedId === null || dirty || testing) return;
+    if (testing) return;
     testing = true;
     error = null;
     execution = null;
     try {
-      preview = await previewAutomationRule(selectedId);
+      // 草稿（未保存/有未保存修改）直接走只读草稿预览，不再强迫先保存
+      preview = selectedId !== null && !dirty
+        ? await previewAutomationRule(selectedId)
+        : await previewAutomationRuleDraft(plainClone(draft));
       sampleRows = preview.sampleRowIds.length > 0
         ? await getRowsByIds(preview.sampleRowIds)
         : [];
@@ -311,7 +335,7 @@
   async function runOnLibrary(): Promise<void> {
     if (selectedId === null || dirty || !preview || running || preview.rowsNeedingChanges === 0) return;
     if (!window.confirm(
-      `规则将处理现有资料库中 ${formatCount(preview.matchedRows)} 张命中图片。本操作不进入撤销记录，若产生修改会清空当前撤销/重做记录。确定执行吗？`,
+      `规则将修改现有资料库中 ${formatCount(preview.rowsNeedingChanges)} 张图片（命中 ${formatCount(preview.matchedRows)} 张）。本操作不进入撤销记录，若产生修改会清空当前撤销/重做记录。确定执行吗？`,
     )) return;
     running = true;
     error = null;
@@ -323,9 +347,12 @@
       sampleRows = preview.sampleRowIds.length > 0
         ? await getRowsByIds(preview.sampleRowIds)
         : [];
+      const failed = Boolean(execution.engineError) || execution.reports.some(report => report.error);
       setNotice({
-        tone: execution.engineError || execution.reports.some(report => report.error) ? "error" : "success",
-        text: `规则执行完成：修改 ${formatCount(execution.changedRows)} 张图片。`,
+        tone: failed ? "error" : "success",
+        text: failed
+          ? `规则执行完成，但存在失败项：已修改 ${formatCount(execution.changedRows)} 张图片，详情见执行结果。`
+          : `规则执行完成：修改 ${formatCount(execution.changedRows)} 张图片。`,
       });
     } catch (cause) {
       error = errorText(cause);
@@ -444,15 +471,13 @@
         </section>
 
         <section class="editor-section test-section">
-          <div class="section-title"><span>4</span><div><h3>测试与应用</h3><p>测试只读取资料库；应用现有图片前会再次确认。</p></div></div>
-          {#if selectedId === null}
-            <p class="test-hint">先保存规则，才能在现有资料库中测试。</p>
-          {:else if dirty}
-            <p class="test-hint">当前内容有未保存修改，请先保存再测试，确保预览与实际执行一致。</p>
+          <div class="section-title"><span>4</span><div><h3>测试与应用</h3><p>测试只读取资料库，未保存的草稿也能直接测试；应用现有图片前会再次确认。</p></div></div>
+          {#if selectedId === null || dirty}
+            <p class="test-hint">当前是{selectedId === null ? "未保存的新规则" : "有未保存修改的规则"}：可以直接测试查看命中效果；“应用到现有图片”与导入时自动执行需要先保存。</p>
           {/if}
           <div class="test-actions">
-            <button type="button" class="btn" disabled={selectedId === null || dirty || testing || running} onclick={() => void testRule()}><FlaskConical size={15} />{testing ? "测试中…" : "测试现有资料库"}</button>
-            <button type="button" class="btn btn-primary" disabled={!preview || dirty || running || preview.rowsNeedingChanges === 0} onclick={() => void runOnLibrary()}><Zap size={15} />{running ? "执行中…" : "应用到现有图片"}</button>
+            <button type="button" class="btn" disabled={testing || running} onclick={() => void testRule()}><FlaskConical size={15} />{testing ? "测试中…" : "测试现有资料库"}</button>
+            <button type="button" class="btn btn-primary" disabled={!preview || selectedId === null || dirty || running || preview.rowsNeedingChanges === 0} onclick={() => void runOnLibrary()}><Zap size={15} />{running ? "执行中…" : "应用到现有图片"}</button>
           </div>
 
           {#if preview}

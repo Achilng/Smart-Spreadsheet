@@ -4,6 +4,7 @@
 
   import { app, errorText } from "../../stores/app-state.svelte";
   import { cleanEmptyGroups, groupStore, loadGroups, removeGroup, renameExistingGroup } from "../../stores/group-store.svelte";
+  import { requestGroupDelete } from "../../stores/group-delete-confirm.svelte";
   import { resetRows } from "../../stores/row-store.svelte";
   import Modal from "../../ui/Modal.svelte";
   import { softFade } from "../../ui/motion";
@@ -12,6 +13,7 @@
   let editName = $state("");
   let busy = $state(false);
   let error = $state<string | null>(null);
+  let cleanResult = $state<string | null>(null);
 
   $effect(() => {
     void loadGroups();
@@ -28,10 +30,19 @@
 
   async function saveRename(): Promise<void> {
     if (editingId === null || busy) return;
+    if (editName.trim() === "") {
+      error = "分组名不能为空";
+      return;
+    }
     busy = true;
     error = null;
     try {
-      await renameExistingGroup(editingId, editName);
+      const ok = await renameExistingGroup(editingId, editName);
+      if (!ok) {
+        // store 层吞掉异常并把信息放进 groupStore.error，这里必须转出来展示
+        error = groupStore.error ?? "重命名失败";
+        return;
+      }
       editingId = null;
       resetRows();
     } catch (e) {
@@ -41,26 +52,33 @@
     }
   }
 
-  async function doDelete(groupId: number): Promise<void> {
-    if (busy) return;
-    busy = true;
-    error = null;
-    try {
-      await removeGroup(groupId);
+  function askDelete(groupId: number): void {
+    const group = groupStore.list.find(g => g.id === groupId);
+    if (!group) return;
+    requestGroupDelete(group, async () => {
+      error = null;
+      const ok = await removeGroup(groupId);
+      if (!ok) {
+        error = groupStore.error ?? "删除分组失败";
+        return;
+      }
       resetRows();
-    } catch (e) {
-      error = errorText(e);
-    } finally {
-      busy = false;
-    }
+    });
   }
 
   async function doCleanEmpty(): Promise<void> {
     if (busy) return;
     busy = true;
     error = null;
+    cleanResult = null;
     try {
+      const emptyCount = groupStore.list.filter(g => g.memberCount === 0).length;
       const count = await cleanEmptyGroups();
+      if (count === 0 && groupStore.error) {
+        error = groupStore.error;
+        return;
+      }
+      cleanResult = count > 0 ? `已清理 ${count} 个空分组` : emptyCount === 0 ? "没有空分组需要清理" : "没有分组被清理";
       if (count > 0) resetRows();
     } catch (e) {
       error = errorText(e);
@@ -82,6 +100,9 @@
 
     {#if error}
       <p class="error" transition:softFade={{ duration: 140 }}>{error}</p>
+    {/if}
+    {#if cleanResult}
+      <p class="clean-result" transition:softFade={{ duration: 140 }}>{cleanResult}</p>
     {/if}
 
     <div class="list">
@@ -109,7 +130,7 @@
             <span class="group-name">{group.name}</span>
             <span class="group-count">{group.memberCount} 行</span>
             <button type="button" class="btn btn-sm" onclick={() => startRename(group.id, group.name)}>重命名</button>
-            <button type="button" class="btn btn-sm btn-danger" disabled={busy} onclick={() => void doDelete(group.id)}>删除</button>
+            <button type="button" class="btn btn-sm btn-danger" disabled={busy} onclick={() => askDelete(group.id)}>删除</button>
           {/if}
         </div>
       {:else}
@@ -158,6 +179,12 @@
     padding: 8px 18px;
     font-size: var(--font-md);
     color: var(--danger);
+  }
+
+  .clean-result {
+    padding: 8px 18px;
+    font-size: var(--font-md);
+    color: var(--text-2);
   }
 
   .list {

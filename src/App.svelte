@@ -10,6 +10,7 @@
     setNotice,
     type MainStateChange,
   } from "./lib/stores/app-state.svelte";
+  import { installCloseGuards, registerCloseGuard } from "./lib/stores/close-guard";
   import { clearHistory } from "./lib/stores/history.svelte";
   import ImportScreen from "./lib/views/shell/ImportScreen.svelte";
   import Notice from "./lib/ui/Notice.svelte";
@@ -21,6 +22,22 @@
   onMount(() => {
     let disposed = false;
     let unlisten: (() => void) | null = null;
+    let uninstallGuards: (() => void) | null = null;
+
+    // 长任务进行中关窗会拦截确认，避免导入/导出被拦腰截断
+    const unregisterGuard = registerCloseGuard(() => {
+      if (app.importProgress) return "图片导入尚未完成，关闭会中断导入";
+      if (app.exportProgress) return "导出任务尚未完成";
+      if (app.hashProgress) return "内容哈希补算尚未完成";
+      if (app.phashProgress) return "感知哈希刷新尚未完成";
+      if (app.busy) return "还有后台任务正在进行";
+      return null;
+    });
+    void installCloseGuards().then(fn => {
+      if (disposed) fn();
+      else uninstallGuards = fn;
+    });
+
     void listen<MainStateChange>("toolbox://app-state-changed", event => {
       if (event.payload === "libraryEdited") {
         clearHistory();
@@ -43,6 +60,8 @@
     return () => {
       disposed = true;
       unlisten?.();
+      unregisterGuard();
+      uninstallGuards?.();
     };
   });
 

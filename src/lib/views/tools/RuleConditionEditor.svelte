@@ -49,24 +49,58 @@
   function splitValues(value: string): string[] {
     return [...new Set(value.split(/[,，\n\r]/).map(item => item.trim()).filter(Boolean))];
   }
+
+  /** 当前条件是否已填了会因切换类型而丢失的内容 */
+  function conditionHasContent(value: RuleCondition): boolean {
+    switch (value.type) {
+      case "prompt": return value.value.trim() !== "";
+      case "tag": return value.tags.length > 0;
+      case "group": return value.groupId !== null;
+      case "artist": return value.artists.length > 0;
+      case "note": return value.operator === "contains" && value.value.trim() !== "";
+      case "fileText": return value.value.trim() !== "";
+      case "generationText": return value.value.trim() !== "";
+      default: return false;
+    }
+  }
+
+  function onTypeChange(event: Event): void {
+    const select = event.currentTarget as HTMLSelectElement;
+    const nextType = select.value as RuleCondition["type"];
+    if (nextType === condition.type) return;
+    if (
+      conditionHasContent(condition) &&
+      !window.confirm("切换检查内容会清空这个条件里已填写的值，确定切换吗？")
+    ) {
+      // 用户取消：把 select 显示值拨回原类型
+      select.value = condition.type;
+      return;
+    }
+    onreplace(defaultRuleCondition(nextType));
+  }
+
+  function onRemoveClick(): void {
+    if (
+      conditionHasContent(condition) &&
+      !window.confirm("这个条件已填写内容，确定删除吗？")
+    ) {
+      return;
+    }
+    onremove();
+  }
 </script>
 
 <article class="condition-card">
   <div class="condition-head">
     <label>
       <span>检查内容</span>
-      <select
-        value={condition.type}
-        onchange={event => onreplace(defaultRuleCondition(
-          (event.currentTarget as HTMLSelectElement).value as RuleCondition["type"],
-        ))}
-      >
+      <select value={condition.type} onchange={onTypeChange}>
         {#each conditionTypes as item}
           <option value={item.value}>{item.label}</option>
         {/each}
       </select>
     </label>
-    <button type="button" class="icon-btn" title="删除条件" aria-label="删除条件" onclick={onremove}>
+    <button type="button" class="icon-btn" title="删除条件" aria-label="删除条件" onclick={onRemoveClick}>
       <X size={16} />
     </button>
   </div>

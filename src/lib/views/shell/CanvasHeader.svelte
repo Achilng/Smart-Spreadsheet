@@ -194,6 +194,14 @@
     padding: 22px 26px 0;
     position: relative;
     z-index: var(--z-dropdown);
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+
+  @media (max-width: 1080px) {
+    .canvas-head {
+      padding: 16px 18px 0;
+    }
   }
 
   .c-title {
@@ -218,6 +226,8 @@
     align-items: center;
     gap: 10px;
     align-self: center;
+    flex-wrap: wrap;
+    min-width: 0;
   }
 
   .txt-group {
@@ -277,6 +287,12 @@
     align-items: center;
     position: relative;
     z-index: 1;
+  }
+
+  @media (max-width: 1080px) {
+    .chips {
+      padding: 10px 18px 0;
+    }
   }
 
   .chip-f {

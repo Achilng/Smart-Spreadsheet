@@ -24,16 +24,21 @@
     searchInput = value;
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
-      setSearch(value);
-      clearSelection();
+      // 只有搜索词真正变化才清选区；打字后又退格回原词不应破坏已有选择。
+      if (rowStore.search !== value) {
+        setSearch(value);
+        clearSelection();
+      }
     }, 300);
   }
 
   function clearSearch(): void {
     searchInput = "";
     clearTimeout(debounceTimer);
-    setSearch("");
-    clearSelection();
+    if (rowStore.search !== "") {
+      setSearch("");
+      clearSelection();
+    }
   }
 
   // 搜索词的权威 state 在 rowStore；外部（筛选 chip 删除等）改动时回流输入框
@@ -124,12 +129,13 @@
   .topbar {
     display: flex;
     align-items: center;
-    gap: 16px;
+    gap: 12px;
     height: 52px;
     padding: 0 0 0 20px;
     background: var(--surface);
     border-bottom: 1px solid var(--border);
     flex: none;
+    min-width: 0;
   }
 
   .brand {
@@ -152,15 +158,28 @@
     font-variant-numeric: tabular-nums;
   }
 
+  /* 窄窗口：先隐藏品牌小字，给控件让位 */
+  @media (max-width: 1180px) {
+    .brand small {
+      display: none;
+    }
+  }
+
+  @media (max-width: 1040px) {
+    .topbar {
+      gap: 8px;
+    }
+  }
+
   .title-spacer {
     flex: 1;
-    min-width: 40px;
+    min-width: 16px;
   }
 
   .search-box {
     position: relative;
-    flex: none;
-    width: 260px;
+    flex: 0 1 260px;
+    min-width: 120px;
   }
 
   .search-box input {
@@ -224,5 +243,17 @@
     gap: 4px;
     flex: none;
     margin-right: 4px;
+  }
+
+  /* 超窄窗口：按钮收紧内距 */
+  @media (max-width: 1000px) {
+    .actions :global(.btn) {
+      padding-left: 10px;
+      padding-right: 10px;
+    }
+
+    .search-box {
+      flex-basis: 180px;
+    }
   }
 </style>

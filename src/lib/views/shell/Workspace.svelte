@@ -38,6 +38,7 @@
   import DuplicateBrowseView from "../duplicates/DuplicateBrowseView.svelte";
   import GalleryView from "../gallery/GalleryView.svelte";
   import GroupBrowseView from "../groups/GroupBrowseView.svelte";
+  import GroupDeleteConfirmDialog from "../groups/GroupDeleteConfirmDialog.svelte";
   import GroupManageView from "../groups/GroupManageView.svelte";
   import PromptDocsView from "../prompt-docs/PromptDocsView.svelte";
   import SectionContextMenu from "./SectionContextMenu.svelte";
@@ -299,6 +300,7 @@
 </div>
 
 <GroupManageView />
+<GroupDeleteConfirmDialog />
 
 <ContextMenu />
 <SectionContextMenu />
@@ -422,6 +424,27 @@
     display: flex;
     flex-direction: column;
     min-height: 0;
+  }
+
+  /* 窄窗口：侧栏与详情面板分档收窄，保住画布最小可用宽度 */
+  @media (max-width: 1240px) {
+    .sidebar {
+      width: 210px;
+    }
+
+    .detail {
+      width: 300px;
+    }
+  }
+
+  @media (max-width: 1080px) {
+    .sidebar {
+      width: 190px;
+    }
+
+    .detail {
+      width: 270px;
+    }
   }
 
   .detail-strip {

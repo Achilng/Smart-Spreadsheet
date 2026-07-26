@@ -73,17 +73,36 @@
     let value = $state("");
     let saving = $state(false);
     let error = $state<string | null>(null);
+    let restored = $state(false);
+    let initialValue = "";
+    let editingRowId: number | null = null;
+    /** 切行时未保存的编辑按行暂存，回到该行再点“编辑”可继续 */
+    const drafts = new Map<number, string>();
 
     function start(): void {
       if (!row) return;
-      value = getField() ?? "";
+      const base = getField() ?? "";
+      const draft = drafts.get(row.id);
+      value = draft ?? base;
+      initialValue = base;
+      restored = draft !== undefined && draft !== base;
+      editingRowId = row.id;
       editing = true;
       error = null;
     }
 
+    function isDirty(): boolean {
+      return editing && value !== initialValue;
+    }
+
     function cancel(): void {
+      if (isDirty() && !window.confirm(`放弃「${label.replace("编辑", "")}」未保存的修改吗？`)) {
+        return;
+      }
+      if (editingRowId !== null) drafts.delete(editingRowId);
       editing = false;
       error = null;
+      restored = false;
     }
 
     async function save(): Promise<void> {
@@ -94,7 +113,9 @@
       const before = mutableRowState(current);
       try {
         const result = await saveFn(current.id, value);
+        drafts.delete(current.id);
         editing = false;
+        restored = false;
         patchField(current.id, value, result);
         await recordOrWarn(label, [before]);
       } catch (e) {
@@ -104,9 +125,14 @@
       }
     }
 
+    /** 切换行时调用：不丢内容，未保存的编辑暂存为原行草稿。 */
     function reset(): void {
+      if (isDirty() && editingRowId !== null) {
+        drafts.set(editingRowId, value);
+      }
       editing = false;
       error = null;
+      restored = false;
     }
 
     return {
@@ -115,6 +141,7 @@
       set value(v: string) { value = v; },
       get saving() { return saving; },
       get error() { return error; },
+      get restored() { return restored; },
       start,
       cancel,
       save,
@@ -451,10 +478,17 @@
             bind:value={noteEditor.value}
             disabled={noteEditor.saving}
             onkeydown={event => {
-              if (event.key === "Escape") noteEditor.cancel();
+              if (event.key === "Escape") {
+                event.preventDefault();
+                event.stopPropagation();
+                noteEditor.cancel();
+              }
             }}
             transition:softFade={{ duration: 130 }}
           ></textarea>
+          {#if noteEditor.restored}
+            <p class="draft-hint">已恢复此前未保存的草稿；「取消」可放弃。</p>
+          {/if}
           <div class="prompt-edit-actions">
             <button type="button" class="btn btn-sm" disabled={noteEditor.saving} onclick={noteEditor.cancel}>取消</button>
             <button type="button" class="btn btn-sm btn-primary" disabled={noteEditor.saving} onclick={() => void noteEditor.save()}>
@@ -564,10 +598,17 @@
               bind:value={prompt.editor.value}
               disabled={prompt.editor.saving}
               onkeydown={event => {
-                if (event.key === "Escape") prompt.editor.cancel();
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  prompt.editor.cancel();
+                }
               }}
               transition:softFade={{ duration: 130 }}
             ></textarea>
+            {#if prompt.editor.restored}
+              <p class="draft-hint">已恢复此前未保存的草稿；「取消」可放弃。</p>
+            {/if}
             <div class="prompt-edit-actions">
               <button type="button" class="btn btn-sm" disabled={prompt.editor.saving} onclick={prompt.editor.cancel}>取消</button>
               <button type="button" class="btn btn-sm btn-primary" disabled={prompt.editor.saving} onclick={() => void prompt.editor.save()}>
@@ -833,6 +874,12 @@
     margin-top: 6px;
     font-size: var(--font-sm);
     color: var(--danger);
+  }
+
+  .draft-hint {
+    margin-top: 4px;
+    font-size: var(--font-xs);
+    color: var(--accent);
   }
 
   .group-info {
