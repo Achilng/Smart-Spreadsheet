@@ -88,6 +88,8 @@ export interface RowRecord {
   imageFolder: string | null;
   imagePath: string | null;
   storedImagePath: string | null;
+  imageWidth: number | null;
+  imageHeight: number | null;
   metadataFailed: boolean;
   vibeReferenceCount: number | null;
   tags: string[];

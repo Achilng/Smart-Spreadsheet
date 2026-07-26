@@ -70,32 +70,10 @@
     display: flex;
     flex-direction: column;
     width: 120px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-s);
-    background: var(--surface);
-    overflow: hidden;
+    border: none;
+    background: transparent;
     cursor: pointer;
     padding: 0;
-    transition:
-      border-color var(--motion-fast) var(--ease-responsive),
-      box-shadow var(--motion-fast) var(--ease-responsive),
-      transform var(--motion-fast) var(--ease-responsive);
-  }
-
-  .section-card:hover {
-    border-color: var(--border-strong);
-    box-shadow: var(--shadow-hover);
-    transform: translateY(-2px);
-  }
-
-  .section-card:active {
-    transform: translateY(-1px) scale(0.985);
-    transition-duration: var(--motion-press);
-  }
-
-  .section-card.is-active {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 2px var(--accent-soft-border);
   }
 
   .thumb {
@@ -105,8 +83,28 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: var(--surface-2);
+    background: var(--surface);
+    border-radius: var(--radius-m);
+    box-shadow: var(--shadow-1);
     overflow: hidden;
+    transition:
+      transform var(--motion-fast) var(--ease-responsive),
+      box-shadow var(--motion-fast) var(--ease-responsive);
+  }
+
+  .section-card:hover .thumb {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-hover);
+  }
+
+  .section-card:active .thumb {
+    transform: translateY(-1px) scale(0.985);
+    transition-duration: var(--motion-press);
+  }
+
+  .section-card.is-active .thumb {
+    outline: 2.5px solid var(--accent);
+    outline-offset: 2px;
   }
 
   .vibe-badge {
@@ -118,9 +116,10 @@
 
   .card-label {
     display: block;
-    padding: 4px 6px;
+    padding: 6px 3px 0;
     font-size: var(--font-xs);
-    color: var(--text-2);
+    font-weight: 600;
+    color: var(--text);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;

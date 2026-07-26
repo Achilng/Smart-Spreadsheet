@@ -32,8 +32,12 @@
   const isChecked = $derived(row != null && isRowSelected(row.id));
   const selectionActive = $derived(getSelectedCount() > 0);
 
-  const visibleTags = $derived(row?.tags.slice(0, 3) ?? []);
-  const extraTagCount = $derived(Math.max(0, (row?.tags.length ?? 0) - 3));
+  const fileName = $derived(
+    (row?.imagePath ?? row?.storedImagePath)?.split(/[\\/]/).pop() ?? null,
+  );
+  const resolution = $derived(
+    row?.imageWidth && row?.imageHeight ? `${row.imageWidth} × ${row.imageHeight}` : null,
+  );
 
   let dragging = $state(false);
   let vibeRefs = $state<number | null>(null);
@@ -121,23 +125,13 @@
         >VIBE ×{vibeRefs}</span>
       {/if}
     </button>
-    <div class="footer">
-      <span class="row-no faint">#{row.sourceOrdinal}</span>
-      <span class="tags" title={row.tags.join(", ")}>
-        {#each visibleTags as tag (tag)}
-          <span class="chip">{tag}</span>
-        {/each}
-        {#if extraTagCount > 0}
-          <span class="chip chip-more">+{extraTagCount}</span>
-        {/if}
-        {#if row.tags.length === 0}
-          <span class="faint">—</span>
-        {/if}
-      </span>
+    <div class="meta">
+      <div class="meta-name" title={fileName ?? ""}>{fileName ?? `#${row.sourceOrdinal}`}</div>
+      <div class="meta-sub tabular">{resolution ?? `#${row.sourceOrdinal}`}</div>
     </div>
   {:else}
     <div class="thumb shimmer" style:height="{imageHeight}px"></div>
-    <div class="footer">
+    <div class="meta">
       <span class="skeleton-line shimmer"></span>
     </div>
   {/if}
@@ -148,37 +142,44 @@
     position: absolute;
     display: flex;
     flex-direction: column;
+  }
+
+  /* 画册式：图片框单独承担圆角/阴影/抬升，图注裸排框下 */
+  .thumb {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    border: none;
+    padding: 0;
     background: var(--surface);
     border-radius: var(--radius-m);
-    overflow: hidden;
     box-shadow: var(--shadow-1);
+    overflow: hidden;
     transition:
-      background var(--motion-fast) var(--ease-responsive),
-      box-shadow var(--motion-fast) var(--ease-responsive),
-      transform var(--motion-fast) var(--ease-responsive);
+      transform var(--motion-fast) var(--ease-responsive),
+      box-shadow var(--motion-fast) var(--ease-responsive);
   }
 
-  .card:hover:not(.is-skeleton) {
+  .card:hover:not(.is-skeleton) .thumb {
+    transform: translateY(-2px);
     box-shadow: var(--shadow-hover);
-    transform: translateY(-1px);
   }
 
-  .card:active:not(.is-skeleton) {
-    transform: translateY(-1px) scale(0.99);
+  .card:active:not(.is-skeleton) .thumb {
+    transform: translateY(-2px) scale(0.99);
     transition-duration: var(--motion-press);
   }
 
-  .card.is-active {
-    box-shadow: 0 0 0 2px var(--accent), var(--shadow-hover);
+  .card.is-active .thumb {
+    outline: 2.5px solid var(--accent);
+    outline-offset: 2px;
   }
 
-  .card.is-checked {
-    background: var(--accent-soft);
-    box-shadow: 0 0 0 1px var(--accent-soft-border), var(--shadow-1);
-  }
-
-  .card.is-active.is-checked {
-    box-shadow: 0 0 0 2px var(--accent), var(--shadow-hover);
+  .card.is-checked:not(.is-active) .thumb {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
   }
 
   .select-box {
@@ -197,23 +198,17 @@
       transform var(--motion-fast) var(--ease-responsive);
   }
 
+  /* 卡片选中框走系统蓝（覆盖全局墨黑勾选底） */
+  .select-box:checked {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+
   .card:hover .select-box,
   .card.is-checked .select-box,
   .card.selection-active .select-box {
     opacity: 1;
     transform: scale(1);
-  }
-
-  .thumb {
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 100%;
-    border: none;
-    padding: 0;
-    background: var(--surface-2);
-    overflow: hidden;
   }
 
   .vibe-badge {
@@ -223,28 +218,27 @@
     z-index: 1;
   }
 
-  .footer {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 8px;
-    min-height: 34px;
+  .meta {
+    padding: 8px 3px 0;
+    min-width: 0;
   }
 
-  .row-no {
-    font-size: var(--font-xs);
-    flex: none;
-  }
-
-  .tags {
-    display: flex;
-    align-items: center;
-    gap: 4px;
+  .meta-name {
+    font-size: var(--font-sm);
+    font-weight: 600;
+    white-space: nowrap;
     overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .meta-sub {
+    margin-top: 1px;
     font-size: var(--font-xs);
+    color: var(--text-3);
   }
 
   .skeleton-line {
+    display: inline-block;
     height: 10px;
     width: 60%;
     border-radius: var(--radius-s);

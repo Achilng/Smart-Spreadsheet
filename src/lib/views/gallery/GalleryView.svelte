@@ -16,7 +16,7 @@
 
   const GAP = 12;
   const PADDING = 16;
-  const FOOTER_HEIGHT = 34;
+  const FOOTER_HEIGHT = 42;
   const OVERSCAN_ROWS = 2;
   const PROGRESSIVE_DELAY_MS = 400;
 

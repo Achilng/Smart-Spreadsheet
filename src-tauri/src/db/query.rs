@@ -82,6 +82,8 @@ pub struct RowRecord {
     pub image_folder: Option<String>,
     pub image_path: Option<String>,
     pub stored_image_path: Option<String>,
+    pub image_width: Option<i64>,
+    pub image_height: Option<i64>,
     pub metadata_failed: bool,
     pub vibe_reference_count: Option<u32>,
     pub group_id: Option<i64>,
@@ -758,6 +760,7 @@ fn query_page_metadata(connection: &Connection) -> Result<Vec<RowRecord>, Databa
         "SELECT rows.id, rows.batch_id, rows.source_ordinal, rows.time,
                 rows.positive_prompt, rows.character_prompt, rows.negative_prompt, rows.note,
                 rows.artists, rows.image_folder, rows.image_path, rows.stored_image_path,
+                rows.image_width, rows.image_height,
                 rows.metadata_failed, rows.vibe_reference_count, rows.group_id, groups.name
          FROM {PAGE_ROWS_TABLE} AS page
          JOIN rows ON rows.id = page.id
@@ -779,10 +782,12 @@ fn query_page_metadata(connection: &Connection) -> Result<Vec<RowRecord>, Databa
                 image_folder: row.get(9)?,
                 image_path: row.get(10)?,
                 stored_image_path: row.get(11)?,
-                metadata_failed: row.get(12)?,
-                vibe_reference_count: row.get(13)?,
-                group_id: row.get(14)?,
-                group_name: row.get(15)?,
+                image_width: row.get(12)?,
+                image_height: row.get(13)?,
+                metadata_failed: row.get(14)?,
+                vibe_reference_count: row.get(15)?,
+                group_id: row.get(16)?,
+                group_name: row.get(17)?,
                 tags: Vec::new(),
             })
         })?
