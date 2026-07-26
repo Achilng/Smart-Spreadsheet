@@ -51,6 +51,15 @@
   fullBleed 单头；九个大页面逐页收编全局类，清零硬编码警示色（琥珀/绿系换
   --warning/--success token）、文本字符图标换 Lucide、三份 spinner keyframes
   与四份指标宫格实现合一；维护页补上感知哈希进度条渲染。
+- 完成一轮"轻盈优雅"动效补全（6 个 commit）：修复被 scoped display 覆盖而失效的
+  工具箱面板切换动画（改为 display 重放的一次性进场 keyframe，220ms 淡入+7px 位移）；
+  主窗四视图与提示词文档切换加 180ms 进场；缩略图异步加载淡入（缓存命中同步路径
+  不淡入防闪）、高清层 visibility 硬切换为 opacity 交叉淡入；ViewSwitcher 增加
+  白色胶囊滑动指示器（ResizeObserver 跟随计数变化与窄窗口媒体查询）；筛选 chips
+  进出场、右键菜单 transform-origin 跟随翻转方向、toast 栈 flip 让位；新增
+  flipDuration() 统一让 animate:flip 尊重 prefers-reduced-motion（替换 3 处裸
+  flip）；2 处硬编码时长 token 化；详情面板开合从瞬时挤压改为 panelSlide 宽度
+  滑入（内衬层防内容挤压，宽度 tier 提为 --detail-width 变量）。
 - 详情面板"生成信息"kv 表已上线（模型/采样器/步数 CFG/种子，Rust 暴露五字段）。
 - 工具箱快速整理的画师前缀操作已支持跨逗号的 NovelAI 数值权重区段；例如输入
   `rourow` 可将 `1::artist:huangdanlan, rourow::,` 正确改为
