@@ -57,6 +57,8 @@ pub enum TagMutationError {
     EmptyTagName,
     #[error("Tag 不存在: {0:?}")]
     UnknownTags(Vec<String>),
+    #[error("已存在同名 Tag「{0}」")]
+    DuplicateTagName(String),
 }
 
 impl From<rusqlite::Error> for TagMutationError {
@@ -88,6 +90,39 @@ impl Database {
             .connection
             .execute("INSERT OR IGNORE INTO tags(name) VALUES (?1)", [name])?
             > 0)
+    }
+
+    /// 重命名 Tag：只更新 tags.name，row_tags 经 tag_id 自动跟随，
+    /// 不触发 touch_row 触发器（改名不应扰乱"最近更新"排序）。
+    /// 新名已被其它 Tag 占用时报错；旧名不存在时返回 false。
+    pub fn rename_tag(&mut self, old_name: &str, new_name: &str) -> Result<bool, TagMutationError> {
+        let old_name = old_name.trim();
+        let new_name = new_name.trim();
+        if old_name.is_empty() || new_name.is_empty() {
+            return Err(TagMutationError::EmptyTagName);
+        }
+        if old_name == new_name {
+            return Ok(false);
+        }
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let taken: Option<i64> = transaction
+            .query_row(
+                "SELECT id FROM tags WHERE name = ?1 COLLATE BINARY",
+                [new_name],
+                |row| row.get(0),
+            )
+            .optional()?;
+        if taken.is_some() {
+            return Err(TagMutationError::DuplicateTagName(new_name.to_owned()));
+        }
+        let updated = transaction.execute(
+            "UPDATE tags SET name = ?2 WHERE name = ?1 COLLATE BINARY",
+            params![old_name, new_name],
+        )?;
+        transaction.commit()?;
+        Ok(updated > 0)
     }
 
     pub fn add_tags_to_rows(
@@ -559,6 +594,67 @@ mod tests {
         assert!(!row_has_tag(&database, 1, "苹果"));
         assert!(row_has_tag(&database, 1, "香蕉"));
         assert_eq!(stored_tags(&database), vec!["苹果", "香蕉"]);
+    }
+
+    #[test]
+    fn renames_tag_and_keeps_associations() {
+        let mut database = database_with_rows(2);
+        database
+            .add_tags_to_rows(&[1, 2], &["old-name".into()])
+            .unwrap();
+
+        assert!(database.rename_tag(" old-name ", " new-name ").unwrap());
+        assert_eq!(stored_tags(&database), vec!["new-name"]);
+        assert!(row_has_tag(&database, 1, "new-name"));
+        assert!(row_has_tag(&database, 2, "new-name"));
+        assert!(!row_has_tag(&database, 1, "old-name"));
+        assert_eq!(stored_row_tags(&database), 2);
+    }
+
+    #[test]
+    fn rename_is_case_sensitive_and_allows_case_only_change() {
+        let mut database = database_with_rows(1);
+        database.create_tag("landscape").unwrap();
+
+        assert!(database.rename_tag("landscape", "Landscape").unwrap());
+        assert_eq!(stored_tags(&database), vec!["Landscape"]);
+    }
+
+    #[test]
+    fn rename_rejects_duplicate_target_name() {
+        let mut database = database_with_rows(1);
+        database.create_tag("a").unwrap();
+        database.create_tag("b").unwrap();
+
+        let error = database.rename_tag("a", "b").unwrap_err();
+        assert!(matches!(error, TagMutationError::DuplicateTagName(name) if name == "b"));
+        assert_eq!(stored_tags(&database), vec!["a", "b"]);
+    }
+
+    #[test]
+    fn rename_missing_tag_returns_false_and_same_name_is_noop() {
+        let mut database = database_with_rows(1);
+        database.create_tag("exists").unwrap();
+
+        assert!(!database.rename_tag("missing", "target").unwrap());
+        assert!(!database.rename_tag("exists", " exists ").unwrap());
+        assert_eq!(stored_tags(&database), vec!["exists"]);
+    }
+
+    #[test]
+    fn rename_does_not_touch_row_updated_at() {
+        let mut database = database_with_rows(1);
+        database.add_tags_to_rows(&[1], &["before".into()]).unwrap();
+        let stamp = |database: &Database| -> String {
+            database
+                .connection
+                .query_row("SELECT updated_at FROM rows WHERE id = 1", [], |row| row.get(0))
+                .unwrap()
+        };
+        let before = stamp(&database);
+
+        database.rename_tag("before", "after").unwrap();
+        assert_eq!(stamp(&database), before);
     }
 
     #[test]

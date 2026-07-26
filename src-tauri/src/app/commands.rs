@@ -723,6 +723,25 @@ pub(crate) fn delete_tag(name: String, runtime: State<'_, AppRuntime>) -> Result
 }
 
 #[tauri::command]
+pub(crate) fn rename_tag(
+    old_name: String,
+    new_name: String,
+    runtime: State<'_, AppRuntime>,
+) -> Result<bool, String> {
+    runtime.rename_tag(&old_name, &new_name).map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn get_recent_tags(runtime: State<'_, AppRuntime>) -> Result<String, String> {
+    runtime.get_recent_tags().map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn set_recent_tags(json: String, runtime: State<'_, AppRuntime>) -> Result<(), String> {
+    runtime.set_recent_tags(&json).map_err(error_text)
+}
+
+#[tauri::command]
 pub(crate) fn count_selected_rows(
     selection: RowSelection,
     runtime: State<'_, AppRuntime>,

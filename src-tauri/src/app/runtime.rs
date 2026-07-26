@@ -273,6 +273,10 @@ impl AppRuntime {
         self.with_database_mut(|db| db.delete_tag(name))
     }
 
+    pub(crate) fn rename_tag(&self, old_name: &str, new_name: &str) -> Result<bool, AppRuntimeError> {
+        self.with_database_mut(|db| db.rename_tag(old_name, new_name))
+    }
+
     pub(crate) fn create_tag(&self, name: &str) -> Result<bool, AppRuntimeError> {
         self.with_database_mut(|db| db.create_tag(name))
     }
@@ -685,6 +689,14 @@ impl AppRuntime {
 
     pub(crate) fn set_custom_artists(&self, text: &str) -> Result<(), AppRuntimeError> {
         self.with_database(|db| db.set_setting("custom-artists", text))
+    }
+
+    pub(crate) fn get_recent_tags(&self) -> Result<String, AppRuntimeError> {
+        self.with_database(|db| db.setting("recent-tags").map(Option::unwrap_or_default))
+    }
+
+    pub(crate) fn set_recent_tags(&self, json: &str) -> Result<(), AppRuntimeError> {
+        self.with_database(|db| db.set_setting("recent-tags", json))
     }
 
     pub(crate) fn list_prompt_docs(&self) -> Result<Vec<PromptDocSummary>, AppRuntimeError> {
