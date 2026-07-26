@@ -36,7 +36,8 @@
   type SidebarMode = "filter" | "tag";
   type CoverageState = "all" | "partial" | "none";
 
-  let sidebarMode = $state<SidebarMode>("filter");
+  // 侧栏模式提升到 app-state，供底部选择条"打 Tag"联动
+  const sidebarMode = $derived(app.sidebarMode);
   let newTagName = $state("");
   let tagging = $state(false);
   let coverageLoading = $state(false);
@@ -78,8 +79,8 @@
   });
 
   function setSidebarMode(mode: SidebarMode): void {
-    if (sidebarMode !== mode) {
-      sidebarMode = mode;
+    if (app.sidebarMode !== mode) {
+      app.sidebarMode = mode;
       status = null;
       newTagName = "";
     }
@@ -96,13 +97,6 @@
   function setMode(mode: TagMatchMode): void {
     if (mode !== rowStore.tagMode) {
       setFilter(activeTags, mode);
-      clearSelection();
-    }
-  }
-
-  function clearFilter(): void {
-    if (activeTags.length > 0) {
-      setFilter([], rowStore.tagMode);
       clearSelection();
     }
   }
@@ -270,11 +264,27 @@
       status = { text: `删除 Tag 失败：${errorText(error)}`, isError: true };
     }
   }
+  const switchCount = $derived(
+    Number(rowStore.dedupe !== "none") +
+      Number(rowStore.singleArtistOnly) +
+      Number(rowStore.hasVibe) +
+      Number(rowStore.hideGrouped),
+  );
+  const filterSummary = $derived(
+    activeTags.length === 0 && switchCount === 0
+      ? "未启用筛选"
+      : `${activeTags.length} 个 Tag · ${switchCount} 个开关生效`,
+  );
 </script>
 
 <div class="tag-sidebar">
   <header class="sidebar-header">
-    <h3>Tag 库</h3>
+    <div class="header-copy">
+      <h3>{sidebarMode === "filter" ? "筛选" : "打标"}</h3>
+      {#if sidebarMode === "filter"}
+        <p class="header-sub tabular">{filterSummary}</p>
+      {/if}
+    </div>
     <div class="mode-switch" role="group" aria-label="Tag 侧边栏模式">
       <button
         type="button"
@@ -296,75 +306,68 @@
   </header>
 
   {#if sidebarMode === "filter"}
-    <div class="filter-info" in:softFly={{ duration: 145, x: -4, y: 0 }}>
-      <span class="faint">{formatCount(rowStore.totalCount)} 条匹配</span>
-      <div class="filter-mode" role="group" aria-label="筛选模式">
-        <button
-          type="button"
-          class:is-active={rowStore.tagMode === "and"}
-          aria-pressed={rowStore.tagMode === "and"}
-          onclick={() => setMode("and")}
-        >
-          AND
-        </button>
-        <button
-          type="button"
-          class:is-active={rowStore.tagMode === "or"}
-          aria-pressed={rowStore.tagMode === "or"}
-          onclick={() => setMode("or")}
-        >
-          OR
-        </button>
-      </div>
-      {#if activeTags.length > 0}
-        <button type="button" class="link-btn" onclick={clearFilter}>清除</button>
-      {/if}
-    </div>
-
-    <div class="dedupe-options" role="group" aria-label="去重与筛选" in:softFly={{ duration: 145, x: -4, y: 0 }}>
-      <label>
+    <div class="f-group" role="group" aria-label="去重与筛选" in:softFly={{ duration: 145, x: -4, y: 0 }}>
+      <div class="f-head">显示</div>
+      <label class="check-row" class:on={rowStore.dedupe === "positivePrompt"} class:is-disabled={app.viewMode === "group"}>
         <input
           type="checkbox"
           checked={rowStore.dedupe === "positivePrompt"}
           disabled={app.viewMode === "group"}
           onchange={() => toggleDedupe("positivePrompt")}
         />
+        <span class="cbox" aria-hidden="true"></span>
         按正向提示词去重
       </label>
-      <label>
+      <label class="check-row" class:on={rowStore.dedupe === "artists"} class:is-disabled={app.viewMode === "group"}>
         <input
           type="checkbox"
           checked={rowStore.dedupe === "artists"}
           disabled={app.viewMode === "group"}
           onchange={() => toggleDedupe("artists")}
         />
+        <span class="cbox" aria-hidden="true"></span>
         按画师串去重
       </label>
-      <label>
+      <label class="check-row" class:on={rowStore.singleArtistOnly}>
         <input
           type="checkbox"
           checked={rowStore.singleArtistOnly}
           onchange={() => { setSingleArtistOnly(!rowStore.singleArtistOnly); clearSelection(); }}
         />
+        <span class="cbox" aria-hidden="true"></span>
         筛选单画师串图片
       </label>
-      <label>
+      <label class="check-row" class:on={rowStore.hasVibe}>
         <input
           type="checkbox"
           checked={rowStore.hasVibe}
           onchange={() => { setHasVibe(!rowStore.hasVibe); clearSelection(); }}
         />
+        <span class="cbox" aria-hidden="true"></span>
         筛选存在 VIBE 的图片
       </label>
-      <label>
+      <label class="check-row" class:on={rowStore.hideGrouped} class:is-disabled={app.viewMode === "group"}>
         <input
           type="checkbox"
           checked={rowStore.hideGrouped}
           disabled={app.viewMode === "group"}
           onchange={() => { setHideGrouped(!rowStore.hideGrouped); clearSelection(); }}
         />
+        <span class="cbox" aria-hidden="true"></span>
         隐藏已分组
       </label>
+    </div>
+
+    <div class="f-head tag-head" in:softFly={{ duration: 145, x: -4, y: 0 }}>
+      Tag
+      <button
+        type="button"
+        class="mode-link"
+        title="切换 Tag 筛选的组合方式"
+        onclick={() => setMode(rowStore.tagMode === "and" ? "or" : "and")}
+      >
+        {rowStore.tagMode === "and" ? "AND 模式 ⌄" : "OR 模式 ⌄"}
+      </button>
     </div>
   {:else}
     <div class="tagging-info" in:softFly={{ duration: 145, x: 4, y: 0 }}>
@@ -391,12 +394,11 @@
     {:else}
       {#each entries as entry (entry.name)}
         {@const state = tagCoverage(entry.name)}
+        {@const filterOn = sidebarMode === "filter" && activeTags.includes(entry.name)}
         <button
           type="button"
-          class="tag-row"
-          class:is-active={sidebarMode === "filter" && activeTags.includes(entry.name)}
-          class:is-all={sidebarMode === "tag" && state === "all"}
-          class:is-partial={sidebarMode === "tag" && state === "partial"}
+          class="tag-row check-row"
+          class:on={filterOn || (sidebarMode === "tag" && state === "all")}
           aria-pressed={
             sidebarMode === "filter" ? activeTags.includes(entry.name) : state === "all"
           }
@@ -407,6 +409,7 @@
               : void toggleAssignment(entry.name)}
           oncontextmenu={(e) => onTagContextMenu(e, entry.name)}
         >
+          <span class="cbox" class:is-partial={sidebarMode === "tag" && state === "partial"} aria-hidden="true"></span>
           <span class="tag-name" title={entry.name}>{entry.name}</span>
           {#if sidebarMode === "filter"}
             <span class="tag-count">{formatCount(entry.rowCount)}</span>
@@ -469,10 +472,14 @@
 
   .sidebar-header {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
-    padding: 10px 12px;
+    padding: 20px 16px 14px;
     flex: none;
+  }
+
+  .header-copy {
+    min-width: 0;
   }
 
   .sidebar-header h3 {
@@ -482,17 +489,22 @@
     color: var(--text);
   }
 
-  .mode-switch,
-  .filter-mode {
+  .header-sub {
+    margin-top: 3px;
+    font-size: var(--font-sm);
+    color: var(--text-3);
+  }
+
+  .mode-switch {
     display: flex;
     background: var(--surface-3);
     border-radius: var(--radius-full);
     padding: 3px;
     gap: 2px;
+    flex: none;
   }
 
-  .mode-switch button,
-  .filter-mode button {
+  .mode-switch button {
     border: none;
     background: transparent;
     border-radius: var(--radius-full);
@@ -506,68 +518,130 @@
       transform var(--motion-press) var(--ease-responsive);
   }
 
-  .mode-switch button:active,
-  .filter-mode button:active {
+  .mode-switch button:active {
     transform: scale(0.96);
   }
 
-  .mode-switch button.is-active,
-  .filter-mode button.is-active {
+  .mode-switch button.is-active {
     background: var(--surface);
     color: var(--text);
     font-weight: 600;
     box-shadow: 0 1px 4px rgb(0 0 0 / 10%);
   }
 
-  .filter-info {
+  /* ---- 小节头（显示 / Tag） ---- */
+  .f-head {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 0 12px 8px;
-    font-size: var(--font-sm);
+    justify-content: space-between;
+    padding: 0 4px;
+    font-size: var(--font-xs);
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 6px;
+  }
+
+  .f-group {
+    padding: 0 12px 14px;
     flex: none;
   }
 
-  .filter-info > span {
-    margin-right: auto;
+  .tag-head {
+    padding: 0 16px;
+    margin-bottom: 2px;
+    flex: none;
   }
 
-  .link-btn {
+  .mode-link {
     border: none;
     background: none;
+    font-size: 11px;
+    font-weight: 400;
     color: var(--accent);
-    font-size: var(--font-sm);
     padding: 0;
   }
 
-  .link-btn:hover {
+  .mode-link:hover {
     text-decoration: underline;
   }
 
-  .dedupe-options {
-    display: grid;
-    gap: 5px;
-    padding: 0 12px 10px;
-    font-size: var(--font-sm);
-    color: var(--text-2);
-    flex: none;
-  }
-
-  .dedupe-options label {
+  /* ---- check-row（显示开关 + Tag 行共用） ---- */
+  .check-row {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 9px;
+    min-height: 30px;
+    width: 100%;
+    border: none;
+    background: none;
+    border-radius: var(--radius-s);
+    padding: 0 4px;
+    font-size: var(--font-md);
+    color: var(--text-2);
+    text-align: left;
     cursor: pointer;
+    transition:
+      background var(--motion-fast) var(--ease-responsive),
+      color var(--motion-fast) var(--ease-responsive);
   }
 
-  .dedupe-options input {
-    margin: 0;
+  .check-row:hover:not(:disabled):not(.is-disabled) {
+    color: var(--text);
+  }
+
+  .check-row.on {
+    color: var(--text);
+    font-weight: 600;
+  }
+
+  .check-row.is-disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+
+  /* label 内的原生 checkbox 隐藏，语义保留，视觉走自绘 cbox */
+  .check-row input[type="checkbox"] {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .cbox {
+    width: 16px;
+    height: 16px;
+    border-radius: 5px;
+    flex: none;
+    border: 1.5px solid var(--border-strong);
+    background: var(--surface);
+    transition:
+      background var(--motion-fast) var(--ease-responsive),
+      border-color var(--motion-fast) var(--ease-responsive);
+  }
+
+  .check-row.on .cbox {
+    background-color: var(--primary);
+    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M4 8.5 6.8 11 12 5.5" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>');
+    background-position: center;
+    background-size: 12px;
+    background-repeat: no-repeat;
+    border-color: var(--primary);
+  }
+
+  .cbox.is-partial {
+    background-color: var(--primary);
+    background-image: linear-gradient(#ffffff, #ffffff);
+    background-position: center;
+    background-size: 8px 2px;
+    background-repeat: no-repeat;
+    border-color: var(--primary);
   }
 
   .tagging-info {
     display: grid;
     gap: 4px;
-    padding: 0 12px 10px;
+    padding: 0 16px 10px;
     color: var(--text-2);
     font-size: var(--font-sm);
     line-height: 1.45;
@@ -581,10 +655,10 @@
     flex: 1;
     min-height: 0;
     overflow-y: auto;
-    padding: 8px 8px 0;
+    padding: 0 12px 8px;
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 0;
   }
 
   .list-note {
@@ -592,40 +666,8 @@
     font-size: var(--font-sm);
   }
 
-  .tag-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    border: none;
-    background: none;
-    border-radius: var(--radius-s);
-    padding: 5px 8px;
-    font-size: var(--font-md);
-    text-align: left;
-    color: var(--text);
-    transition:
-      background var(--motion-fast) var(--ease-responsive),
-      color var(--motion-fast) var(--ease-responsive),
-      transform var(--motion-press) var(--ease-responsive);
-  }
-
   .tag-row:active:not(:disabled) {
-    transform: scale(0.99);
-  }
-
-  .tag-row:hover:not(:disabled) {
-    background: var(--surface-2);
-  }
-
-  .tag-row.is-active,
-  .tag-row.is-all {
-    background: var(--accent-soft);
-    color: var(--accent);
-  }
-
-  .tag-row.is-partial {
-    background: var(--surface-2);
+    transform: scale(0.995);
   }
 
   .tag-row:disabled {
@@ -634,6 +676,8 @@
   }
 
   .tag-name {
+    flex: 1;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -641,15 +685,15 @@
 
   .tag-count,
   .coverage {
-    font-size: var(--font-xs);
+    font-size: 11.5px;
     color: var(--text-4);
     font-variant-numeric: tabular-nums;
     flex: none;
   }
 
-  .tag-row.is-active .tag-count,
-  .tag-row.is-all .coverage {
-    color: var(--accent);
+  .check-row.on .tag-count,
+  .check-row.on .coverage {
+    color: var(--text-3);
   }
 
   .coverage.is-partial {
