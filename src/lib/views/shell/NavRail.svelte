@@ -51,7 +51,8 @@
   .nav-rail {
     width: 52px;
     flex: none;
-    background: var(--surface-2);
+    background: var(--surface);
+    border-right: 1px solid var(--border);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -83,7 +84,7 @@
   }
 
   .nav-item:hover {
-    background: var(--surface-3);
+    background: var(--surface-2);
     color: var(--text-2);
   }
 

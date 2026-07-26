@@ -486,8 +486,8 @@
   .filter-mode {
     display: flex;
     background: var(--surface-3);
-    border-radius: var(--radius-s);
-    padding: 2px;
+    border-radius: var(--radius-full);
+    padding: 3px;
     gap: 2px;
   }
 
@@ -495,8 +495,8 @@
   .filter-mode button {
     border: none;
     background: transparent;
-    border-radius: var(--radius-s);
-    padding: 1px 8px;
+    border-radius: var(--radius-full);
+    padding: 2px 10px;
     font-size: var(--font-xs);
     color: var(--text-2);
     transition:
@@ -515,7 +515,8 @@
   .filter-mode button.is-active {
     background: var(--surface);
     color: var(--text);
-    box-shadow: var(--shadow-1);
+    font-weight: 600;
+    box-shadow: 0 1px 4px rgb(0 0 0 / 10%);
   }
 
   .filter-info {

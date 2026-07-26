@@ -335,6 +335,7 @@
     width: 240px;
     flex: none;
     background: var(--surface);
+    border-right: 1px solid var(--border);
     display: flex;
     flex-direction: column;
     min-height: 0;
@@ -417,6 +418,7 @@
     width: 340px;
     flex: none;
     background: var(--surface);
+    border-left: 1px solid var(--border);
     display: flex;
     flex-direction: column;
     min-height: 0;
@@ -429,7 +431,8 @@
     align-items: center;
     justify-content: center;
     border: none;
-    background: var(--surface-2);
+    border-left: 1px solid var(--border);
+    background: var(--surface);
     color: var(--text-3);
     transition:
       background var(--motion-fast) var(--ease-responsive),
@@ -437,7 +440,7 @@
   }
 
   .detail-strip:hover {
-    background: var(--surface-3);
+    background: var(--surface-2);
     color: var(--text);
   }
 

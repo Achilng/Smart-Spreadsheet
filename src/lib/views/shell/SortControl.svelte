@@ -198,30 +198,25 @@
   .sort-trigger {
     min-width: 92px;
     max-width: 100%;
-    height: 34px;
+    height: 32px;
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 7px;
     padding: 0 15px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-s);
-    background: var(--surface);
+    border: none;
+    border-radius: var(--radius-full);
+    background: transparent;
     color: var(--text);
-    box-shadow: var(--shadow-1);
     text-align: center;
     transition:
       background var(--motion-fast) var(--ease-responsive),
-      border-color var(--motion-fast) var(--ease-responsive),
-      box-shadow var(--motion-fast) var(--ease-responsive),
       transform var(--motion-press) var(--ease-responsive);
   }
 
   .sort-trigger:hover,
   .sort-trigger.is-open {
-    border-color: var(--accent-soft-border);
     background: var(--surface-2);
-    box-shadow: var(--shadow-2);
   }
 
   .sort-trigger:active {
