@@ -72,24 +72,30 @@
     width: 120px;
     border: 1px solid var(--border);
     border-radius: var(--radius-s);
-    background: var(--surface);
+    background: var(--glass-solid);
     overflow: hidden;
     cursor: pointer;
     padding: 0;
+    box-shadow: var(--shadow-lift-rest);
     transition:
       border-color var(--motion-fast) var(--ease-responsive),
-      box-shadow var(--motion-fast) var(--ease-responsive),
-      transform var(--motion-fast) var(--ease-responsive);
+      box-shadow var(--motion-lift) var(--ease-fluent),
+      transform var(--motion-lift) var(--ease-fluent);
+  }
+
+  :global(html:not([data-glass="on"])) .section-card {
+    background: var(--surface-opaque);
   }
 
   .section-card:hover {
     border-color: var(--border-strong);
-    box-shadow: var(--shadow-hover);
+    box-shadow: var(--shadow-lift);
     transform: translateY(-2px);
   }
 
   .section-card:active {
-    transform: translateY(-1px) scale(0.985);
+    transform: translateY(0) scale(0.985);
+    box-shadow: var(--shadow-lift-rest);
     transition-duration: var(--motion-press);
   }
 
@@ -116,9 +122,9 @@
     z-index: 1;
     padding: 2px 6px;
     border-radius: var(--radius-m);
-    background: rgba(90, 60, 160, 0.88);
+    background: var(--badge-vibe);
     box-shadow: 0 1px 3px rgb(25 18 45 / 24%);
-    color: #fff;
+    color: var(--on-accent);
     font-size: var(--font-xs);
     font-weight: 600;
     line-height: 1.4;

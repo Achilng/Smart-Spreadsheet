@@ -328,11 +328,11 @@ textarea:focus-visible {
   background: var(--accent-soft);
   color: var(--accent);
   border-radius: var(--radius-full);
-  padding: 1px 8px;
+  padding: 2px 8px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 110px;
+  max-width: 128px;
 }
 
 .chip-more {

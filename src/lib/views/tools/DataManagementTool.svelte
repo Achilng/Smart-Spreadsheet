@@ -65,7 +65,7 @@
   }
 
   .danger-card {
-    border-color: #f2cbd2;
+    border-color: var(--danger-border-soft);
   }
 
   .card-copy {

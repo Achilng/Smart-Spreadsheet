@@ -134,7 +134,7 @@
   }
 
   .table-row:hover:not(.is-skeleton) {
-    background: var(--surface-2);
+    background: var(--hover-wash);
   }
 
   .table-row.is-checked {

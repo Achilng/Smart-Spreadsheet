@@ -755,7 +755,7 @@
   }
 
   .save-dot {
-    background: #c88a1a;
+    background: var(--warning);
   }
 
   .save-check {

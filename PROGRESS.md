@@ -1,19 +1,29 @@
 # 开发进度
 
-最后更新：2026-07-25
+最后更新：2026-07-26
 
 ## 当前状态
 
+- 前端第一阶段玻璃质感重构已完成（分支 `agent/glass-ui`）：
+  - 两个窗口开启 Windows Acrylic 系统模糊（Tauri 原生 `windowEffects`，零新增依赖），
+    启动时通过 `is_transparency_enabled` 检测系统"透明效果"开关，未开启或检测失败
+    一律回退到不透明保底底色，不会露出桌面。
+  - `app.css` 设计 token 重构：三档玻璃蒙层（35%/55%/75% 白）、悬停浮起阴影插值
+    （225ms `--ease-fluent`）、Reveal 跟随鼠标光晕（`data-reveal` + `reveal.ts` 事件委托），
+    约 13 处硬编码颜色收编为语义 token（`--warning`/`--on-accent`/`--badge-vibe`/
+    `--overlay*`/`--hover-wash` 等），为将来暗色主题留好口子。
+  - 外壳（NavRail/TopBar/侧栏/详情栏/工具箱壳层）透明化；浮层（Modal/Dropdown/
+    右键菜单/Toast/选区栏/排序菜单）统一玻璃材质 + 高光描边；4 处 sticky 表头
+    半透明模糊。虚拟滚动卡片按性能红线不使用 backdrop-filter。
+  - 交互跟手微调：按钮 active 短时长立即回落、卡片浮起 -2px、点击目标扩大
+    （搜索清除 24×24、详情条 28px、Tag 行 min-height 28px、按钮 min-height 30px）。
+  - 待人工目检：Acrylic 拖动帧率、深色壁纸对比度、关闭透明效果的回退观感。
+- 第二阶段（未开始）：工具箱九个大页面内部卡片收编 `.panel`、剩余绿色系硬编码色
+  变量化、表单控件全局玻璃态、PromptDocsView 编辑器底色适配。
 - 工具箱快速整理的画师前缀操作已支持跨逗号的 NovelAI 数值权重区段；例如输入
   `rourow` 可将 `1::artist:huangdanlan, rourow::,` 正确改为
   `1::artist:huangdanlan, artist:rourow::,`，同时保留结束符与原始空格。
-- 资料库排序按钮补回单一下拉箭头，并在菜单展开时旋转，明确提示该按钮可选择。
-- 资料库排序控件已进一步精简：移除顶部浏览说明、菜单项装饰图标和按钮内的
-  “排序方式”副标题，按钮仅显示当前排序名称。
-
-- 主程序当前可用，正式界面仍沿用现有 Svelte 工作台。
-- 最近制作的前端视觉概念稿未接入应用，因方向不满意已全部撤销；新的视觉重构
-  方案尚未确定。
+- 主程序当前可用。
 - 当前数据库 schema 为 v14；新库不再依赖 Excel，XLSX 仅作为导出格式。
 - 本次发布版本为 0.10.0（GitHub Release `v_24`）。
 
