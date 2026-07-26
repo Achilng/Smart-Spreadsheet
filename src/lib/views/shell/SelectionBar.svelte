@@ -1,11 +1,12 @@
 <script lang="ts">
-  import { app, formatCount } from "../../stores/app-state.svelte";
+  import { formatCount } from "../../stores/app-state.svelte";
   import { deletion, requestDelete } from "../../stores/delete-actions.svelte";
   import { buildExportItems } from "../../stores/export-actions";
   import { anyModalOpen } from "../../stores/modal-layer.svelte";
   import {
     clearSelection,
     getSelectedCount,
+    materializeSelection,
     selectAllFiltered,
     selection,
     selectionDto,
@@ -15,10 +16,13 @@
   import Dropdown from "../../ui/Dropdown.svelte";
   import GroupAssignDialog from "../groups/GroupAssignDialog.svelte";
   import PromptEditDialog from "./PromptEditDialog.svelte";
+  import TagAssignDialog from "./TagAssignDialog.svelte";
   import { softFade, softFly } from "../../ui/motion";
 
   let promptEditOpen = $state(false);
   let groupDialogOpen = $state(false);
+  let tagDialogOpen = $state(false);
+  let tagDialogPreparing = $state(false);
 
   const count = $derived(getSelectedCount());
   const exportItems = $derived(buildExportItems());
@@ -36,8 +40,20 @@
     }
   }
 
-  function startTagging(): void {
-    app.sidebarMode = "tag";
+  /** 打标对话框基于固定行集操作：filtered 全选先固化为明确 ID，暂存期间不漂移 */
+  async function openTagDialog(): Promise<void> {
+    if (tagDialogPreparing) {
+      return;
+    }
+    tagDialogPreparing = true;
+    try {
+      await materializeSelection();
+      if (getSelectedCount() > 0) {
+        tagDialogOpen = true;
+      }
+    } finally {
+      tagDialogPreparing = false;
+    }
   }
 
   function dismiss(): void {
@@ -86,9 +102,10 @@
     <button
       type="button"
       class="btn btn-primary sel-act"
-      onclick={startTagging}
+      disabled={tagDialogPreparing}
+      onclick={() => void openTagDialog()}
     >
-      打 Tag
+      {tagDialogPreparing ? "准备中…" : "编辑 Tag"}
     </button>
     <button
       type="button"
@@ -123,6 +140,14 @@
     selection={selectionDto()}
     {count}
     onclose={() => (groupDialogOpen = false)}
+  />
+{/if}
+
+{#if tagDialogOpen && count > 0}
+  <TagAssignDialog
+    selection={selectionDto()}
+    {count}
+    onclose={() => (tagDialogOpen = false)}
   />
 {/if}
 
