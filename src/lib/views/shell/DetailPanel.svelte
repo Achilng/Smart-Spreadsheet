@@ -115,9 +115,10 @@
       try {
         const result = await saveFn(current.id, value);
         drafts.delete(current.id);
+        // 先把新值写入行缓存，再退出编辑态，避免展示态短暂回显旧值。
+        patchField(current.id, value, result);
         editing = false;
         restored = false;
-        patchField(current.id, value, result);
         await recordOrWarn(label, [before]);
       } catch (e) {
         error = errorText(e);
@@ -507,7 +508,7 @@
             disabled={noteEditor.saving}
             title="回车保存，Shift+回车换行"
             onkeydown={noteEditor.onKeydown}
-            transition:softFade={{ duration: 130 }}
+            in:softFade={{ duration: 130 }}
           ></textarea>
           {#if noteEditor.restored}
             <p class="draft-hint">已恢复此前未保存的草稿；「取消」可放弃。</p>
@@ -522,7 +523,7 @@
             <p class="save-error">{noteEditor.error}</p>
           {/if}
         {:else}
-          <pre class:is-empty={!row.note} transition:softFade={{ duration: 130 }}>{row.note ?? "—"}</pre>
+          <pre class:is-empty={!row.note}>{row.note ?? "—"}</pre>
         {/if}
       </section>
 
@@ -610,7 +611,7 @@
               disabled={prompt.editor.saving}
               title="回车保存，Shift+回车换行"
               onkeydown={prompt.editor.onKeydown}
-              transition:softFade={{ duration: 130 }}
+              in:softFade={{ duration: 130 }}
             ></textarea>
             {#if prompt.editor.restored}
               <p class="draft-hint">已恢复此前未保存的草稿；「取消」可放弃。</p>
@@ -625,7 +626,7 @@
               <p class="save-error">{prompt.editor.error}</p>
             {/if}
           {:else}
-            <pre class:is-empty={!prompt.text} transition:softFade={{ duration: 130 }}>{prompt.text ?? "—"}</pre>
+            <pre class:is-empty={!prompt.text}>{prompt.text ?? "—"}</pre>
           {/if}
         </section>
       {/each}
