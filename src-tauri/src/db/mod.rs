@@ -1,5 +1,4 @@
 mod batches;
-mod artist_dictionary;
 mod artist_auto_prefix;
 mod automation_rules;
 mod delete;
@@ -20,11 +19,6 @@ mod settings;
 mod tags;
 
 pub use batches::{AppendOutcome, BatchSummary, LibrarySummary, NewRow, SourceType};
-pub use artist_dictionary::{
-    ArtistDictionaryEntry, ArtistDictionaryInput, ArtistDictionaryStatus,
-    BundledArtistDictionaryHeader, DanbooruArtistRecord, DanbooruArtistTag, DanbooruTagAlias,
-    build_artist_dictionary,
-};
 pub use artist_auto_prefix::{
     AutoArtistCandidate, AutoArtistPrefixApplyResult, AutoArtistPrefixPreview,
 };
@@ -51,8 +45,8 @@ use std::path::Path;
 use std::time::Duration;
 
 use migrations::{
-    MIGRATION_9, MIGRATION_10, MIGRATION_11, MIGRATION_12, MIGRATION_13, MIGRATION_14,
-    MINIMUM_UPGRADABLE_SCHEMA_VERSION, SCHEMA_14,
+    MIGRATION_9, MIGRATION_10, MIGRATION_11, MIGRATION_12, MIGRATION_14, MIGRATION_15,
+    MINIMUM_UPGRADABLE_SCHEMA_VERSION, SCHEMA_15,
 };
 use rusqlite::{Connection, MAIN_DB, OptionalExtension, TransactionBehavior};
 use thiserror::Error;
@@ -70,8 +64,6 @@ pub enum DatabaseError {
     LegacySchemaVersion { found: u32, minimum: u32 },
     #[error("数据库完整性检查失败: {0}")]
     IntegrityCheckFailed(String),
-    #[error("内置画师词典无效: {0}")]
-    InvalidBundledArtistDictionary(String),
     #[error("导入行数超出 SQLite 可表示范围")]
     RowCountOverflow,
     #[error("分页大小 {requested} 无效，允许范围为 1..={maximum}")]
@@ -248,8 +240,8 @@ fn apply_pending_migrations(connection: &mut Connection, from_version: u32) -> R
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let mut version = from_version;
     if version == 0 {
-        transaction.execute_batch(SCHEMA_14)?;
-        version = 14;
+        transaction.execute_batch(SCHEMA_15)?;
+        version = 15;
     }
     if version == 8 {
         transaction.execute_batch(MIGRATION_9)?;
@@ -268,12 +260,16 @@ fn apply_pending_migrations(connection: &mut Connection, from_version: u32) -> R
         version = 12;
     }
     if version == 12 {
-        transaction.execute_batch(MIGRATION_13)?;
+        // v13 曾只增加现已退役的外部词典缓存；从旧版直接升级时无需再创建。
         version = 13;
     }
     if version == 13 {
         transaction.execute_batch(MIGRATION_14)?;
         version = 14;
+    }
+    if version == 14 {
+        transaction.execute_batch(MIGRATION_15)?;
+        version = 15;
     }
     debug_assert_eq!(version, CURRENT_SCHEMA_VERSION);
     transaction.pragma_update(None, "user_version", version)?;
@@ -357,8 +353,6 @@ mod tests {
         assert_eq!(
             tables,
             vec![
-                "artist_dictionary_names",
-                "artist_dictionary_sync",
                 "automation_rules",
                 "dedupe_aliases",
                 "groups",
@@ -585,7 +579,7 @@ mod tests {
     }
 
     #[test]
-    fn upgrades_v8_through_v14_and_marks_folder_copy_as_original() {
+    fn upgrades_v8_through_v15_and_marks_folder_copy_as_original() {
         let mut connection = Connection::open_in_memory().unwrap();
         create_v8_fixture(&connection);
 
@@ -622,9 +616,52 @@ mod tests {
         verify_foreign_keys(&connection).unwrap();
     }
 
+    #[test]
+    fn upgrading_v14_removes_retired_artist_cache_tables() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        connection.execute_batch(SCHEMA_15).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE artist_dictionary_names (
+                    match_name TEXT PRIMARY KEY,
+                    display_name TEXT NOT NULL,
+                    canonical_name TEXT NOT NULL,
+                    post_count INTEGER NOT NULL,
+                    is_banned INTEGER NOT NULL,
+                    is_deprecated INTEGER NOT NULL,
+                    is_ambiguous INTEGER NOT NULL,
+                    source_mask INTEGER NOT NULL
+                 ) STRICT, WITHOUT ROWID;
+                 CREATE TABLE artist_dictionary_sync (
+                    singleton INTEGER PRIMARY KEY,
+                    synced_at TEXT NOT NULL,
+                    tag_count INTEGER NOT NULL,
+                    artist_count INTEGER NOT NULL,
+                    alias_count INTEGER NOT NULL,
+                    name_count INTEGER NOT NULL
+                 ) STRICT;
+                 INSERT INTO artist_dictionary_names VALUES
+                    ('old_name', 'old_name', 'old_name', 1, 0, 0, 0, 1);
+                 PRAGMA user_version = 14;",
+            )
+            .unwrap();
+
+        migrate(&mut connection).unwrap();
+
+        assert!(!table_exists(&connection, "artist_dictionary_names"));
+        assert!(!table_exists(&connection, "artist_dictionary_sync"));
+        assert!(table_exists(&connection, "automation_rules"));
+        assert_eq!(
+            connection
+                .pragma_query_value::<u32, _>(None, "user_version", |row| row.get(0))
+                .unwrap(),
+            CURRENT_SCHEMA_VERSION
+        );
+    }
+
     fn create_v9_fixture(connection: &Connection) {
-        let schema = SCHEMA_14
-            .split("CREATE TABLE artist_dictionary_names")
+        let schema = SCHEMA_15
+            .split("CREATE TABLE automation_rules")
             .next()
             .unwrap()
             .replace(
@@ -663,8 +700,8 @@ mod tests {
     }
 
     fn create_v8_fixture(connection: &Connection) {
-        let schema = SCHEMA_14
-            .split("CREATE TABLE artist_dictionary_names")
+        let schema = SCHEMA_15
+            .split("CREATE TABLE automation_rules")
             .next()
             .unwrap()
             .replace(

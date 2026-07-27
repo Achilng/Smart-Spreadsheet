@@ -4,7 +4,6 @@ use rusqlite::TransactionBehavior;
 use serde::Serialize;
 
 use super::Database;
-use super::artist_dictionary::ArtistDictionaryEntry;
 use super::prompt_edit::{
     combined_artists, normalized_bare_tag_in_fragment, normalized_explicit_artist_tag_in_fragment,
     prefix_known_artist_tags_in_prompt,
@@ -12,27 +11,14 @@ use super::prompt_edit::{
 use super::quick_edit::{QuickArtistPrefixChange, QuickEditError};
 
 const PREVIEW_SAMPLE_LIMIT: usize = 12;
-const LOW_USAGE_POST_COUNT: u64 = 20;
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AutoArtistCandidate {
     pub match_name: String,
     pub display_name: String,
-    pub canonical_name: String,
-    pub post_count: u64,
     pub matched_rows: u64,
     pub matched_fields: u64,
     pub sample_row_ids: Vec<i64>,
-    pub is_banned: bool,
-    pub is_deprecated: bool,
-    pub is_ambiguous: bool,
-    pub is_low_usage: bool,
-    pub is_short_name: bool,
-    pub is_common_word: bool,
-    pub is_library_confirmed: bool,
-    pub has_danbooru_match: bool,
-    pub needs_confirmation: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -56,13 +42,11 @@ pub struct AutoArtistPrefixApplyResult {
 
 #[derive(Debug)]
 struct CandidateAccumulator {
-    entry: ArtistDictionaryEntry,
+    match_name: String,
     matched_rows: u64,
     matched_fields: u64,
     last_row_id: Option<i64>,
     sample_row_ids: Vec<i64>,
-    is_library_confirmed: bool,
-    has_danbooru_match: bool,
 }
 
 #[derive(Debug)]
@@ -86,38 +70,8 @@ impl Database {
                 .collect::<Result<Vec<_>, _>>()?
         };
         let library_confirmed_names = library_confirmed_names(&rows);
-        if self.artist_dictionary_status()?.is_none() && library_confirmed_names.is_empty() {
-            return Err(QuickEditError::ArtistDictionaryUnavailable);
-        }
         let scanned_rows = u64::try_from(rows.len())
             .map_err(|_| QuickEditError::Database(super::DatabaseError::RowCountOverflow))?;
-        let prompt_names = rows
-            .iter()
-            .flat_map(|row| {
-                [
-                    row.positive_prompt.as_deref(),
-                    row.character_prompt.as_deref(),
-                    row.negative_prompt.as_deref(),
-                ]
-                .into_iter()
-                .flatten()
-            })
-            .flat_map(bare_tag_names)
-            .collect::<BTreeSet<_>>();
-        let mut dictionary = self
-            .artist_dictionary_entries_by_names(prompt_names.iter().map(String::as_str))?
-            .into_iter()
-            .map(|entry| (entry.match_name.clone(), entry))
-            .collect::<HashMap<_, _>>();
-        let danbooru_names = dictionary.keys().cloned().collect::<HashSet<_>>();
-        for match_name in prompt_names
-            .iter()
-            .filter(|name| library_confirmed_names.contains(*name))
-        {
-            dictionary
-                .entry(match_name.clone())
-                .or_insert_with(|| library_confirmed_entry(match_name));
-        }
         let mut candidates = HashMap::<String, CandidateAccumulator>::new();
         let mut matched_rows = 0_u64;
         let mut prompt_fields_needing_changes = 0_u64;
@@ -132,7 +86,7 @@ impl Database {
             .into_iter()
             .flatten()
             {
-                let field_matches = matching_dictionary_names(prompt, &dictionary);
+                let field_matches = matching_library_artist_names(prompt, &library_confirmed_names);
                 if field_matches.is_empty() {
                     continue;
                 }
@@ -141,16 +95,11 @@ impl Database {
                     row_matches.insert(match_name.clone());
                     let accumulator = candidates.entry(match_name.clone()).or_insert_with(|| {
                         CandidateAccumulator {
-                            entry: dictionary
-                                .get(&match_name)
-                                .expect("match came from dictionary")
-                                .clone(),
+                            match_name,
                             matched_rows: 0,
                             matched_fields: 0,
                             last_row_id: None,
                             sample_row_ids: Vec::new(),
-                            is_library_confirmed: library_confirmed_names.contains(&match_name),
-                            has_danbooru_match: danbooru_names.contains(&match_name),
                         }
                     });
                     accumulator.matched_fields += 1;
@@ -174,9 +123,8 @@ impl Database {
             .collect::<Vec<_>>();
         candidates.sort_by(|left, right| {
             right
-                .is_library_confirmed
-                .cmp(&left.is_library_confirmed)
-                .then_with(|| right.matched_rows.cmp(&left.matched_rows))
+                .matched_rows
+                .cmp(&left.matched_rows)
                 .then_with(|| left.match_name.cmp(&right.match_name))
         });
         Ok(AutoArtistPrefixPreview {
@@ -198,11 +146,6 @@ impl Database {
         if selected_names.is_empty() {
             return Err(QuickEditError::EmptyArtistSelection);
         }
-        let mut known_names = self
-            .artist_dictionary_entries_by_names(selected_names.iter().map(String::as_str))?
-            .into_iter()
-            .map(|entry| entry.match_name)
-            .collect::<HashSet<_>>();
         let library_rows = {
             let mut statement = self.connection.prepare(
                 "SELECT id, positive_prompt, character_prompt, negative_prompt, artists
@@ -212,7 +155,7 @@ impl Database {
                 .query_map([], read_prompt_row)?
                 .collect::<Result<Vec<_>, _>>()?
         };
-        known_names.extend(library_confirmed_names(&library_rows));
+        let known_names = library_confirmed_names(&library_rows);
         let mut unknown_names = selected_names
             .difference(&known_names)
             .cloned()
@@ -286,13 +229,13 @@ fn read_prompt_row(row: &rusqlite::Row<'_>) -> Result<PromptRow, rusqlite::Error
     })
 }
 
-fn matching_dictionary_names(
+fn matching_library_artist_names(
     prompt: &str,
-    dictionary: &HashMap<String, ArtistDictionaryEntry>,
+    library_confirmed_names: &HashSet<String>,
 ) -> BTreeSet<String> {
     bare_tag_names(prompt)
         .into_iter()
-        .filter(|name| dictionary.contains_key(name))
+        .filter(|name| library_confirmed_names.contains(name))
         .collect()
 }
 
@@ -323,19 +266,6 @@ fn library_confirmed_names(rows: &[PromptRow]) -> HashSet<String> {
         })
         .flat_map(explicit_artist_names)
         .collect()
-}
-
-fn library_confirmed_entry(match_name: &str) -> ArtistDictionaryEntry {
-    ArtistDictionaryEntry {
-        match_name: match_name.to_owned(),
-        display_name: match_name.to_owned(),
-        canonical_name: match_name.to_owned(),
-        post_count: 0,
-        is_banned: false,
-        is_deprecated: false,
-        is_ambiguous: false,
-        source_mask: 0,
-    }
 }
 
 fn automatic_change(
@@ -394,29 +324,13 @@ fn changed_prompt_field_count(change: &QuickArtistPrefixChange) -> u64 {
 }
 
 fn candidate_from_accumulator(accumulator: CandidateAccumulator) -> AutoArtistCandidate {
-    let is_low_usage =
-        accumulator.has_danbooru_match && accumulator.entry.post_count < LOW_USAGE_POST_COUNT;
-    let is_short_name = significant_character_count(&accumulator.entry.match_name) <= 3;
-    let is_common_word = is_common_prompt_word(&accumulator.entry.match_name);
-    let needs_confirmation = !accumulator.is_library_confirmed
-        && (accumulator.entry.is_ambiguous || is_low_usage || is_short_name || is_common_word);
+    let display_name = accumulator.match_name.clone();
     AutoArtistCandidate {
-        match_name: accumulator.entry.match_name,
-        display_name: accumulator.entry.display_name,
-        canonical_name: accumulator.entry.canonical_name,
-        post_count: accumulator.entry.post_count,
+        match_name: accumulator.match_name,
+        display_name,
         matched_rows: accumulator.matched_rows,
         matched_fields: accumulator.matched_fields,
         sample_row_ids: accumulator.sample_row_ids,
-        is_banned: accumulator.entry.is_banned,
-        is_deprecated: accumulator.entry.is_deprecated,
-        is_ambiguous: accumulator.entry.is_ambiguous,
-        is_low_usage,
-        is_short_name,
-        is_common_word,
-        is_library_confirmed: accumulator.is_library_confirmed,
-        has_danbooru_match: accumulator.has_danbooru_match,
-        needs_confirmation,
     }
 }
 
@@ -425,144 +339,33 @@ fn normalize_selected_name(name: &str) -> Option<String> {
     (!name.is_empty()).then(|| name.to_lowercase())
 }
 
-fn significant_character_count(name: &str) -> usize {
-    name.chars()
-        .filter(|character| character.is_alphanumeric())
-        .count()
-}
-
-fn is_common_prompt_word(name: &str) -> bool {
-    matches!(
-        name.replace('_', " ").as_str(),
-        "art"
-            | "black"
-            | "blue"
-            | "boy"
-            | "cloud"
-            | "dark"
-            | "fire"
-            | "flower"
-            | "girl"
-            | "green"
-            | "light"
-            | "line"
-            | "moon"
-            | "red"
-            | "sky"
-            | "snow"
-            | "star"
-            | "style"
-            | "water"
-            | "white"
-            | "wind"
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::db::test_support::append_rows;
-    use crate::db::{ArtistDictionaryInput, DanbooruArtistRecord, DanbooruArtistTag, NewRow};
-
-    fn artist_tag(id: i64, name: &str, post_count: u64) -> DanbooruArtistTag {
-        DanbooruArtistTag {
-            id,
-            name: name.into(),
-            post_count,
-            category: 1,
-            is_deprecated: false,
-        }
-    }
+    use crate::db::NewRow;
 
     #[test]
-    fn preview_groups_historical_name_with_current_takedown_artist() {
+    fn apply_updates_all_prompt_fields_and_reuses_existing_undo() {
         let mut database = Database::open_in_memory().unwrap();
-        database
-            .replace_artist_dictionary(
-                &ArtistDictionaryInput {
-                    tags: vec![
-                        artist_tag(1, "parsley-f", 891),
-                        artist_tag(2, "parsley_f", 0),
-                        artist_tag(3, "red", 1),
-                    ],
-                    artists: vec![DanbooruArtistRecord {
-                        id: 27_785,
-                        name: "parsley-f".into(),
-                        other_names: vec!["parsley_f".into()],
-                        is_deleted: false,
-                        is_banned: true,
-                    }],
-                    aliases: Vec::new(),
-                },
-                "2026-07-22T12:00:00Z",
-            )
-            .unwrap();
         append_rows(
             &mut database,
             &[
                 NewRow {
                     source_ordinal: 1,
-                    identity: "first".into(),
-                    positive_prompt: Some("best quality, 0.7::parsley_f::, red".into()),
-                    character_prompt: Some("(parsley_f:1.2)".into()),
+                    identity: "evidence".into(),
+                    positive_prompt: Some("artist:parsley_f".into()),
                     ..NewRow::default()
                 },
                 NewRow {
                     source_ordinal: 2,
-                    identity: "second".into(),
-                    positive_prompt: Some("artist:parsley_f, parsley_fx".into()),
+                    identity: "target".into(),
+                    positive_prompt: Some("parsley_f".into()),
+                    character_prompt: Some("{parsley_f}".into()),
+                    negative_prompt: Some("0.5::parsley_f::".into()),
                     ..NewRow::default()
                 },
             ],
-        );
-
-        let preview = database.preview_auto_artist_prefix().unwrap();
-        assert_eq!(preview.scanned_rows, 2);
-        assert_eq!(preview.matched_rows, 1);
-        assert_eq!(preview.prompt_fields_needing_changes, 2);
-        let parsley = preview
-            .candidates
-            .iter()
-            .find(|candidate| candidate.match_name == "parsley_f")
-            .unwrap();
-        assert_eq!(parsley.canonical_name, "parsley-f");
-        assert_eq!(parsley.post_count, 891);
-        assert!(parsley.is_banned);
-        assert!(!parsley.is_low_usage);
-        assert!(!parsley.needs_confirmation);
-        let red = preview
-            .candidates
-            .iter()
-            .find(|candidate| candidate.match_name == "red")
-            .unwrap();
-        assert!(red.is_low_usage);
-        assert!(red.is_short_name);
-        assert!(red.is_common_word);
-        assert!(red.needs_confirmation);
-    }
-
-    #[test]
-    fn apply_updates_all_prompt_fields_and_reuses_existing_undo() {
-        let mut database = Database::open_in_memory().unwrap();
-        database
-            .replace_artist_dictionary(
-                &ArtistDictionaryInput {
-                    tags: vec![artist_tag(1, "parsley_f", 8)],
-                    ..ArtistDictionaryInput::default()
-                },
-                "2026-07-22T12:00:00Z",
-            )
-            .unwrap();
-        append_rows(
-            &mut database,
-            &[NewRow {
-                source_ordinal: 1,
-                identity: "first".into(),
-                positive_prompt: Some("parsley_f".into()),
-                character_prompt: Some("{parsley_f}".into()),
-                negative_prompt: Some("0.5::parsley_f::".into()),
-                ..NewRow::default()
-            }],
         );
 
         let applied = database
@@ -574,7 +377,7 @@ mod tests {
             .connection
             .query_row(
                 "SELECT positive_prompt, character_prompt, negative_prompt, artists
-                 FROM rows WHERE id = 1",
+                 FROM rows WHERE id = 2",
                 [],
                 |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
             )
@@ -594,7 +397,7 @@ mod tests {
             .unwrap();
         let reverted: String = database
             .connection
-            .query_row("SELECT positive_prompt FROM rows WHERE id = 1", [], |row| {
+            .query_row("SELECT positive_prompt FROM rows WHERE id = 2", [], |row| {
                 row.get(0)
             })
             .unwrap();
@@ -645,10 +448,6 @@ mod tests {
         let candidate = &preview.candidates[0];
         assert_eq!(candidate.match_name, "xy");
         assert_eq!(candidate.matched_rows, 3);
-        assert!(candidate.is_library_confirmed);
-        assert!(!candidate.has_danbooru_match);
-        assert!(!candidate.is_low_usage);
-        assert!(!candidate.needs_confirmation);
 
         let applied = database.apply_auto_artist_prefix(&["xy".into()]).unwrap();
         assert_eq!(applied.changed_rows, 3);
@@ -676,82 +475,21 @@ mod tests {
     }
 
     #[test]
-    fn library_evidence_overrides_low_danbooru_post_count() {
+    fn bare_tags_without_library_evidence_are_ignored() {
         let mut database = Database::open_in_memory().unwrap();
-        database
-            .replace_artist_dictionary(
-                &ArtistDictionaryInput {
-                    tags: vec![artist_tag(1, "rare_artist_name", 1)],
-                    ..ArtistDictionaryInput::default()
-                },
-                "2026-07-23T12:00:00Z",
-            )
-            .unwrap();
-        append_rows(
-            &mut database,
-            &[
-                NewRow {
-                    source_ordinal: 1,
-                    identity: "explicit".into(),
-                    positive_prompt: Some("artist:rare_artist_name".into()),
-                    ..NewRow::default()
-                },
-                NewRow {
-                    source_ordinal: 2,
-                    identity: "bare".into(),
-                    positive_prompt: Some("rare_artist_name".into()),
-                    ..NewRow::default()
-                },
-            ],
-        );
-
-        let preview = database.preview_auto_artist_prefix().unwrap();
-        let candidate = &preview.candidates[0];
-        assert!(candidate.has_danbooru_match);
-        assert!(candidate.is_low_usage);
-        assert!(candidate.is_library_confirmed);
-        assert!(!candidate.needs_confirmation);
-    }
-
-    #[test]
-    fn fewer_than_twenty_posts_requires_confirmation() {
-        let mut database = Database::open_in_memory().unwrap();
-        database
-            .replace_artist_dictionary(
-                &ArtistDictionaryInput {
-                    tags: vec![
-                        artist_tag(1, "rare_artist_name", 19),
-                        artist_tag(2, "established_artist_name", 20),
-                    ],
-                    ..ArtistDictionaryInput::default()
-                },
-                "2026-07-23T12:00:00Z",
-            )
-            .unwrap();
         append_rows(
             &mut database,
             &[NewRow {
                 source_ordinal: 1,
-                identity: "first".into(),
-                positive_prompt: Some("rare_artist_name, established_artist_name".into()),
+                identity: "bare".into(),
+                positive_prompt: Some("watermark, rare_artist_name".into()),
                 ..NewRow::default()
             }],
         );
 
         let preview = database.preview_auto_artist_prefix().unwrap();
-        let rare = preview
-            .candidates
-            .iter()
-            .find(|candidate| candidate.match_name == "rare_artist_name")
-            .unwrap();
-        let established = preview
-            .candidates
-            .iter()
-            .find(|candidate| candidate.match_name == "established_artist_name")
-            .unwrap();
-        assert!(rare.is_low_usage);
-        assert!(rare.needs_confirmation);
-        assert!(!established.is_low_usage);
-        assert!(!established.needs_confirmation);
+        assert_eq!(preview.scanned_rows, 1);
+        assert_eq!(preview.matched_rows, 0);
+        assert!(preview.candidates.is_empty());
     }
 }

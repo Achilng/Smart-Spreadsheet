@@ -154,11 +154,9 @@ pub enum QuickEditError {
     EmptyArtistName,
     #[error("一次只能输入一个画师名，不能包含逗号或换行")]
     InvalidArtistName,
-    #[error("画师词典尚未同步，请先更新 Danbooru 画师词典")]
-    ArtistDictionaryUnavailable,
     #[error("至少需要选择一个自动识别出的画师名")]
     EmptyArtistSelection,
-    #[error("画师词典中不存在以下名称: {0:?}")]
+    #[error("库内没有明确 artist: 证据的名称: {0:?}")]
     UnknownArtistNames(Vec<String>),
 }
 

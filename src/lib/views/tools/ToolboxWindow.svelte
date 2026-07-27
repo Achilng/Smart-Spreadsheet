@@ -76,7 +76,7 @@
     {
       id: "artistPrefix",
       label: "画师前缀修正",
-      description: "用 Danbooru 词典识别并修正裸画师 Tag",
+      description: "根据库内已有 artist: 标注修正裸画师 Tag",
       group: "常用工具",
       requiresLibrary: true,
       icon: ScanSearch,

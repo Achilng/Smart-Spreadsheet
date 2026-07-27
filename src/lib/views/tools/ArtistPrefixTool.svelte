@@ -1,16 +1,11 @@
 <script lang="ts">
-  import { emitTo, listen } from "@tauri-apps/api/event";
-  import { onMount } from "svelte";
+  import { emitTo } from "@tauri-apps/api/event";
 
   import {
     applyAutoArtistPrefix,
-    getArtistDictionaryStatus,
     previewAutoArtistPrefix,
     reapplyQuickArtistPrefixChanges,
     revertQuickArtistPrefixChanges,
-    syncArtistDictionary,
-    type ArtistDictionaryStatus,
-    type ArtistDictionarySyncProgress,
     type AutoArtistCandidate,
     type AutoArtistPrefixPreview,
   } from "../../api";
@@ -24,72 +19,22 @@
   import { history, recordHistory } from "../../stores/history.svelte";
   import { focusMainWindow, type ToolboxRowRequest } from "../../windows/toolbox";
 
-  let status = $state<ArtistDictionaryStatus | null>(null);
-  let progress = $state<ArtistDictionarySyncProgress | null>(null);
   let preview = $state<AutoArtistPrefixPreview | null>(null);
   let selectedNames = $state<string[]>([]);
   let search = $state("");
-  let syncing = $state(false);
   let previewing = $state(false);
   let applying = $state(false);
-  let loadingStatus = $state(false);
   let openingRowId = $state<number | null>(null);
   let error = $state<string | null>(null);
 
   const filteredCandidates = $derived(
     (preview?.candidates ?? []).filter(candidate => {
       const query = search.trim().toLocaleLowerCase();
-      return !query ||
-        candidate.matchName.toLocaleLowerCase().includes(query) ||
-        candidate.canonicalName.toLocaleLowerCase().includes(query);
+      return !query || candidate.matchName.toLocaleLowerCase().includes(query);
     }),
   );
   const selectedCount = $derived(selectedNames.length);
-  const busy = $derived(loadingStatus || syncing || previewing || applying || history.busy || app.busy);
-
-  onMount(() => {
-    void loadStatus();
-  });
-
-  async function loadStatus(): Promise<void> {
-    loadingStatus = true;
-    try {
-      status = await getArtistDictionaryStatus();
-    } catch (cause) {
-      error = errorText(cause);
-    } finally {
-      loadingStatus = false;
-    }
-  }
-
-  async function synchronize(): Promise<void> {
-    if (busy) return;
-    syncing = true;
-    error = null;
-    progress = null;
-    let unlisten: (() => void) | null = null;
-    try {
-      unlisten = await listen<ArtistDictionarySyncProgress>(
-        "artist-dictionary://progress",
-        event => {
-          progress = event.payload;
-        },
-      );
-      status = await syncArtistDictionary();
-      preview = null;
-      selectedNames = [];
-      setNotice({
-        tone: "success",
-        text: `画师词典更新完成：已整理 ${formatCount(status.nameCount)} 个可识别名称。`,
-      });
-    } catch (cause) {
-      error = errorText(cause);
-    } finally {
-      unlisten?.();
-      progress = null;
-      syncing = false;
-    }
-  }
+  const busy = $derived(previewing || applying || history.busy || app.busy);
 
   async function scanLibrary(): Promise<void> {
     if (busy) return;
@@ -97,9 +42,7 @@
     error = null;
     try {
       preview = await previewAutoArtistPrefix();
-      selectedNames = preview.candidates
-        .filter(candidate => !candidate.needsConfirmation)
-        .map(candidate => candidate.matchName);
+      selectedNames = preview.candidates.map(candidate => candidate.matchName);
     } catch (cause) {
       preview = null;
       selectedNames = [];
@@ -151,9 +94,7 @@
   async function scanLibraryAfterApply(): Promise<void> {
     try {
       preview = await previewAutoArtistPrefix();
-      selectedNames = preview.candidates
-        .filter(candidate => !candidate.needsConfirmation)
-        .map(candidate => candidate.matchName);
+      selectedNames = preview.candidates.map(candidate => candidate.matchName);
     } catch {
       preview = null;
       selectedNames = [];
@@ -164,12 +105,6 @@
     selectedNames = selectedNames.includes(name)
       ? selectedNames.filter(selected => selected !== name)
       : [...selectedNames, name];
-  }
-
-  function selectRecommended(): void {
-    selectedNames = (preview?.candidates ?? [])
-      .filter(candidate => !candidate.needsConfirmation)
-      .map(candidate => candidate.matchName);
   }
 
   function selectAll(): void {
@@ -190,81 +125,26 @@
       openingRowId = null;
     }
   }
-
-  function progressLabel(value: ArtistDictionarySyncProgress): string {
-    const stage = {
-      tags: "正在下载画师 Tag",
-      artists: "正在合并画师其它名称",
-      aliases: "正在下载历史别名",
-      saving: "正在保存本地词典",
-    }[value.stage];
-    return `${stage} · ${formatCount(value.itemsFetched)} 条`;
-  }
-
-  function syncTime(value: string): string {
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? value : date.toLocaleString("zh-CN");
-  }
 </script>
 
 <div class="artist-prefix-page">
   <section class="intro-card tool-card">
     <div>
-      <span class="eyebrow overline">DANBOORU ARTIST DICTIONARY</span>
-      <h3>自动识别裸画师 Tag</h3>
+      <span class="eyebrow overline">LIBRARY ARTIST EVIDENCE</span>
+      <h3>补全库内裸画师 Tag</h3>
       <p>
-        结合库内已有的 <code>artist:</code> 证据和 Danbooru 词典，扫描正向、角色和
-        负向提示词，为没有前缀的画师名称补上 <code>artist:</code>。
+        如果资料库中某处已有 <code>artist:xy</code>，就把其它提示词中的裸 <code>xy</code>
+        视为同一画师并补上前缀。没有库内明确证据的名称不会进入候选。
       </p>
     </div>
-    <button class="btn" type="button" disabled={busy} onclick={() => void synchronize()}>
-      {syncing ? "更新中…" : status ? "更新画师词典" : "下载画师词典"}
-    </button>
   </section>
-
-  <section class="status-card tool-card">
-    {#if loadingStatus}
-      <span>正在准备内置画师词典，首次使用可能需要一些时间…</span>
-    {:else if status}
-      <div>
-        <strong>{formatCount(status.nameCount)}</strong>
-        <span>可识别名称</span>
-      </div>
-      <div>
-        <strong>{formatCount(status.tagCount)}</strong>
-        <span>画师 Tag</span>
-      </div>
-      <div>
-        <strong>{formatCount(status.artistCount)}</strong>
-        <span>含其它名称的画师</span>
-      </div>
-      <div class="status-time">
-        <strong>{syncTime(status.syncedAt)}</strong>
-        <span>最近更新</span>
-      </div>
-    {:else}
-      <p>内置画师词典暂不可用，可联网从 Danbooru 重新同步公开的画师元数据。</p>
-    {/if}
-  </section>
-
-  {#if progress}
-    <div class="progress-line">
-      <span class="spinner" aria-hidden="true"></span>
-      <span>{progressLabel(progress)}</span>
-    </div>
-  {/if}
 
   <section class="scan-card tool-card">
     <div>
       <h3>扫描资料库</h3>
-      <p>只扫描已经入库的提示词，不重新读取或改写原始图片文件。</p>
+      <p>只处理已经入库的提示词，不联网，也不重新读取或改写原始图片文件。</p>
     </div>
-    <button
-      class="btn btn-primary"
-      type="button"
-      disabled={!status || busy}
-      onclick={() => void scanLibrary()}
-    >
+    <button class="btn btn-primary" type="button" disabled={busy} onclick={() => void scanLibrary()}>
       {previewing ? "扫描中…" : "扫描裸画师 Tag"}
     </button>
   </section>
@@ -278,15 +158,14 @@
       <div class="metric-grid metrics">
         <div><strong>{formatCount(preview.scannedRows)}</strong><span>扫描图片</span></div>
         <div><strong>{formatCount(preview.matchedRows)}</strong><span>命中图片</span></div>
-        <div><strong>{formatCount(preview.candidates.length)}</strong><span>候选名称</span></div>
+        <div><strong>{formatCount(preview.candidates.length)}</strong><span>确认画师</span></div>
         <div><strong>{formatCount(preview.promptFieldsNeedingChanges)}</strong><span>提示词字段</span></div>
       </div>
 
       {#if preview.candidates.length > 0}
         <div class="candidate-toolbar">
-          <input type="search" bind:value={search} placeholder="搜索候选或主名称" />
+          <input type="search" bind:value={search} placeholder="搜索画师名称" />
           <div>
-            <button type="button" class="text-button" onclick={selectRecommended}>仅选推荐项</button>
             <button type="button" class="text-button" onclick={selectAll}>全选</button>
             <button type="button" class="text-button" onclick={() => (selectedNames = [])}>清空</button>
           </div>
@@ -294,7 +173,7 @@
 
         <div class="candidate-list">
           {#each filteredCandidates as candidate (candidate.matchName)}
-            <div class:needs-review={candidate.needsConfirmation} class="candidate-row">
+            <div class="candidate-row">
               <label>
                 <input
                   type="checkbox"
@@ -303,29 +182,12 @@
                 />
               </label>
               <div class="candidate-main">
-                <div class="candidate-name">
-                  <strong>{candidate.displayName}</strong>
-                  {#if candidate.canonicalName.toLocaleLowerCase() !== candidate.matchName}
-                    <span>归属于 {candidate.canonicalName}</span>
-                  {/if}
-                </div>
-                <div class="badges">
-                  {#if candidate.isLibraryConfirmed}<span class="badge confirmed">库内已有明确标注</span>{/if}
-                  {#if candidate.isBanned}<span class="badge restricted">受限／下架仍识别</span>{/if}
-                  {#if candidate.isLowUsage}<span class="badge">低使用量</span>{/if}
-                  {#if candidate.isDeprecated}<span class="badge">历史 Tag</span>{/if}
-                  {#if candidate.isShortName}<span class="badge warning">短名称</span>{/if}
-                  {#if candidate.isCommonWord}<span class="badge warning">常见词</span>{/if}
-                  {#if candidate.isAmbiguous}<span class="badge warning">身份冲突</span>{/if}
-                </div>
+                <strong>{candidate.displayName}</strong>
+                <span class="badge">库内已有明确 artist: 标注</span>
               </div>
               <div class="candidate-stats">
                 <strong>{formatCount(candidate.matchedRows)} 张</strong>
-                {#if candidate.hasDanbooruMatch}
-                  <span>Danbooru {formatCount(candidate.postCount)} 帖</span>
-                {:else}
-                  <span>仅使用库内证据</span>
-                {/if}
+                <span>{formatCount(candidate.matchedFields)} 个字段</span>
               </div>
               <button
                 type="button"
@@ -339,8 +201,8 @@
 
         <div class="apply-bar">
           <div>
-            <strong>已选择 {formatCount(selectedCount)} 个候选</strong>
-            <span>库内已有明确标注的画师优先选中；其余低于 20 帖的候选默认不勾选。</span>
+            <strong>已选择 {formatCount(selectedCount)} 个画师</strong>
+            <span>候选均由资料库内已有的明确画师标注确认。</span>
           </div>
           <button
             class="btn btn-primary"
@@ -353,8 +215,8 @@
         </div>
       {:else}
         <div class="empty-state">
-          <strong>没有发现需要补前缀的画师 Tag</strong>
-          <span>已带 <code>artist:</code> 的内容和仅名称相似的 Tag 会自动跳过。</span>
+          <strong>没有发现能够由库内证据确认的裸画师 Tag</strong>
+          <span>只有同时存在明确 <code>artist:</code> 标注的同名 Tag 才会被识别。</span>
         </div>
       {/if}
     </section>
@@ -406,62 +268,12 @@
     color: var(--accent);
   }
 
-  .status-card {
-    min-height: 78px;
-    display: grid;
-    grid-template-columns: repeat(3, minmax(110px, 1fr)) minmax(210px, 1.45fr);
-    align-items: center;
-    padding: 12px 18px;
-  }
-
-  .status-card > div {
-    display: grid;
-    gap: 3px;
-    padding: 4px 16px;
-    border-right: 1px solid var(--border);
-  }
-
-  .status-card > div:first-child {
-    padding-left: 0;
-  }
-
-  .status-card > div:last-child {
-    border-right: 0;
-  }
-
-  .status-card strong {
-    color: var(--text);
-    font-size: var(--font-lg);
-  }
-
-  .status-card span,
-  .status-card p,
   .scan-card p {
     color: var(--text-3);
     font-size: var(--font-sm);
   }
 
-  .status-time strong {
-    font-size: var(--font-sm);
-  }
-
-  .progress-line {
-    display: flex;
-    align-items: center;
-    gap: 9px;
-    padding: 10px 13px;
-    border-radius: var(--radius-m);
-    background: color-mix(in srgb, var(--accent) 9%, var(--surface));
-    color: var(--text-2);
-    font-size: var(--font-sm);
-  }
-
-  .progress-line :global(.spinner) {
-    color: var(--accent);
-  }
-
   .error-message {
-    margin: 0;
     padding: 11px 13px;
     border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--border));
     border-radius: var(--radius-m);
@@ -504,7 +316,6 @@
     color: var(--accent);
     font-size: 12.5px;
     cursor: pointer;
-    transition: background var(--motion-fast) var(--ease-responsive);
   }
 
   .text-button:hover:not(:disabled),
@@ -527,10 +338,6 @@
     border-bottom: 1px solid var(--border);
   }
 
-  .candidate-row.needs-review {
-    background: color-mix(in srgb, var(--warning) 7%, var(--surface));
-  }
-
   .candidate-row label {
     display: grid;
     place-items: center;
@@ -543,60 +350,26 @@
 
   .candidate-main {
     min-width: 0;
-    display: grid;
-    gap: 7px;
-  }
-
-  .candidate-name {
     display: flex;
-    align-items: baseline;
-    gap: 9px;
-    min-width: 0;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
   }
 
-  .candidate-name strong {
+  .candidate-main strong {
     overflow: hidden;
     color: var(--text);
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  .candidate-name span {
-    overflow: hidden;
-    color: var(--text-3);
-    font-size: var(--font-xs);
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .badges {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 5px;
-  }
-
   .badge {
     padding: 2px 6px;
     border-radius: var(--radius-full);
-    background: var(--surface-2);
-    color: var(--text-3);
-    font-size: 10px;
-    font-weight: 600;
-  }
-
-  .badge.warning {
-    background: var(--warning-soft);
-    color: var(--warning);
-  }
-
-  .badge.restricted {
-    background: var(--accent-soft);
-    color: var(--accent);
-  }
-
-  .badge.confirmed {
     background: var(--success-soft);
     color: var(--success);
+    font-size: 10px;
+    font-weight: 600;
   }
 
   .candidate-stats {
@@ -651,14 +424,6 @@
   }
 
   @media (max-width: 820px) {
-    .status-card {
-      grid-template-columns: repeat(2, 1fr);
-    }
-
-    .status-card > div:nth-child(2) {
-      border-right: 0;
-    }
-
     .candidate-row {
       grid-template-columns: 28px minmax(0, 1fr) 90px;
     }

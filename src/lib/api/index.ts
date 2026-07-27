@@ -5,7 +5,7 @@ export * from "./tags";
 export * from "./groups";
 export * from "./duplicates";
 export * from "./artists";
-export * from "./artist-dictionary";
+export * from "./artist-prefix";
 export * from "./prompt-edit";
 export * from "./import-export";
 export * from "./search";

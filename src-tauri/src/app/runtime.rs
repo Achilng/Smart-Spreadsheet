@@ -7,8 +7,8 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::db::{
-    ArtistDictionaryInput, ArtistDictionaryStatus, AutoArtistPrefixApplyResult, AutomationRule,
-    AutomationRuleDraft, AutomationRuleError, AutoArtistPrefixPreview, BatchSummary,
+    AutoArtistPrefixApplyResult, AutomationRule, AutomationRuleDraft, AutomationRuleError,
+    AutoArtistPrefixPreview, BatchSummary,
     DedupeCluster, DedupeMode, GroupSummary, LibrarySummary,
     MutableRowState, QuickArtistPrefixApplyResult, QuickArtistPrefixChange,
     QuickArtistPrefixPreview,
@@ -469,21 +469,6 @@ impl AppRuntime {
         changes: &[QuickArtistPrefixChange],
     ) -> Result<u64, AppRuntimeError> {
         self.with_database_mut(|db| db.reapply_quick_artist_prefix_changes(changes))
-    }
-
-    pub(crate) fn ensure_bundled_artist_dictionary(
-        &self,
-        path: &Path,
-    ) -> Result<ArtistDictionaryStatus, AppRuntimeError> {
-        self.with_database_mut(|db| db.install_bundled_artist_dictionary(path))
-    }
-
-    pub(crate) fn replace_artist_dictionary(
-        &self,
-        input: &ArtistDictionaryInput,
-        synced_at: &str,
-    ) -> Result<ArtistDictionaryStatus, AppRuntimeError> {
-        self.with_database(|db| db.replace_artist_dictionary(input, synced_at))
     }
 
     pub(crate) fn preview_auto_artist_prefix(

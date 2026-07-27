@@ -1,8 +1,8 @@
-pub const CURRENT_SCHEMA_VERSION: u32 = 14;
+pub const CURRENT_SCHEMA_VERSION: u32 = 15;
 pub const MINIMUM_UPGRADABLE_SCHEMA_VERSION: u32 = 8;
 
 /// 新资料库直接创建当前结构，不再重放早期工作簿/XLSX 导入迁移。
-pub(super) const SCHEMA_14: &str = r#"
+pub(super) const SCHEMA_15: &str = r#"
 CREATE TABLE import_batches (
     id INTEGER PRIMARY KEY,
     source_type TEXT NOT NULL CHECK (source_type IN ('legacy', 'folder', 'archive')),
@@ -80,26 +80,6 @@ CREATE TABLE dedupe_aliases (
     PRIMARY KEY (mode, key)
 ) STRICT, WITHOUT ROWID;
 
-CREATE TABLE artist_dictionary_names (
-    match_name TEXT PRIMARY KEY COLLATE BINARY,
-    display_name TEXT NOT NULL,
-    canonical_name TEXT NOT NULL,
-    post_count INTEGER NOT NULL CHECK (post_count >= 0),
-    is_banned INTEGER NOT NULL CHECK (is_banned IN (0, 1)),
-    is_deprecated INTEGER NOT NULL CHECK (is_deprecated IN (0, 1)),
-    is_ambiguous INTEGER NOT NULL CHECK (is_ambiguous IN (0, 1)),
-    source_mask INTEGER NOT NULL CHECK (source_mask > 0)
-) STRICT, WITHOUT ROWID;
-
-CREATE TABLE artist_dictionary_sync (
-    singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
-    synced_at TEXT NOT NULL,
-    tag_count INTEGER NOT NULL CHECK (tag_count >= 0),
-    artist_count INTEGER NOT NULL CHECK (artist_count >= 0),
-    alias_count INTEGER NOT NULL CHECK (alias_count >= 0),
-    name_count INTEGER NOT NULL CHECK (name_count >= 0)
-) STRICT;
-
 CREATE TABLE automation_rules (
     id INTEGER PRIMARY KEY,
     name TEXT NOT NULL,
@@ -125,9 +105,6 @@ WHERE group_id IS NOT NULL;
 CREATE INDEX idx_rows_metadata_fingerprint ON rows(metadata_fingerprint)
 WHERE metadata_fingerprint IS NOT NULL;
 CREATE INDEX idx_rows_updated_at ON rows(updated_at DESC, id DESC);
-CREATE INDEX idx_artist_dictionary_canonical
-ON artist_dictionary_names(canonical_name, match_name);
-
 CREATE TRIGGER touch_row_after_user_edit
 AFTER UPDATE OF positive_prompt, character_prompt, negative_prompt, note, group_id ON rows
 WHEN OLD.positive_prompt IS NOT NEW.positive_prompt
@@ -239,33 +216,6 @@ BEGIN
 END;
 "#;
 
-/// v12 → v13：缓存 Danbooru 画师 Tag、现存画师的其它名称及历史别名，供全库
-/// 裸画师 Tag 扫描使用。词典只保存公开 API 元数据，不保存作品或画师页面内容。
-pub(super) const MIGRATION_13: &str = r#"
-CREATE TABLE artist_dictionary_names (
-    match_name TEXT PRIMARY KEY COLLATE BINARY,
-    display_name TEXT NOT NULL,
-    canonical_name TEXT NOT NULL,
-    post_count INTEGER NOT NULL CHECK (post_count >= 0),
-    is_banned INTEGER NOT NULL CHECK (is_banned IN (0, 1)),
-    is_deprecated INTEGER NOT NULL CHECK (is_deprecated IN (0, 1)),
-    is_ambiguous INTEGER NOT NULL CHECK (is_ambiguous IN (0, 1)),
-    source_mask INTEGER NOT NULL CHECK (source_mask > 0)
-) STRICT, WITHOUT ROWID;
-
-CREATE TABLE artist_dictionary_sync (
-    singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
-    synced_at TEXT NOT NULL,
-    tag_count INTEGER NOT NULL CHECK (tag_count >= 0),
-    artist_count INTEGER NOT NULL CHECK (artist_count >= 0),
-    alias_count INTEGER NOT NULL CHECK (alias_count >= 0),
-    name_count INTEGER NOT NULL CHECK (name_count >= 0)
-) STRICT;
-
-CREATE INDEX idx_artist_dictionary_canonical
-ON artist_dictionary_names(canonical_name, match_name);
-"#;
-
 /// v13 → v14：保存可复用自动规则，并缓存规则条件需要的图片尺寸与 NovelAI
 /// 生成参数。历史行保持 NULL；重新更新原图后会补齐可读取的字段。
 pub(super) const MIGRATION_14: &str = r#"
@@ -295,4 +245,11 @@ CREATE TABLE automation_rules (
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 ) STRICT;
+"#;
+
+/// v14 → v15：移除已经退役的外部画师词典缓存。画师前缀补全改为只使用
+/// 资料库中已有的明确 `artist:` 标注作为证据。
+pub(super) const MIGRATION_15: &str = r#"
+DROP TABLE IF EXISTS artist_dictionary_sync;
+DROP TABLE IF EXISTS artist_dictionary_names;
 "#;
