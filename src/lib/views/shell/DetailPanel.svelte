@@ -126,6 +126,20 @@
       }
     }
 
+    function onKeydown(event: KeyboardEvent): void {
+      // 中文输入法用 Enter 确认候选词时不应触发保存。
+      if (event.isComposing) return;
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        cancel();
+      } else if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        event.stopPropagation();
+        void save();
+      }
+    }
+
     /** 切换行时调用：不丢内容，未保存的编辑暂存为原行草稿。 */
     function reset(): void {
       if (isDirty() && editingRowId !== null) {
@@ -146,6 +160,7 @@
       start,
       cancel,
       save,
+      onKeydown,
       reset,
     };
   }
@@ -490,13 +505,8 @@
             placeholder="输入备注；导出智绘姬 JSON 时会作为预设名称"
             bind:value={noteEditor.value}
             disabled={noteEditor.saving}
-            onkeydown={event => {
-              if (event.key === "Escape") {
-                event.preventDefault();
-                event.stopPropagation();
-                noteEditor.cancel();
-              }
-            }}
+            title="回车保存，Shift+回车换行"
+            onkeydown={noteEditor.onKeydown}
             transition:softFade={{ duration: 130 }}
           ></textarea>
           {#if noteEditor.restored}
@@ -598,13 +608,8 @@
               class="prompt-textarea"
               bind:value={prompt.editor.value}
               disabled={prompt.editor.saving}
-              onkeydown={event => {
-                if (event.key === "Escape") {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  prompt.editor.cancel();
-                }
-              }}
+              title="回车保存，Shift+回车换行"
+              onkeydown={prompt.editor.onKeydown}
               transition:softFade={{ duration: 130 }}
             ></textarea>
             {#if prompt.editor.restored}
