@@ -69,17 +69,7 @@
   let preview = $state<RulePreview | null>(null);
   let execution = $state<RuleExecutionSummary | null>(null);
   let sampleRows = $state<RowRecord[]>([]);
-  let newActionType = $state<RuleAction["type"]>("addTags");
   let openingRowId = $state<number | null>(null);
-
-  const actionOptions: [RuleAction["type"], string][] = [
-    ["addTags", "添加 Tag"], ["removeTags", "移除 Tag"], ["setGroup", "移入分组"],
-    ["clearGroup", "清除分组"], ["appendPrompt", "追加提示词"],
-    ["deletePromptTags", "删除指定提示词"], ["replacePrompt", "查找替换提示词"],
-    ["prefixArtist", "修正 artist: 前缀"], ["setNote", "设置备注"],
-    ["appendNote", "追加备注"], ["clearNote", "清空备注"],
-    ["stopProcessing", "停止后续规则"],
-  ];
 
   const selectedRule = $derived(rules.find(rule => rule.id === selectedId) ?? null);
   const dirty = $derived(JSON.stringify(draft) !== JSON.stringify(baseline));
@@ -307,7 +297,7 @@
   }
 
   function addAction(): void {
-    draft.actions.push(defaultAction(newActionType));
+    draft.actions.push(defaultAction("addTags"));
     resetResult();
   }
 
@@ -504,7 +494,7 @@
               <RuleActionEditor {action} {groups} {tags} tagsloading={tagsLoading} onrefreshtags={refreshTags} onreplace={value => replaceAction(index, value)} onremove={() => removeAction(index)} onmoveup={() => moveAction(index, -1)} onmovedown={() => moveAction(index, 1)} canmoveup={index > 0} canmovedown={index < draft.actions.length - 1} />
             {/each}
           </div>
-          <div class="add-action"><select bind:value={newActionType}>{#each actionOptions as item}<option value={item[0]}>{item[1]}</option>{/each}</select><button type="button" class="btn" onclick={addAction}><Plus size={15} />添加任务</button></div>
+          <div class="add-action"><button type="button" class="btn" onclick={addAction}><Plus size={15} />添加任务</button></div>
         </section>
 
         <section class="editor-section test-section tool-card">
