@@ -37,11 +37,11 @@
     height: 20px;
     padding: 0 8px;
     border-radius: var(--radius-full);
-    background: #66ccff;
+    background: #3c66bf;
     box-shadow:
       inset 0 0 0 1px rgb(0 0 0 / 10%),
       0 1px 2px rgb(0 0 0 / 12%);
-    color: #08384e;
+    color: #fff;
     font-size: 10.5px;
     font-weight: 700;
     line-height: 1;
