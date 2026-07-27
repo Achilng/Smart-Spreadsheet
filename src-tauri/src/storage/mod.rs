@@ -8,9 +8,9 @@ mod metadata_fingerprint;
 mod migration;
 mod perceptual_hash;
 mod prompt_docs;
-mod vibe_status;
 #[cfg(test)]
 pub(crate) mod test_fixtures;
+mod vibe_status;
 
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
@@ -31,10 +31,13 @@ pub use export_images::{
 pub use export_json::{JsonExportError, JsonExportOutcome, JsonExportProgress};
 pub use export_xlsx::{ExportProgress, XlsxExportError, XlsxExportOutcome};
 pub use import_images::{
-    ExistingImageUpdateOutcome, ImageImportError, ImageImportOutcome, ImageImportProgress, ImageImportStage,
+    ExistingImageUpdateOutcome, ImageImportError, ImageImportOutcome, ImageImportProgress,
+    ImageImportStage,
 };
 pub use migration::{MigrationOutcome, PreparedMigration};
-pub use perceptual_hash::{PerceptualHashBackfillOutcome, PerceptualHashProgress, SimilarImageMatch};
+pub use perceptual_hash::{
+    PerceptualHashBackfillOutcome, PerceptualHashProgress, SimilarImageMatch,
+};
 pub use prompt_docs::{PromptDocAsset, PromptDocDetail, PromptDocError, PromptDocSummary};
 
 pub(super) const FORMAT_VERSION: u32 = 1;
@@ -137,7 +140,10 @@ impl DataDirectory {
             });
         }
 
-        for required_path in [root.join("cache").join("thumbnails"), root.join("migration")] {
+        for required_path in [
+            root.join("cache").join("thumbnails"),
+            root.join("migration"),
+        ] {
             if !required_path.is_dir() {
                 return Err(StorageError::MissingRequiredPath(required_path));
             }
@@ -153,7 +159,9 @@ impl DataDirectory {
         // 提示词文档是文件夹资产，不提升目录格式版本，旧目录打开时补建。
         fs::create_dir_all(root.join("prompt-docs"))?;
 
-        let directory = Self { root: root.to_owned() };
+        let directory = Self {
+            root: root.to_owned(),
+        };
         directory.backfill_content_hashes(progress)?;
         directory.backfill_metadata_fingerprints()?;
         directory.backfill_vibe_statuses()?;
@@ -195,10 +203,15 @@ impl DataDirectory {
         self.root.join("rejected")
     }
 
-    pub fn set_rejected_images_directory(&self, path: impl AsRef<Path>) -> Result<PathBuf, StorageError> {
+    pub fn set_rejected_images_directory(
+        &self,
+        path: impl AsRef<Path>,
+    ) -> Result<PathBuf, StorageError> {
         let path = path.as_ref();
         if path.exists() && !path.is_dir() {
-            return Err(StorageError::RejectedImagesPathNotDirectory(path.to_owned()));
+            return Err(StorageError::RejectedImagesPathNotDirectory(
+                path.to_owned(),
+            ));
         }
         fs::create_dir_all(path)?;
         let path = path.canonicalize()?;
@@ -301,7 +314,11 @@ mod tests {
         assert!(initialized.thumbnail_cache_path().is_dir());
         assert!(initialized.migration_path().is_dir());
         assert_eq!(
-            initialized.open_database().unwrap().schema_version().unwrap(),
+            initialized
+                .open_database()
+                .unwrap()
+                .schema_version()
+                .unwrap(),
             crate::db::CURRENT_SCHEMA_VERSION
         );
     }
@@ -315,14 +332,21 @@ mod tests {
         let error = DataDirectory::initialize(&temporary.path).unwrap_err();
 
         assert!(matches!(error, StorageError::UnmanagedDirectory(path) if path == temporary.path));
-        assert_eq!(fs::read(temporary.path.join("unrelated.txt")).unwrap(), b"keep");
+        assert_eq!(
+            fs::read(temporary.path.join("unrelated.txt")).unwrap(),
+            b"keep"
+        );
     }
 
     #[test]
     fn rejects_newer_data_directory_format() {
         let temporary = TemporaryDirectory::new("future-format");
         let directory = DataDirectory::initialize(&temporary.path).unwrap();
-        fs::write(directory.root().join(MARKER_FILE), br#"{"format_version":999}"#).unwrap();
+        fs::write(
+            directory.root().join(MARKER_FILE),
+            br#"{"format_version":999}"#,
+        )
+        .unwrap();
 
         let error = DataDirectory::open(&temporary.path).unwrap_err();
 

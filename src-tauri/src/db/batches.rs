@@ -140,9 +140,8 @@ impl Database {
                 .prepare("SELECT content_hash FROM rows WHERE content_hash IS NOT NULL")?
                 .query_map([], |row| row.get::<_, String>(0))?
                 .collect::<Result<HashSet<_>, _>>()?;
-            let mut find_existing = transaction.prepare(
-                "SELECT source_size, source_mtime FROM rows WHERE identity = ?1",
-            )?;
+            let mut find_existing = transaction
+                .prepare("SELECT source_size, source_mtime FROM rows WHERE identity = ?1")?;
             let mut insert = transaction.prepare(
                 "INSERT INTO rows (
                     batch_id, source_ordinal, identity, source_size, source_mtime,
@@ -171,8 +170,7 @@ impl Database {
                     .optional()?;
                 if let Some((stored_size, stored_mtime)) = existing {
                     skipped_existing += 1;
-                    let candidate_known =
-                        row.source_size.is_some() || row.source_mtime.is_some();
+                    let candidate_known = row.source_size.is_some() || row.source_mtime.is_some();
                     if candidate_known
                         && (stored_size != row.source_size || stored_mtime != row.source_mtime)
                     {
@@ -229,8 +227,7 @@ impl Database {
             }
         }
 
-        let added_count =
-            i64::try_from(added).map_err(|_| DatabaseError::RowCountOverflow)?;
+        let added_count = i64::try_from(added).map_err(|_| DatabaseError::RowCountOverflow)?;
         let skipped_count = i64::try_from(skipped_existing + skipped_content)
             .map_err(|_| DatabaseError::RowCountOverflow)?;
         transaction.execute(
@@ -336,14 +333,12 @@ impl Database {
     }
 
     pub fn library_summary(&self) -> Result<LibrarySummary, DatabaseError> {
-        let row_count: i64 =
+        let row_count: i64 = self
+            .connection
+            .query_row("SELECT COUNT(*) FROM rows", [], |row| row.get(0))?;
+        let batch_count: i64 =
             self.connection
-                .query_row("SELECT COUNT(*) FROM rows", [], |row| row.get(0))?;
-        let batch_count: i64 = self.connection.query_row(
-            "SELECT COUNT(*) FROM import_batches",
-            [],
-            |row| row.get(0),
-        )?;
+                .query_row("SELECT COUNT(*) FROM import_batches", [], |row| row.get(0))?;
         let last_batch = self
             .connection
             .query_row(
@@ -368,8 +363,7 @@ impl Database {
             .transpose()?;
         Ok(LibrarySummary {
             row_count: u64::try_from(row_count).map_err(|_| DatabaseError::CountOverflow)?,
-            batch_count: u64::try_from(batch_count)
-                .map_err(|_| DatabaseError::CountOverflow)?,
+            batch_count: u64::try_from(batch_count).map_err(|_| DatabaseError::CountOverflow)?,
             last_batch,
         })
     }
@@ -385,8 +379,7 @@ fn batch_summary_from_stored(
         source_path,
         imported_at,
         added_count: u64::try_from(added_count).map_err(|_| DatabaseError::CountOverflow)?,
-        skipped_count: u64::try_from(skipped_count)
-            .map_err(|_| DatabaseError::CountOverflow)?,
+        skipped_count: u64::try_from(skipped_count).map_err(|_| DatabaseError::CountOverflow)?,
     })
 }
 
@@ -415,12 +408,7 @@ mod tests {
         let mut database = Database::open_in_memory().unwrap();
 
         let outcome = database
-            .append_batch(
-                SourceType::Folder,
-                r"D:\library",
-                &test_rows(3),
-                |_| Ok(()),
-            )
+            .append_batch(SourceType::Folder, r"D:\library", &test_rows(3), |_| Ok(()))
             .unwrap();
 
         assert_eq!(outcome.added, 3);
@@ -498,7 +486,12 @@ mod tests {
         assert_eq!(outcome.skipped_content, 2);
         assert_eq!(database.library_summary().unwrap().row_count, 4);
         assert_eq!(
-            database.library_summary().unwrap().last_batch.unwrap().skipped_count,
+            database
+                .library_summary()
+                .unwrap()
+                .last_batch
+                .unwrap()
+                .skipped_count,
             3
         );
     }
@@ -552,7 +545,12 @@ mod tests {
             ..NewRow::default()
         };
         let outcome = database
-            .append_batch(SourceType::Archive, r"D:\pack.zip", &[with_copy], |_| Ok(()))
+            .append_batch(
+                SourceType::Archive,
+                r"D:\pack.zip",
+                &[with_copy],
+                |_| Ok(()),
+            )
             .unwrap();
 
         let stored: String = database
@@ -581,12 +579,8 @@ mod tests {
             Err(DatabaseError::DuplicateIdentityInBatch(identity)) if identity == "file:a"
         ));
 
-        let empty = database.append_batch(
-            SourceType::Folder,
-            r"D:\test",
-            &[row("  ", 1)],
-            |_| Ok(()),
-        );
+        let empty =
+            database.append_batch(SourceType::Folder, r"D:\test", &[row("  ", 1)], |_| Ok(()));
         assert!(matches!(empty, Err(DatabaseError::EmptyIdentity)));
         assert_eq!(database.library_summary().unwrap().batch_count, 0);
     }

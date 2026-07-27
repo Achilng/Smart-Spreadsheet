@@ -361,6 +361,9 @@ mod tests {
         );
         assert_eq!(metadata.generation_scale, Some(5.5));
         assert_eq!(metadata.generation_cfg_rescale, Some(0.2));
-        assert_eq!(metadata.generation_noise_schedule.as_deref(), Some("karras"));
+        assert_eq!(
+            metadata.generation_noise_schedule.as_deref(),
+            Some("karras")
+        );
     }
 }

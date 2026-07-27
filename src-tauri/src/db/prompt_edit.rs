@@ -115,8 +115,7 @@ fn append_known_artist_fragment(
         .map(|index| index + fragment[index..].chars().next().unwrap().len_utf8())
         .unwrap_or(start);
     let token = &fragment[start..end];
-    if let Some((rewritten, matched_name)) =
-        prefix_known_artist_tag_in_token(token, selected_names)
+    if let Some((rewritten, matched_name)) = prefix_known_artist_tag_in_token(token, selected_names)
     {
         result.push_str(&fragment[..start]);
         result.push_str(&rewritten);
