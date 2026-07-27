@@ -24,6 +24,7 @@
   import { clearSelection } from "../../stores/selection-store.svelte";
   import { loadTags, tagStore } from "../../stores/tag-store.svelte";
   import { softFade } from "../../ui/motion";
+  import { tagColorFor } from "../../utils/tag-colors";
 
   let status = $state<{ text: string; isError: boolean } | null>(null);
 
@@ -302,6 +303,7 @@
     {:else}
       {#each entries as entry (entry.name)}
         {@const filterOn = activeTags.includes(entry.name)}
+        {@const tone = tagColorFor(entry.name, tagStore.list)}
         <button
           type="button"
           class="tag-row check-row"
@@ -311,6 +313,12 @@
           oncontextmenu={(e) => onTagContextMenu(e, entry.name)}
         >
           <span class="cbox" aria-hidden="true"></span>
+          <span
+            class="tag-color-swatch"
+            style:--tag-color={tone.background}
+            title="画廊胶囊颜色 {tone.background}"
+            aria-hidden="true"
+          ></span>
           <span class="tag-name" title={entry.name}>{entry.name}</span>
           <span class="tag-count">{formatCount(entry.rowCount)}</span>
         </button>
@@ -541,6 +549,19 @@
   .tag-row:disabled {
     cursor: default;
     opacity: 0.6;
+  }
+
+  .tag-row {
+    gap: 7px;
+  }
+
+  .tag-color-swatch {
+    width: 11px;
+    height: 11px;
+    border-radius: 3px;
+    background: var(--tag-color);
+    box-shadow: inset 0 0 0 1px rgb(0 0 0 / 16%);
+    flex: none;
   }
 
   .tag-name {

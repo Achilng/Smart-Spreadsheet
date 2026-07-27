@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { tagStore } from "../stores/tag-store.svelte";
+  import { tagColorFor } from "../utils/tag-colors";
+
   let { tags }: { tags: string[] } = $props();
 
   const visibleTags = $derived(tags.filter(tag => tag.trim().length > 0));
@@ -13,7 +16,12 @@
     aria-label={`已有 ${visibleTags.length} 个 Tag：${visibleTags.join("、")}`}
   >
     {#each displayedTags as tag (tag)}
-      <span class="card-tag-pill"><span class="tag-label">{tag}</span></span>
+      {@const tone = tagColorFor(tag, tagStore.list)}
+      <span
+        class="card-tag-pill"
+        style:--tag-bg={tone.background}
+        style:--tag-text={tone.text}
+      ><span class="tag-label">{tag}</span></span>
     {/each}
   </span>
 {/if}
@@ -37,11 +45,11 @@
     height: 20px;
     padding: 0 8px;
     border-radius: var(--radius-full);
-    background: #3c66bf;
+    background: var(--tag-bg);
     box-shadow:
       inset 0 0 0 1px rgb(0 0 0 / 10%),
       0 1px 2px rgb(0 0 0 / 12%);
-    color: #fff;
+    color: var(--tag-text);
     font-size: 10.5px;
     font-weight: 700;
     line-height: 1;
