@@ -20,6 +20,7 @@
     getRowsByIds,
     listAutomationRules,
     listGroups,
+    listTags,
     previewAutomationRule,
     previewAutomationRuleDraft,
     reorderAutomationRules,
@@ -34,6 +35,7 @@
     type RuleCondition,
     type RuleExecutionSummary,
     type RulePreview,
+    type TagSummary,
   } from "../../api";
   import {
     app,
@@ -53,6 +55,8 @@
 
   let rules = $state<AutomationRule[]>([]);
   let groups = $state<GroupSummary[]>([]);
+  let tags = $state<TagSummary[]>([]);
+  let tagsLoading = $state(false);
   let selectedId = $state<number | null>(null);
   let draft = $state<AutomationRuleDraft>(plainClone(initialDraft));
   let baseline = $state<AutomationRuleDraft>(plainClone(initialDraft));
@@ -107,13 +111,25 @@
     loading = true;
     error = null;
     try {
-      [rules, groups] = await Promise.all([listAutomationRules(), listGroups()]);
+      [rules, groups, tags] = await Promise.all([listAutomationRules(), listGroups(), listTags()]);
       if (rules.length > 0) loadRule(rules[0]);
       else startNew(false);
     } catch (cause) {
       error = errorText(cause);
     } finally {
       loading = false;
+    }
+  }
+
+  async function refreshTags(): Promise<void> {
+    if (tagsLoading) return;
+    tagsLoading = true;
+    try {
+      tags = await listTags();
+    } catch (cause) {
+      showError(`无法刷新 Tag 列表：${errorText(cause)}`);
+    } finally {
+      tagsLoading = false;
     }
   }
 
@@ -277,7 +293,7 @@
     switch (type) {
       case "addTags": return { type, tags: [] };
       case "removeTags": return { type, tags: [] };
-      case "setGroup": return { type, groupId: groups[0]?.id ?? 0, onlyIfUngrouped: false };
+      case "setGroup": return { type, groupId: 0, onlyIfUngrouped: false };
       case "clearGroup": return { type };
       case "appendPrompt": return { type, field: "positive", value: "" };
       case "deletePromptTags": return { type, field: "positive", value: "" };
@@ -485,7 +501,7 @@
           <div class="section-title"><span class="step-badge">3</span><div><h3>执行任务</h3><p>任务按从上到下的顺序执行；后续规则能看到这些修改。</p></div></div>
           <div class="action-list">
             {#each draft.actions as action, index (`action-${index}`)}
-              <RuleActionEditor {action} {groups} onreplace={value => replaceAction(index, value)} onremove={() => removeAction(index)} onmoveup={() => moveAction(index, -1)} onmovedown={() => moveAction(index, 1)} canmoveup={index > 0} canmovedown={index < draft.actions.length - 1} />
+              <RuleActionEditor {action} {groups} {tags} tagsloading={tagsLoading} onrefreshtags={refreshTags} onreplace={value => replaceAction(index, value)} onremove={() => removeAction(index)} onmoveup={() => moveAction(index, -1)} onmovedown={() => moveAction(index, 1)} canmoveup={index > 0} canmovedown={index < draft.actions.length - 1} />
             {/each}
           </div>
           <div class="add-action"><select bind:value={newActionType}>{#each actionOptions as item}<option value={item[0]}>{item[1]}</option>{/each}</select><button type="button" class="btn" onclick={addAction}><Plus size={15} />添加任务</button></div>

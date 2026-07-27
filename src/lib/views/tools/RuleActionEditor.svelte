@@ -2,11 +2,15 @@
   import GripVertical from "@lucide/svelte/icons/grip-vertical";
   import X from "@lucide/svelte/icons/x";
 
-  import type { GroupSummary, RuleAction } from "../../api";
+  import type { GroupSummary, RuleAction, TagSummary } from "../../api";
+  import RuleTagPicker from "./RuleTagPicker.svelte";
 
   let {
     action,
     groups,
+    tags,
+    tagsloading,
+    onrefreshtags,
     onreplace,
     onremove,
     onmoveup,
@@ -16,6 +20,9 @@
   }: {
     action: RuleAction;
     groups: GroupSummary[];
+    tags: TagSummary[];
+    tagsloading: boolean;
+    onrefreshtags: () => void | Promise<void>;
     onreplace: (action: RuleAction) => void;
     onremove: () => void;
     onmoveup: () => void;
@@ -43,7 +50,7 @@
     switch (type) {
       case "addTags": return { type, tags: [] };
       case "removeTags": return { type, tags: [] };
-      case "setGroup": return { type, groupId: groups[0]?.id ?? 0, onlyIfUngrouped: false };
+      case "setGroup": return { type, groupId: 0, onlyIfUngrouped: false };
       case "clearGroup": return { type };
       case "appendPrompt": return { type, field: "positive", value: "" };
       case "deletePromptTags": return { type, field: "positive", value: "" };
@@ -66,6 +73,10 @@
 
   function splitValues(value: string): string[] {
     return [...new Set(value.split(/[,，\n\r]/).map(item => item.trim()).filter(Boolean))];
+  }
+
+  function groupExists(groupId: number): boolean {
+    return groups.some(group => group.id === groupId);
   }
 
   /** 当前任务是否已填了会因切换类型而丢失的内容 */
@@ -126,12 +137,16 @@
 
     <div class="action-body">
       {#if action.type === "addTags" || action.type === "removeTags"}
-        <label class="wide"><span>Tag（半角/全角逗号或换行分隔；添加时可直接创建新 Tag）</span>
-          <textarea rows="2" value={action.tags.join(", ")} oninput={event => patch({ tags: splitValues(text(event)) })}></textarea>
-        </label>
+        <RuleTagPicker {tags} selected={action.tags} loading={tagsloading} onchange={value => patch({ tags: value })} onrefresh={onrefreshtags} />
+        <p class="description">{action.type === "addTags" ? "命中后添加所选 Tag。" : "命中后移除所选 Tag。"}这里只能选择当前 Tag 库中已有的项目，避免输入错字。</p>
       {:else if action.type === "setGroup"}
-        <label><span>目标分组</span><select value={action.groupId || ""} onchange={event => patch({ groupId: Number((event.currentTarget as HTMLSelectElement).value) || 0 })}><option value="">请选择分组</option>{#each groups as group}<option value={group.id}>{group.name}</option>{/each}</select></label>
+        <label><span>目标分组</span><select disabled={groups.length === 0 && !action.groupId} value={action.groupId || ""} onchange={event => patch({ groupId: Number((event.currentTarget as HTMLSelectElement).value) || 0 })}><option value="">{groups.length === 0 ? "暂无已有分组" : "请选择已有分组"}</option>{#if action.groupId && !groupExists(action.groupId)}<option value={action.groupId}>已不存在的分组（#{action.groupId}）</option>{/if}{#each groups as group}<option value={group.id}>{group.name}</option>{/each}</select></label>
         <label class="check"><input type="checkbox" checked={action.onlyIfUngrouped} onchange={event => patch({ onlyIfUngrouped: (event.currentTarget as HTMLInputElement).checked })} />仅处理尚未分组的图片</label>
+        {#if action.groupId && !groupExists(action.groupId)}
+          <p class="warning" role="status">旧规则选择的分组已经不存在，请重新选择一个已有分组后再保存。</p>
+        {:else if groups.length === 0}
+          <p class="description">暂无可选分组，请先在主窗口创建分组。</p>
+        {/if}
       {:else if action.type === "clearGroup"}
         <p class="description">移除命中图片当前所属的分组，不会删除分组本身。</p>
       {:else if action.type === "appendPrompt" || action.type === "deletePromptTags"}
@@ -175,4 +190,5 @@
   .check { min-width: 0; display: flex; align-items: center; gap: 7px; color: var(--text-2); font-size: var(--font-sm); }
   .check input { min-height: 0; }
   .description { color: var(--text-3); font-size: var(--font-sm); line-height: 1.55; }
+  .warning { padding: 8px 10px; border-radius: 7px; background: var(--warning-soft); color: var(--warning); font-size: var(--font-xs); line-height: 1.5; }
 </style>
