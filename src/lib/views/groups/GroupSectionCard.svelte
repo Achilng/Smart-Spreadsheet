@@ -59,6 +59,9 @@
 >
   <div class="thumb">
     <Thumbnail rowId={row.id} {hasImage} alt={label} />
+    {#if row.tags.length > 0}
+      <span class="tag-overlay"><CardTagSummary tags={row.tags} /></span>
+    {/if}
     {#if vibeRefs}
       <span
         class="vibe-badge"
@@ -67,13 +70,8 @@
     {/if}
   </div>
   <span class="card-label">{label}</span>
-  {#if resolution || row.tags.length > 0}
-    <span class="card-sub-row">
-      {#if resolution}
-        <span class="card-sub tabular">{resolution}</span>
-      {/if}
-      <CardTagSummary tags={row.tags} />
-    </span>
+  {#if resolution}
+    <span class="card-sub tabular">{resolution}</span>
   {/if}
 </button>
 
@@ -126,13 +124,13 @@
     z-index: 1;
   }
 
-  .card-sub-row {
-    width: 100%;
-    padding: 1px 3px 0;
+  .tag-overlay {
+    position: absolute;
+    left: 6px;
+    right: 6px;
+    bottom: 6px;
+    z-index: 1;
     display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 5px;
     min-width: 0;
   }
 
@@ -150,9 +148,10 @@
 
   .card-sub {
     display: block;
+    padding: 1px 3px 0;
     font-size: var(--font-xs);
     color: var(--text-3);
-    text-align: left;
+    text-align: center;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;

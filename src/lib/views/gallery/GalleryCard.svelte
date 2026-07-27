@@ -126,6 +126,9 @@
         {enhance}
         highPriority={isActive}
       />
+      {#if row.tags.length > 0}
+        <span class="tag-overlay"><CardTagSummary tags={row.tags} /></span>
+      {/if}
       {#if vibeRefs}
         <span
           class="vibe-badge"
@@ -135,10 +138,7 @@
     </button>
     <div class="meta">
       <div class="meta-name" title={fileName ?? ""}>{fileName ?? `#${row.sourceOrdinal}`}</div>
-      <div class="meta-sub-row">
-        <span class="meta-sub tabular">{resolution ?? `#${row.sourceOrdinal}`}</span>
-        <CardTagSummary tags={row.tags} />
-      </div>
+      <div class="meta-sub tabular">{resolution ?? `#${row.sourceOrdinal}`}</div>
     </div>
   {:else}
     <div class="thumb shimmer" style:height="{imageHeight}px"></div>
@@ -230,12 +230,13 @@
     z-index: 1;
   }
 
-  .meta-sub-row {
-    margin-top: 1px;
+  .tag-overlay {
+    position: absolute;
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    z-index: 1;
     display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 8px;
     min-width: 0;
   }
 
@@ -253,6 +254,7 @@
   }
 
   .meta-sub {
+    margin-top: 1px;
     font-size: var(--font-xs);
     color: var(--text-3);
     min-width: 0;

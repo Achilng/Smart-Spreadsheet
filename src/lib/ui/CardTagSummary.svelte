@@ -30,10 +30,10 @@
   .card-tag-list {
     display: flex;
     align-items: center;
-    justify-content: flex-end;
+    justify-content: flex-start;
     gap: 4px;
     min-width: 0;
-    max-width: 72%;
+    max-width: 100%;
     overflow: hidden;
   }
 
