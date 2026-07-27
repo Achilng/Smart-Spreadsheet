@@ -1,6 +1,9 @@
 <script lang="ts">
   import { emitTo } from "@tauri-apps/api/event";
+  import { getCurrentWebview } from "@tauri-apps/api/webview";
   import { open } from "@tauri-apps/plugin-dialog";
+  import ImageUp from "@lucide/svelte/icons/image-up";
+  import { onMount } from "svelte";
 
   import {
     getRowsByIds,
@@ -13,6 +16,12 @@
   import { focusMainWindow, type ToolboxRowRequest } from "../../windows/toolbox";
   import { softFade, softFly } from "../../ui/motion";
 
+  interface Props {
+    active: boolean;
+  }
+
+  let { active }: Props = $props();
+
   let queryPath = $state<string | null>(null);
   let matches = $state<SimilarImageMatch[]>([]);
   let rows = $state<Map<number, RowRecord>>(new Map());
@@ -20,8 +29,51 @@
   let searched = $state(false);
   let error = $state<string | null>(null);
   let openingRowId = $state<number | null>(null);
+  let draggingOverSearch = $state(false);
+  let searchDropZone: HTMLElement;
+
+  const IMAGE_EXTENSIONS = new Set([
+    "png",
+    "jpg",
+    "jpeg",
+    "bmp",
+    "gif",
+    "webp",
+    "tif",
+    "tiff",
+  ]);
 
   const queryName = $derived(queryPath?.split(/[\\/]/).pop() ?? null);
+
+  onMount(() => {
+    let disposed = false;
+    let unlistenDragDrop: (() => void) | null = null;
+    void getCurrentWebview().onDragDropEvent(event => {
+      if (!active || searching) {
+        draggingOverSearch = false;
+        return;
+      }
+      if (event.payload.type === "enter" || event.payload.type === "over") {
+        draggingOverSearch = isInsideSearchDropZone(event.payload.position);
+      } else if (event.payload.type === "leave") {
+        draggingOverSearch = false;
+      } else {
+        const shouldSearch = isInsideSearchDropZone(event.payload.position);
+        draggingOverSearch = false;
+        if (shouldSearch) {
+          void searchDroppedPaths(event.payload.paths);
+        }
+      }
+    }).then(unlisten => {
+      if (disposed) unlisten();
+      else unlistenDragDrop = unlisten;
+    });
+
+    return () => {
+      disposed = true;
+      unlistenDragDrop?.();
+    };
+  });
 
   async function chooseAndSearch(): Promise<void> {
     const selection = await open({
@@ -31,20 +83,24 @@
       filters: [
         {
           name: "图片",
-          extensions: ["png", "jpg", "jpeg", "bmp", "gif", "webp", "tiff"],
+          extensions: ["png", "jpg", "jpeg", "bmp", "gif", "webp", "tif", "tiff"],
         },
       ],
     });
     if (typeof selection !== "string") return;
 
-    queryPath = selection;
+    await runSearch(selection);
+  }
+
+  async function runSearch(path: string): Promise<void> {
+    queryPath = path;
     matches = [];
     rows = new Map();
     searched = false;
     searching = true;
     error = null;
     try {
-      const result = await searchSimilarImages(selection, 10);
+      const result = await searchSimilarImages(path, 10);
       const records = result.length > 0
         ? await getRowsByIds(result.map(match => match.rowId))
         : [];
@@ -56,6 +112,30 @@
     } finally {
       searching = false;
     }
+  }
+
+  async function searchDroppedPaths(paths: string[]): Promise<void> {
+    if (paths.length !== 1 || !isSupportedImagePath(paths[0])) {
+      error = paths.length > 1
+        ? "请一次只拖入一张参考图片。"
+        : "请拖入支持的图片文件（PNG、JPG、BMP、GIF、WebP 或 TIFF）。";
+      return;
+    }
+    await runSearch(paths[0]);
+  }
+
+  function isSupportedImagePath(path: string): boolean {
+    const extension = path.split(".").pop()?.toLowerCase();
+    return extension !== undefined && IMAGE_EXTENSIONS.has(extension);
+  }
+
+  function isInsideSearchDropZone(position: { x: number; y: number }): boolean {
+    if (!searchDropZone) return false;
+    const scale = window.devicePixelRatio || 1;
+    const x = position.x / scale;
+    const y = position.y / scale;
+    const rect = searchDropZone.getBoundingClientRect();
+    return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
   }
 
   function distanceLabel(distance: number): string {
@@ -89,10 +169,18 @@
 </script>
 
 <div class="tool-page">
-  <section class="intro-card tool-card">
-    <div>
-      <h3>选择一张参考图片</h3>
-      <p>工具会计算参考图的感知哈希，并返回距离不超过 10 的库内图片。</p>
+  <section
+    bind:this={searchDropZone}
+    class="intro-card tool-card"
+    class:is-dragging={draggingOverSearch}
+  >
+    <div class="drop-copy">
+      <span class="drop-icon" aria-hidden="true"><ImageUp size={24} strokeWidth={1.6} /></span>
+      <div>
+        <h3>{draggingOverSearch ? "松开即可开始搜索" : "选择或拖入一张参考图片"}</h3>
+        <p>工具会计算参考图的感知哈希，并返回距离不超过 10 的库内图片。</p>
+        <small>支持 PNG、JPG、BMP、GIF、WebP 和 TIFF</small>
+      </div>
     </div>
     <button
       type="button"
@@ -124,7 +212,7 @@
       {/each}
     </div>
   {:else if error}
-    <p class="message error" transition:softFly={{ duration: 150, y: 4 }}>{error}</p>
+    <p class="message error" role="alert" transition:softFly={{ duration: 150, y: 4 }}>{error}</p>
   {:else if searched && matches.length === 0}
     <div class="empty-result empty-state" transition:softFly={{ duration: 160, y: 4 }}>
       <strong>没有找到相似图片</strong>
@@ -176,6 +264,35 @@
     justify-content: space-between;
     gap: 24px;
     padding: 20px;
+    border-style: dashed;
+    transition:
+      border-color var(--motion-fast) var(--ease-responsive),
+      background var(--motion-fast) var(--ease-responsive),
+      transform var(--motion-fast) var(--ease-responsive);
+  }
+
+  .intro-card.is-dragging {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    transform: translateY(-1px);
+  }
+
+  .drop-copy {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .drop-icon {
+    width: 44px;
+    height: 44px;
+    flex: none;
+    display: grid;
+    place-items: center;
+    border-radius: var(--radius-s);
+    background: var(--accent-soft);
+    color: var(--accent);
   }
 
   .intro-card h3 {
@@ -186,6 +303,13 @@
     margin-top: 4px;
     color: var(--text-2);
     font-size: var(--font-md);
+  }
+
+  .intro-card small {
+    display: block;
+    margin-top: 5px;
+    color: var(--text-3);
+    font-size: var(--font-xs);
   }
 
   .query-row {
@@ -351,5 +475,16 @@
 
   .card-info span.exact {
     color: var(--success);
+  }
+
+  @media (max-width: 680px) {
+    .intro-card {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .intro-card > .btn {
+      align-self: flex-end;
+    }
   }
 </style>

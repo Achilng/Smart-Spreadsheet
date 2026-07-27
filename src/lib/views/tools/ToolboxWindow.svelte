@@ -368,7 +368,7 @@
           {/if}
           {#if visited.imageSearch}
             <section class="tool-panel" class:is-active={activeTool === "imageSearch"}>
-              <ImageSearchTool />
+              <ImageSearchTool active={activeTool === "imageSearch"} />
             </section>
           {/if}
           {#if visited.imageExport}
