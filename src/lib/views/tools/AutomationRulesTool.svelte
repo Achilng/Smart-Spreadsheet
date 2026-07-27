@@ -4,8 +4,9 @@
   import ArrowDown from "@lucide/svelte/icons/arrow-down";
   import ArrowUp from "@lucide/svelte/icons/arrow-up";
   import CheckCircle2 from "@lucide/svelte/icons/check-circle-2";
+  import ClipboardCopy from "@lucide/svelte/icons/clipboard-copy";
   import FlaskConical from "@lucide/svelte/icons/flask-conical";
-  import Upload from "@lucide/svelte/icons/upload";
+  import ImportIcon from "@lucide/svelte/icons/import";
   import Plus from "@lucide/svelte/icons/plus";
   import Save from "@lucide/svelte/icons/save";
   import Trash2 from "@lucide/svelte/icons/trash-2";
@@ -14,6 +15,7 @@
   import { flip } from "svelte/animate";
 
   import { flipDuration } from "../../ui/motion";
+  import { buildAutomationRuleAiPrompt } from "../../automation-rule-ai-prompt";
 
   import {
     createAutomationRule,
@@ -79,6 +81,7 @@
   let sampleRows = $state<RowRecord[]>([]);
   let openingRowId = $state<number | null>(null);
   let transferring = $state(false);
+  let copyingPrompt = $state(false);
   let importPath = $state<string | null>(null);
   let importInspection = $state<AutomationRuleImportInspection | null>(null);
 
@@ -148,6 +151,29 @@
       showError(`无法刷新 Tag 列表：${errorText(cause)}`);
     } finally {
       tagsLoading = false;
+    }
+  }
+
+  async function copyAiRulePrompt(): Promise<void> {
+    if (copyingPrompt || transferring) return;
+    copyingPrompt = true;
+    try {
+      const [latestTags, latestGroups] = await Promise.all([listTags(), listGroups()]);
+      tags = latestTags;
+      groups = latestGroups;
+      const prompt = buildAutomationRuleAiPrompt(
+        latestTags.map(tag => tag.name),
+        latestGroups.map(group => group.name),
+      );
+      await navigator.clipboard.writeText(prompt);
+      setNotice({
+        tone: "success",
+        text: `AI 编写提示词已复制，包含 ${latestTags.length} 个 Tag 和 ${latestGroups.length} 个分组。`,
+      });
+    } catch (cause) {
+      setNotice({ tone: "error", text: `复制 AI 编写提示词失败：${errorText(cause)}` });
+    } finally {
+      copyingPrompt = false;
     }
   }
 
@@ -538,8 +564,9 @@
         <button type="button" class="btn btn-primary compact" onclick={() => startNew()}><Plus size={15} />新建</button>
       </div>
       <div class="sidebar-transfer">
-        <button type="button" class="btn compact" disabled={transferring} onclick={() => void chooseRuleImport()}><Upload size={14} />导入 JSON</button>
+        <button type="button" class="btn compact" disabled={transferring} onclick={() => void chooseRuleImport()}><ImportIcon size={14} />导入 JSON</button>
         <Dropdown label="导出 JSON" items={exportItems} disabled={transferring || rules.length === 0} />
+        <button type="button" class="btn compact ai-prompt-copy" disabled={transferring || copyingPrompt} onclick={() => void copyAiRulePrompt()}><ClipboardCopy size={14} />{copyingPrompt ? "正在准备…" : "复制 AI 编写提示词"}</button>
       </div>
 
       {#if rules.length === 0}
@@ -692,6 +719,7 @@
   .compact { min-height: 32px; padding: 5px 9px; }
   .sidebar-transfer { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 0 6px 12px; }
   .sidebar-transfer > button { justify-content: center; }
+  .sidebar-transfer > .ai-prompt-copy { grid-column: 1 / -1; }
   .sidebar-transfer :global(.dropdown) { min-width: 0; }
   .sidebar-transfer :global(.dropdown > .btn) { width: 100%; min-height: 32px; justify-content: center; padding: 5px 8px; }
   .empty-rules { min-height: 210px; padding: 20px; text-align: center; }
