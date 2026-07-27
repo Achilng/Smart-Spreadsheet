@@ -8,6 +8,7 @@ use thiserror::Error;
 
 use crate::db::{
     AutoArtistPrefixApplyResult, AutomationRule, AutomationRuleDraft, AutomationRuleError,
+    AutomationRuleExportResult, AutomationRuleImportInspection, AutomationRuleImportResult,
     AutoArtistPrefixPreview, BatchSummary,
     DedupeCluster, DedupeMode, GroupSummary, LibrarySummary,
     MutableRowState, QuickArtistPrefixApplyResult, QuickArtistPrefixChange,
@@ -16,6 +17,7 @@ use crate::db::{
     QuickGroupPreview, QuickTagApplyResult, QuickTagAssociation, QuickTagPreview, RowPage,
     RowQuery, RowSelection, SortMode, TagMatchMode, TagMutationError, TagMutationResult,
     RuleExecutionSummary, RulePreview, TagSelectionSummary, TagSummary,
+    read_automation_rule_file, write_automation_rule_file,
 };
 use crate::images::{ImageVariant, RowImageError};
 use crate::storage::{
@@ -347,6 +349,44 @@ impl AppRuntime {
 
     pub(crate) fn list_automation_rules(&self) -> Result<Vec<AutomationRule>, AppRuntimeError> {
         self.with_database(|db| db.list_automation_rules())
+    }
+
+    pub(crate) fn inspect_automation_rule_file(
+        &self,
+        path: impl AsRef<Path>,
+    ) -> Result<AutomationRuleImportInspection, AppRuntimeError> {
+        let (document, content_hash) = read_automation_rule_file(path.as_ref())?;
+        self.with_database(|db| db.inspect_automation_rule_document(&document, content_hash))
+    }
+
+    pub(crate) fn import_automation_rule_file(
+        &self,
+        path: impl AsRef<Path>,
+        expected_hash: &str,
+    ) -> Result<AutomationRuleImportResult, AppRuntimeError> {
+        let (document, content_hash) = read_automation_rule_file(path.as_ref())?;
+        if content_hash != expected_hash {
+            return Err(AutomationRuleError::InvalidRuleFile(
+                "文件在预览后发生了变化，请重新选择并检查".into(),
+            )
+            .into());
+        }
+        self.with_database_mut(|db| db.import_automation_rule_document(&document))
+    }
+
+    pub(crate) fn export_automation_rules(
+        &self,
+        path: impl AsRef<Path>,
+        ids: &[i64],
+    ) -> Result<AutomationRuleExportResult, AppRuntimeError> {
+        let path = path.as_ref();
+        let document = self.with_database(|db| db.export_automation_rule_document(ids))?;
+        write_automation_rule_file(path, &document)?;
+        Ok(AutomationRuleExportResult {
+            path: path.to_string_lossy().into_owned(),
+            exported_rules: u32::try_from(ids.len())
+                .map_err(|_| crate::db::DatabaseError::CountOverflow)?,
+        })
     }
 
     pub(crate) fn create_automation_rule(

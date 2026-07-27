@@ -1,9 +1,11 @@
 <script lang="ts">
   import { emitTo } from "@tauri-apps/api/event";
+  import { confirm as confirmDialog, open, save } from "@tauri-apps/plugin-dialog";
   import ArrowDown from "@lucide/svelte/icons/arrow-down";
   import ArrowUp from "@lucide/svelte/icons/arrow-up";
   import CheckCircle2 from "@lucide/svelte/icons/check-circle-2";
   import FlaskConical from "@lucide/svelte/icons/flask-conical";
+  import Upload from "@lucide/svelte/icons/upload";
   import Plus from "@lucide/svelte/icons/plus";
   import Save from "@lucide/svelte/icons/save";
   import Trash2 from "@lucide/svelte/icons/trash-2";
@@ -17,7 +19,10 @@
     createAutomationRule,
     deleteAutomationRule,
     emptyAutomationRuleDraft,
+    exportAutomationRules,
     getRowsByIds,
+    importAutomationRuleFile,
+    inspectAutomationRuleFile,
     listAutomationRules,
     listGroups,
     listTags,
@@ -29,6 +34,7 @@
     updateAutomationRule,
     type AutomationRule,
     type AutomationRuleDraft,
+    type AutomationRuleImportInspection,
     type GroupSummary,
     type RowRecord,
     type RuleAction,
@@ -47,9 +53,11 @@
   import { registerCloseGuard } from "../../stores/close-guard";
   import { clearHistory } from "../../stores/history.svelte";
   import Thumbnail from "../../ui/Thumbnail.svelte";
+  import Dropdown, { type DropdownItem } from "../../ui/Dropdown.svelte";
   import { focusMainWindow, type ToolboxRowRequest } from "../../windows/toolbox";
   import RuleActionEditor from "./RuleActionEditor.svelte";
   import RuleConditionEditor from "./RuleConditionEditor.svelte";
+  import RuleImportDialog from "./RuleImportDialog.svelte";
 
   const initialDraft = emptyAutomationRuleDraft();
 
@@ -70,19 +78,39 @@
   let execution = $state<RuleExecutionSummary | null>(null);
   let sampleRows = $state<RowRecord[]>([]);
   let openingRowId = $state<number | null>(null);
+  let transferring = $state(false);
+  let importPath = $state<string | null>(null);
+  let importInspection = $state<AutomationRuleImportInspection | null>(null);
 
   const selectedRule = $derived(rules.find(rule => rule.id === selectedId) ?? null);
   const dirty = $derived(JSON.stringify(draft) !== JSON.stringify(baseline));
   const conditionCount = $derived(
     draft.conditions.groups.reduce((sum, group) => sum + group.conditions.length, 0),
   );
+  const exportItems = $derived.by((): DropdownItem[] => {
+    const items: DropdownItem[] = [];
+    if (selectedRule) {
+      items.push({
+        label: "导出当前规则",
+        hint: "导出已保存版本",
+        action: () => void chooseRuleExport([selectedRule.id], selectedRule.name),
+      });
+    }
+    items.push({
+      label: "导出全部规则",
+      hint: `${rules.length} 条已保存规则`,
+      action: () => void chooseRuleExport(rules.map(rule => rule.id), "自动规则"),
+    });
+    return items;
+  });
 
   onMount(() => {
     void initialize();
     // 规则草稿有未保存修改时，拦截关窗
-    return registerCloseGuard(() =>
-      dirty ? `自动规则「${draft.name.trim() || "未命名规则"}」有未保存的修改` : null,
-    );
+    return registerCloseGuard(() => {
+      if (transferring) return "规则文件正在导入或导出";
+      return dirty ? `自动规则「${draft.name.trim() || "未命名规则"}」有未保存的修改` : null;
+    });
   });
 
   function plainClone<T>(value: T): T {
@@ -121,6 +149,115 @@
     } finally {
       tagsLoading = false;
     }
+  }
+
+  async function chooseRuleImport(): Promise<void> {
+    if (transferring) return;
+    const selection = await open({
+      multiple: false,
+      directory: false,
+      title: "选择智能表格规则 JSON",
+      filters: [{ name: "JSON 规则文件", extensions: ["json"] }],
+    });
+    if (typeof selection !== "string") return;
+    transferring = true;
+    error = null;
+    try {
+      const inspection = await inspectAutomationRuleFile(selection);
+      importPath = selection;
+      importInspection = inspection;
+    } catch (cause) {
+      showError(errorText(cause));
+      importPath = null;
+      importInspection = null;
+    } finally {
+      transferring = false;
+    }
+  }
+
+  function closeRuleImport(): void {
+    if (transferring) return;
+    importPath = null;
+    importInspection = null;
+  }
+
+  async function confirmRuleImport(): Promise<void> {
+    if (!importPath || !importInspection || transferring) return;
+    transferring = true;
+    error = null;
+    const keepDraft = dirty;
+    try {
+      const result = await importAutomationRuleFile(importPath, importInspection.contentHash);
+      [rules, groups, tags] = await Promise.all([listAutomationRules(), listGroups(), listTags()]);
+      if (!keepDraft) {
+        const imported = rules.find(rule => rule.id === result.importedRuleIds[0]);
+        if (imported) loadRule(imported);
+      }
+      if (result.createdTags > 0 || result.createdGroups > 0) {
+        clearHistory();
+        await notifyMainStateChanged("libraryEdited");
+      }
+      const details = [
+        result.createdTags > 0 && `新建 ${result.createdTags} 个 Tag`,
+        result.createdGroups > 0 && `新建 ${result.createdGroups} 个分组`,
+        result.renamedRules > 0 && `${result.renamedRules} 条重名规则已改名`,
+      ].filter(Boolean);
+      setNotice({
+        tone: "success",
+        text: `已导入 ${result.importedRules} 条规则并保持停用${details.length > 0 ? `；${details.join("，")}` : ""}。`,
+      });
+      importPath = null;
+      importInspection = null;
+    } catch (cause) {
+      showError(errorText(cause));
+      importPath = null;
+      importInspection = null;
+    } finally {
+      transferring = false;
+    }
+  }
+
+  async function chooseRuleExport(ids: number[], name: string): Promise<void> {
+    if (transferring || ids.length === 0) return;
+    if (dirty) {
+      const confirmed = await confirmDialog(
+        "当前编辑内容尚未保存。导出文件只会包含已保存版本，要继续吗？",
+        {
+          title: "存在未保存修改",
+          kind: "warning",
+          okLabel: "导出已保存版本",
+          cancelLabel: "取消",
+        },
+      );
+      if (!confirmed) return;
+    }
+    const destination = await save({
+      title: "导出自动规则 JSON（已有文件会被替换）",
+      defaultPath: `${safeFileName(name)}.json`,
+      filters: [{ name: "JSON 规则文件", extensions: ["json"] }],
+    });
+    if (typeof destination !== "string") return;
+    const outputPath = destination.toLowerCase().endsWith(".json")
+      ? destination
+      : `${destination}.json`;
+    transferring = true;
+    error = null;
+    try {
+      const result = await exportAutomationRules(outputPath, ids);
+      setNotice({
+        tone: "success",
+        text: `已导出 ${result.exportedRules} 条规则到 ${result.path}`,
+      });
+    } catch (cause) {
+      showError(errorText(cause));
+    } finally {
+      transferring = false;
+    }
+  }
+
+  function safeFileName(value: string): string {
+    const sanitized = value.trim().replace(/[\\/:*?"<>|]/g, "_").replace(/[. ]+$/g, "");
+    return sanitized.slice(0, 60) || "自动规则";
   }
 
   function cloneDraft(rule: AutomationRule | AutomationRuleDraft): AutomationRuleDraft {
@@ -400,6 +537,10 @@
         <div><strong>规则列表</strong><span>{rules.length} 条</span></div>
         <button type="button" class="btn btn-primary compact" onclick={() => startNew()}><Plus size={15} />新建</button>
       </div>
+      <div class="sidebar-transfer">
+        <button type="button" class="btn compact" disabled={transferring} onclick={() => void chooseRuleImport()}><Upload size={14} />导入 JSON</button>
+        <Dropdown label="导出 JSON" items={exportItems} disabled={transferring || rules.length === 0} />
+      </div>
 
       {#if rules.length === 0}
         <div class="empty-rules empty-state"><Zap size={24} /><strong>还没有规则</strong><p>新建一条规则后，导入图片时就能自动整理。</p></div>
@@ -528,6 +669,16 @@
       </div>
     </main>
   </div>
+
+  {#if importInspection && importPath}
+    <RuleImportDialog
+      inspection={importInspection}
+      fileName={importPath.split(/[\\/]/).pop() ?? importPath}
+      busy={transferring}
+      onclose={closeRuleImport}
+      onconfirm={() => void confirmRuleImport()}
+    />
+  {/if}
 {/if}
 
 <style>
@@ -539,6 +690,10 @@
   .sidebar-head strong { font-size: var(--font-md); }
   .sidebar-head span { color: var(--text-3); font-size: var(--font-xs); }
   .compact { min-height: 32px; padding: 5px 9px; }
+  .sidebar-transfer { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 0 6px 12px; }
+  .sidebar-transfer > button { justify-content: center; }
+  .sidebar-transfer :global(.dropdown) { min-width: 0; }
+  .sidebar-transfer :global(.dropdown > .btn) { width: 100%; min-height: 32px; justify-content: center; padding: 5px 8px; }
   .empty-rules { min-height: 210px; padding: 20px; text-align: center; }
   .empty-rules strong { margin-top: 10px; color: var(--text-2); }
   .empty-rules p { max-width: 210px; margin-top: 5px; font-size: var(--font-sm); line-height: 1.55; }

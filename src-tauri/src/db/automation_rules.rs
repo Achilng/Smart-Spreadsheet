@@ -1,9 +1,14 @@
 use std::collections::{HashMap, HashSet};
+use std::fs::{self, OpenOptions};
+use std::io::Write;
 use std::path::Path;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use regex::{Regex, RegexBuilder};
 use rusqlite::{Connection, Transaction, TransactionBehavior, params};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use super::prompt_edit::{combined_artists, prefix_artist_tag_in_prompt};
@@ -11,6 +16,12 @@ use super::{Database, DatabaseError};
 
 const SAMPLE_LIMIT: usize = 12;
 const CANDIDATE_TABLE: &str = "temp.automation_rule_candidates";
+const AUTOMATION_RULE_FILE_FORMAT: &str = "smart-spreadsheet.automation-rules";
+const AUTOMATION_RULE_FILE_VERSION: u32 = 1;
+const MAX_AUTOMATION_RULE_FILE_BYTES: u64 = 2 * 1024 * 1024;
+const MAX_IMPORTED_RULES: usize = 200;
+const MAX_IMPORTED_DEPENDENCIES: usize = 1_000;
+const MAX_IMPORTED_RULE_NAME_CHARS: usize = 120;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -342,6 +353,64 @@ pub struct AutomationRule {
     pub updated_at: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomationRuleImportPreview {
+    pub name: String,
+    pub imported_name: String,
+    pub condition_count: u32,
+    pub action_count: u32,
+    pub run_on_import: bool,
+    pub run_on_update: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomationRuleImportInspection {
+    pub content_hash: String,
+    pub version: u32,
+    pub rule_count: u32,
+    pub rules: Vec<AutomationRuleImportPreview>,
+    pub missing_tags: Vec<String>,
+    pub missing_groups: Vec<String>,
+    pub renamed_rules: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomationRuleImportResult {
+    pub imported_rules: u32,
+    pub created_tags: u32,
+    pub created_groups: u32,
+    pub renamed_rules: u32,
+    pub imported_rule_ids: Vec<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomationRuleExportResult {
+    pub path: String,
+    pub exported_rules: u32,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct AutomationRuleTransferFile {
+    format: String,
+    version: u32,
+    rules: Vec<Value>,
+}
+
+#[derive(Debug)]
+struct PreparedRuleImport {
+    portable_rules: Vec<Value>,
+    final_names: Vec<String>,
+    previews: Vec<AutomationRuleImportPreview>,
+    missing_tags: Vec<String>,
+    missing_groups: Vec<String>,
+    renamed_rules: u32,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum RuleExecutionTrigger {
@@ -423,12 +492,122 @@ pub enum AutomationRuleError {
     MissingTargetGroup(i64),
     #[error("规则配置无效: {0}")]
     InvalidDefinition(String),
+    #[error("规则文件读写失败: {0}")]
+    FileIo(#[from] std::io::Error),
+    #[error("无效的规则文件: {0}")]
+    InvalidRuleFile(String),
 }
 
 impl From<rusqlite::Error> for AutomationRuleError {
     fn from(value: rusqlite::Error) -> Self {
         Self::Database(DatabaseError::Sqlite(value))
     }
+}
+
+pub fn read_automation_rule_file(path: &Path) -> Result<(Value, String), AutomationRuleError> {
+    validate_rule_file_path(path)?;
+    let metadata = fs::metadata(path)?;
+    if !metadata.is_file() {
+        return Err(AutomationRuleError::InvalidRuleFile(
+            "选择的路径不是文件".into(),
+        ));
+    }
+    if metadata.len() == 0 {
+        return Err(AutomationRuleError::InvalidRuleFile("文件为空".into()));
+    }
+    if metadata.len() > MAX_AUTOMATION_RULE_FILE_BYTES {
+        return Err(AutomationRuleError::InvalidRuleFile(format!(
+            "文件超过 {} MB 上限",
+            MAX_AUTOMATION_RULE_FILE_BYTES / 1024 / 1024
+        )));
+    }
+    let bytes = fs::read(path)?;
+    if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > MAX_AUTOMATION_RULE_FILE_BYTES {
+        return Err(AutomationRuleError::InvalidRuleFile(format!(
+            "文件超过 {} MB 上限",
+            MAX_AUTOMATION_RULE_FILE_BYTES / 1024 / 1024
+        )));
+    }
+    let hash = format!("{:x}", Sha256::digest(&bytes));
+    let document = serde_json::from_slice(&bytes)
+        .map_err(|error| AutomationRuleError::InvalidRuleFile(format!("JSON 语法错误：{error}")))?;
+    Ok((document, hash))
+}
+
+pub fn write_automation_rule_file(
+    path: &Path,
+    document: &Value,
+) -> Result<(), AutomationRuleError> {
+    validate_rule_file_path(path)?;
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    if !parent.is_dir() {
+        return Err(AutomationRuleError::InvalidRuleFile(
+            "目标文件夹不存在".into(),
+        ));
+    }
+    let mut contents = serde_json::to_vec_pretty(document)?;
+    contents.push(b'\n');
+    if u64::try_from(contents.len()).unwrap_or(u64::MAX) > MAX_AUTOMATION_RULE_FILE_BYTES {
+        return Err(AutomationRuleError::InvalidRuleFile(format!(
+            "导出内容超过 {} MB 上限，请减少规则数量后重试",
+            MAX_AUTOMATION_RULE_FILE_BYTES / 1024 / 1024
+        )));
+    }
+
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temporary = parent.join(format!(
+        ".smart-spreadsheet-rules-{}-{nonce}.tmp",
+        std::process::id()
+    ));
+    let backup = parent.join(format!(
+        ".smart-spreadsheet-rules-{}-{nonce}.bak",
+        std::process::id()
+    ));
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&temporary)?;
+    file.write_all(&contents)?;
+    file.sync_all()?;
+    drop(file);
+
+    let had_previous = path.exists();
+    if had_previous {
+        fs::rename(path, &backup)?;
+    }
+    if let Err(error) = fs::rename(&temporary, path) {
+        let _ = fs::remove_file(&temporary);
+        if had_previous && fs::rename(&backup, path).is_err() {
+            return Err(AutomationRuleError::InvalidRuleFile(
+                "替换目标文件失败，且无法自动恢复原文件；备份仍保留在目标目录".into(),
+            ));
+        }
+        return Err(error.into());
+    }
+    if had_previous {
+        let _ = fs::remove_file(backup);
+    }
+    Ok(())
+}
+
+fn validate_rule_file_path(path: &Path) -> Result<(), AutomationRuleError> {
+    if path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_none_or(|extension| !extension.eq_ignore_ascii_case("json"))
+    {
+        return Err(AutomationRuleError::InvalidRuleFile(
+            "规则文件必须使用 .json 扩展名".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn count_u32(value: usize) -> Result<u32, AutomationRuleError> {
+    u32::try_from(value).map_err(|_| DatabaseError::CountOverflow.into())
 }
 
 #[derive(Debug, Clone)]
@@ -503,6 +682,141 @@ impl Database {
             .into_iter()
             .map(|row| automation_rule_from_stored(row).map_err(AutomationRuleError::from))
             .collect()
+    }
+
+    pub fn export_automation_rule_document(
+        &self,
+        ids: &[i64],
+    ) -> Result<Value, AutomationRuleError> {
+        if ids.is_empty() {
+            return Err(AutomationRuleError::InvalidRuleFile(
+                "至少选择一条已保存的规则才能导出".into(),
+            ));
+        }
+        let requested = ids.iter().copied().collect::<HashSet<_>>();
+        if requested.len() != ids.len() {
+            return Err(AutomationRuleError::InvalidRuleFile(
+                "导出范围包含重复的规则".into(),
+            ));
+        }
+        let selected = self
+            .list_automation_rules()?
+            .into_iter()
+            .filter(|rule| requested.contains(&rule.id))
+            .collect::<Vec<_>>();
+        if selected.len() != requested.len() {
+            return Err(AutomationRuleError::InvalidRuleFile(
+                "导出范围包含已不存在的规则".into(),
+            ));
+        }
+        let group_names = query_group_names_by_id(&self.connection)?;
+        let mut rules = Vec::with_capacity(selected.len());
+        for rule in selected {
+            let mut value = serde_json::to_value(draft_from_rule(&rule))?;
+            replace_group_ids_with_names(&mut value, &group_names)?;
+            rules.push(value);
+        }
+        Ok(serde_json::to_value(AutomationRuleTransferFile {
+            format: AUTOMATION_RULE_FILE_FORMAT.into(),
+            version: AUTOMATION_RULE_FILE_VERSION,
+            rules,
+        })?)
+    }
+
+    pub fn inspect_automation_rule_document(
+        &self,
+        document: &Value,
+        content_hash: String,
+    ) -> Result<AutomationRuleImportInspection, AutomationRuleError> {
+        let prepared = prepare_rule_import(&self.connection, document)?;
+        Ok(AutomationRuleImportInspection {
+            content_hash,
+            version: AUTOMATION_RULE_FILE_VERSION,
+            rule_count: count_u32(prepared.portable_rules.len())?,
+            rules: prepared.previews,
+            missing_tags: prepared.missing_tags,
+            missing_groups: prepared.missing_groups,
+            renamed_rules: prepared.renamed_rules,
+        })
+    }
+
+    pub fn import_automation_rule_document(
+        &mut self,
+        document: &Value,
+    ) -> Result<AutomationRuleImportResult, AutomationRuleError> {
+        let prepared = prepare_rule_import(&self.connection, document)?;
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+
+        let mut created_groups = 0_u32;
+        for name in &prepared.missing_groups {
+            created_groups = created_groups
+                .checked_add(count_u32(transaction.execute(
+                    "INSERT OR IGNORE INTO groups(name) VALUES (?1)",
+                    [name],
+                )?)?)
+                .ok_or(DatabaseError::CountOverflow)?;
+        }
+        let mut created_tags = 0_u32;
+        for name in &prepared.missing_tags {
+            created_tags = created_tags
+                .checked_add(count_u32(
+                    transaction.execute("INSERT OR IGNORE INTO tags(name) VALUES (?1)", [name])?,
+                )?)
+                .ok_or(DatabaseError::CountOverflow)?;
+        }
+
+        let group_ids = query_group_ids_by_name(&transaction)?;
+        let mut position: u32 = transaction.query_row(
+            "SELECT COALESCE(MAX(position) + 1, 0) FROM automation_rules",
+            [],
+            |row| row.get(0),
+        )?;
+        let mut imported_rule_ids = Vec::with_capacity(prepared.portable_rules.len());
+        for (portable, final_name) in prepared
+            .portable_rules
+            .iter()
+            .zip(prepared.final_names.iter())
+        {
+            let mut value = portable.clone();
+            replace_group_names_with_ids(&mut value, &group_ids, false, &mut HashSet::new())?;
+            let mut draft: AutomationRuleDraft = serde_json::from_value(value)?;
+            normalize_draft_lists(&mut draft);
+            draft.name = final_name.clone();
+            draft.enabled = false;
+            validate_draft(&draft)?;
+            validate_group_targets(&transaction, &draft.actions)?;
+            let conditions = serde_json::to_string(&draft.conditions)?;
+            let actions = serde_json::to_string(&draft.actions)?;
+            transaction.execute(
+                "INSERT INTO automation_rules
+                    (name, description, enabled, position, run_on_import, run_on_update,
+                     conditions_json, actions_json)
+                 VALUES (?1, ?2, 0, ?3, ?4, ?5, ?6, ?7)",
+                params![
+                    draft.name.trim(),
+                    draft.description.trim(),
+                    position,
+                    draft.run_on_import,
+                    draft.run_on_update,
+                    conditions,
+                    actions,
+                ],
+            )?;
+            imported_rule_ids.push(transaction.last_insert_rowid());
+            position = position
+                .checked_add(1)
+                .ok_or(DatabaseError::CountOverflow)?;
+        }
+        transaction.commit()?;
+        Ok(AutomationRuleImportResult {
+            imported_rules: count_u32(imported_rule_ids.len())?,
+            created_tags,
+            created_groups,
+            renamed_rules: prepared.renamed_rules,
+            imported_rule_ids,
+        })
     }
 
     pub fn create_automation_rule(
@@ -1121,6 +1435,405 @@ fn draft_from_rule(rule: &AutomationRule) -> AutomationRuleDraft {
         conditions: rule.conditions.clone(),
         actions: rule.actions.clone(),
     }
+}
+
+fn prepare_rule_import(
+    connection: &Connection,
+    document: &Value,
+) -> Result<PreparedRuleImport, AutomationRuleError> {
+    let transfer: AutomationRuleTransferFile =
+        serde_json::from_value(document.clone()).map_err(|error| {
+            AutomationRuleError::InvalidRuleFile(format!(
+                "这不是智能表格导出的规则文件，或文件结构已损坏：{error}"
+            ))
+        })?;
+    if transfer.format != AUTOMATION_RULE_FILE_FORMAT {
+        return Err(AutomationRuleError::InvalidRuleFile(
+            "这不是智能表格导出的规则文件".into(),
+        ));
+    }
+    if transfer.version != AUTOMATION_RULE_FILE_VERSION {
+        return Err(AutomationRuleError::InvalidRuleFile(format!(
+            "文件版本为 {}，当前仅支持版本 {}",
+            transfer.version, AUTOMATION_RULE_FILE_VERSION
+        )));
+    }
+    if transfer.rules.is_empty() {
+        return Err(AutomationRuleError::InvalidRuleFile(
+            "文件中没有规则".into(),
+        ));
+    }
+    if transfer.rules.len() > MAX_IMPORTED_RULES {
+        return Err(AutomationRuleError::InvalidRuleFile(format!(
+            "文件包含 {} 条规则，超过单次最多 {} 条的限制",
+            transfer.rules.len(),
+            MAX_IMPORTED_RULES
+        )));
+    }
+
+    let group_ids = query_group_ids_by_name(connection)?;
+    let existing_tags = query_name_set(connection, "SELECT name FROM tags")?;
+    let mut used_rule_names = query_name_set(connection, "SELECT name FROM automation_rules")?
+        .into_iter()
+        .map(|name| name.to_lowercase())
+        .collect::<HashSet<_>>();
+    let mut referenced_tags = HashSet::new();
+    let mut referenced_groups = HashSet::new();
+    let mut portable_rules = Vec::with_capacity(transfer.rules.len());
+    let mut final_names = Vec::with_capacity(transfer.rules.len());
+    let mut previews = Vec::with_capacity(transfer.rules.len());
+    let mut renamed_rules = 0_u32;
+
+    for (index, portable) in transfer.rules.into_iter().enumerate() {
+        let mut value = portable.clone();
+        replace_group_names_with_ids(&mut value, &group_ids, true, &mut referenced_groups)?;
+        let mut draft: AutomationRuleDraft = serde_json::from_value(value).map_err(|error| {
+            AutomationRuleError::InvalidRuleFile(format!(
+                "第 {} 条规则结构无效：{error}",
+                index + 1
+            ))
+        })?;
+        normalize_draft_lists(&mut draft);
+        let name = draft.name.trim();
+        if name.chars().count() > MAX_IMPORTED_RULE_NAME_CHARS {
+            return Err(AutomationRuleError::InvalidRuleFile(format!(
+                "第 {} 条规则名称超过 {} 个字符",
+                index + 1,
+                MAX_IMPORTED_RULE_NAME_CHARS
+            )));
+        }
+        if name.chars().any(char::is_control) {
+            return Err(AutomationRuleError::InvalidRuleFile(format!(
+                "第 {} 条规则名称包含不可见控制字符",
+                index + 1
+            )));
+        }
+        draft.name = name.to_owned();
+        draft.enabled = false;
+        validate_draft(&draft).map_err(|error| {
+            AutomationRuleError::InvalidRuleFile(format!(
+                "第 {} 条规则“{}”无效：{error}",
+                index + 1,
+                draft.name
+            ))
+        })?;
+        collect_referenced_tags(&draft, &mut referenced_tags)?;
+        let (imported_name, renamed) = unique_imported_rule_name(&draft.name, &mut used_rule_names);
+        if renamed {
+            renamed_rules = renamed_rules
+                .checked_add(1)
+                .ok_or(DatabaseError::CountOverflow)?;
+        }
+        previews.push(AutomationRuleImportPreview {
+            name: draft.name.clone(),
+            imported_name: imported_name.clone(),
+            condition_count: count_u32(
+                draft
+                    .conditions
+                    .groups
+                    .iter()
+                    .map(|group| group.conditions.len())
+                    .sum(),
+            )?,
+            action_count: count_u32(draft.actions.len())?,
+            run_on_import: draft.run_on_import,
+            run_on_update: draft.run_on_update,
+        });
+        portable_rules.push(portable);
+        final_names.push(imported_name);
+    }
+
+    if referenced_tags.len() + referenced_groups.len() > MAX_IMPORTED_DEPENDENCIES {
+        return Err(AutomationRuleError::InvalidRuleFile(format!(
+            "规则引用的 Tag 与分组合计超过 {} 个",
+            MAX_IMPORTED_DEPENDENCIES
+        )));
+    }
+    let mut missing_tags = referenced_tags
+        .into_iter()
+        .filter(|name| !existing_tags.contains(name))
+        .collect::<Vec<_>>();
+    let mut missing_groups = referenced_groups
+        .into_iter()
+        .filter(|name| !group_ids.contains_key(name))
+        .collect::<Vec<_>>();
+    missing_tags.sort();
+    missing_groups.sort();
+
+    Ok(PreparedRuleImport {
+        portable_rules,
+        final_names,
+        previews,
+        missing_tags,
+        missing_groups,
+        renamed_rules,
+    })
+}
+
+fn query_name_set(
+    connection: &Connection,
+    sql: &str,
+) -> Result<HashSet<String>, AutomationRuleError> {
+    let mut statement = connection.prepare(sql)?;
+    Ok(statement
+        .query_map([], |row| row.get::<_, String>(0))?
+        .collect::<Result<HashSet<_>, _>>()?)
+}
+
+fn query_group_names_by_id(
+    connection: &Connection,
+) -> Result<HashMap<i64, String>, AutomationRuleError> {
+    let mut statement = connection.prepare("SELECT id, name FROM groups")?;
+    Ok(statement
+        .query_map([], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        })?
+        .collect::<Result<HashMap<_, _>, _>>()?)
+}
+
+fn query_group_ids_by_name(
+    connection: &Connection,
+) -> Result<HashMap<String, i64>, AutomationRuleError> {
+    Ok(query_group_names_by_id(connection)?
+        .into_iter()
+        .map(|(id, name)| (name, id))
+        .collect())
+}
+
+fn replace_group_ids_with_names(
+    value: &mut Value,
+    group_names: &HashMap<i64, String>,
+) -> Result<(), AutomationRuleError> {
+    match value {
+        Value::Array(items) => {
+            for item in items {
+                replace_group_ids_with_names(item, group_names)?;
+            }
+        }
+        Value::Object(object) => {
+            rename_internal_keys_for_export(object)?;
+            let kind = object
+                .get("type")
+                .and_then(Value::as_str)
+                .map(str::to_owned);
+            if matches!(kind.as_deref(), Some("group") | Some("setGroup")) {
+                let raw_id = object
+                    .remove("group_id")
+                    .or_else(|| object.remove("groupId"))
+                    .ok_or_else(|| {
+                        AutomationRuleError::InvalidDefinition(format!(
+                            "分组规则缺少内部 group_id（类型 {}，字段 {:?}）",
+                            kind.as_deref().unwrap_or("unknown"),
+                            object.keys().collect::<Vec<_>>()
+                        ))
+                    })?;
+                let name = match raw_id.as_i64() {
+                    Some(id) => Value::String(
+                        group_names
+                            .get(&id)
+                            .cloned()
+                            .ok_or(AutomationRuleError::MissingTargetGroup(id))?,
+                    ),
+                    None if raw_id.is_null() && kind.as_deref() == Some("group") => Value::Null,
+                    _ => {
+                        return Err(AutomationRuleError::InvalidDefinition(
+                            "分组规则包含无效的内部 groupId".into(),
+                        ));
+                    }
+                };
+                object.insert("groupName".into(), name);
+            }
+            for child in object.values_mut() {
+                replace_group_ids_with_names(child, group_names)?;
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn replace_group_names_with_ids(
+    value: &mut Value,
+    group_ids: &HashMap<String, i64>,
+    allow_missing: bool,
+    referenced_groups: &mut HashSet<String>,
+) -> Result<(), AutomationRuleError> {
+    match value {
+        Value::Array(items) => {
+            for item in items {
+                replace_group_names_with_ids(item, group_ids, allow_missing, referenced_groups)?;
+            }
+        }
+        Value::Object(object) => {
+            rename_portable_keys_for_import(object)?;
+            let kind = object
+                .get("type")
+                .and_then(Value::as_str)
+                .map(str::to_owned);
+            if matches!(kind.as_deref(), Some("group") | Some("setGroup")) {
+                if object.contains_key("groupId") || object.contains_key("group_id") {
+                    return Err(AutomationRuleError::InvalidRuleFile(
+                        "规则文件包含不可跨资料库使用的分组 ID".into(),
+                    ));
+                }
+                let raw_name = object.remove("groupName").ok_or_else(|| {
+                    AutomationRuleError::InvalidRuleFile("分组规则缺少 groupName".into())
+                })?;
+                let is_empty_condition = kind.as_deref() == Some("group")
+                    && object.get("operator").and_then(Value::as_str) == Some("isEmpty");
+                if is_empty_condition {
+                    if !raw_name.is_null() {
+                        return Err(AutomationRuleError::InvalidRuleFile(
+                            "检查未分组图片的条件不应指定分组名称".into(),
+                        ));
+                    }
+                    object.insert("group_id".into(), Value::Null);
+                } else {
+                    let name = raw_name.as_str().map(str::trim).ok_or_else(|| {
+                        AutomationRuleError::InvalidRuleFile("分组名称必须是文本".into())
+                    })?;
+                    validate_dependency_name(name, "分组")?;
+                    referenced_groups.insert(name.to_owned());
+                    let id = group_ids
+                        .get(name)
+                        .copied()
+                        .or_else(|| allow_missing.then_some(1));
+                    let id = id.ok_or_else(|| {
+                        AutomationRuleError::InvalidRuleFile(format!(
+                            "本地缺少分组“{name}”，请重新预览后再导入"
+                        ))
+                    })?;
+                    object.insert("group_id".into(), Value::from(id));
+                }
+            }
+            for child in object.values_mut() {
+                replace_group_names_with_ids(child, group_ids, allow_missing, referenced_groups)?;
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn rename_internal_keys_for_export(
+    object: &mut serde_json::Map<String, Value>,
+) -> Result<(), AutomationRuleError> {
+    for (internal, portable) in [
+        ("case_sensitive", "caseSensitive"),
+        ("source_type", "sourceType"),
+        ("second_value", "secondValue"),
+        ("only_if_ungrouped", "onlyIfUngrouped"),
+    ] {
+        if let Some(value) = object.remove(internal)
+            && object.insert(portable.into(), value).is_some()
+        {
+            return Err(AutomationRuleError::InvalidDefinition(format!(
+                "规则同时包含 {internal} 与 {portable}"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn rename_portable_keys_for_import(
+    object: &mut serde_json::Map<String, Value>,
+) -> Result<(), AutomationRuleError> {
+    for (portable, internal) in [
+        ("caseSensitive", "case_sensitive"),
+        ("sourceType", "source_type"),
+        ("secondValue", "second_value"),
+        ("onlyIfUngrouped", "only_if_ungrouped"),
+    ] {
+        if object.contains_key(internal) {
+            return Err(AutomationRuleError::InvalidRuleFile(format!(
+                "规则文件字段应使用 {portable}，不能使用内部字段 {internal}"
+            )));
+        }
+        if let Some(value) = object.remove(portable) {
+            object.insert(internal.into(), value);
+        }
+    }
+    Ok(())
+}
+
+fn normalize_draft_lists(draft: &mut AutomationRuleDraft) {
+    for group in &mut draft.conditions.groups {
+        for condition in &mut group.conditions {
+            match condition {
+                RuleCondition::Tag { tags, .. } => *tags = normalized_strings(tags),
+                RuleCondition::Artist { artists, .. } => *artists = normalized_strings(artists),
+                _ => {}
+            }
+        }
+    }
+    for action in &mut draft.actions {
+        match action {
+            RuleAction::AddTags { tags } | RuleAction::RemoveTags { tags } => {
+                *tags = normalized_strings(tags);
+            }
+            RuleAction::PrefixArtist { artists } => *artists = normalized_strings(artists),
+            _ => {}
+        }
+    }
+}
+
+fn collect_referenced_tags(
+    draft: &AutomationRuleDraft,
+    destination: &mut HashSet<String>,
+) -> Result<(), AutomationRuleError> {
+    for group in &draft.conditions.groups {
+        for condition in &group.conditions {
+            if let RuleCondition::Tag { tags, .. } = condition {
+                for name in tags {
+                    validate_dependency_name(name, "Tag")?;
+                    destination.insert(name.clone());
+                }
+            }
+        }
+    }
+    for action in &draft.actions {
+        if let RuleAction::AddTags { tags } | RuleAction::RemoveTags { tags } = action {
+            for name in tags {
+                validate_dependency_name(name, "Tag")?;
+                destination.insert(name.clone());
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_dependency_name(name: &str, kind: &str) -> Result<(), AutomationRuleError> {
+    if name.is_empty() || name.chars().count() > MAX_IMPORTED_RULE_NAME_CHARS {
+        return Err(AutomationRuleError::InvalidRuleFile(format!(
+            "{kind} 名称为空或超过 {MAX_IMPORTED_RULE_NAME_CHARS} 个字符"
+        )));
+    }
+    if name.chars().any(char::is_control) {
+        return Err(AutomationRuleError::InvalidRuleFile(format!(
+            "{kind} 名称包含不可见控制字符"
+        )));
+    }
+    Ok(())
+}
+
+fn unique_imported_rule_name(base: &str, used: &mut HashSet<String>) -> (String, bool) {
+    if used.insert(base.to_lowercase()) {
+        return (base.to_owned(), false);
+    }
+    for number in 1_u32.. {
+        let suffix = if number == 1 {
+            "（导入）".to_owned()
+        } else {
+            format!("（导入 {number}）")
+        };
+        let available = MAX_IMPORTED_RULE_NAME_CHARS.saturating_sub(suffix.chars().count());
+        let root = base.chars().take(available).collect::<String>();
+        let candidate = format!("{root}{suffix}");
+        if used.insert(candidate.to_lowercase()) {
+            return (candidate, true);
+        }
+    }
+    unreachable!("the imported rule suffix space is unbounded")
 }
 
 fn validate_draft(draft: &AutomationRuleDraft) -> Result<(), AutomationRuleError> {
@@ -2662,6 +3375,123 @@ mod tests {
             .execute_automation_rules(RuleExecutionTrigger::Update, &[row_id])
             .unwrap();
         assert!(row_has_tag(&database, row_id, "update"));
+    }
+
+    #[test]
+    fn rule_json_round_trip_uses_names_and_imports_disabled() {
+        let mut source = Database::open_in_memory().unwrap();
+        let group = source.create_group("角色归档").unwrap();
+        source.create_tag("人物").unwrap();
+        let saved = source
+            .create_automation_rule(&draft(
+                "角色归档规则",
+                RuleCondition::Group {
+                    operator: GroupOperator::Is,
+                    group_id: Some(group.id),
+                },
+                vec![
+                    RuleAction::AddTags {
+                        tags: vec!["人物".into()],
+                    },
+                    RuleAction::SetGroup {
+                        group_id: group.id,
+                        only_if_ungrouped: true,
+                    },
+                ],
+            ))
+            .unwrap();
+
+        let document = source.export_automation_rule_document(&[saved.id]).unwrap();
+        let serialized = serde_json::to_string(&document).unwrap();
+        assert!(serialized.contains("groupName"));
+        assert!(serialized.contains("角色归档"));
+        assert!(!serialized.contains("groupId"));
+
+        let mut destination = Database::open_in_memory().unwrap();
+        destination
+            .create_automation_rule(&draft(
+                "角色归档规则",
+                RuleCondition::Metadata { parsed: true },
+                vec![RuleAction::ClearNote],
+            ))
+            .unwrap();
+        let inspection = destination
+            .inspect_automation_rule_document(&document, "test-hash".into())
+            .unwrap();
+        assert_eq!(inspection.rule_count, 1);
+        assert_eq!(inspection.content_hash, "test-hash");
+        assert_eq!(inspection.missing_tags, vec!["人物"]);
+        assert_eq!(inspection.missing_groups, vec!["角色归档"]);
+        assert_eq!(inspection.renamed_rules, 1);
+        assert_eq!(inspection.rules[0].imported_name, "角色归档规则（导入）");
+
+        let result = destination
+            .import_automation_rule_document(&document)
+            .unwrap();
+        assert_eq!(result.imported_rules, 1);
+        assert_eq!(result.created_tags, 1);
+        assert_eq!(result.created_groups, 1);
+        assert_eq!(result.renamed_rules, 1);
+        let imported = destination
+            .list_automation_rules()
+            .unwrap()
+            .into_iter()
+            .find(|rule| rule.id == result.imported_rule_ids[0])
+            .unwrap();
+        assert!(!imported.enabled);
+        assert_eq!(imported.name, "角色归档规则（导入）");
+        let imported_group_id: i64 = destination
+            .connection
+            .query_row(
+                "SELECT id FROM groups WHERE name = '角色归档'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(imported.actions.iter().any(|action| matches!(
+            action,
+            RuleAction::SetGroup { group_id, only_if_ungrouped: true }
+                if *group_id == imported_group_id
+        )));
+    }
+
+    #[test]
+    fn rule_json_import_rejects_foreign_json_and_raw_group_ids() {
+        let database = Database::open_in_memory().unwrap();
+        let unrelated = serde_json::json!({ "images": {} });
+        assert!(matches!(
+            database.inspect_automation_rule_document(&unrelated, "hash".into()),
+            Err(AutomationRuleError::InvalidRuleFile(_))
+        ));
+
+        let raw_ids = serde_json::json!({
+            "format": AUTOMATION_RULE_FILE_FORMAT,
+            "version": AUTOMATION_RULE_FILE_VERSION,
+            "rules": [{
+                "name": "错误分组引用",
+                "description": "",
+                "enabled": true,
+                "runOnImport": true,
+                "runOnUpdate": false,
+                "conditions": {
+                    "mode": "any",
+                    "negate": false,
+                    "groups": [{
+                        "mode": "all",
+                        "conditions": [{ "type": "metadata", "parsed": true }]
+                    }]
+                },
+                "actions": [{
+                    "type": "setGroup",
+                    "groupId": 99,
+                    "onlyIfUngrouped": false
+                }]
+            }]
+        });
+        assert!(matches!(
+            database.inspect_automation_rule_document(&raw_ids, "hash".into()),
+            Err(AutomationRuleError::InvalidRuleFile(_))
+        ));
     }
 
     fn row_has_tag(database: &Database, row_id: i64, tag: &str) -> bool {

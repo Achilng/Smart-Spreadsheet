@@ -75,6 +75,38 @@ export interface AutomationRule extends AutomationRuleDraft {
   updatedAt: string;
 }
 
+export interface AutomationRuleImportPreview {
+  name: string;
+  importedName: string;
+  conditionCount: number;
+  actionCount: number;
+  runOnImport: boolean;
+  runOnUpdate: boolean;
+}
+
+export interface AutomationRuleImportInspection {
+  contentHash: string;
+  version: number;
+  ruleCount: number;
+  rules: AutomationRuleImportPreview[];
+  missingTags: string[];
+  missingGroups: string[];
+  renamedRules: number;
+}
+
+export interface AutomationRuleImportResult {
+  importedRules: number;
+  createdTags: number;
+  createdGroups: number;
+  renamedRules: number;
+  importedRuleIds: number[];
+}
+
+export interface AutomationRuleExportResult {
+  path: string;
+  exportedRules: number;
+}
+
 export interface RulePreview {
   scannedRows: number;
   matchedRows: number;
@@ -104,6 +136,24 @@ export interface RuleExecutionSummary {
 
 export function listAutomationRules(): Promise<AutomationRule[]> {
   return invoke<AutomationRule[]>("list_automation_rules");
+}
+
+export function inspectAutomationRuleFile(path: string): Promise<AutomationRuleImportInspection> {
+  return invoke<AutomationRuleImportInspection>("inspect_automation_rule_file", { path });
+}
+
+export function importAutomationRuleFile(
+  path: string,
+  expectedHash: string,
+): Promise<AutomationRuleImportResult> {
+  return invoke<AutomationRuleImportResult>("import_automation_rule_file", { path, expectedHash });
+}
+
+export function exportAutomationRules(
+  path: string,
+  ids: number[],
+): Promise<AutomationRuleExportResult> {
+  return invoke<AutomationRuleExportResult>("export_automation_rules", { path, ids });
 }
 
 export function createAutomationRule(draft: AutomationRuleDraft): Promise<AutomationRule> {

@@ -7,7 +7,8 @@ use tauri::{
 
 use super::runtime::{AppRuntime, RuntimeSnapshot};
 use crate::db::{
-    AutoArtistPrefixApplyResult, AutomationRule, AutomationRuleDraft, AutoArtistPrefixPreview,
+    AutoArtistPrefixApplyResult, AutomationRule, AutomationRuleDraft, AutomationRuleExportResult,
+    AutomationRuleImportInspection, AutomationRuleImportResult, AutoArtistPrefixPreview,
     BatchSummary, DedupeCluster, DedupeMode, GroupSummary,
     LibrarySummary, MutableRowState, PromptEditResult,
     QuickArtistPrefixApplyResult, QuickArtistPrefixChange, QuickArtistPrefixPreview,
@@ -832,6 +833,38 @@ pub(crate) fn list_automation_rules(
     runtime: State<'_, AppRuntime>,
 ) -> Result<Vec<AutomationRule>, String> {
     runtime.list_automation_rules().map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn inspect_automation_rule_file(
+    path: String,
+    runtime: State<'_, AppRuntime>,
+) -> Result<AutomationRuleImportInspection, String> {
+    runtime
+        .inspect_automation_rule_file(path)
+        .map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn import_automation_rule_file(
+    path: String,
+    expected_hash: String,
+    runtime: State<'_, AppRuntime>,
+) -> Result<AutomationRuleImportResult, String> {
+    runtime
+        .import_automation_rule_file(path, &expected_hash)
+        .map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn export_automation_rules(
+    path: String,
+    ids: Vec<i64>,
+    runtime: State<'_, AppRuntime>,
+) -> Result<AutomationRuleExportResult, String> {
+    runtime
+        .export_automation_rules(path, &ids)
+        .map_err(error_text)
 }
 
 #[tauri::command]
