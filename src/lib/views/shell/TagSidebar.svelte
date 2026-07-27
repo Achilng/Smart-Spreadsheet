@@ -19,6 +19,7 @@
     setHasVibe,
     setHideGrouped,
     setSingleArtistOnly,
+    setUntaggedOnly,
   } from "../../stores/row-store.svelte";
   import { clearSelection } from "../../stores/selection-store.svelte";
   import { loadTags, tagStore } from "../../stores/tag-store.svelte";
@@ -156,6 +157,7 @@
         dedupe: "none",
         singleArtistOnly: false,
         hasVibe: false,
+        untaggedOnly: false,
         search: "",
         excludedRowIds: [],
       });
@@ -201,6 +203,7 @@
     Number(rowStore.dedupe !== "none") +
       Number(rowStore.singleArtistOnly) +
       Number(rowStore.hasVibe) +
+      Number(rowStore.untaggedOnly) +
       Number(rowStore.hideGrouped),
   );
   const filterSummary = $derived(
@@ -257,6 +260,15 @@
       />
       <span class="cbox" aria-hidden="true"></span>
       筛选存在 VIBE 的图片
+    </label>
+    <label class="check-row" class:on={rowStore.untaggedOnly}>
+      <input
+        type="checkbox"
+        checked={rowStore.untaggedOnly}
+        onchange={() => { setUntaggedOnly(!rowStore.untaggedOnly); clearSelection(); }}
+      />
+      <span class="cbox" aria-hidden="true"></span>
+      筛选无 Tag 的图片
     </label>
     <label class="check-row" class:on={rowStore.hideGrouped} class:is-disabled={app.viewMode === "group"}>
       <input

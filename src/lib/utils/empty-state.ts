@@ -21,6 +21,9 @@ export function emptyResultText(): { text: string; canClear: boolean } {
   if (rowStore.hasVibe) {
     parts.push("VIBE 筛选");
   }
+  if (rowStore.untaggedOnly) {
+    parts.push("无 Tag 筛选");
+  }
   if (rowStore.hideGrouped) {
     parts.push("隐藏已分组");
   }

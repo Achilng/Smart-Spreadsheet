@@ -17,6 +17,7 @@ export const rowStore = $state({
   dedupe: "none" as DedupeMode,
   singleArtistOnly: false,
   hasVibe: false,
+  untaggedOnly: false,
   groupView: false,
   hideGrouped: false,
   search: "",
@@ -69,6 +70,7 @@ export function ensurePage(pageIndex: number): void {
         dedupe: rowStore.dedupe,
         singleArtistOnly: rowStore.singleArtistOnly,
         hasVibe: rowStore.hasVibe,
+        untaggedOnly: rowStore.untaggedOnly,
         groupView: rowStore.groupView,
         hideGrouped: rowStore.hideGrouped,
         search: rowStore.search,
@@ -163,6 +165,9 @@ export function resetRows(options: ResetOptions = {}): void {
 export function setFilter(tags: string[], tagMode: TagMatchMode): void {
   rowStore.tags = [...tags];
   rowStore.tagMode = tagMode;
+  if (tags.length > 0) {
+    rowStore.untaggedOnly = false;
+  }
   resetRows({ keepStale: true, resetScroll: true });
 }
 
@@ -183,6 +188,16 @@ export function setSingleArtistOnly(value: boolean): void {
 export function setHasVibe(value: boolean): void {
   if (rowStore.hasVibe !== value) {
     rowStore.hasVibe = value;
+    resetRows({ keepStale: true, resetScroll: true });
+  }
+}
+
+export function setUntaggedOnly(value: boolean): void {
+  if (rowStore.untaggedOnly !== value) {
+    rowStore.untaggedOnly = value;
+    if (value) {
+      rowStore.tags = [];
+    }
     resetRows({ keepStale: true, resetScroll: true });
   }
 }
@@ -220,6 +235,7 @@ export function clearAllFilters(): void {
     rowStore.dedupe !== "none" ||
     rowStore.singleArtistOnly ||
     rowStore.hasVibe ||
+    rowStore.untaggedOnly ||
     rowStore.hideGrouped ||
     rowStore.search !== "";
   if (!dirty) return;
@@ -227,6 +243,7 @@ export function clearAllFilters(): void {
   rowStore.dedupe = "none";
   rowStore.singleArtistOnly = false;
   rowStore.hasVibe = false;
+  rowStore.untaggedOnly = false;
   rowStore.hideGrouped = false;
   rowStore.search = "";
   resetRows({ keepStale: true, resetScroll: true });
@@ -246,6 +263,7 @@ export function revealRowInGallery(row: RowRecord, index: number): void {
   rowStore.dedupe = "none";
   rowStore.singleArtistOnly = false;
   rowStore.hasVibe = false;
+  rowStore.untaggedOnly = false;
   rowStore.groupView = false;
   rowStore.hideGrouped = false;
   rowStore.search = "";
@@ -287,7 +305,9 @@ export function patchRowTags(rowId: number, tags: string[]): void {
     rowStore.activeRow.tags = [...tags];
   }
   rowStore.pagesVersion += 1;
-  if (rowStore.sort === "recentlyUpdated") {
+  if (rowStore.untaggedOnly && tags.length > 0) {
+    resetRows({ keepStale: true, resetScroll: false });
+  } else if (rowStore.sort === "recentlyUpdated") {
     resetRows({ keepStale: true, resetScroll: true, keepActive: true });
   }
 }

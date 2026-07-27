@@ -517,12 +517,14 @@ pub(crate) fn get_group_members(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn list_dedupe_clusters(
     dedupe: DedupeMode,
     tags: Vec<String>,
     tag_mode: TagMatchMode,
     single_artist_only: bool,
     has_vibe: bool,
+    untagged_only: bool,
     hide_grouped: bool,
     runtime: State<'_, AppRuntime>,
 ) -> Result<Vec<DedupeClusterDto>, String> {
@@ -533,6 +535,7 @@ pub(crate) fn list_dedupe_clusters(
             tag_mode,
             single_artist_only,
             has_vibe,
+            untagged_only,
             hide_grouped,
         )
         .map(|clusters| clusters.into_iter().map(DedupeClusterDto::from).collect())
@@ -643,6 +646,7 @@ pub(crate) fn get_dedupe_cluster_members(
     tag_mode: TagMatchMode,
     single_artist_only: bool,
     has_vibe: bool,
+    untagged_only: bool,
     hide_grouped: bool,
     offset: u64,
     limit: u32,
@@ -656,6 +660,7 @@ pub(crate) fn get_dedupe_cluster_members(
             tag_mode,
             single_artist_only,
             has_vibe,
+            untagged_only,
             hide_grouped,
             offset,
             limit,
@@ -1719,6 +1724,7 @@ mod tests {
                 dedupe: DedupeMode::Artists,
                 single_artist_only: false,
                 has_vibe: false,
+                untagged_only: false,
                 search: String::new(),
                 excluded_row_ids: vec![2, 9],
             }

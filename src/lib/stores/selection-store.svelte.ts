@@ -22,6 +22,7 @@ export const selection = $state({
   filteredDedupe: "none" as DedupeMode,
   filteredSingleArtistOnly: false,
   filteredHasVibe: false,
+  filteredUntaggedOnly: false,
   filteredSearch: "",
   filteredTotal: 0,
   version: 0,
@@ -108,6 +109,7 @@ export function setExplicitSelection(ids: number[]): void {
   selection.filteredDedupe = "none";
   selection.filteredSingleArtistOnly = false;
   selection.filteredHasVibe = false;
+  selection.filteredUntaggedOnly = false;
   selection.filteredSearch = "";
   selection.filteredTotal = 0;
   selectionIds.clear();
@@ -124,6 +126,7 @@ export function clearSelection(): void {
   selection.filteredDedupe = "none";
   selection.filteredSingleArtistOnly = false;
   selection.filteredHasVibe = false;
+  selection.filteredUntaggedOnly = false;
   selection.filteredSearch = "";
   selection.filteredTotal = 0;
   selectionIds.clear();
@@ -145,6 +148,7 @@ export async function selectAllFiltered(): Promise<number> {
     dedupe: rowStore.dedupe,
     singleArtistOnly: rowStore.singleArtistOnly,
     hasVibe: rowStore.hasVibe,
+    untaggedOnly: rowStore.untaggedOnly,
     search: rowStore.search,
     excludedRowIds: [],
   };
@@ -159,6 +163,7 @@ export async function selectAllFiltered(): Promise<number> {
     rowStore.dedupe !== dto.dedupe ||
     rowStore.singleArtistOnly !== dto.singleArtistOnly ||
     rowStore.hasVibe !== dto.hasVibe ||
+    rowStore.untaggedOnly !== dto.untaggedOnly ||
     rowStore.search !== dto.search
   ) {
     return getSelectedCount();
@@ -169,6 +174,7 @@ export async function selectAllFiltered(): Promise<number> {
   selection.filteredDedupe = dto.dedupe;
   selection.filteredSingleArtistOnly = dto.singleArtistOnly;
   selection.filteredHasVibe = dto.hasVibe;
+  selection.filteredUntaggedOnly = dto.untaggedOnly;
   selection.filteredSearch = dto.search;
   selection.filteredTotal = totalCount;
   selectionIds.clear();
@@ -192,6 +198,7 @@ export async function materializeSelection(): Promise<number> {
   selection.filteredDedupe = "none";
   selection.filteredSingleArtistOnly = false;
   selection.filteredHasVibe = false;
+  selection.filteredUntaggedOnly = false;
   selection.filteredSearch = "";
   selection.filteredTotal = 0;
   selectionIds.clear();
@@ -217,6 +224,7 @@ export function selectionDto(): RowSelection {
     dedupe: selection.filteredDedupe,
     singleArtistOnly: selection.filteredSingleArtistOnly,
     hasVibe: selection.filteredHasVibe,
+    untaggedOnly: selection.filteredUntaggedOnly,
     search: selection.filteredSearch,
     excludedRowIds: [...selectionIds].sort((left, right) => left - right),
   };

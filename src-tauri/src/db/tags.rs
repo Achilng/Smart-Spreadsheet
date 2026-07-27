@@ -25,6 +25,8 @@ pub enum RowSelection {
         #[serde(default)]
         has_vibe: bool,
         #[serde(default)]
+        untagged_only: bool,
+        #[serde(default)]
         search: String,
         excluded_row_ids: Vec<i64>,
     },
@@ -391,6 +393,7 @@ pub(super) fn create_selection_rows(
             dedupe,
             single_artist_only,
             has_vibe,
+            untagged_only,
             search,
             excluded_row_ids,
         } => {
@@ -411,6 +414,7 @@ pub(super) fn create_selection_rows(
                 *dedupe,
                 *single_artist_only,
                 *has_vibe,
+                *untagged_only,
                 false,
                 false,
                 search,
@@ -720,6 +724,7 @@ mod tests {
             dedupe: DedupeMode::None,
             single_artist_only: false,
             has_vibe: false,
+            untagged_only: false,
             search: String::new(),
             excluded_row_ids: vec![2, 9_999],
         };
@@ -751,6 +756,7 @@ mod tests {
             dedupe: DedupeMode::None,
             single_artist_only: false,
             has_vibe: false,
+            untagged_only: false,
             search: String::new(),
             excluded_row_ids: vec![3],
         };
@@ -792,6 +798,7 @@ mod tests {
             dedupe: DedupeMode::PositivePrompt,
             single_artist_only: false,
             has_vibe: false,
+            untagged_only: false,
             search: String::new(),
             excluded_row_ids: vec![1],
         };
@@ -859,6 +866,7 @@ mod tests {
                 dedupe: DedupeMode::None,
                 single_artist_only: false,
                 has_vibe: false,
+                untagged_only: false,
                 search: String::new(),
                 excluded_row_ids: vec![2],
             })
@@ -882,6 +890,7 @@ mod tests {
                 dedupe: DedupeMode::None,
                 single_artist_only: false,
                 has_vibe: false,
+                untagged_only: false,
                 search: String::new(),
                 excluded_row_ids: vec![2],
             })
@@ -899,6 +908,7 @@ mod tests {
             dedupe: DedupeMode::None,
             single_artist_only: false,
             has_vibe: false,
+            untagged_only: false,
             search: String::new(),
             excluded_row_ids: Vec::new(),
         };

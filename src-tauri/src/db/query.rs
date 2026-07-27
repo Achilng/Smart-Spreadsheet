@@ -60,6 +60,8 @@ pub struct RowQuery {
     #[serde(default)]
     pub has_vibe: bool,
     #[serde(default)]
+    pub untagged_only: bool,
+    #[serde(default)]
     pub group_view: bool,
     #[serde(default)]
     pub hide_grouped: bool,
@@ -165,6 +167,7 @@ impl Database {
                     query.dedupe,
                     query.single_artist_only,
                     query.has_vibe,
+                    query.untagged_only,
                     query.group_view,
                     query.hide_grouped,
                     &query.search,
@@ -373,6 +376,7 @@ impl Database {
         Ok(ids)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn list_dedupe_clusters(
         &mut self,
         dedupe: DedupeMode,
@@ -380,6 +384,7 @@ impl Database {
         tag_mode: TagMatchMode,
         single_artist_only: bool,
         has_vibe: bool,
+        untagged_only: bool,
         hide_grouped: bool,
     ) -> Result<Vec<DedupeCluster>, DatabaseError> {
         let (column, mode_str) = match dedupe {
@@ -404,6 +409,11 @@ impl Database {
         }
         if has_vibe {
             predicate = format!("({predicate}) AND rows.vibe_reference_count > 0");
+        }
+        if untagged_only {
+            predicate = format!(
+                "({predicate}) AND NOT EXISTS (SELECT 1 FROM row_tags WHERE row_tags.row_id = rows.id)"
+            );
         }
         if hide_grouped {
             predicate = format!("({predicate}) AND rows.group_id IS NULL");
@@ -451,6 +461,7 @@ impl Database {
         tag_mode: TagMatchMode,
         single_artist_only: bool,
         has_vibe: bool,
+        untagged_only: bool,
         hide_grouped: bool,
         offset: u64,
         limit: u32,
@@ -491,6 +502,11 @@ impl Database {
         }
         if has_vibe {
             predicate = format!("({predicate}) AND rows.vibe_reference_count > 0");
+        }
+        if untagged_only {
+            predicate = format!(
+                "({predicate}) AND NOT EXISTS (SELECT 1 FROM row_tags WHERE row_tags.row_id = rows.id)"
+            );
         }
         if hide_grouped {
             predicate = format!("({predicate}) AND rows.group_id IS NULL");
@@ -565,12 +581,13 @@ impl Database {
 /// 缓存键覆盖影响筛选结果集的全部参数（分页参数除外）。
 fn query_cache_key(query: &RowQuery, normalized_tags: &[String]) -> String {
     format!(
-        "{tags:?}\u{1}{mode:?}\u{1}{dedupe:?}\u{1}{sao}\u{1}{vibe}\u{1}{gv}\u{1}{hg}\u{1}{search}",
+        "{tags:?}\u{1}{mode:?}\u{1}{dedupe:?}\u{1}{sao}\u{1}{vibe}\u{1}{untagged}\u{1}{gv}\u{1}{hg}\u{1}{search}",
         tags = normalized_tags,
         mode = query.tag_mode,
         dedupe = query.dedupe,
         sao = query.single_artist_only,
         vibe = query.has_vibe,
+        untagged = query.untagged_only,
         gv = query.group_view,
         hg = query.hide_grouped,
         search = query.search.trim().to_lowercase(),
@@ -626,6 +643,7 @@ pub(super) fn populate_filtered_rows(
     dedupe: DedupeMode,
     single_artist_only: bool,
     has_vibe: bool,
+    untagged_only: bool,
     group_view: bool,
     hide_grouped: bool,
     search: &str,
@@ -643,6 +661,12 @@ pub(super) fn populate_filtered_rows(
     }
     if has_vibe {
         predicate = format!("({predicate}) AND rows.vibe_reference_count > 0");
+    }
+    if untagged_only {
+        // row_tags 主键以 row_id 前导，NOT EXISTS 走主键索引
+        predicate = format!(
+            "({predicate}) AND NOT EXISTS (SELECT 1 FROM row_tags WHERE row_tags.row_id = rows.id)"
+        );
     }
     if !group_view && hide_grouped {
         predicate = format!("({predicate}) AND rows.group_id IS NULL");
@@ -889,6 +913,7 @@ mod tests {
                 dedupe: DedupeMode::None,
                 single_artist_only: false,
                 has_vibe: false,
+                untagged_only: false,
                 group_view: false,
                 hide_grouped: false,
                 search: String::new(),
@@ -927,6 +952,7 @@ mod tests {
             dedupe: DedupeMode::None,
             single_artist_only: false,
             has_vibe: false,
+            untagged_only: false,
             group_view: false,
             hide_grouped: false,
             search: String::new(),
@@ -967,6 +993,7 @@ mod tests {
             dedupe: DedupeMode::None,
             single_artist_only: false,
             has_vibe: false,
+            untagged_only: false,
             group_view: false,
             hide_grouped: false,
             search: String::new(),
@@ -1076,6 +1103,7 @@ mod tests {
                 dedupe: DedupeMode::PositivePrompt,
                 single_artist_only: false,
                 has_vibe: false,
+                untagged_only: false,
                 group_view: false,
                 hide_grouped: false,
                 search: String::new(),
@@ -1096,6 +1124,7 @@ mod tests {
                 dedupe: DedupeMode::Artists,
                 single_artist_only: false,
                 has_vibe: false,
+                untagged_only: false,
                 group_view: false,
                 hide_grouped: false,
                 search: String::new(),
@@ -1128,6 +1157,7 @@ mod tests {
                 dedupe: DedupeMode::PositivePrompt,
                 single_artist_only: false,
                 has_vibe: false,
+                untagged_only: false,
                 group_view: false,
                 hide_grouped: false,
                 search: String::new(),
@@ -1185,6 +1215,7 @@ mod tests {
                     dedupe: DedupeMode::None,
                     single_artist_only: false,
                     has_vibe: false,
+                    untagged_only: false,
                     group_view: false,
                     hide_grouped: false,
                     search: String::new(),
@@ -1239,6 +1270,7 @@ mod tests {
                 dedupe: DedupeMode::None,
                 single_artist_only: false,
                 has_vibe: false,
+                untagged_only: false,
                 group_view: false,
                 hide_grouped: false,
                 search: "UNIQUE_ROLE_TOKEN".into(),
@@ -1267,6 +1299,7 @@ mod tests {
                 dedupe: DedupeMode::None,
                 single_artist_only: false,
                 has_vibe: false,
+                untagged_only: false,
                 group_view: false,
                 hide_grouped: false,
                 search: "海边".into(),
@@ -1300,6 +1333,7 @@ mod tests {
                 dedupe: DedupeMode::None,
                 single_artist_only: false,
                 has_vibe: true,
+                untagged_only: false,
                 group_view: false,
                 hide_grouped: false,
                 search: String::new(),
@@ -1312,6 +1346,58 @@ mod tests {
             vec![2, 4]
         );
         assert_eq!(result.rows[1].vibe_reference_count, Some(3));
+    }
+
+    #[test]
+    fn filters_rows_without_tags() {
+        let mut database = database_with_rows(4);
+        database
+            .add_tags_to_rows(&[1, 3], &["tagged".into()])
+            .unwrap();
+
+        let result = database
+            .query_rows(&RowQuery {
+                offset: 0,
+                limit: 10,
+                tags: Vec::new(),
+                tag_mode: TagMatchMode::And,
+                dedupe: DedupeMode::None,
+                single_artist_only: false,
+                has_vibe: false,
+                untagged_only: true,
+                group_view: false,
+                hide_grouped: false,
+                search: String::new(),
+            })
+            .unwrap();
+
+        assert_eq!(result.total_count, 2);
+        assert_eq!(
+            result.rows.iter().map(|row| row.id).collect::<Vec<_>>(),
+            vec![2, 4]
+        );
+
+        // 移除 Tag 后重新可见（生产路径由 runtime 在写库后失效查询缓存，这里手动模拟）
+        database
+            .remove_tags_from_rows(&[1], &["tagged".into()])
+            .unwrap();
+        database.bump_data_version();
+        let refreshed = database
+            .query_rows(&RowQuery {
+                offset: 0,
+                limit: 10,
+                tags: Vec::new(),
+                tag_mode: TagMatchMode::And,
+                dedupe: DedupeMode::None,
+                single_artist_only: false,
+                has_vibe: false,
+                untagged_only: true,
+                group_view: false,
+                hide_grouped: false,
+                search: String::new(),
+            })
+            .unwrap();
+        assert_eq!(refreshed.total_count, 3);
     }
 
     #[test]
@@ -1339,6 +1425,7 @@ mod tests {
                 dedupe: DedupeMode::None,
                 single_artist_only: true,
                 has_vibe: false,
+                untagged_only: false,
                 group_view: false,
                 hide_grouped: false,
                 search: String::new(),
@@ -1360,6 +1447,7 @@ mod tests {
             dedupe: DedupeMode::None,
             single_artist_only: false,
             has_vibe: false,
+            untagged_only: false,
             group_view: false,
             hide_grouped: false,
             search: String::new(),
@@ -1392,6 +1480,7 @@ mod tests {
             dedupe: DedupeMode::None,
             single_artist_only: false,
             has_vibe: false,
+            untagged_only: false,
             group_view: false,
             hide_grouped: false,
             search: String::new(),
@@ -1405,6 +1494,7 @@ mod tests {
                 "artist:a",
                 &[],
                 TagMatchMode::And,
+                false,
                 false,
                 false,
                 false,
@@ -1432,6 +1522,7 @@ mod tests {
                 dedupe: DedupeMode::None,
                 single_artist_only: false,
                 has_vibe: false,
+                untagged_only: false,
                 group_view: false,
                 hide_grouped: false,
                 search: String::new(),
@@ -1485,6 +1576,7 @@ mod tests {
             dedupe: DedupeMode::None,
             single_artist_only: false,
             has_vibe: false,
+            untagged_only: false,
             group_view: false,
             hide_grouped: false,
             search: String::new(),
@@ -1530,6 +1622,7 @@ mod tests {
                 dedupe: DedupeMode::None,
                 single_artist_only: false,
                 has_vibe: false,
+                untagged_only: false,
                 group_view: false,
                 hide_grouped: false,
                 search: String::new(),
@@ -1631,6 +1724,7 @@ mod tests {
                 DedupeMode::Artists,
                 &[],
                 TagMatchMode::And,
+                false,
                 false,
                 false,
                 false,

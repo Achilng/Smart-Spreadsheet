@@ -514,6 +514,7 @@ mod tests {
                 dedupe: DedupeMode::None,
                 single_artist_only: true,
                 has_vibe: false,
+                untagged_only: false,
                 group_view: false,
                 hide_grouped: false,
                 search: String::new(),

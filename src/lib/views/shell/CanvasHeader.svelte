@@ -14,6 +14,7 @@
     setHideGrouped,
     setSearch,
     setSingleArtistOnly,
+    setUntaggedOnly,
   } from "../../stores/row-store.svelte";
   import { clearSelection } from "../../stores/selection-store.svelte";
   import { softFade, softPop } from "../../ui/motion";
@@ -51,6 +52,7 @@
       rowStore.dedupe !== "none" ||
       rowStore.singleArtistOnly ||
       rowStore.hasVibe ||
+      rowStore.untaggedOnly ||
       rowStore.hideGrouped,
   );
 
@@ -171,6 +173,13 @@
     {#if rowStore.hasVibe}
       <span class="chip-f" transition:softPop={{ duration: 150, y: 0, start: 0.92 }}>VIBE
         <button type="button" class="x" title="取消筛选" onclick={() => { setHasVibe(false); clearSelection(); }}>
+          <X size={11} strokeWidth={2.2} />
+        </button>
+      </span>
+    {/if}
+    {#if rowStore.untaggedOnly}
+      <span class="chip-f" transition:softPop={{ duration: 150, y: 0, start: 0.92 }}>无 Tag
+        <button type="button" class="x" title="取消筛选" onclick={() => { setUntaggedOnly(false); clearSelection(); }}>
           <X size={11} strokeWidth={2.2} />
         </button>
       </span>

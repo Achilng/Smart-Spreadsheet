@@ -1250,6 +1250,7 @@ mod tests {
                 dedupe: crate::db::DedupeMode::None,
                 single_artist_only: false,
                 has_vibe: false,
+                untagged_only: false,
                 group_view: false,
                 hide_grouped: false,
                 search: String::new(),

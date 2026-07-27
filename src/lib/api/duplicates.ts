@@ -9,6 +9,7 @@ export function listDedupeClusters(
   tagMode: TagMatchMode,
   singleArtistOnly: boolean,
   hasVibe: boolean,
+  untaggedOnly: boolean,
   hideGrouped: boolean,
 ): Promise<DedupeCluster[]> {
   return invoke<DedupeCluster[]>("list_dedupe_clusters", {
@@ -17,6 +18,7 @@ export function listDedupeClusters(
     tagMode,
     singleArtistOnly,
     hasVibe,
+    untaggedOnly,
     hideGrouped,
   });
 }
@@ -28,6 +30,7 @@ export function getDedupeClusterMembers(
   tagMode: TagMatchMode,
   singleArtistOnly: boolean,
   hasVibe: boolean,
+  untaggedOnly: boolean,
   hideGrouped: boolean,
   offset: number,
   limit: number,
@@ -39,6 +42,7 @@ export function getDedupeClusterMembers(
     tagMode,
     singleArtistOnly,
     hasVibe,
+    untaggedOnly,
     hideGrouped,
     offset,
     limit,

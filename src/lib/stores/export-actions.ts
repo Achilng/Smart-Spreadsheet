@@ -30,6 +30,7 @@ export function exportScope(): RowSelection {
     dedupe: rowStore.dedupe,
     singleArtistOnly: rowStore.singleArtistOnly,
     hasVibe: rowStore.hasVibe,
+    untaggedOnly: rowStore.untaggedOnly,
     search: rowStore.search,
     excludedRowIds: [],
   };
@@ -46,6 +47,7 @@ export function exportScopeLabel(): string {
     rowStore.dedupe !== "none" ||
     rowStore.singleArtistOnly ||
     rowStore.hasVibe ||
+    rowStore.untaggedOnly ||
     rowStore.search.trim().length > 0;
   return filtered ? "当前筛选结果" : "全部行";
 }

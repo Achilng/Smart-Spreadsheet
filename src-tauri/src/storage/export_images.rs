@@ -885,6 +885,7 @@ mod tests {
                     dedupe: crate::db::DedupeMode::None,
                     single_artist_only: false,
                     has_vibe: false,
+                    untagged_only: false,
                     search: String::new(),
                     excluded_row_ids: Vec::new(),
                 },

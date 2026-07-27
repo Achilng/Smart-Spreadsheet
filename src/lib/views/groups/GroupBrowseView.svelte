@@ -37,6 +37,7 @@
     void rowStore.tagMode;
     void rowStore.singleArtistOnly;
     void rowStore.hasVibe;
+    void rowStore.untaggedOnly;
     void rowStore.search;
     untrack(() => {
       syncGroupBrowseCaches();
