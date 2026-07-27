@@ -26,6 +26,7 @@ pub(crate) struct AppSnapshotDto {
     data_directory: Option<String>,
     rejected_images_directory: Option<String>,
     library: Option<LibrarySummaryDto>,
+    auto_artist_prefix_on_import: bool,
     startup_error: Option<String>,
 }
 
@@ -74,6 +75,11 @@ pub(crate) struct ImageImportResultDto {
     rejected_moved: u64,
     rejected_move_failures: u64,
     rule_execution: RuleExecutionSummary,
+    artist_prefix_enabled: bool,
+    artist_prefix_scanned_rows: u64,
+    artist_prefix_changed_rows: u64,
+    artist_prefix_changed_fields: u64,
+    artist_prefix_error: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -243,6 +249,17 @@ pub(crate) fn set_rejected_images_directory(
         .map_err(error_text)
 }
 
+#[tauri::command]
+pub(crate) fn set_auto_artist_prefix_on_import(
+    enabled: bool,
+    runtime: State<'_, AppRuntime>,
+) -> Result<AppSnapshotDto, String> {
+    runtime
+        .set_auto_artist_prefix_on_import(enabled)
+        .map(AppSnapshotDto::from)
+        .map_err(error_text)
+}
+
 /// 文件夹/压缩包导入：在阻塞线程上执行避免卡住 UI，进度经
 /// `import-images://progress` 事件推送给前端。
 #[tauri::command]
@@ -270,6 +287,11 @@ pub(crate) async fn import_images(
                 rejected_moved: outcome.rejected_moved,
                 rejected_move_failures: outcome.rejected_move_failures,
                 rule_execution: outcome.rule_execution,
+                artist_prefix_enabled: outcome.artist_prefix_enabled,
+                artist_prefix_scanned_rows: outcome.artist_prefix_scanned_rows,
+                artist_prefix_changed_rows: outcome.artist_prefix_changed_rows,
+                artist_prefix_changed_fields: outcome.artist_prefix_changed_fields,
+                artist_prefix_error: outcome.artist_prefix_error,
             })
             .map_err(error_text)
     })
@@ -1608,6 +1630,7 @@ impl From<RuntimeSnapshot> for AppSnapshotDto {
                 .rejected_images_directory
                 .map(|path| path.to_string_lossy().into_owned()),
             library: snapshot.library.map(LibrarySummaryDto::from),
+            auto_artist_prefix_on_import: snapshot.auto_artist_prefix_on_import,
             startup_error: snapshot.startup_error,
         }
     }

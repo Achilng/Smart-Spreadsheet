@@ -17,6 +17,11 @@ export interface ImageImportResult {
   rejectedMoved: number;
   rejectedMoveFailures: number;
   ruleExecution: RuleExecutionSummary;
+  artistPrefixEnabled: boolean;
+  artistPrefixScannedRows: number;
+  artistPrefixChangedRows: number;
+  artistPrefixChangedFields: number;
+  artistPrefixError: string | null;
 }
 
 export interface ExistingImageUpdateResult {

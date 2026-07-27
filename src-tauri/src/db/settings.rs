@@ -2,6 +2,8 @@ use rusqlite::{OptionalExtension, params};
 
 use super::{Database, DatabaseError};
 
+const AUTO_ARTIST_PREFIX_ON_IMPORT_SETTING: &str = "auto_artist_prefix_on_import";
+
 impl Database {
     pub fn setting(&self, key: &str) -> Result<Option<String>, DatabaseError> {
         Ok(self
@@ -22,6 +24,23 @@ impl Database {
         )?;
         Ok(())
     }
+
+    pub fn auto_artist_prefix_on_import(&self) -> Result<bool, DatabaseError> {
+        Ok(self
+            .setting(AUTO_ARTIST_PREFIX_ON_IMPORT_SETTING)?
+            .as_deref()
+            == Some("1"))
+    }
+
+    pub fn set_auto_artist_prefix_on_import(
+        &mut self,
+        enabled: bool,
+    ) -> Result<(), DatabaseError> {
+        self.set_setting(
+            AUTO_ARTIST_PREFIX_ON_IMPORT_SETTING,
+            if enabled { "1" } else { "0" },
+        )
+    }
 }
 
 #[cfg(test)]
@@ -40,5 +59,16 @@ mod tests {
             database.setting("reject-dir").unwrap().as_deref(),
             Some(r"D:\second")
         );
+    }
+
+    #[test]
+    fn artist_prefix_import_setting_defaults_off_and_persists() {
+        let mut database = Database::open_in_memory().unwrap();
+
+        assert!(!database.auto_artist_prefix_on_import().unwrap());
+        database.set_auto_artist_prefix_on_import(true).unwrap();
+        assert!(database.auto_artist_prefix_on_import().unwrap());
+        database.set_auto_artist_prefix_on_import(false).unwrap();
+        assert!(!database.auto_artist_prefix_on_import().unwrap());
     }
 }

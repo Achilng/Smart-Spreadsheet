@@ -6,6 +6,7 @@
   import {
     chooseImageArchive,
     chooseImageFolder,
+    updateAutoArtistPrefixOnImport,
   } from "../../stores/import-actions.svelte";
   import { buildExportItems } from "../../stores/export-actions";
   import { clearSelection } from "../../stores/selection-store.svelte";
@@ -57,6 +58,14 @@
   const importItems = $derived<DropdownItem[]>([
     { label: "导入文件夹", action: () => void chooseImageFolder() },
     { label: "导入压缩包", hint: "zip / 7z / rar", action: () => void chooseImageArchive() },
+    {
+      label: "导入时自动补全画师前缀",
+      hint: "仅使用库内明确 artist: 证据",
+      checked: app.snapshot?.autoArtistPrefixOnImport ?? false,
+      action: () => void updateAutoArtistPrefixOnImport(
+        !(app.snapshot?.autoArtistPrefixOnImport ?? false),
+      ),
+    },
     {
       label: "更新现有图片",
       hint: "只更新，不新增；保留 Tag / 分组",

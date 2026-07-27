@@ -1,5 +1,6 @@
 <script lang="ts">
   import Modal from "../../ui/Modal.svelte";
+  import { app } from "../../stores/app-state.svelte";
   import { cancelDropImport, confirmDropImport, dropState } from "../../stores/drop-import.svelte";
 
   function displayName(path: string): string {
@@ -14,6 +15,11 @@
         确定要导入以下 {dropState.paths.length} 个项目吗？
       </h2>
       <p>将追加导入到当前资料库。</p>
+      {#if app.snapshot?.autoArtistPrefixOnImport}
+        <p class="artist-prefix-hint">
+          已开启自动画师前缀检查：导入完成后直接处理，不会再要求确认。
+        </p>
+      {/if}
       {#if dropState.ignoredCount > 0}
         <p class="ignored-hint">
           另有 {dropState.ignoredCount} 个不支持的文件已被忽略（只支持 PNG、文件夹和 zip / 7z / rar）。
@@ -71,6 +77,12 @@
   .ignored-hint {
     margin-top: 4px;
     color: var(--danger);
+    font-size: var(--font-sm);
+  }
+
+  .artist-prefix-hint {
+    margin-top: 4px;
+    color: var(--accent);
     font-size: var(--font-sm);
   }
 

@@ -28,6 +28,7 @@ pub fn run() {
             app::commands::initialize_data_directory,
             app::commands::open_data_directory,
             app::commands::set_rejected_images_directory,
+            app::commands::set_auto_artist_prefix_on_import,
             app::commands::import_images,
             app::commands::update_existing_images,
             app::commands::delete_rows,

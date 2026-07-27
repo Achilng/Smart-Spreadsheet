@@ -3,12 +3,14 @@
     label: string;
     hint?: string;
     danger?: boolean;
+    checked?: boolean;
     action: () => void;
   }
 </script>
 
 <script lang="ts">
   import ChevronDown from "@lucide/svelte/icons/chevron-down";
+  import Check from "@lucide/svelte/icons/check";
 
   import { softPop } from "./motion";
 
@@ -78,14 +80,18 @@
       {#each items as item (item.label)}
         <button
           type="button"
-          role="menuitem"
+          role={item.checked === undefined ? "menuitem" : "menuitemcheckbox"}
+          aria-checked={item.checked}
           class:danger={item.danger}
           onclick={() => pick(item)}
         >
-          <span class="item-label">{item.label}</span>
-          {#if item.hint}
-            <span class="item-hint">{item.hint}</span>
-          {/if}
+          <span class="item-copy">
+            <span class="item-label">{item.label}</span>
+            {#if item.hint}
+              <span class="item-hint">{item.hint}</span>
+            {/if}
+          </span>
+          {#if item.checked}<Check class="item-check" size={15} strokeWidth={2.2} />{/if}
         </button>
       {/each}
     </div>
@@ -131,9 +137,9 @@
 
   .menu button {
     display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 1px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
     width: 100%;
     border: none;
     background: transparent;
@@ -158,5 +164,15 @@
   .item-hint {
     font-size: var(--font-xs);
     color: var(--text-3);
+  }
+
+  .item-copy {
+    display: grid;
+    gap: 1px;
+  }
+
+  :global(.item-check) {
+    flex: none;
+    color: var(--accent);
   }
 </style>

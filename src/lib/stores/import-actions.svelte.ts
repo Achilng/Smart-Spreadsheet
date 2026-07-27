@@ -3,6 +3,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 
 import {
   importImages,
+  setAutoArtistPrefixOnImport,
   undoImportBatch,
   updateExistingImages,
   type ImageImportResult,
@@ -10,6 +11,24 @@ import {
 } from "../api";
 import { app, bumpDataVersion, errorText, formatCount, runAction, setNotice } from "./app-state.svelte";
 import { clearHistory, recordHistory } from "./history.svelte";
+
+export async function updateAutoArtistPrefixOnImport(enabled: boolean): Promise<void> {
+  if (app.busy || !app.snapshot?.dataDirectory) return;
+  app.busy = true;
+  try {
+    app.snapshot = await setAutoArtistPrefixOnImport(enabled);
+    setNotice({
+      tone: "success",
+      text: enabled
+        ? "已开启：导入新图片后会自动检查并补全有库内证据的画师前缀。"
+        : "已关闭导入时自动补全画师前缀。",
+    });
+  } catch (error) {
+    setNotice({ tone: "error", text: `无法保存导入设置：${errorText(error)}` });
+  } finally {
+    app.busy = false;
+  }
+}
 
 export async function chooseImageFolder(): Promise<void> {
   let selection: unknown;
@@ -96,6 +115,7 @@ async function performImageImport(path: string, showResult: boolean): Promise<Im
       app.importProgress = event.payload;
     },
   );
+  app.autoArtistPrefixImportActive = Boolean(app.snapshot?.autoArtistPrefixOnImport);
   try {
     const result = await importImages(path);
     app.snapshot = result.snapshot;
@@ -122,6 +142,15 @@ async function performImageImport(path: string, showResult: boolean): Promise<Im
       if (result.rejectedMoveFailures > 0) {
         parts.push(`${formatCount(result.rejectedMoveFailures)} 张移动失败（仍未入库）`);
       }
+      if (result.artistPrefixEnabled) {
+        if (result.artistPrefixError) {
+          parts.push(`自动画师前缀检查失败：${result.artistPrefixError}`);
+        } else {
+          parts.push(
+            `自动画师前缀检查 ${formatCount(result.artistPrefixScannedRows)} 张、修正 ${formatCount(result.artistPrefixChangedRows)} 张的 ${formatCount(result.artistPrefixChangedFields)} 个字段`,
+          );
+        }
+      }
       const ruleFailures = result.ruleExecution.reports.filter(report => report.error).length;
       if (result.ruleExecution.reports.length > 0) {
         const matched = result.ruleExecution.reports.reduce((sum, report) => sum + report.matchedRows, 0);
@@ -140,6 +169,7 @@ async function performImageImport(path: string, showResult: boolean): Promise<Im
       const hasFailures =
         ruleFailures > 0 ||
         Boolean(result.ruleExecution.engineError) ||
+        Boolean(result.artistPrefixError) ||
         result.metadataRejected > 0 ||
         result.rejectedMoveFailures > 0;
       setNotice({
@@ -151,6 +181,7 @@ async function performImageImport(path: string, showResult: boolean): Promise<Im
   } finally {
     unlisten();
     app.importProgress = null;
+    app.autoArtistPrefixImportActive = false;
   }
 }
 

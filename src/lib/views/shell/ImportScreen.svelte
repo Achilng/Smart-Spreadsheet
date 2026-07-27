@@ -3,6 +3,7 @@
   import {
     chooseImageArchive,
     chooseImageFolder,
+    updateAutoArtistPrefixOnImport,
   } from "../../stores/import-actions.svelte";
   import { dropState, listenDragDrop } from "../../stores/drop-import.svelte";
   import { onMount } from "svelte";
@@ -33,6 +34,21 @@
     <p class="directory" title={app.snapshot?.dataDirectory}>
       数据目录：{app.snapshot?.dataDirectory}
     </p>
+    <label class="import-setting">
+      <input
+        type="checkbox"
+        role="switch"
+        checked={app.snapshot?.autoArtistPrefixOnImport ?? false}
+        disabled={app.busy}
+        onchange={event => void updateAutoArtistPrefixOnImport(
+          (event.currentTarget as HTMLInputElement).checked,
+        )}
+      />
+      <span>
+        <strong>导入时自动补全画师前缀</strong>
+        <small>仅根据资料库中已有的明确 <code>artist:</code> 标注判断；导入时会提示，但不需要再次确认。</small>
+      </span>
+    </label>
     <div class="flow-actions">
       <button
         type="button"
@@ -95,6 +111,42 @@
     margin-top: 10px;
     font-size: var(--font-sm);
     color: var(--text-3);
+  }
+
+  .import-setting {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin: 14px 0;
+    padding: 11px 13px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-s);
+    background: var(--surface-2);
+    cursor: pointer;
+  }
+
+  .import-setting input {
+    margin-top: 2px;
+  }
+
+  .import-setting span {
+    display: grid;
+    gap: 3px;
+  }
+
+  .import-setting strong {
+    color: var(--text);
+    font-size: var(--font-sm);
+  }
+
+  .import-setting small {
+    color: var(--text-3);
+    font-size: var(--font-xs);
+    line-height: 1.5;
+  }
+
+  .import-setting code {
+    color: var(--accent);
   }
 
   .link-btn {

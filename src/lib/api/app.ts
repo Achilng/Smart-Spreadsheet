@@ -21,6 +21,7 @@ export interface AppSnapshot {
   dataDirectory: string | null;
   rejectedImagesDirectory: string | null;
   library: LibrarySummary | null;
+  autoArtistPrefixOnImport: boolean;
   startupError: string | null;
 }
 
@@ -47,6 +48,10 @@ export function openDataDirectory(path: string): Promise<AppSnapshot> {
 
 export function setRejectedImagesDirectory(path: string): Promise<AppSnapshot> {
   return invoke<AppSnapshot>("set_rejected_images_directory", { path });
+}
+
+export function setAutoArtistPrefixOnImport(enabled: boolean): Promise<AppSnapshot> {
+  return invoke<AppSnapshot>("set_auto_artist_prefix_on_import", { enabled });
 }
 
 export function resetData(): Promise<AppSnapshot> {

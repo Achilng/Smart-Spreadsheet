@@ -217,6 +217,84 @@ impl Database {
             changes,
         })
     }
+
+    /// 只处理指定行，并把资料库任意位置已经明确写成 `artist:名称` 的 Tag
+    /// 作为唯一证据。用于导入完成后的自动整理，不会触碰既有旧行。
+    pub fn apply_confirmed_artist_prefix_to_rows(
+        &mut self,
+        row_ids: &[i64],
+    ) -> Result<AutoArtistPrefixApplyResult, QuickEditError> {
+        let target_ids = row_ids
+            .iter()
+            .copied()
+            .filter(|row_id| *row_id > 0)
+            .collect::<HashSet<_>>();
+        if target_ids.is_empty() {
+            return Ok(AutoArtistPrefixApplyResult {
+                scanned_rows: 0,
+                matched_rows: 0,
+                changed_rows: 0,
+                prompt_fields_changed: 0,
+                changes: Vec::new(),
+            });
+        }
+
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let library_rows = {
+            let mut statement = transaction.prepare(
+                "SELECT id, positive_prompt, character_prompt, negative_prompt, artists
+                 FROM rows ORDER BY id",
+            )?;
+            statement
+                .query_map([], read_prompt_row)?
+                .collect::<Result<Vec<_>, _>>()?
+        };
+        let known_names = library_confirmed_names(&library_rows);
+        let target_rows = library_rows
+            .into_iter()
+            .filter(|row| target_ids.contains(&row.id))
+            .collect::<Vec<_>>();
+        let scanned_rows = u64::try_from(target_rows.len())
+            .map_err(|_| QuickEditError::Database(super::DatabaseError::RowCountOverflow))?;
+        let changes = target_rows
+            .into_iter()
+            .filter_map(|row| automatic_change(row, &known_names))
+            .collect::<Vec<_>>();
+
+        {
+            let mut update = transaction.prepare(
+                "UPDATE rows
+                 SET positive_prompt = ?2,
+                     character_prompt = ?3,
+                     negative_prompt = ?4,
+                     artists = ?5
+                 WHERE id = ?1",
+            )?;
+            for change in &changes {
+                update.execute(rusqlite::params![
+                    change.row_id,
+                    change.new_positive_prompt,
+                    change.new_character_prompt,
+                    change.new_negative_prompt,
+                    change.new_artists,
+                ])?;
+            }
+        }
+        transaction.commit()?;
+
+        let prompt_fields_changed = changes.iter().map(changed_prompt_field_count).sum::<u64>();
+        let changed_rows = u64::try_from(changes.len())
+            .map_err(|_| QuickEditError::Database(super::DatabaseError::RowCountOverflow))?;
+        Ok(AutoArtistPrefixApplyResult {
+            scanned_rows,
+            matched_rows: changed_rows,
+            changed_rows,
+            prompt_fields_changed,
+            changes,
+        })
+    }
 }
 
 fn read_prompt_row(row: &rusqlite::Row<'_>) -> Result<PromptRow, rusqlite::Error> {
@@ -491,5 +569,49 @@ mod tests {
         assert_eq!(preview.scanned_rows, 1);
         assert_eq!(preview.matched_rows, 0);
         assert!(preview.candidates.is_empty());
+    }
+
+    #[test]
+    fn import_style_apply_only_changes_requested_new_rows() {
+        let mut database = Database::open_in_memory().unwrap();
+        append_rows(
+            &mut database,
+            &[
+                NewRow {
+                    source_ordinal: 1,
+                    identity: "evidence".into(),
+                    positive_prompt: Some("artist:xy".into()),
+                    ..NewRow::default()
+                },
+                NewRow {
+                    source_ordinal: 2,
+                    identity: "old-bare".into(),
+                    positive_prompt: Some("xy".into()),
+                    ..NewRow::default()
+                },
+                NewRow {
+                    source_ordinal: 3,
+                    identity: "new-bare".into(),
+                    positive_prompt: Some("xy".into()),
+                    ..NewRow::default()
+                },
+            ],
+        );
+
+        let applied = database
+            .apply_confirmed_artist_prefix_to_rows(&[3])
+            .unwrap();
+
+        assert_eq!(applied.scanned_rows, 1);
+        assert_eq!(applied.changed_rows, 1);
+        let prompts = database
+            .connection
+            .prepare("SELECT positive_prompt FROM rows WHERE id IN (2, 3) ORDER BY id")
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(0))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert_eq!(prompts, vec!["xy", "artist:xy"]);
     }
 }

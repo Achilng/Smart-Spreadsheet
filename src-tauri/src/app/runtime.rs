@@ -34,6 +34,7 @@ pub(crate) struct RuntimeSnapshot {
     pub data_directory: Option<PathBuf>,
     pub rejected_images_directory: Option<PathBuf>,
     pub library: Option<LibrarySummary>,
+    pub auto_artist_prefix_on_import: bool,
     pub startup_error: Option<String>,
 }
 
@@ -158,13 +159,20 @@ impl AppRuntime {
 
     pub(crate) fn snapshot(&self) -> Result<RuntimeSnapshot, AppRuntimeError> {
         let mut state = self.lock_state()?;
-        let (library, rejected_images_directory) = if state.active.is_some() {
-            let library = state.database()?.library_summary()?;
-            let directory = state.active.as_ref().expect("checked above");
-            (Some(library), directory.rejected_images_directory()?)
-        } else {
-            (None, None)
-        };
+        let (library, rejected_images_directory, auto_artist_prefix_on_import) =
+            if state.active.is_some() {
+                let library = state.database()?.library_summary()?;
+                let auto_artist_prefix_on_import =
+                    state.database()?.auto_artist_prefix_on_import()?;
+                let directory = state.active.as_ref().expect("checked above");
+                (
+                    Some(library),
+                    directory.rejected_images_directory()?,
+                    auto_artist_prefix_on_import,
+                )
+            } else {
+                (None, None, false)
+            };
         Ok(RuntimeSnapshot {
             data_directory: state
                 .active
@@ -172,6 +180,7 @@ impl AppRuntime {
                 .map(|directory| directory.root().to_owned()),
             rejected_images_directory,
             library,
+            auto_artist_prefix_on_import,
             startup_error: state.startup_error.clone(),
         })
     }
@@ -237,6 +246,16 @@ impl AppRuntime {
     ) -> Result<RuntimeSnapshot, AppRuntimeError> {
         self.active_directory()?
             .set_rejected_images_directory(path)?;
+        self.snapshot()
+    }
+
+    pub(crate) fn set_auto_artist_prefix_on_import(
+        &self,
+        enabled: bool,
+    ) -> Result<RuntimeSnapshot, AppRuntimeError> {
+        self.with_database_mut(|database| {
+            database.set_auto_artist_prefix_on_import(enabled)
+        })?;
         self.snapshot()
     }
 

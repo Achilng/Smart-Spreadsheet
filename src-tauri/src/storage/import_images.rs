@@ -79,6 +79,11 @@ pub struct ImageImportOutcome {
     /// 未能移动到用户配置目录的异常图片数；这些图片仍不入库。
     pub rejected_move_failures: u64,
     pub rule_execution: RuleExecutionSummary,
+    pub artist_prefix_enabled: bool,
+    pub artist_prefix_scanned_rows: u64,
+    pub artist_prefix_changed_rows: u64,
+    pub artist_prefix_changed_fields: u64,
+    pub artist_prefix_error: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -214,6 +219,7 @@ impl DataDirectory {
         let identities: Vec<String> = images.iter().map(identity_for).collect();
 
         let mut database = self.open_database()?;
+        let artist_prefix_enabled = database.auto_artist_prefix_on_import()?;
         let existing = database.existing_identities(&identities)?;
 
         // 拆分已存在与新增：已存在的行只带身份键与变化检测字段，不读元数据。
@@ -401,6 +407,24 @@ impl DataDirectory {
                     error,
                 )
             });
+        let (
+            artist_prefix_scanned_rows,
+            artist_prefix_changed_rows,
+            artist_prefix_changed_fields,
+            artist_prefix_error,
+        ) = if artist_prefix_enabled {
+            match database.apply_confirmed_artist_prefix_to_rows(&outcome.added_row_ids) {
+                Ok(result) => (
+                    result.scanned_rows,
+                    result.changed_rows,
+                    result.prompt_fields_changed,
+                    None,
+                ),
+                Err(error) => (0, 0, 0, Some(error.to_string())),
+            }
+        } else {
+            (0, 0, 0, None)
+        };
 
         let metadata_rejected = u64::try_from(rejected.len()).unwrap_or(u64::MAX);
         let mut rejected_moved = 0_u64;
@@ -426,6 +450,11 @@ impl DataDirectory {
             rejected_moved,
             rejected_move_failures,
             rule_execution,
+            artist_prefix_enabled,
+            artist_prefix_scanned_rows,
+            artist_prefix_changed_rows,
+            artist_prefix_changed_fields,
+            artist_prefix_error,
         })
     }
 }
@@ -1287,6 +1316,54 @@ mod tests {
                 .row_count,
             4
         );
+    }
+
+    #[test]
+    fn enabled_import_artist_prefix_only_repairs_new_rows_with_library_evidence() {
+        let temporary = TemporaryImageImport::new();
+        let input = temporary.root.join("artist-prefix-input");
+        fs::create_dir_all(&input).unwrap();
+        create_metadata_png(&input.join("evidence.png"), "artist:xy, masterpiece");
+        create_metadata_png(&input.join("bare.png"), "xy, best quality");
+        create_metadata_png(&input.join("unknown.png"), "watermark, scenery");
+        let directory = temporary.initialize_directory();
+        directory
+            .open_database()
+            .unwrap()
+            .set_auto_artist_prefix_on_import(true)
+            .unwrap();
+
+        let outcome = directory.import_images(&input, |_| {}).unwrap();
+
+        assert!(outcome.artist_prefix_enabled);
+        assert_eq!(outcome.artist_prefix_scanned_rows, 3);
+        assert_eq!(outcome.artist_prefix_changed_rows, 1);
+        assert_eq!(outcome.artist_prefix_changed_fields, 1);
+        assert_eq!(outcome.artist_prefix_error, None);
+        let mut database = directory.open_database().unwrap();
+        let page = database
+            .query_rows(&crate::db::RowQuery {
+                offset: 0,
+                limit: 10,
+                tags: Vec::new(),
+                tag_mode: crate::db::TagMatchMode::And,
+                dedupe: crate::db::DedupeMode::None,
+                single_artist_only: false,
+                has_vibe: false,
+                untagged_only: false,
+                group_view: false,
+                hide_grouped: false,
+                search: String::new(),
+            })
+            .unwrap();
+        let prompts = page
+            .rows
+            .iter()
+            .map(|row| row.positive_prompt.as_deref().unwrap_or_default())
+            .collect::<Vec<_>>();
+        assert!(prompts.contains(&"artist:xy, masterpiece"));
+        assert!(prompts.contains(&"artist:xy, best quality"));
+        assert!(prompts.contains(&"watermark, scenery"));
     }
 
     #[test]

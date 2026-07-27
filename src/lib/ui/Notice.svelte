@@ -112,7 +112,12 @@
   {/each}
   {#if progressText}
     <div class="toast toast-progress" role="status" transition:softFly={{ duration: 180, y: 8 }}>
-      <span>{progressText}</span>
+      <span class="progress-copy">
+        <span>{progressText}</span>
+        {#if app.autoArtistPrefixImportActive}
+          <small>提示：导入完成后将自动补全有库内证据的画师前缀，无需确认。</small>
+        {/if}
+      </span>
       {#if progressPercent != null}
         <span class="progress-track" aria-hidden="true">
           <span class="progress-fill" style:transform="scaleX({progressPercent / 100})"></span>
@@ -183,6 +188,16 @@
     background: var(--surface);
     overflow: hidden;
     flex: none;
+  }
+
+  .progress-copy {
+    display: grid;
+    gap: 2px;
+  }
+
+  .progress-copy small {
+    color: var(--text-2);
+    font-size: var(--font-xs);
   }
 
   .progress-fill {
