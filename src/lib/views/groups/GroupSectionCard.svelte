@@ -3,6 +3,7 @@
   import { vibeStatuses } from "../../images/vibe-statuses";
   import { rowStore } from "../../stores/row-store.svelte";
   import Thumbnail from "../../ui/Thumbnail.svelte";
+  import CardTagSummary from "../../ui/CardTagSummary.svelte";
   import { rowFileName, rowResolution } from "../../utils/row-display";
 
   import { showContextMenu } from "../../stores/context-menu.svelte";
@@ -66,8 +67,13 @@
     {/if}
   </div>
   <span class="card-label">{label}</span>
-  {#if resolution}
-    <span class="card-sub tabular">{resolution}</span>
+  {#if resolution || row.tags.length > 0}
+    <span class="card-sub-row">
+      {#if resolution}
+        <span class="card-sub tabular">{resolution}</span>
+      {/if}
+      <CardTagSummary tags={row.tags} />
+    </span>
   {/if}
 </button>
 
@@ -120,6 +126,16 @@
     z-index: 1;
   }
 
+  .card-sub-row {
+    width: 100%;
+    padding: 1px 3px 0;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 5px;
+    min-width: 0;
+  }
+
   .card-label {
     display: block;
     padding: 6px 3px 0;
@@ -134,12 +150,12 @@
 
   .card-sub {
     display: block;
-    padding: 1px 3px 0;
     font-size: var(--font-xs);
     color: var(--text-3);
-    text-align: center;
+    text-align: left;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    min-width: 0;
   }
 </style>

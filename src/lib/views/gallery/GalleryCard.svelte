@@ -5,6 +5,7 @@
   import { rowStore } from "../../stores/row-store.svelte";
   import { getSelectedCount, isRowSelected, modifierSelect, toggleRow } from "../../stores/selection-store.svelte";
   import Thumbnail from "../../ui/Thumbnail.svelte";
+  import CardTagSummary from "../../ui/CardTagSummary.svelte";
   import { rowFileName, rowResolution } from "../../utils/row-display";
   import { vibeStatuses } from "../../images/vibe-statuses";
 
@@ -134,7 +135,10 @@
     </button>
     <div class="meta">
       <div class="meta-name" title={fileName ?? ""}>{fileName ?? `#${row.sourceOrdinal}`}</div>
-      <div class="meta-sub tabular">{resolution ?? `#${row.sourceOrdinal}`}</div>
+      <div class="meta-sub-row">
+        <span class="meta-sub tabular">{resolution ?? `#${row.sourceOrdinal}`}</span>
+        <CardTagSummary tags={row.tags} />
+      </div>
     </div>
   {:else}
     <div class="thumb shimmer" style:height="{imageHeight}px"></div>
@@ -226,6 +230,15 @@
     z-index: 1;
   }
 
+  .meta-sub-row {
+    margin-top: 1px;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+  }
+
   .meta {
     padding: 8px 3px 0;
     min-width: 0;
@@ -240,9 +253,12 @@
   }
 
   .meta-sub {
-    margin-top: 1px;
     font-size: var(--font-xs);
     color: var(--text-3);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .skeleton-line {
