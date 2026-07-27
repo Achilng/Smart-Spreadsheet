@@ -4,23 +4,22 @@
   let { tags }: { tags: string[] } = $props();
 
   /**
-   * 定性分类色板：各组使用接近的明度与彩度，避免随机 HSL 产生脏色或荧光色。
-   * 顺序依次为靛蓝、薰衣草、灰粉、陶土、琥珀、鼠尾草、青绿、雾蓝、
-   * 灰紫、橄榄、珊瑚和海蓝。
+   * ColorBrewer Paired 12 定性分类色板：用浅/深成对和冷暖交替强化类别区分。
+   * 每组单独选择深色或白色文字，最小对比度为 4.66:1。
    */
   const TAG_PALETTE = [
-    { background: "#eef1fa", border: "#d8dff2", text: "#46557f", secondary: "#7180a5" },
-    { background: "#f3eff9", border: "#e0d7ef", text: "#625080", secondary: "#8879a4" },
-    { background: "#f9eff2", border: "#eed6de", text: "#7f4c60", secondary: "#a47787" },
-    { background: "#f8f0eb", border: "#ead7cc", text: "#7c5141", secondary: "#a07968" },
-    { background: "#f7f3e8", border: "#e8ddbe", text: "#725b2f", secondary: "#998252" },
-    { background: "#eef4ed", border: "#d6e4d3", text: "#4d684f", secondary: "#748c75" },
-    { background: "#ebf4f2", border: "#cee4df", text: "#426962", secondary: "#6d8d87" },
-    { background: "#edf3f7", border: "#d2e1ea", text: "#43687d", secondary: "#6e8da0" },
-    { background: "#f5eff5", border: "#e5d6e6", text: "#6d4f70", secondary: "#927696" },
-    { background: "#f2f3ea", border: "#dee1c6", text: "#5f6639", secondary: "#82895e" },
-    { background: "#faefed", border: "#efd6d1", text: "#805249", secondary: "#a4776e" },
-    { background: "#ebf4f5", border: "#cfe4e8", text: "#3f6870", secondary: "#6c8d93" },
+    { background: "#a6cee3", text: "#16313f" },
+    { background: "#1f78b4", text: "#ffffff" },
+    { background: "#b2df8a", text: "#213615" },
+    { background: "#33a02c", text: "#10280e" },
+    { background: "#fb9a99", text: "#4a1515" },
+    { background: "#e31a1c", text: "#ffffff" },
+    { background: "#fdbf6f", text: "#3b2505" },
+    { background: "#ff7f00", text: "#3d1c00" },
+    { background: "#cab2d6", text: "#321f3c" },
+    { background: "#6a3d9a", text: "#ffffff" },
+    { background: "#ffff99", text: "#333300" },
+    { background: "#b15928", text: "#ffffff" },
   ] as const;
 
   const visibleTags = $derived(tags.filter(tag => tag.trim().length > 0));
@@ -59,9 +58,7 @@
     title={tagSummary}
     aria-label={`已有 ${visibleTags.length} 个 Tag：${visibleTags.join("、")}`}
     style:--tag-bg={tagTone.background}
-    style:--tag-border={tagTone.border}
     style:--tag-text={tagTone.text}
-    style:--tag-secondary={tagTone.secondary}
   >
     <span class="tag-label">{firstTag}</span>
     {#if remainingCount > 0}
@@ -76,14 +73,16 @@
     align-items: center;
     min-width: 0;
     max-width: 58%;
-    height: 18px;
-    padding: 0 7px;
+    height: 20px;
+    padding: 0 8px;
     border-radius: var(--radius-full);
     background: var(--tag-bg);
-    box-shadow: inset 0 0 0 1px var(--tag-border);
+    box-shadow:
+      inset 0 0 0 1px rgb(0 0 0 / 10%),
+      0 1px 2px rgb(0 0 0 / 12%);
     color: var(--tag-text);
     font-size: 10.5px;
-    font-weight: 600;
+    font-weight: 700;
     line-height: 1;
     white-space: nowrap;
   }
@@ -96,9 +95,10 @@
 
   .tag-more {
     margin-left: 4px;
-    color: var(--tag-secondary);
-    font-weight: 500;
+    color: currentColor;
+    font-weight: 600;
     font-variant-numeric: tabular-nums;
     flex: none;
+    opacity: 0.72;
   }
 </style>
