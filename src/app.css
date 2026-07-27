@@ -228,6 +228,7 @@ input[type="checkbox"].switch {
   background: var(--surface-3);
   display: inline-flex;
   align-items: center;
+  justify-content: flex-start;
   padding: 2px;
   transition: background var(--motion-fast) var(--ease-responsive);
 }
