@@ -17,7 +17,7 @@ use crate::db::{
     QuickGroupPreview, QuickTagApplyResult, QuickTagAssociation, QuickTagPreview, RowPage,
     RowQuery, RowSelection, SortMode, TagMatchMode, TagMutationError, TagMutationResult,
     RuleExecutionSummary, RulePreview, TagSelectionSummary, TagSummary,
-    read_automation_rule_file, write_automation_rule_file,
+    parse_automation_rule_text, read_automation_rule_file, write_automation_rule_file,
 };
 use crate::images::{ImageVariant, RowImageError};
 use crate::storage::{
@@ -368,6 +368,29 @@ impl AppRuntime {
         if content_hash != expected_hash {
             return Err(AutomationRuleError::InvalidRuleFile(
                 "文件在预览后发生了变化，请重新选择并检查".into(),
+            )
+            .into());
+        }
+        self.with_database_mut(|db| db.import_automation_rule_document(&document))
+    }
+
+    pub(crate) fn inspect_automation_rule_text(
+        &self,
+        text: &str,
+    ) -> Result<AutomationRuleImportInspection, AppRuntimeError> {
+        let (document, content_hash) = parse_automation_rule_text(text)?;
+        self.with_database(|db| db.inspect_automation_rule_document(&document, content_hash))
+    }
+
+    pub(crate) fn import_automation_rule_text(
+        &self,
+        text: &str,
+        expected_hash: &str,
+    ) -> Result<AutomationRuleImportResult, AppRuntimeError> {
+        let (document, content_hash) = parse_automation_rule_text(text)?;
+        if content_hash != expected_hash {
+            return Err(AutomationRuleError::InvalidRuleFile(
+                "文本在预览后发生了变化，请重新检查".into(),
             )
             .into());
         }

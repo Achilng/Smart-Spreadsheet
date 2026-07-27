@@ -5,6 +5,7 @@
   import ArrowUp from "@lucide/svelte/icons/arrow-up";
   import CheckCircle2 from "@lucide/svelte/icons/check-circle-2";
   import ClipboardCopy from "@lucide/svelte/icons/clipboard-copy";
+  import ClipboardPaste from "@lucide/svelte/icons/clipboard-paste";
   import FlaskConical from "@lucide/svelte/icons/flask-conical";
   import ImportIcon from "@lucide/svelte/icons/import";
   import Plus from "@lucide/svelte/icons/plus";
@@ -24,7 +25,9 @@
     exportAutomationRules,
     getRowsByIds,
     importAutomationRuleFile,
+    importAutomationRuleText,
     inspectAutomationRuleFile,
+    inspectAutomationRuleText,
     listAutomationRules,
     listGroups,
     listTags,
@@ -60,8 +63,12 @@
   import RuleActionEditor from "./RuleActionEditor.svelte";
   import RuleConditionEditor from "./RuleConditionEditor.svelte";
   import RuleImportDialog from "./RuleImportDialog.svelte";
+  import RuleTextImportDialog from "./RuleTextImportDialog.svelte";
 
   const initialDraft = emptyAutomationRuleDraft();
+  type PendingRuleImport =
+    | { kind: "file"; path: string }
+    | { kind: "text"; text: string };
 
   let rules = $state<AutomationRule[]>([]);
   let groups = $state<GroupSummary[]>([]);
@@ -82,8 +89,11 @@
   let openingRowId = $state<number | null>(null);
   let transferring = $state(false);
   let copyingPrompt = $state(false);
-  let importPath = $state<string | null>(null);
+  let pendingImport = $state<PendingRuleImport | null>(null);
   let importInspection = $state<AutomationRuleImportInspection | null>(null);
+  let textImportOpen = $state(false);
+  let importText = $state("");
+  let textImportError = $state<string | null>(null);
 
   const selectedRule = $derived(rules.find(rule => rule.id === selectedId) ?? null);
   const dirty = $derived(JSON.stringify(draft) !== JSON.stringify(baseline));
@@ -112,6 +122,9 @@
     // 规则草稿有未保存修改时，拦截关窗
     return registerCloseGuard(() => {
       if (transferring) return "规则文件正在导入或导出";
+      if ((textImportOpen && importText.trim()) || pendingImport?.kind === "text") {
+        return "粘贴的 JSON 文本尚未确认导入";
+      }
       return dirty ? `自动规则「${draft.name.trim() || "未命名规则"}」有未保存的修改` : null;
     });
   });
@@ -190,30 +203,84 @@
     error = null;
     try {
       const inspection = await inspectAutomationRuleFile(selection);
-      importPath = selection;
+      pendingImport = { kind: "file", path: selection };
       importInspection = inspection;
     } catch (cause) {
       showError(errorText(cause));
-      importPath = null;
+      pendingImport = null;
       importInspection = null;
     } finally {
       transferring = false;
     }
   }
 
+  function openRuleTextImport(): void {
+    if (transferring) return;
+    importText = "";
+    textImportError = null;
+    textImportOpen = true;
+  }
+
+  function updateRuleText(value: string): void {
+    importText = value;
+    textImportError = null;
+  }
+
+  function closeRuleTextImport(): void {
+    if (transferring) return;
+    if (importText.trim() && !window.confirm("已粘贴的 JSON 文本尚未导入，确定要放弃吗？")) return;
+    textImportOpen = false;
+    importText = "";
+    textImportError = null;
+  }
+
+  async function inspectRuleText(): Promise<void> {
+    if (transferring || !importText.trim()) return;
+    transferring = true;
+    textImportError = null;
+    try {
+      const inspection = await inspectAutomationRuleText(importText);
+      pendingImport = { kind: "text", text: importText };
+      importInspection = inspection;
+      textImportOpen = false;
+    } catch (cause) {
+      textImportError = errorText(cause);
+    } finally {
+      transferring = false;
+    }
+  }
+
+  function backToRuleText(): void {
+    if (transferring || pendingImport?.kind !== "text") return;
+    importText = pendingImport.text;
+    pendingImport = null;
+    importInspection = null;
+    textImportError = null;
+    textImportOpen = true;
+  }
+
   function closeRuleImport(): void {
     if (transferring) return;
-    importPath = null;
+    if (
+      pendingImport?.kind === "text" &&
+      !window.confirm("已检查的 JSON 文本尚未导入，确定要放弃吗？")
+    ) return;
+    pendingImport = null;
     importInspection = null;
+    importText = "";
+    textImportError = null;
   }
 
   async function confirmRuleImport(): Promise<void> {
-    if (!importPath || !importInspection || transferring) return;
+    if (!pendingImport || !importInspection || transferring) return;
+    const source = pendingImport;
     transferring = true;
     error = null;
     const keepDraft = dirty;
     try {
-      const result = await importAutomationRuleFile(importPath, importInspection.contentHash);
+      const result = source.kind === "file"
+        ? await importAutomationRuleFile(source.path, importInspection.contentHash)
+        : await importAutomationRuleText(source.text, importInspection.contentHash);
       [rules, groups, tags] = await Promise.all([listAutomationRules(), listGroups(), listTags()]);
       if (!keepDraft) {
         const imported = rules.find(rule => rule.id === result.importedRuleIds[0]);
@@ -232,12 +299,21 @@
         tone: "success",
         text: `已导入 ${result.importedRules} 条规则并保持停用${details.length > 0 ? `；${details.join("，")}` : ""}。`,
       });
-      importPath = null;
+      pendingImport = null;
       importInspection = null;
+      importText = "";
+      textImportError = null;
     } catch (cause) {
-      showError(errorText(cause));
-      importPath = null;
+      const message = errorText(cause);
+      pendingImport = null;
       importInspection = null;
+      if (source.kind === "text") {
+        importText = source.text;
+        textImportError = message;
+        textImportOpen = true;
+      } else {
+        showError(message);
+      }
     } finally {
       transferring = false;
     }
@@ -566,6 +642,7 @@
       <div class="sidebar-transfer">
         <button type="button" class="btn compact" disabled={transferring} onclick={() => void chooseRuleImport()}><ImportIcon size={14} />导入 JSON</button>
         <Dropdown label="导出 JSON" items={exportItems} disabled={transferring || rules.length === 0} />
+        <button type="button" class="btn compact wide-transfer" disabled={transferring} onclick={openRuleTextImport}><ClipboardPaste size={14} />粘贴 JSON 文本</button>
         <button type="button" class="btn compact ai-prompt-copy" disabled={transferring || copyingPrompt} onclick={() => void copyAiRulePrompt()}><ClipboardCopy size={14} />{copyingPrompt ? "正在准备…" : "复制 AI 编写提示词"}</button>
       </div>
 
@@ -697,13 +774,27 @@
     </main>
   </div>
 
-  {#if importInspection && importPath}
+  {#if textImportOpen}
+    <RuleTextImportDialog
+      value={importText}
+      busy={transferring}
+      error={textImportError}
+      onchange={updateRuleText}
+      onclose={closeRuleTextImport}
+      oninspect={() => void inspectRuleText()}
+    />
+  {/if}
+
+  {#if importInspection && pendingImport}
     <RuleImportDialog
       inspection={importInspection}
-      fileName={importPath.split(/[\\/]/).pop() ?? importPath}
+      sourceName={pendingImport.kind === "file"
+        ? pendingImport.path.split(/[\\/]/).pop() ?? pendingImport.path
+        : "粘贴的 JSON 文本"}
       busy={transferring}
       onclose={closeRuleImport}
       onconfirm={() => void confirmRuleImport()}
+      onback={pendingImport.kind === "text" ? backToRuleText : undefined}
     />
   {/if}
 {/if}
@@ -719,6 +810,7 @@
   .compact { min-height: 32px; padding: 5px 9px; }
   .sidebar-transfer { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 0 6px 12px; }
   .sidebar-transfer > button { justify-content: center; }
+  .sidebar-transfer > .wide-transfer,
   .sidebar-transfer > .ai-prompt-copy { grid-column: 1 / -1; }
   .sidebar-transfer :global(.dropdown) { min-width: 0; }
   .sidebar-transfer :global(.dropdown > .btn) { width: 100%; min-height: 32px; justify-content: center; padding: 5px 8px; }

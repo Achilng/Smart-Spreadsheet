@@ -857,6 +857,27 @@ pub(crate) fn import_automation_rule_file(
 }
 
 #[tauri::command]
+pub(crate) fn inspect_automation_rule_text(
+    text: String,
+    runtime: State<'_, AppRuntime>,
+) -> Result<AutomationRuleImportInspection, String> {
+    runtime
+        .inspect_automation_rule_text(&text)
+        .map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn import_automation_rule_text(
+    text: String,
+    expected_hash: String,
+    runtime: State<'_, AppRuntime>,
+) -> Result<AutomationRuleImportResult, String> {
+    runtime
+        .import_automation_rule_text(&text, &expected_hash)
+        .map_err(error_text)
+}
+
+#[tauri::command]
 pub(crate) fn export_automation_rules(
     path: String,
     ids: Vec<i64>,

@@ -9,16 +9,18 @@
 
   let {
     inspection,
-    fileName,
+    sourceName,
     busy,
     onclose,
     onconfirm,
+    onback,
   }: {
     inspection: AutomationRuleImportInspection;
-    fileName: string;
+    sourceName: string;
     busy: boolean;
     onclose: () => void;
     onconfirm: () => void;
+    onback?: () => void;
   } = $props();
 
   function triggers(runOnImport: boolean, runOnUpdate: boolean): string {
@@ -32,7 +34,7 @@
     <div class="title-icon"><FileJson size={21} aria-hidden="true" /></div>
     <div>
       <h2 id="rule-import-title">确认导入规则</h2>
-      <p title={fileName}>{fileName}</p>
+      <p title={sourceName}>{sourceName}</p>
     </div>
   </header>
 
@@ -89,6 +91,9 @@
   </div>
 
   <footer class="dialog-actions">
+    {#if onback}
+      <button type="button" class="btn back-button" disabled={busy} onclick={onback}>返回修改</button>
+    {/if}
     <button type="button" class="btn" disabled={busy} onclick={onclose}>取消</button>
     <button type="button" class="btn btn-primary" disabled={busy} onclick={onconfirm}>
       {busy ? "导入中…" : `导入 ${inspection.ruleCount} 条规则`}
@@ -123,4 +128,5 @@
   .safety-icon { margin-top: 1px; display: grid; place-items: center; flex: none; }
   .safety-note p { font-size: var(--font-sm); line-height: 1.5; }
   .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 20px 16px; border-top: 1px solid var(--border); }
+  .back-button { margin-right: auto; }
 </style>

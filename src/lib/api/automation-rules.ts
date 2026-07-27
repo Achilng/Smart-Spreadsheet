@@ -149,6 +149,17 @@ export function importAutomationRuleFile(
   return invoke<AutomationRuleImportResult>("import_automation_rule_file", { path, expectedHash });
 }
 
+export function inspectAutomationRuleText(text: string): Promise<AutomationRuleImportInspection> {
+  return invoke<AutomationRuleImportInspection>("inspect_automation_rule_text", { text });
+}
+
+export function importAutomationRuleText(
+  text: string,
+  expectedHash: string,
+): Promise<AutomationRuleImportResult> {
+  return invoke<AutomationRuleImportResult>("import_automation_rule_text", { text, expectedHash });
+}
+
 export function exportAutomationRules(
   path: string,
   ids: number[],

@@ -534,6 +534,84 @@ pub fn read_automation_rule_file(path: &Path) -> Result<(Value, String), Automat
     Ok((document, hash))
 }
 
+pub fn parse_automation_rule_text(input: &str) -> Result<(Value, String), AutomationRuleError> {
+    let bytes = input.as_bytes();
+    if bytes.is_empty() {
+        return Err(AutomationRuleError::InvalidRuleFile("粘贴内容为空".into()));
+    }
+    if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > MAX_AUTOMATION_RULE_FILE_BYTES {
+        return Err(AutomationRuleError::InvalidRuleFile(format!(
+            "粘贴内容超过 {} MB 上限",
+            MAX_AUTOMATION_RULE_FILE_BYTES / 1024 / 1024
+        )));
+    }
+    let json = extract_automation_rule_json_text(input)?;
+    let document = serde_json::from_str(&json)
+        .map_err(|error| AutomationRuleError::InvalidRuleFile(format!("JSON 语法错误：{error}")))?;
+    let hash = format!("{:x}", Sha256::digest(bytes));
+    Ok((document, hash))
+}
+
+fn extract_automation_rule_json_text(input: &str) -> Result<String, AutomationRuleError> {
+    let trimmed = input.trim();
+    let trimmed = trimmed.strip_prefix('\u{feff}').unwrap_or(trimmed).trim();
+    if trimmed.is_empty() {
+        return Err(AutomationRuleError::InvalidRuleFile("粘贴内容为空".into()));
+    }
+    if trimmed.starts_with('{') {
+        return Ok(trimmed.to_owned());
+    }
+
+    let mut found_block = false;
+    let mut inside_block = false;
+    let mut body = Vec::new();
+    for line in trimmed.lines() {
+        let marker = line.trim();
+        if marker.starts_with("```") {
+            if inside_block {
+                if marker != "```" {
+                    return Err(AutomationRuleError::InvalidRuleFile(
+                        "JSON 代码块的结束标记无效".into(),
+                    ));
+                }
+                inside_block = false;
+                continue;
+            }
+            if found_block {
+                return Err(AutomationRuleError::InvalidRuleFile(
+                    "一次只能粘贴一份 JSON 代码块".into(),
+                ));
+            }
+            if marker != "```" && !marker.eq_ignore_ascii_case("```json") {
+                return Err(AutomationRuleError::InvalidRuleFile(
+                    "只支持纯 JSON 或标记为 json 的代码块".into(),
+                ));
+            }
+            found_block = true;
+            inside_block = true;
+            continue;
+        }
+        if inside_block {
+            body.push(line);
+        }
+    }
+    if inside_block {
+        return Err(AutomationRuleError::InvalidRuleFile(
+            "JSON 代码块缺少结束标记 ```".into(),
+        ));
+    }
+    if !found_block {
+        return Ok(trimmed.to_owned());
+    }
+    let json = body.join("\n");
+    if json.trim().is_empty() {
+        return Err(AutomationRuleError::InvalidRuleFile(
+            "JSON 代码块为空".into(),
+        ));
+    }
+    Ok(json)
+}
+
 pub fn write_automation_rule_file(
     path: &Path,
     document: &Value,
@@ -3453,6 +3531,57 @@ mod tests {
             RuleAction::SetGroup { group_id, only_if_ungrouped: true }
                 if *group_id == imported_group_id
         )));
+    }
+
+    #[test]
+    fn automation_rule_text_accepts_plain_json_and_one_ai_code_block() {
+        let mut source = Database::open_in_memory().unwrap();
+        let saved = source
+            .create_automation_rule(&draft(
+                "粘贴导入测试",
+                RuleCondition::Metadata { parsed: true },
+                vec![RuleAction::ClearNote],
+            ))
+            .unwrap();
+        let exported = source.export_automation_rule_document(&[saved.id]).unwrap();
+        let plain = serde_json::to_string_pretty(&exported).unwrap();
+
+        let (plain_document, plain_hash) = parse_automation_rule_text(&plain).unwrap();
+        let ai_reply = format!("规则如下：\n\n```JSON\n{plain}\n```\n\n请先预览再启用。");
+        let (block_document, block_hash) = parse_automation_rule_text(&ai_reply).unwrap();
+
+        assert_eq!(plain_document, exported);
+        assert_eq!(block_document, exported);
+        assert_ne!(plain_hash, block_hash);
+        assert_eq!(plain_hash.len(), 64);
+        let destination = Database::open_in_memory().unwrap();
+        let inspection = destination
+            .inspect_automation_rule_document(&block_document, block_hash)
+            .unwrap();
+        assert_eq!(inspection.rule_count, 1);
+        assert_eq!(inspection.rules[0].name, "粘贴导入测试");
+    }
+
+    #[test]
+    fn automation_rule_text_rejects_unsafe_or_ambiguous_input() {
+        for input in [
+            "   \n\t",
+            "```json\n{}",
+            "```javascript\n{}\n```",
+            "```json\n{}\n```\n```json\n{}\n```",
+            "```json\n\n```",
+        ] {
+            assert!(matches!(
+                parse_automation_rule_text(input),
+                Err(AutomationRuleError::InvalidRuleFile(_))
+            ));
+        }
+
+        let oversized = "x".repeat(MAX_AUTOMATION_RULE_FILE_BYTES as usize + 1);
+        assert!(matches!(
+            parse_automation_rule_text(&oversized),
+            Err(AutomationRuleError::InvalidRuleFile(_))
+        ));
     }
 
     #[test]

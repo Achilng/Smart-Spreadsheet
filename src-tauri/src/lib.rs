@@ -82,6 +82,8 @@ pub fn run() {
             app::commands::list_automation_rules,
             app::commands::inspect_automation_rule_file,
             app::commands::import_automation_rule_file,
+            app::commands::inspect_automation_rule_text,
+            app::commands::import_automation_rule_text,
             app::commands::export_automation_rules,
             app::commands::create_automation_rule,
             app::commands::update_automation_rule,
