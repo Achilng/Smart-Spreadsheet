@@ -4,6 +4,13 @@
 
 ## 当前状态
 
+- 修复主窗口与工具箱窗口关闭按钮完全失效的问题：UX 阶段1 引入关闭守卫
+  （`onCloseRequested`）后，Tauri 2 规定放行关闭时由前端 API 调用
+  `destroy()` 真正关窗，但两个窗口的 capability 都缺少
+  `core:window:allow-destroy` 权限，导致关闭请求被静默拒绝——关闭按钮、
+  系统关闭消息和确认框的“仍要关闭”全部无效。已在 `default.json` 与
+  `toolbox.json` 补上该权限；用 debug 构建实测 WM_CLOSE 走守卫流程后
+  进程正常退出。
 - 重复项视图新增“按 VIBE”聚合（分支 `agent/minimal-ui`）：把引用了同一组
   NovelAI VIBE 的图片自动聚为一组。导入与更新现有图片时解析
   `reference_image_multiple`，对每项引用取 SHA-256、排序后再整体哈希，得到
