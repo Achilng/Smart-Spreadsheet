@@ -979,6 +979,20 @@ impl AppRuntime {
         })
     }
 
+    /// 升级后首启为历史图片补齐 VIBE 数量与组合签名。写库走独立连接，
+    /// 完成后失效常驻连接的查询缓存，让重复项视图立即看到新签名。
+    pub(crate) fn backfill_vibe_statuses(
+        &self,
+        progress: impl Fn(crate::storage::VibeStatusProgress),
+    ) -> Result<crate::storage::VibeStatusProgress, AppRuntimeError> {
+        let directory = self.active_directory()?;
+        let outcome = directory.backfill_vibe_statuses(progress)?;
+        if outcome.total > 0 {
+            self.lock_state()?.invalidate_query_cache();
+        }
+        Ok(outcome)
+    }
+
     pub(crate) fn search_similar_images(
         &self,
         query_path: impl AsRef<Path>,

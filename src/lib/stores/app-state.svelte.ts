@@ -3,6 +3,7 @@ import { confirm as confirmDialog, open } from "@tauri-apps/plugin-dialog";
 
 import {
   backfillPerceptualHashes,
+  backfillVibeStatuses,
   getAppSnapshot,
   initializeDataDirectory,
   migrateDataDirectory,
@@ -14,6 +15,7 @@ import {
   type ExportProgress,
   type ImageImportProgress,
   type PerceptualHashProgress,
+  type VibeStatusProgress,
 } from "../api";
 
 export type ViewMode = "group" | "gallery" | "table" | "duplicates" | "promptDocs";
@@ -55,6 +57,8 @@ export const app = $state({
   exportProgress: null as ExportProgress | null,
   /** 感知哈希补算进度，空闲时为 null */
   phashProgress: null as PerceptualHashProgress | null,
+  /** 升级后首启的 VIBE 索引回填进度，空闲时为 null */
+  vibeBackfillProgress: null as VibeStatusProgress | null,
   /** 分组管理视图是否打开 */
   groupManageOpen: false,
 });
@@ -187,10 +191,48 @@ export async function chooseDirectory(mode: "initialize" | "open"): Promise<void
         unlisten();
         app.hashProgress = null;
       }
+      // 换到的旧库可能还没有 VIBE 聚合索引，后台补齐（已就绪时立即返回）。
+      void runVibeBackfill();
     }
     clearOperationHistory();
     setNotice({ tone: "success", text: "数据目录已连接。" });
   });
+}
+
+let vibeBackfillActive = false;
+
+/**
+ * 在后台补齐历史图片的 VIBE 数量与组合签名（升级后首启一次性工作）。
+ * 无待补行时后端只做一次查询立即返回，因此启动和换库后都可以放心调用；
+ * 不占用 app.busy，进度显示在右下角，完成且确实有补齐时刷新数据视图
+ * 并给出一次性说明。失败不阻塞使用，下次启动自动重试剩余行。
+ */
+export async function runVibeBackfill(): Promise<void> {
+  if (vibeBackfillActive) return;
+  if (!app.snapshot?.dataDirectory || app.snapshot.startupError) return;
+  vibeBackfillActive = true;
+  try {
+    const unlisten = await listen<VibeStatusProgress>("vibe-status://progress", event => {
+      app.vibeBackfillProgress = event.payload;
+    });
+    try {
+      const result = await backfillVibeStatuses();
+      if (result.total > 0) {
+        bumpDataVersion({ preserveScroll: true, preserveSelection: true });
+        setNotice({
+          tone: "success",
+          text: `已为 ${formatCount(result.total)} 张历史图片建立 VIBE 聚合索引${result.unreadable > 0 ? `（${formatCount(result.unreadable)} 张原图不可读，已跳过）` : ""}，重复视图现在可以按 VIBE 分组了。`,
+        });
+      }
+    } finally {
+      unlisten();
+      app.vibeBackfillProgress = null;
+    }
+  } catch (error) {
+    setNotice({ tone: "error", text: `VIBE 聚合索引建立失败：${errorText(error)}` });
+  } finally {
+    vibeBackfillActive = false;
+  }
 }
 
 export async function runPhashBackfill(): Promise<void> {

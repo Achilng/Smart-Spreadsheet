@@ -1,18 +1,43 @@
+use serde::Serialize;
+
 use super::{resolve_image_source, DataDirectory, StorageError};
 use crate::pipeline::{png_text, vibe_status};
+
+/// VIBE 状态回填进度：total 为待扫描行数，unreadable 为原图不可读的行数。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VibeStatusProgress {
+    pub processed: usize,
+    pub total: usize,
+    pub unreadable: usize,
+}
 
 impl DataDirectory {
     /// 为历史资料库建立 VIBE 引用数量与组合签名索引：
     /// 数量缺失的行（v10 及更早）与有引用但签名缺失的行（v15 及更早）都会补齐。
     ///
-    /// 文件缺失或元数据不可读时记为 0/None，避免每次启动重复扫描；后续通过
-    /// “更新现有图片”重新关联原图时会写入最新的准确数量。
-    pub fn backfill_vibe_statuses(&self) -> Result<usize, StorageError> {
+    /// 逐行读取原图元数据可能较慢，调用方应放在阻塞线程执行并通过
+    /// `progress` 上报；文件缺失或元数据不可读时保留既有数量并写入
+    /// 空签名标记，避免每次启动重复扫描。后续通过“更新现有图片”
+    /// 重新关联原图时会写入最新的准确数量。
+    pub fn backfill_vibe_statuses(
+        &self,
+        progress: impl Fn(VibeStatusProgress),
+    ) -> Result<VibeStatusProgress, StorageError> {
         let mut database = self.open_database()?;
         let candidates = database.missing_vibe_statuses()?;
-        let mut statuses = Vec::with_capacity(candidates.len());
+        let total = candidates.len();
+        if total == 0 {
+            return Ok(VibeStatusProgress::default());
+        }
+        progress(VibeStatusProgress {
+            total,
+            ..VibeStatusProgress::default()
+        });
 
-        for locator in candidates {
+        let mut statuses = Vec::with_capacity(total);
+        let mut unreadable = 0;
+        for (index, locator) in candidates.into_iter().enumerate() {
             let status = resolve_image_source(self, &locator)
                 .and_then(|path| png_text::read_png_text_chunks(path).ok())
                 .map(|chunks| vibe_status(&chunks));
@@ -20,13 +45,25 @@ impl DataDirectory {
             // 避免每次启动重复尝试；空串不参与“按 VIBE”聚合。
             let (count, signature) = match status {
                 Some((count, signature)) => (Some(count), signature),
-                None => (None, Some(String::new())),
+                None => {
+                    unreadable += 1;
+                    (None, Some(String::new()))
+                }
             };
             statuses.push((locator.row_id, count, signature));
+            progress(VibeStatusProgress {
+                processed: index + 1,
+                total,
+                unreadable,
+            });
         }
 
         database.update_vibe_statuses(&statuses)?;
-        Ok(statuses.len())
+        Ok(VibeStatusProgress {
+            processed: total,
+            total,
+            unreadable,
+        })
     }
 }
 
@@ -90,7 +127,15 @@ mod tests {
             )
             .unwrap();
 
-        assert_eq!(directory.backfill_vibe_statuses().unwrap(), 2);
+        let outcome = directory.backfill_vibe_statuses(|_| {}).unwrap();
+        assert_eq!(
+            outcome,
+            VibeStatusProgress {
+                processed: 2,
+                total: 2,
+                unreadable: 1
+            }
+        );
         let database = directory.open_database().unwrap();
         assert_eq!(database.row_vibe_reference_count(1).unwrap(), Some(2));
         assert_eq!(database.row_vibe_reference_count(2).unwrap(), Some(0));
@@ -112,7 +157,10 @@ mod tests {
         drop(connection);
 
         // 再次回填不应重复扫描：所有行的数量与签名标记都已就位。
-        assert_eq!(directory.backfill_vibe_statuses().unwrap(), 0);
+        assert_eq!(
+            directory.backfill_vibe_statuses(|_| {}).unwrap(),
+            VibeStatusProgress::default()
+        );
 
         let _ = fs::remove_dir_all(root);
     }
@@ -160,7 +208,22 @@ mod tests {
             .execute("UPDATE rows SET vibe_signature = NULL", [])
             .unwrap();
 
-        assert_eq!(directory.backfill_vibe_statuses().unwrap(), 1);
+        // 进度回调应从 0/total 通报到 total/total。
+        let seen = std::sync::Mutex::new(Vec::new());
+        let outcome = directory
+            .backfill_vibe_statuses(|progress| seen.lock().unwrap().push(progress))
+            .unwrap();
+        assert_eq!(
+            outcome,
+            VibeStatusProgress {
+                processed: 1,
+                total: 1,
+                unreadable: 0
+            }
+        );
+        let seen = seen.into_inner().unwrap();
+        assert_eq!(seen.first().map(|p| (p.processed, p.total)), Some((0, 1)));
+        assert_eq!(seen.last().map(|p| (p.processed, p.total)), Some((1, 1)));
         let connection = rusqlite::Connection::open(directory.database_path()).unwrap();
         let (count, signature): (Option<u32>, Option<String>) = connection
             .query_row(

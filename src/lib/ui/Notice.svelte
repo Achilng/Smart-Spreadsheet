@@ -64,6 +64,10 @@
         : "";
       return `正在计算感知哈希 ${formatCount(phash.processed)} / ${formatCount(phash.total)}${unreadable}`;
     }
+    const vibe = app.vibeBackfillProgress;
+    if (vibe) {
+      return `正在建立 VIBE 聚合索引 ${formatCount(vibe.processed)} / ${formatCount(vibe.total)}（升级后一次性工作，可继续正常使用）`;
+    }
     const exporting = app.exportProgress;
     if (exporting) {
       return `正在导出 ${formatCount(exporting.processed)} / ${formatCount(exporting.total)}`;
@@ -88,6 +92,10 @@
     const phash = app.phashProgress;
     if (phash && phash.total > 0) {
       return Math.round((phash.processed / phash.total) * 100);
+    }
+    const vibe = app.vibeBackfillProgress;
+    if (vibe && vibe.total > 0) {
+      return Math.round((vibe.processed / vibe.total) * 100);
     }
     const exporting = app.exportProgress;
     if (exporting && exporting.total > 0) {

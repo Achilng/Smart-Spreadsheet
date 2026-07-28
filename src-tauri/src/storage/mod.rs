@@ -39,6 +39,7 @@ pub use perceptual_hash::{
     PerceptualHashBackfillOutcome, PerceptualHashProgress, SimilarImageMatch,
 };
 pub use prompt_docs::{PromptDocAsset, PromptDocDetail, PromptDocError, PromptDocSummary};
+pub use vibe_status::VibeStatusProgress;
 
 pub(super) const FORMAT_VERSION: u32 = 1;
 pub(super) const MARKER_FILE: &str = ".smart-spreadsheet-data.json";
@@ -164,7 +165,8 @@ impl DataDirectory {
         };
         directory.backfill_content_hashes(progress)?;
         directory.backfill_metadata_fingerprints()?;
-        directory.backfill_vibe_statuses()?;
+        // VIBE 数量/签名回填逐行读原图，可能长达数十秒，不在打开路径同步执行；
+        // 由前端启动后调用 backfill_vibe_statuses 命令在后台补齐并显示进度。
         Ok(directory)
     }
 

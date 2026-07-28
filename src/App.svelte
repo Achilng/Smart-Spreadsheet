@@ -7,6 +7,7 @@
     bumpDataVersion,
     refreshSnapshot,
     resetAndReconfigure,
+    runVibeBackfill,
     setNotice,
     type MainStateChange,
   } from "./lib/stores/app-state.svelte";
@@ -17,7 +18,9 @@
   import WindowControls from "./lib/ui/WindowControls.svelte";
   import Workspace from "./lib/views/shell/Workspace.svelte";
 
-  void refreshSnapshot();
+  // 快照就绪后在后台补齐 VIBE 聚合索引（升级后首启的一次性工作，
+  // 已就绪的库只做一次空查询）；不阻塞首屏。
+  void refreshSnapshot().then(() => runVibeBackfill());
 
   onMount(() => {
     let disposed = false;
@@ -30,6 +33,7 @@
       if (app.exportProgress) return "导出任务尚未完成";
       if (app.hashProgress) return "内容哈希补算尚未完成";
       if (app.phashProgress) return "感知哈希刷新尚未完成";
+      if (app.vibeBackfillProgress) return "VIBE 聚合索引建立尚未完成（关闭后下次启动会自动续跑）";
       if (app.busy) return "还有后台任务正在进行";
       return null;
     });

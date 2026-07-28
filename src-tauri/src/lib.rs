@@ -123,6 +123,7 @@ pub fn run() {
             app::commands::dedupe_zhihuiji_json,
             app::commands::migrate_data_directory,
             app::commands::backfill_perceptual_hashes,
+            app::commands::backfill_vibe_statuses,
             app::commands::search_similar_images,
             app::commands::show_item_in_explorer,
             app::commands::open_rejected_images_directory,

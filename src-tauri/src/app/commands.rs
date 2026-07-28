@@ -19,6 +19,7 @@ use crate::db::{
 };
 use crate::storage::{
     PerceptualHashProgress, PromptDocAsset, PromptDocDetail, PromptDocSummary, SimilarImageMatch,
+    VibeStatusProgress,
 };
 
 #[derive(Debug, Serialize)]
@@ -1484,6 +1485,24 @@ pub(crate) async fn backfill_perceptual_hashes(
     })
     .await
     .map_err(|error| format!("感知哈希计算任务异常中止: {error}"))?
+}
+
+/// 升级后首启为历史图片补齐 VIBE 数量与组合签名；逐行读原图元数据，
+/// 在阻塞线程执行并上报进度。无待补行时立即返回 total = 0。
+#[tauri::command]
+pub(crate) async fn backfill_vibe_statuses(
+    app: tauri::AppHandle,
+) -> Result<VibeStatusProgress, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let runtime = app.state::<AppRuntime>();
+        runtime
+            .backfill_vibe_statuses(|progress| {
+                let _ = app.emit("vibe-status://progress", progress);
+            })
+            .map_err(error_text)
+    })
+    .await
+    .map_err(|error| format!("VIBE 索引回填任务异常中止: {error}"))?
 }
 
 /// 以图搜图：选择一张图片，返回库中相似的行。
