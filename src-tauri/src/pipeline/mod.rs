@@ -14,5 +14,5 @@ pub mod scan;
 pub mod stealth_png;
 
 pub use artist::extract_artist_tags;
-pub use metadata::{NovelAiMetadata, parse_novelai_metadata, vibe_reference_count};
+pub use metadata::{NovelAiMetadata, parse_novelai_metadata, vibe_reference_count, vibe_status};
 pub use metadata_fingerprint::metadata_fingerprint;

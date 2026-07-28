@@ -36,6 +36,7 @@ pub enum DedupeMode {
     None,
     PositivePrompt,
     Artists,
+    Vibes,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -390,6 +391,7 @@ impl Database {
         let (column, mode_str) = match dedupe {
             DedupeMode::PositivePrompt => ("positive_prompt", "positivePrompt"),
             DedupeMode::Artists => ("artists", "artists"),
+            DedupeMode::Vibes => ("vibe_signature", "vibes"),
             DedupeMode::None => return Ok(Vec::new()),
         };
         let normalized = normalize_tags(tags);
@@ -475,6 +477,7 @@ impl Database {
         let column = match dedupe {
             DedupeMode::PositivePrompt => "positive_prompt",
             DedupeMode::Artists => "artists",
+            DedupeMode::Vibes => "vibe_signature",
             DedupeMode::None => {
                 return Ok(RowPage {
                     rows: Vec::new(),
@@ -559,6 +562,7 @@ impl Database {
         let mode_str = match mode {
             DedupeMode::PositivePrompt => "positivePrompt",
             DedupeMode::Artists => "artists",
+            DedupeMode::Vibes => "vibes",
             DedupeMode::None => return Ok(()),
         };
         let alias = alias.trim();
@@ -714,10 +718,11 @@ pub(super) fn populate_filtered_rows(
                 ),
                 search_params,
             )?,
-            DedupeMode::PositivePrompt | DedupeMode::Artists => {
+            DedupeMode::PositivePrompt | DedupeMode::Artists | DedupeMode::Vibes => {
                 let column = match dedupe {
                     DedupeMode::PositivePrompt => "positive_prompt",
                     DedupeMode::Artists => "artists",
+                    DedupeMode::Vibes => "vibe_signature",
                     DedupeMode::None => unreachable!(),
                 };
                 connection.execute(
@@ -1733,5 +1738,74 @@ mod tests {
         assert_eq!(duplicates.len(), 1);
         assert_eq!(duplicates[0].key, "artist:a");
         assert_eq!(duplicates[0].member_count, 2);
+    }
+
+    #[test]
+    fn vibe_dedupe_clusters_group_by_signature_and_support_alias() {
+        let mut database = database_with_rows(4);
+        database
+            .connection
+            .execute_batch(
+                "UPDATE rows SET
+                     vibe_reference_count = CASE id WHEN 4 THEN 0 ELSE 2 END,
+                     vibe_signature = CASE id
+                         WHEN 1 THEN 'sig-a'
+                         WHEN 2 THEN 'sig-a'
+                         WHEN 3 THEN 'sig-solo'
+                         WHEN 4 THEN NULL
+                     END;",
+            )
+            .unwrap();
+
+        let clusters = database
+            .list_dedupe_clusters(
+                DedupeMode::Vibes,
+                &[],
+                TagMatchMode::And,
+                false,
+                false,
+                false,
+                false,
+            )
+            .unwrap();
+        assert_eq!(clusters.len(), 1);
+        assert_eq!(clusters[0].key, "sig-a");
+        assert_eq!(clusters[0].member_count, 2);
+        assert_eq!(clusters[0].alias, None);
+
+        database
+            .set_dedupe_alias(DedupeMode::Vibes, "sig-a", "同一组 VIBE")
+            .unwrap();
+        let clusters = database
+            .list_dedupe_clusters(
+                DedupeMode::Vibes,
+                &[],
+                TagMatchMode::And,
+                false,
+                false,
+                false,
+                false,
+            )
+            .unwrap();
+        assert_eq!(clusters[0].alias.as_deref(), Some("同一组 VIBE"));
+
+        let members = database
+            .get_dedupe_cluster_members(
+                DedupeMode::Vibes,
+                "sig-a",
+                &[],
+                TagMatchMode::And,
+                false,
+                false,
+                false,
+                false,
+                0,
+                100,
+            )
+            .unwrap();
+        assert_eq!(
+            members.rows.iter().map(|row| row.id).collect::<Vec<_>>(),
+            vec![1, 2]
+        );
     }
 }

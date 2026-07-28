@@ -37,6 +37,7 @@ impl Database {
             "SELECT id, image_path, stored_image_path, stored_image_is_original
              FROM rows
              WHERE vibe_reference_count IS NULL
+                OR (vibe_reference_count > 0 AND vibe_signature IS NULL)
              ORDER BY id",
         )?;
         Ok(statement
@@ -51,17 +52,23 @@ impl Database {
             .collect::<Result<Vec<_>, _>>()?)
     }
 
+    /// 批量写入 VIBE 状态。`count` 为 None 时保留既有数量（文件已不可读的
+    /// 签名回填场景），行内无既有数量则记 0；签名为空字符串表示“已扫描但
+    /// 无法取得”，避免每次启动重复扫描，且不参与聚合。
     pub fn update_vibe_statuses(
         &mut self,
-        statuses: &[(i64, u32)],
+        statuses: &[(i64, Option<u32>, Option<String>)],
     ) -> Result<(), DatabaseError> {
         let transaction = self.connection.transaction()?;
         {
             let mut update = transaction.prepare(
-                "UPDATE rows SET vibe_reference_count = ?2 WHERE id = ?1",
+                "UPDATE rows SET
+                    vibe_reference_count = COALESCE(?2, vibe_reference_count, 0),
+                    vibe_signature = ?3
+                 WHERE id = ?1",
             )?;
-            for (row_id, count) in statuses {
-                update.execute(rusqlite::params![row_id, count])?;
+            for (row_id, count, signature) in statuses {
+                update.execute(rusqlite::params![row_id, count, signature])?;
             }
         }
         transaction.commit()?;

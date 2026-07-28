@@ -112,6 +112,12 @@
           class:is-active={duplicateBrowse.dedupeMode === "positivePrompt"}
           onclick={() => setDedupeMode("positivePrompt")}
         >按正向提示词</button>
+        <button
+          type="button"
+          class="txt-opt"
+          class:is-active={duplicateBrowse.dedupeMode === "vibes"}
+          onclick={() => setDedupeMode("vibes")}
+        >按 VIBE</button>
       </div>
       <span class="txt-sep" aria-hidden="true"></span>
       <div class="txt-group" role="group" aria-label="重复排序">

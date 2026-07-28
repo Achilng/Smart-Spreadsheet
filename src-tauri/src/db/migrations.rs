@@ -1,8 +1,8 @@
-pub const CURRENT_SCHEMA_VERSION: u32 = 15;
+pub const CURRENT_SCHEMA_VERSION: u32 = 16;
 pub const MINIMUM_UPGRADABLE_SCHEMA_VERSION: u32 = 8;
 
 /// 新资料库直接创建当前结构，不再重放早期工作簿/XLSX 导入迁移。
-pub(super) const SCHEMA_15: &str = r#"
+pub(super) const SCHEMA_16: &str = r#"
 CREATE TABLE import_batches (
     id INTEGER PRIMARY KEY,
     source_type TEXT NOT NULL CHECK (source_type IN ('legacy', 'folder', 'archive')),
@@ -43,6 +43,7 @@ CREATE TABLE rows (
         CHECK (stored_image_is_original IN (0, 1)),
     vibe_reference_count INTEGER
         CHECK (vibe_reference_count IS NULL OR vibe_reference_count >= 0),
+    vibe_signature TEXT,
     image_width INTEGER CHECK (image_width IS NULL OR image_width > 0),
     image_height INTEGER CHECK (image_height IS NULL OR image_height > 0),
     generation_model TEXT,
@@ -74,7 +75,7 @@ CREATE TABLE settings (
 ) STRICT, WITHOUT ROWID;
 
 CREATE TABLE dedupe_aliases (
-    mode TEXT NOT NULL CHECK (mode IN ('artists', 'positivePrompt')),
+    mode TEXT NOT NULL CHECK (mode IN ('artists', 'positivePrompt', 'vibes')),
     key TEXT NOT NULL,
     alias TEXT NOT NULL,
     PRIMARY KEY (mode, key)
@@ -104,6 +105,8 @@ CREATE INDEX idx_rows_group_id ON rows(group_id)
 WHERE group_id IS NOT NULL;
 CREATE INDEX idx_rows_metadata_fingerprint ON rows(metadata_fingerprint)
 WHERE metadata_fingerprint IS NOT NULL;
+CREATE INDEX idx_rows_vibe_signature ON rows(vibe_signature)
+WHERE vibe_signature IS NOT NULL;
 CREATE INDEX idx_rows_updated_at ON rows(updated_at DESC, id DESC);
 CREATE TRIGGER touch_row_after_user_edit
 AFTER UPDATE OF positive_prompt, character_prompt, negative_prompt, note, group_id ON rows
@@ -252,4 +255,22 @@ CREATE TABLE automation_rules (
 pub(super) const MIGRATION_15: &str = r#"
 DROP TABLE IF EXISTS artist_dictionary_sync;
 DROP TABLE IF EXISTS artist_dictionary_names;
+"#;
+
+/// v15 → v16：缓存 VIBE 引用组合的稳定签名，供重复项视图“按 VIBE”聚合。
+/// 历史行打开数据目录时从图片文件回填；别名表放开 'vibes' 聚合模式。
+pub(super) const MIGRATION_16: &str = r#"
+ALTER TABLE rows ADD COLUMN vibe_signature TEXT;
+CREATE INDEX idx_rows_vibe_signature ON rows(vibe_signature)
+WHERE vibe_signature IS NOT NULL;
+
+CREATE TABLE dedupe_aliases_v16 (
+    mode TEXT NOT NULL CHECK (mode IN ('artists', 'positivePrompt', 'vibes')),
+    key TEXT NOT NULL,
+    alias TEXT NOT NULL,
+    PRIMARY KEY (mode, key)
+) STRICT, WITHOUT ROWID;
+INSERT INTO dedupe_aliases_v16 SELECT mode, key, alias FROM dedupe_aliases;
+DROP TABLE dedupe_aliases;
+ALTER TABLE dedupe_aliases_v16 RENAME TO dedupe_aliases;
 "#;

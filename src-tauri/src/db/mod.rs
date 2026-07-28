@@ -46,7 +46,7 @@ use std::time::Duration;
 
 use migrations::{
     MIGRATION_9, MIGRATION_10, MIGRATION_11, MIGRATION_12, MIGRATION_14, MIGRATION_15,
-    MINIMUM_UPGRADABLE_SCHEMA_VERSION, SCHEMA_15,
+    MIGRATION_16, MINIMUM_UPGRADABLE_SCHEMA_VERSION, SCHEMA_16,
 };
 use rusqlite::{Connection, MAIN_DB, OptionalExtension, TransactionBehavior};
 use thiserror::Error;
@@ -240,8 +240,8 @@ fn apply_pending_migrations(connection: &mut Connection, from_version: u32) -> R
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let mut version = from_version;
     if version == 0 {
-        transaction.execute_batch(SCHEMA_15)?;
-        version = 15;
+        transaction.execute_batch(SCHEMA_16)?;
+        version = 16;
     }
     if version == 8 {
         transaction.execute_batch(MIGRATION_9)?;
@@ -270,6 +270,10 @@ fn apply_pending_migrations(connection: &mut Connection, from_version: u32) -> R
     if version == 14 {
         transaction.execute_batch(MIGRATION_15)?;
         version = 15;
+    }
+    if version == 15 {
+        transaction.execute_batch(MIGRATION_16)?;
+        version = 16;
     }
     debug_assert_eq!(version, CURRENT_SCHEMA_VERSION);
     transaction.pragma_update(None, "user_version", version)?;
@@ -619,7 +623,7 @@ mod tests {
     #[test]
     fn upgrading_v14_removes_retired_artist_cache_tables() {
         let mut connection = Connection::open_in_memory().unwrap();
-        connection.execute_batch(SCHEMA_15).unwrap();
+        connection.execute_batch(&schema_15_fixture()).unwrap();
         connection
             .execute_batch(
                 "CREATE TABLE artist_dictionary_names (
@@ -659,8 +663,23 @@ mod tests {
         );
     }
 
+    /// 从当前 schema 还原 v15 结构，供升级测试构造历史版本数据库。
+    fn schema_15_fixture() -> String {
+        SCHEMA_16
+            .replace("\n    vibe_signature TEXT,", "")
+            .replace(
+                "CREATE INDEX idx_rows_vibe_signature ON rows(vibe_signature)\nWHERE vibe_signature IS NOT NULL;\n",
+                "",
+            )
+            .replace(
+                "('artists', 'positivePrompt', 'vibes')",
+                "('artists', 'positivePrompt')",
+            )
+    }
+
     fn create_v9_fixture(connection: &Connection) {
-        let schema = SCHEMA_15
+        let base = schema_15_fixture();
+        let schema = base
             .split("CREATE TABLE automation_rules")
             .next()
             .unwrap()
@@ -700,7 +719,8 @@ mod tests {
     }
 
     fn create_v8_fixture(connection: &Connection) {
-        let schema = SCHEMA_15
+        let base = schema_15_fixture();
+        let schema = base
             .split("CREATE TABLE automation_rules")
             .next()
             .unwrap()

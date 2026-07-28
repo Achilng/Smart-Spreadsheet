@@ -1,7 +1,7 @@
 export type SourceType = "legacy" | "folder" | "archive";
 
 export type TagMatchMode = "and" | "or";
-export type DedupeMode = "none" | "positivePrompt" | "artists";
+export type DedupeMode = "none" | "positivePrompt" | "artists" | "vibes";
 
 export type RowSelection =
   | { kind: "explicit"; rowIds: number[] }

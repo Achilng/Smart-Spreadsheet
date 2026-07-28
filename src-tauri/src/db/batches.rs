@@ -72,6 +72,8 @@ pub struct NewRow {
     pub stored_image_rel: Option<String>,
     pub metadata_failed: bool,
     pub vibe_reference_count: u32,
+    /// VIBE 引用组合签名；无引用时为 None。
+    pub vibe_signature: Option<String>,
     pub image_width: Option<u32>,
     pub image_height: Option<u32>,
     pub generation_model: Option<String>,
@@ -148,14 +150,14 @@ impl Database {
                     time, positive_prompt, character_prompt, negative_prompt, note, artists,
                     image_folder, image_path, stored_image_path, metadata_failed,
                     content_hash, perceptual_hash, metadata_fingerprint,
-                    stored_image_is_original, vibe_reference_count,
+                    stored_image_is_original, vibe_reference_count, vibe_signature,
                     image_width, image_height, generation_model, generation_sampler,
                     generation_steps, generation_seed, generation_scale,
                     generation_cfg_rescale, generation_noise_schedule, updated_at
                  ) VALUES (
                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
                     ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20,
-                    ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29,
+                    ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30,
                     strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
                  )",
             )?;
@@ -212,6 +214,7 @@ impl Database {
                     row.metadata_fingerprint,
                     stored_image_path.is_some() && source_type != SourceType::Legacy,
                     row.vibe_reference_count,
+                    row.vibe_signature,
                     row.image_width,
                     row.image_height,
                     row.generation_model,

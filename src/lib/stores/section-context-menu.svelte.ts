@@ -1,6 +1,6 @@
 export type SectionMenuTarget =
   | { kind: "group"; groupId: number; name: string }
-  | { kind: "dedupe"; mode: "artists" | "positivePrompt"; key: string; displayName: string };
+  | { kind: "dedupe"; mode: "artists" | "positivePrompt" | "vibes"; key: string; displayName: string };
 
 export const sectionMenu = $state({
   open: false,

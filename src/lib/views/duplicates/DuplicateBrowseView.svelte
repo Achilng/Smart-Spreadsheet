@@ -68,7 +68,7 @@
     duplicateBrowse.sortByCount
       ? duplicateBrowse.clusters
       : [...duplicateBrowse.clusters].sort((a, b) =>
-          (a.alias ?? a.key).localeCompare(b.alias ?? b.key),
+          clusterLabel(a).localeCompare(clusterLabel(b)),
         ),
   );
 
@@ -94,9 +94,9 @@
     showSectionMenu(
       {
         kind: "dedupe",
-        mode: duplicateBrowse.dedupeMode as "artists" | "positivePrompt",
+        mode: duplicateBrowse.dedupeMode as "artists" | "positivePrompt" | "vibes",
         key: cluster.key,
-        displayName: cluster.alias ?? cluster.key,
+        displayName: clusterLabel(cluster),
       },
       event.clientX,
       event.clientY,
@@ -106,6 +106,15 @@
   function setActive(row: RowRecord): void {
     rowStore.activeRow = row;
   }
+
+  // VIBE 聚合键是 SHA-256 签名，未命名时显示短标识，右键可重命名。
+  function clusterLabel(cluster: DedupeCluster): string {
+    if (cluster.alias) return cluster.alias;
+    if (duplicateBrowse.dedupeMode === "vibes") {
+      return `VIBE 组合 ${cluster.key.slice(0, 8)}`;
+    }
+    return cluster.key;
+  }
 </script>
 
 <div class="duplicate-browse">
@@ -114,7 +123,13 @@
   {:else if duplicateBrowse.error}
     <div class="status empty-state"><p class="muted">加载失败：{duplicateBrowse.error}</p></div>
   {:else if duplicateBrowse.clusters.length === 0}
-    <div class="status empty-state"><p class="muted">未找到重复项（所有条目均唯一）。</p></div>
+    <div class="status empty-state">
+      <p class="muted">
+        {duplicateBrowse.dedupeMode === "vibes"
+          ? "未找到共用同一组 VIBE 引用的图片。"
+          : "未找到重复项（所有条目均唯一）。"}
+      </p>
+    </div>
   {:else}
     <div class="cluster-list" bind:this={listEl} onscroll={onScroll}>
       {#each sortedClusters as cluster (cluster.key)}
@@ -128,8 +143,8 @@
             oncontextmenu={(e) => onHeaderContextMenu(e, cluster)}
           >
             <span class="expand-icon" class:is-expanded={expanded}><ChevronRight size={14} strokeWidth={2} /></span>
-            <span class="section-name">{cluster.alias ?? cluster.key}</span>
-            {#if cluster.alias}
+            <span class="section-name">{clusterLabel(cluster)}</span>
+            {#if cluster.alias && duplicateBrowse.dedupeMode !== "vibes"}
               <span class="section-orig-key" title={cluster.key}>({cluster.key.slice(0, 30)}{cluster.key.length > 30 ? "…" : ""})</span>
             {/if}
             <span class="section-count">{formatCount(cluster.memberCount)} 张</span>
