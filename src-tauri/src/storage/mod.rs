@@ -91,6 +91,10 @@ struct DataDirectoryMarker {
 }
 
 impl DataDirectory {
+    pub(super) fn from_verified_root(root: PathBuf) -> Self {
+        Self { root }
+    }
+
     pub fn initialize(root: impl AsRef<Path>) -> Result<Self, StorageError> {
         let root = root.as_ref();
         if root.exists() && !root.is_dir() {

@@ -1,13 +1,16 @@
 use std::fs::{self, File};
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 
 use super::{DATABASE_FILE, DataDirectory, MARKER_FILE, StorageError};
 
 const DATABASE_WAL_FILE: &str = "smart-spreadsheet.sqlite3-wal";
 const DATABASE_SHM_FILE: &str = "smart-spreadsheet.sqlite3-shm";
+const COPY_BUFFER_BYTES: usize = 1024 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -108,7 +111,8 @@ impl DataDirectory {
         let staging = create_staging_directory(&destination)?;
         let mut staging_guard = StagingGuard::new(staging.clone());
 
-        let non_database_bytes = measure_non_database_tree(&source)?;
+        let manifest = build_migration_manifest(&source)?;
+        let non_database_bytes = manifest.total_bytes;
         let database_bytes = database_runtime_bytes(&source)?.max(1);
         let total_work = non_database_bytes
             .saturating_add(database_bytes)
@@ -122,7 +126,7 @@ impl DataDirectory {
             0,
             non_database_bytes,
         ));
-        copy_non_database_tree(&source, &staging, |bytes| {
+        let copied_files = copy_migration_manifest(&source, &staging, &manifest, |bytes| {
             copied_bytes = copied_bytes.saturating_add(bytes);
             progress(MigrationProgress::new(
                 MigrationStage::CopyingFiles,
@@ -172,7 +176,7 @@ impl DataDirectory {
             0,
             non_database_bytes,
         ));
-        verify_non_database_tree(&source, &staging, |bytes| {
+        verify_migration_manifest(&staging, &manifest, &copied_files, |bytes| {
             verified_bytes = verified_bytes.saturating_add(bytes);
             progress(MigrationProgress::new(
                 MigrationStage::VerifyingFiles,
@@ -182,7 +186,7 @@ impl DataDirectory {
                 non_database_bytes,
             ));
         })?;
-        let staged_directory = DataDirectory::open(&staging)?;
+        let staged_directory = DataDirectory::from_verified_root(staging.clone());
         progress(MigrationProgress::new(
             MigrationStage::VerifyingDatabase,
             after_backup.saturating_add(non_database_bytes),
@@ -213,7 +217,7 @@ impl DataDirectory {
         staging_guard.disarm();
 
         Ok(PreparedMigration {
-            data_directory: DataDirectory::open(&destination)?,
+            data_directory: DataDirectory::from_verified_root(destination),
             source,
             source_marker,
             retired_marker,
@@ -406,126 +410,189 @@ fn database_runtime_bytes(source: &Path) -> Result<u64, StorageError> {
     Ok(total)
 }
 
-fn measure_non_database_tree(source: &Path) -> Result<u64, StorageError> {
-    measure_directory(source, Path::new(""))
+#[derive(Debug)]
+struct MigrationManifest {
+    directories: Vec<PathBuf>,
+    files: Vec<MigrationFile>,
+    total_bytes: u64,
 }
 
-fn measure_directory(source_root: &Path, relative: &Path) -> Result<u64, StorageError> {
+#[derive(Debug)]
+struct MigrationFile {
+    relative: PathBuf,
+    bytes: u64,
+    modified: Option<SystemTime>,
+}
+
+#[derive(Debug)]
+struct CopiedMigrationFile {
+    relative: PathBuf,
+    bytes: u64,
+    sha256: [u8; 32],
+}
+
+fn build_migration_manifest(source: &Path) -> Result<MigrationManifest, StorageError> {
+    let mut manifest = MigrationManifest {
+        directories: Vec::new(),
+        files: Vec::new(),
+        total_bytes: 0,
+    };
+    collect_migration_entries(source, Path::new(""), &mut manifest)?;
+    Ok(manifest)
+}
+
+fn collect_migration_entries(
+    source_root: &Path,
+    relative: &Path,
+    manifest: &mut MigrationManifest,
+) -> Result<(), StorageError> {
+    for entry in fs::read_dir(source_root.join(relative))? {
+        let entry = entry?;
+        let child_relative = relative.join(entry.file_name());
+        if should_skip_migration_entry(&child_relative) {
+            continue;
+        }
+
+        let metadata = fs::symlink_metadata(entry.path())?;
+        if metadata.is_dir() {
+            manifest.directories.push(child_relative.clone());
+            collect_migration_entries(source_root, &child_relative, manifest)?;
+        } else if metadata.is_file() {
+            manifest.total_bytes = manifest.total_bytes.saturating_add(metadata.len());
+            manifest.files.push(MigrationFile {
+                relative: child_relative,
+                bytes: metadata.len(),
+                modified: metadata.modified().ok(),
+            });
+        } else {
+            return Err(StorageError::UnsupportedEntry(entry.path()));
+        }
+    }
+    Ok(())
+}
+
+fn copy_migration_manifest(
+    source_root: &Path,
+    destination_root: &Path,
+    manifest: &MigrationManifest,
+    mut progress: impl FnMut(u64),
+) -> Result<Vec<CopiedMigrationFile>, StorageError> {
+    for relative in &manifest.directories {
+        fs::create_dir_all(destination_root.join(relative))?;
+    }
+    // 缩略图是派生数据，迁移时保留目录结构但不复制缓存内容。
+    fs::create_dir_all(destination_root.join(thumbnail_cache_relative_path()))?;
+
+    let mut buffer = vec![0_u8; COPY_BUFFER_BYTES];
+    let mut copied_files = Vec::with_capacity(manifest.files.len());
+    for file in &manifest.files {
+        let source = source_root.join(&file.relative);
+        let destination = destination_root.join(&file.relative);
+        let (bytes, sha256) =
+            copy_file_with_hash(&source, &destination, &mut buffer, &mut progress)?;
+        let source_metadata = fs::metadata(&source)?;
+        let source_changed = bytes != file.bytes
+            || source_metadata.len() != file.bytes
+            || file
+                .modified
+                .is_some_and(|modified| source_metadata.modified().ok() != Some(modified));
+        if source_changed {
+            return Err(StorageError::MigrationVerificationFailed(
+                file.relative.clone(),
+            ));
+        }
+        fs::set_permissions(&destination, source_metadata.permissions())?;
+        copied_files.push(CopiedMigrationFile {
+            relative: file.relative.clone(),
+            bytes,
+            sha256,
+        });
+    }
+    Ok(copied_files)
+}
+
+fn verify_migration_manifest(
+    destination_root: &Path,
+    manifest: &MigrationManifest,
+    copied_files: &[CopiedMigrationFile],
+    mut progress: impl FnMut(u64),
+) -> Result<(), StorageError> {
+    for relative in &manifest.directories {
+        if !destination_root.join(relative).is_dir() {
+            return Err(StorageError::MigrationVerificationFailed(relative.clone()));
+        }
+    }
+    if !destination_root
+        .join(thumbnail_cache_relative_path())
+        .is_dir()
+    {
+        return Err(StorageError::MigrationVerificationFailed(
+            thumbnail_cache_relative_path(),
+        ));
+    }
+
+    let mut buffer = vec![0_u8; COPY_BUFFER_BYTES];
+    for file in copied_files {
+        let destination = destination_root.join(&file.relative);
+        if !destination.is_file() {
+            return Err(StorageError::MigrationVerificationFailed(
+                file.relative.clone(),
+            ));
+        }
+        let (bytes, sha256) = hash_file(&destination, &mut buffer, &mut progress)?;
+        if bytes != file.bytes || sha256 != file.sha256 {
+            return Err(StorageError::MigrationVerificationFailed(
+                file.relative.clone(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn copy_file_with_hash<F: FnMut(u64)>(
+    source: &Path,
+    destination: &Path,
+    buffer: &mut [u8],
+    progress: &mut F,
+) -> Result<(u64, [u8; 32]), StorageError> {
+    let mut reader = File::open(source)?;
+    let mut writer = File::create(destination)?;
+    let mut hasher = Sha256::new();
     let mut total = 0_u64;
-    for entry in fs::read_dir(source_root.join(relative))? {
-        let entry = entry?;
-        let child_relative = relative.join(entry.file_name());
-        if is_database_runtime_file(&child_relative) {
-            continue;
-        }
-
-        let metadata = fs::symlink_metadata(entry.path())?;
-        if metadata.is_dir() {
-            total = total.saturating_add(measure_directory(source_root, &child_relative)?);
-        } else if metadata.is_file() {
-            total = total.saturating_add(metadata.len());
-        } else {
-            return Err(StorageError::UnsupportedEntry(entry.path()));
-        }
-    }
-    Ok(total)
-}
-
-fn copy_non_database_tree(
-    source: &Path,
-    destination: &Path,
-    mut progress: impl FnMut(u64),
-) -> Result<(), StorageError> {
-    copy_directory(source, destination, Path::new(""), &mut progress)
-}
-
-fn copy_directory<F: FnMut(u64)>(
-    source_root: &Path,
-    destination_root: &Path,
-    relative: &Path,
-    progress: &mut F,
-) -> Result<(), StorageError> {
-    for entry in fs::read_dir(source_root.join(relative))? {
-        let entry = entry?;
-        let child_relative = relative.join(entry.file_name());
-        if is_database_runtime_file(&child_relative) {
-            continue;
-        }
-
-        let metadata = fs::symlink_metadata(entry.path())?;
-        let destination = destination_root.join(&child_relative);
-        if metadata.is_dir() {
-            fs::create_dir(&destination)?;
-            copy_directory(source_root, destination_root, &child_relative, progress)?;
-        } else if metadata.is_file() {
-            let copied = fs::copy(entry.path(), destination)?;
-            progress(copied);
-        } else {
-            return Err(StorageError::UnsupportedEntry(entry.path()));
-        }
-    }
-    Ok(())
-}
-
-fn verify_non_database_tree(
-    source: &Path,
-    destination: &Path,
-    mut progress: impl FnMut(u64),
-) -> Result<(), StorageError> {
-    verify_directory(source, destination, Path::new(""), &mut progress)
-}
-
-fn verify_directory<F: FnMut(u64)>(
-    source_root: &Path,
-    destination_root: &Path,
-    relative: &Path,
-    progress: &mut F,
-) -> Result<(), StorageError> {
-    for entry in fs::read_dir(source_root.join(relative))? {
-        let entry = entry?;
-        let child_relative = relative.join(entry.file_name());
-        if is_database_runtime_file(&child_relative) {
-            continue;
-        }
-
-        let metadata = fs::symlink_metadata(entry.path())?;
-        let destination = destination_root.join(&child_relative);
-        if metadata.is_dir() {
-            if !destination.is_dir() {
-                return Err(StorageError::MigrationVerificationFailed(child_relative));
-            }
-            verify_directory(source_root, destination_root, &child_relative, progress)?;
-        } else if metadata.is_file() {
-            if !destination.is_file() || !files_equal(&entry.path(), &destination)? {
-                return Err(StorageError::MigrationVerificationFailed(child_relative));
-            }
-            progress(metadata.len());
-        } else {
-            return Err(StorageError::UnsupportedEntry(entry.path()));
-        }
-    }
-    Ok(())
-}
-
-pub(super) fn files_equal(left: &Path, right: &Path) -> Result<bool, StorageError> {
-    if fs::metadata(left)?.len() != fs::metadata(right)?.len() {
-        return Ok(false);
-    }
-    let mut left = File::open(left)?;
-    let mut right = File::open(right)?;
-    let mut left_buffer = [0_u8; 64 * 1024];
-    let mut right_buffer = [0_u8; 64 * 1024];
-
     loop {
-        let left_read = left.read(&mut left_buffer)?;
-        let right_read = right.read(&mut right_buffer)?;
-        if left_read != right_read || left_buffer[..left_read] != right_buffer[..right_read] {
-            return Ok(false);
+        let read = reader.read(buffer)?;
+        if read == 0 {
+            break;
         }
-        if left_read == 0 {
-            return Ok(true);
-        }
+        writer.write_all(&buffer[..read])?;
+        hasher.update(&buffer[..read]);
+        let read = u64::try_from(read).unwrap_or(u64::MAX);
+        total = total.saturating_add(read);
+        progress(read);
     }
+    writer.flush()?;
+    Ok((total, hasher.finalize().into()))
+}
+
+fn hash_file<F: FnMut(u64)>(
+    path: &Path,
+    buffer: &mut [u8],
+    progress: &mut F,
+) -> Result<(u64, [u8; 32]), StorageError> {
+    let mut reader = File::open(path)?;
+    let mut hasher = Sha256::new();
+    let mut total = 0_u64;
+    loop {
+        let read = reader.read(buffer)?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+        let read = u64::try_from(read).unwrap_or(u64::MAX);
+        total = total.saturating_add(read);
+        progress(read);
+    }
+    Ok((total, hasher.finalize().into()))
 }
 
 fn is_database_runtime_file(relative: &Path) -> bool {
@@ -533,6 +600,14 @@ fn is_database_runtime_file(relative: &Path) -> bool {
         && relative.file_name().is_some_and(|name| {
             name == DATABASE_FILE || name == DATABASE_WAL_FILE || name == DATABASE_SHM_FILE
         })
+}
+
+fn should_skip_migration_entry(relative: &Path) -> bool {
+    is_database_runtime_file(relative) || relative.starts_with(thumbnail_cache_relative_path())
+}
+
+fn thumbnail_cache_relative_path() -> PathBuf {
+    Path::new("cache").join("thumbnails")
 }
 
 fn can_remove_automatically(path: &Path) -> bool {
@@ -571,7 +646,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn migrates_database_files_and_cache_then_removes_source() {
+    fn migrates_database_and_managed_files_without_derived_cache() {
         let temporary = TemporaryMigration::new();
         let source = DataDirectory::initialize(&temporary.source).unwrap();
         let managed_file = source.files_path().join("1").join("image.png");
@@ -593,9 +668,12 @@ mod tests {
         assert!(outcome.retired_source.is_none());
         assert_eq!(outcome.data_directory.root(), temporary.destination);
         assert!(!temporary.source.exists());
-        assert_eq!(
-            fs::read(outcome.data_directory.thumbnail_cache_path().join("2.webp")).unwrap(),
-            b"thumbnail"
+        assert!(outcome.data_directory.thumbnail_cache_path().is_dir());
+        assert!(
+            fs::read_dir(outcome.data_directory.thumbnail_cache_path())
+                .unwrap()
+                .next()
+                .is_none()
         );
         assert_eq!(
             fs::read(
