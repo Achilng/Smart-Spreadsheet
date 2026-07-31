@@ -1,6 +1,7 @@
 import { startDrag } from "@crabnebula/tauri-plugin-drag";
 import { prepareFileDrag } from "../api";
 import { errorText, setNotice } from "./app-state.svelte";
+import { isRowSelected, selectionDto } from "./selection-store.svelte";
 
 const DRAG_THRESHOLD = 5;
 
@@ -24,9 +25,12 @@ function onMouseMove(e: MouseEvent): void {
   cleanup();
   onDragStart?.();
   outboundDrag = true;
-  prepareFileDrag(rowId).then(
+  // 资源管理器惯例：从选中项开始拖动时带出整个选区；未选中项仍只拖自身。
+  // 后端会逐项解析完整原件，任何项目都不会用缩略图或预览图替代。
+  const dragSelection = isRowSelected(rowId) ? selectionDto() : null;
+  prepareFileDrag(rowId, dragSelection).then(
     (info) =>
-      startDrag({ item: [info.filePath], icon: info.iconPath }).finally(
+      startDrag({ item: info.filePaths, icon: info.iconPath }).finally(
         () => {
           outboundDrag = false;
           // OS 级拖拽结束后浏览器不会派发 click，必须主动通知调用方复位状态，

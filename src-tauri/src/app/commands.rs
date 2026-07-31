@@ -1573,25 +1573,50 @@ pub(crate) fn open_rejected_images_directory(
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct FileDragInfo {
-    file_path: String,
+    file_paths: Vec<String>,
     icon_path: String,
+}
+
+fn drag_row_ids(row_id: i64, mut selected_row_ids: Vec<i64>) -> Vec<i64> {
+    if let Some(anchor_index) = selected_row_ids
+        .iter()
+        .position(|candidate| *candidate == row_id)
+    {
+        selected_row_ids.remove(anchor_index);
+        selected_row_ids.insert(0, row_id);
+        selected_row_ids
+    } else {
+        vec![row_id]
+    }
 }
 
 #[tauri::command]
 pub(crate) fn prepare_file_drag(
     row_id: i64,
+    selection: Option<RowSelection>,
     runtime: State<'_, AppRuntime>,
 ) -> Result<FileDragInfo, String> {
+    let selected_row_ids = match selection {
+        Some(selection) => runtime.selected_row_ids(&selection).map_err(error_text)?,
+        None => vec![row_id],
+    };
+    // 只有从选区成员开始拖动时才带出整个选区；拖动未选中图片不能误带旧选区。
+    let row_ids = drag_row_ids(row_id, selected_row_ids);
+
     let directory = runtime.active_directory().map_err(error_text)?;
-    let locator = directory
-        .open_database()
-        .map_err(error_text)?
-        .row_image_locator(row_id)
-        .map_err(error_text)?;
+    let database = directory.open_database().map_err(error_text)?;
     // 拖出的文件会被下游（如 NovelAI）读取元数据，必须是完整原件，
     // 不能静默回退到不可信的历史缩略图副本。
-    let file_path = crate::storage::resolve_original_source(&directory, &locator)
-        .map_err(|error| format!("第 {row_id} 行无法拖出：{error}"))?;
+    let file_paths = row_ids
+        .iter()
+        .map(|selected_row_id| {
+            let locator = database
+                .row_image_locator(*selected_row_id)
+                .map_err(error_text)?;
+            crate::storage::resolve_original_source(&directory, &locator)
+                .map_err(|error| format!("第 {selected_row_id} 行无法拖出：{error}"))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
 
     let thumb_dir = directory.thumbnail_cache_path();
     let thumbnail_prefix = format!("row-{row_id}-thumb-");
@@ -1620,11 +1645,14 @@ pub(crate) fn prepare_file_drag(
     };
     let icon_path = find_icon().unwrap_or_else(|| {
         let _ = directory.load_row_image(row_id, crate::images::ImageVariant::Thumbnail);
-        find_icon().unwrap_or_else(|| file_path.clone())
+        find_icon().unwrap_or_else(|| file_paths[0].clone())
     });
 
     Ok(FileDragInfo {
-        file_path: file_path.to_string_lossy().into_owned(),
+        file_paths: file_paths
+            .into_iter()
+            .map(|path| path.to_string_lossy().into_owned())
+            .collect(),
         icon_path: icon_path.to_string_lossy().into_owned(),
     })
 }
@@ -1782,7 +1810,18 @@ fn error_text(error: impl std::fmt::Display) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::drag_row_ids;
     use crate::db::{DedupeMode, RowSelection, TagMatchMode};
+
+    #[test]
+    fn file_drag_keeps_the_whole_selection_and_moves_the_anchor_first() {
+        assert_eq!(drag_row_ids(3, vec![1, 2, 3]), vec![3, 1, 2]);
+    }
+
+    #[test]
+    fn file_drag_ignores_a_selection_that_does_not_contain_the_anchor() {
+        assert_eq!(drag_row_ids(4, vec![1, 2, 3]), vec![4]);
+    }
 
     #[test]
     fn deserializes_filtered_selection_preserving_case_and_exclusions() {

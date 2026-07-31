@@ -203,12 +203,15 @@ export function exportRowImage(rowId: number, destination: string): Promise<void
 }
 
 export interface FileDragInfo {
-  filePath: string;
+  filePaths: string[];
   iconPath: string;
 }
 
-export function prepareFileDrag(rowId: number): Promise<FileDragInfo> {
-  return invoke<FileDragInfo>("prepare_file_drag", { rowId });
+export function prepareFileDrag(
+  rowId: number,
+  selection: RowSelection | null,
+): Promise<FileDragInfo> {
+  return invoke<FileDragInfo>("prepare_file_drag", { rowId, selection });
 }
 
 /** 行图片 Comment 元数据里的 vibe 引用数；文件缺失或解析失败时为 null。 */
