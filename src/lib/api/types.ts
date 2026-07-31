@@ -11,6 +11,7 @@ export type RowSelection =
       tagMode: TagMatchMode;
       dedupe: DedupeMode;
       singleArtistOnly: boolean;
+      artistFilter: string;
       hasVibe: boolean;
       untaggedOnly: boolean;
       search: string;

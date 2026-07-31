@@ -59,6 +59,8 @@ pub struct RowQuery {
     #[serde(default)]
     pub single_artist_only: bool,
     #[serde(default)]
+    pub artist_filter: String,
+    #[serde(default)]
     pub has_vibe: bool,
     #[serde(default)]
     pub untagged_only: bool,
@@ -167,6 +169,7 @@ impl Database {
                     query.tag_mode,
                     query.dedupe,
                     query.single_artist_only,
+                    &query.artist_filter,
                     query.has_vibe,
                     query.untagged_only,
                     query.group_view,
@@ -585,11 +588,12 @@ impl Database {
 /// 缓存键覆盖影响筛选结果集的全部参数（分页参数除外）。
 fn query_cache_key(query: &RowQuery, normalized_tags: &[String]) -> String {
     format!(
-        "{tags:?}\u{1}{mode:?}\u{1}{dedupe:?}\u{1}{sao}\u{1}{vibe}\u{1}{untagged}\u{1}{gv}\u{1}{hg}\u{1}{search}",
+        "{tags:?}\u{1}{mode:?}\u{1}{dedupe:?}\u{1}{sao}\u{1}{artist}\u{1}{vibe}\u{1}{untagged}\u{1}{gv}\u{1}{hg}\u{1}{search}",
         tags = normalized_tags,
         mode = query.tag_mode,
         dedupe = query.dedupe,
         sao = query.single_artist_only,
+        artist = query.artist_filter.trim(),
         vibe = query.has_vibe,
         untagged = query.untagged_only,
         gv = query.group_view,
@@ -646,6 +650,7 @@ pub(super) fn populate_filtered_rows(
     mode: TagMatchMode,
     dedupe: DedupeMode,
     single_artist_only: bool,
+    artist_filter: &str,
     has_vibe: bool,
     untagged_only: bool,
     group_view: bool,
@@ -663,6 +668,15 @@ pub(super) fn populate_filtered_rows(
              AND INSTR(rows.artists, ',') = 0"
         );
     }
+    let artist_filter = artist_filter.trim().to_owned();
+    let mut filter_params: Vec<&dyn rusqlite::types::ToSql> = Vec::new();
+    if !artist_filter.is_empty() {
+        let parameter = filter_params.len() + 1;
+        predicate = format!(
+            "({predicate}) AND NULLIF(TRIM(COALESCE(rows.artists, '')), '') = ?{parameter}"
+        );
+        filter_params.push(&artist_filter);
+    }
     if has_vibe {
         predicate = format!("({predicate}) AND rows.vibe_reference_count > 0");
     }
@@ -679,22 +693,19 @@ pub(super) fn populate_filtered_rows(
     let search_lower = search.trim().to_lowercase();
     let has_search = !search_lower.is_empty();
     if has_search {
+        let parameter = filter_params.len() + 1;
         predicate = format!(
             "({predicate}) AND (
-                INSTR(LOWER(COALESCE(rows.image_path, '')), ?1) > 0
-                OR INSTR(LOWER(COALESCE(rows.positive_prompt, '')), ?1) > 0
-                OR INSTR(LOWER(COALESCE(rows.character_prompt, '')), ?1) > 0
-                OR INSTR(LOWER(COALESCE(rows.negative_prompt, '')), ?1) > 0
-                OR INSTR(LOWER(COALESCE(rows.note, '')), ?1) > 0
-                OR INSTR(LOWER(COALESCE(rows.artists, '')), ?1) > 0
+                INSTR(LOWER(COALESCE(rows.image_path, '')), ?{parameter}) > 0
+                OR INSTR(LOWER(COALESCE(rows.positive_prompt, '')), ?{parameter}) > 0
+                OR INSTR(LOWER(COALESCE(rows.character_prompt, '')), ?{parameter}) > 0
+                OR INSTR(LOWER(COALESCE(rows.negative_prompt, '')), ?{parameter}) > 0
+                OR INSTR(LOWER(COALESCE(rows.note, '')), ?{parameter}) > 0
+                OR INSTR(LOWER(COALESCE(rows.artists, '')), ?{parameter}) > 0
             )"
         );
+        filter_params.push(&search_lower);
     }
-    let search_params: &[&dyn rusqlite::types::ToSql] = if has_search {
-        &[&search_lower]
-    } else {
-        &[]
-    };
 
     if group_view {
         connection.execute(
@@ -707,7 +718,7 @@ pub(super) fn populate_filtered_rows(
                  SELECT rows.id FROM rows
                  WHERE ({predicate}) AND rows.group_id IS NULL"
             ),
-            search_params,
+            filter_params.as_slice(),
         )?;
     } else {
         match dedupe {
@@ -716,7 +727,7 @@ pub(super) fn populate_filtered_rows(
                     "INSERT INTO {target_table}(id)
                      SELECT rows.id FROM rows WHERE {predicate}"
                 ),
-                search_params,
+                filter_params.as_slice(),
             )?,
             DedupeMode::PositivePrompt | DedupeMode::Artists | DedupeMode::Vibes => {
                 let column = match dedupe {
@@ -741,7 +752,7 @@ pub(super) fn populate_filtered_rows(
                          WHERE dedupe_key IS NOT NULL
                          GROUP BY dedupe_key"
                     ),
-                    search_params,
+                    filter_params.as_slice(),
                 )?
             }
         };
@@ -915,8 +926,9 @@ mod tests {
                 limit: 2,
                 tags: Vec::new(),
                 tag_mode: TagMatchMode::And,
-                dedupe: DedupeMode::None,
+                   dedupe: DedupeMode::None,
                 single_artist_only: false,
+                artist_filter: String::new(),
                 has_vibe: false,
                 untagged_only: false,
                 group_view: false,
@@ -956,6 +968,7 @@ mod tests {
             tag_mode: TagMatchMode::And,
             dedupe: DedupeMode::None,
             single_artist_only: false,
+            artist_filter: String::new(),
             has_vibe: false,
             untagged_only: false,
             group_view: false,
@@ -997,6 +1010,7 @@ mod tests {
             tag_mode: TagMatchMode::And,
             dedupe: DedupeMode::None,
             single_artist_only: false,
+            artist_filter: String::new(),
             has_vibe: false,
             untagged_only: false,
             group_view: false,
@@ -1105,8 +1119,9 @@ mod tests {
                 limit: 100,
                 tags: Vec::new(),
                 tag_mode: TagMatchMode::And,
-                dedupe: DedupeMode::PositivePrompt,
+               dedupe: DedupeMode::PositivePrompt,
                 single_artist_only: false,
+                artist_filter: String::new(),
                 has_vibe: false,
                 untagged_only: false,
                 group_view: false,
@@ -1126,8 +1141,9 @@ mod tests {
                 limit: 100,
                 tags: Vec::new(),
                 tag_mode: TagMatchMode::And,
-                dedupe: DedupeMode::Artists,
+               dedupe: DedupeMode::Artists,
                 single_artist_only: false,
+                artist_filter: String::new(),
                 has_vibe: false,
                 untagged_only: false,
                 group_view: false,
@@ -1161,6 +1177,7 @@ mod tests {
                 tag_mode: TagMatchMode::And,
                 dedupe: DedupeMode::PositivePrompt,
                 single_artist_only: false,
+                artist_filter: String::new(),
                 has_vibe: false,
                 untagged_only: false,
                 group_view: false,
@@ -1219,6 +1236,7 @@ mod tests {
                     tag_mode: TagMatchMode::And,
                     dedupe: DedupeMode::None,
                     single_artist_only: false,
+                    artist_filter: String::new(),
                     has_vibe: false,
                     untagged_only: false,
                     group_view: false,
@@ -1274,6 +1292,7 @@ mod tests {
                 tag_mode: TagMatchMode::And,
                 dedupe: DedupeMode::None,
                 single_artist_only: false,
+                artist_filter: String::new(),
                 has_vibe: false,
                 untagged_only: false,
                 group_view: false,
@@ -1303,6 +1322,7 @@ mod tests {
                 tag_mode: TagMatchMode::And,
                 dedupe: DedupeMode::None,
                 single_artist_only: false,
+                artist_filter: String::new(),
                 has_vibe: false,
                 untagged_only: false,
                 group_view: false,
@@ -1337,6 +1357,7 @@ mod tests {
                 tag_mode: TagMatchMode::And,
                 dedupe: DedupeMode::None,
                 single_artist_only: false,
+                artist_filter: String::new(),
                 has_vibe: true,
                 untagged_only: false,
                 group_view: false,
@@ -1368,6 +1389,7 @@ mod tests {
                 tag_mode: TagMatchMode::And,
                 dedupe: DedupeMode::None,
                 single_artist_only: false,
+                artist_filter: String::new(),
                 has_vibe: false,
                 untagged_only: true,
                 group_view: false,
@@ -1395,6 +1417,7 @@ mod tests {
                 tag_mode: TagMatchMode::And,
                 dedupe: DedupeMode::None,
                 single_artist_only: false,
+                artist_filter: String::new(),
                 has_vibe: false,
                 untagged_only: true,
                 group_view: false,
@@ -1429,6 +1452,7 @@ mod tests {
                 tag_mode: TagMatchMode::And,
                 dedupe: DedupeMode::None,
                 single_artist_only: true,
+                artist_filter: String::new(),
                 has_vibe: false,
                 untagged_only: false,
                 group_view: false,
@@ -1442,6 +1466,54 @@ mod tests {
     }
 
     #[test]
+    fn exact_artist_filter_matches_trimmed_whole_value_and_combines_with_search() {
+        let mut database = database_with_rows(4);
+        database
+            .connection
+            .execute_batch(
+                "UPDATE rows SET
+                    artists = CASE id
+                        WHEN 1 THEN 'artist:a'
+                        WHEN 2 THEN '  artist:a  '
+                        WHEN 3 THEN 'artist:a' || CHAR(10) || 'artist:b'
+                        ELSE 'artist:A'
+                    END,
+                    positive_prompt = CASE id WHEN 1 THEN 'needle' ELSE 'other' END;",
+            )
+            .unwrap();
+        database.bump_data_version();
+
+        let query = RowQuery {
+            offset: 0,
+            limit: 10,
+            tags: Vec::new(),
+            tag_mode: TagMatchMode::And,
+            dedupe: DedupeMode::None,
+            single_artist_only: false,
+            artist_filter: "  artist:a  ".into(),
+            has_vibe: false,
+            untagged_only: false,
+            group_view: false,
+            hide_grouped: false,
+            search: String::new(),
+        };
+        let exact = database.query_rows(&query).unwrap();
+        assert_eq!(
+            exact.rows.iter().map(|row| row.id).collect::<Vec<_>>(),
+            vec![1, 2]
+        );
+
+        let combined = database
+            .query_rows(&RowQuery {
+                search: "needle".into(),
+                ..query
+            })
+            .unwrap();
+        assert_eq!(combined.total_count, 1);
+        assert_eq!(combined.rows[0].id, 1);
+    }
+
+    #[test]
     fn cache_hit_paging_returns_consistent_pages() {
         let mut database = database_with_rows(10);
         let page_query = |offset: u64| RowQuery {
@@ -1451,6 +1523,7 @@ mod tests {
             tag_mode: TagMatchMode::And,
             dedupe: DedupeMode::None,
             single_artist_only: false,
+            artist_filter: String::new(),
             has_vibe: false,
             untagged_only: false,
             group_view: false,
@@ -1484,6 +1557,7 @@ mod tests {
             tag_mode: TagMatchMode::And,
             dedupe: DedupeMode::None,
             single_artist_only: false,
+            artist_filter: String::new(),
             has_vibe: false,
             untagged_only: false,
             group_view: false,
@@ -1526,6 +1600,7 @@ mod tests {
                 tag_mode: TagMatchMode::Or,
                 dedupe: DedupeMode::None,
                 single_artist_only: false,
+                artist_filter: String::new(),
                 has_vibe: false,
                 untagged_only: false,
                 group_view: false,
@@ -1580,6 +1655,7 @@ mod tests {
             tag_mode: TagMatchMode::And,
             dedupe: DedupeMode::None,
             single_artist_only: false,
+            artist_filter: String::new(),
             has_vibe: false,
             untagged_only: false,
             group_view: false,
@@ -1626,6 +1702,7 @@ mod tests {
                 tag_mode: mode,
                 dedupe: DedupeMode::None,
                 single_artist_only: false,
+                artist_filter: String::new(),
                 has_vibe: false,
                 untagged_only: false,
                 group_view: false,

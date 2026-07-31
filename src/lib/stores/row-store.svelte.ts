@@ -16,6 +16,8 @@ export const rowStore = $state({
   tagMode: "and" as TagMatchMode,
   dedupe: "none" as DedupeMode,
   singleArtistOnly: false,
+  /** 画师串精确筛选；空字符串表示不限制。 */
+  artistFilter: "",
   hasVibe: false,
   untaggedOnly: false,
   groupView: false,
@@ -69,6 +71,7 @@ export function ensurePage(pageIndex: number): void {
         tagMode: rowStore.tagMode,
         dedupe: rowStore.dedupe,
         singleArtistOnly: rowStore.singleArtistOnly,
+        artistFilter: rowStore.artistFilter,
         hasVibe: rowStore.hasVibe,
         untaggedOnly: rowStore.untaggedOnly,
         groupView: rowStore.groupView,
@@ -185,6 +188,30 @@ export function setSingleArtistOnly(value: boolean): void {
   }
 }
 
+/** 只浏览画师串与给定值完全相同的图片，并清除会继续收窄结果的其它筛选。 */
+export function focusArtistFilter(artists: string): void {
+  const normalized = artists.trim();
+  if (!normalized) return;
+  rowStore.tags = [];
+  rowStore.dedupe = "none";
+  rowStore.singleArtistOnly = false;
+  rowStore.artistFilter = normalized;
+  rowStore.hasVibe = false;
+  rowStore.untaggedOnly = false;
+  rowStore.groupView = false;
+  rowStore.hideGrouped = false;
+  rowStore.search = "";
+  resetRows({ keepStale: true, resetScroll: true });
+}
+
+export function setArtistFilter(value: string): void {
+  const normalized = value.trim();
+  if (rowStore.artistFilter !== normalized) {
+    rowStore.artistFilter = normalized;
+    resetRows({ keepStale: true, resetScroll: true });
+  }
+}
+
 export function setHasVibe(value: boolean): void {
   if (rowStore.hasVibe !== value) {
     rowStore.hasVibe = value;
@@ -234,6 +261,7 @@ export function clearAllFilters(): void {
     rowStore.tags.length > 0 ||
     rowStore.dedupe !== "none" ||
     rowStore.singleArtistOnly ||
+    rowStore.artistFilter !== "" ||
     rowStore.hasVibe ||
     rowStore.untaggedOnly ||
     rowStore.hideGrouped ||
@@ -242,6 +270,7 @@ export function clearAllFilters(): void {
   rowStore.tags = [];
   rowStore.dedupe = "none";
   rowStore.singleArtistOnly = false;
+  rowStore.artistFilter = "";
   rowStore.hasVibe = false;
   rowStore.untaggedOnly = false;
   rowStore.hideGrouped = false;
@@ -262,6 +291,7 @@ export function revealRowInGallery(row: RowRecord, index: number): void {
   rowStore.tagMode = "and";
   rowStore.dedupe = "none";
   rowStore.singleArtistOnly = false;
+  rowStore.artistFilter = "";
   rowStore.hasVibe = false;
   rowStore.untaggedOnly = false;
   rowStore.groupView = false;

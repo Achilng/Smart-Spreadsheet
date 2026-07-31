@@ -2,14 +2,16 @@
   import { save } from "@tauri-apps/plugin-dialog";
   import { exportRowImage, rowIdsWithArtists, showItemInExplorer } from "../../api";
   import ContextMenuShell from "../../ui/ContextMenuShell.svelte";
-  import { formatCount, setNotice } from "../../stores/app-state.svelte";
+  import { app, formatCount, setNotice } from "../../stores/app-state.svelte";
   import { contextMenu, hideContextMenu } from "../../stores/context-menu.svelte";
   import { requestDelete } from "../../stores/delete-actions.svelte";
   import {
+    clearSelection,
     getSelectedCount,
     selectionDto,
     setExplicitSelection,
   } from "../../stores/selection-store.svelte";
+  import { focusArtistFilter } from "../../stores/row-store.svelte";
 
   const row = $derived(contextMenu.row);
   const hasPrompt = $derived(Boolean(row?.positivePrompt?.trim()));
@@ -86,6 +88,17 @@
     }
   }
 
+  function showSameArtists(): void {
+    const artists = row?.artists?.trim();
+    if (!artists) return;
+    hideContextMenu();
+    clearSelection();
+    focusArtistFilter(artists);
+    if (app.viewMode !== "gallery" && app.viewMode !== "table") {
+      app.viewMode = "gallery";
+    }
+  }
+
   function deleteRow(): void {
     if (!row) return;
     hideContextMenu();
@@ -125,6 +138,14 @@
       在文件管理器中打开
     </button>
     <div class="separator"></div>
+    <button
+      type="button"
+      role="menuitem"
+      disabled={!hasArtists}
+      onclick={showSameArtists}
+    >
+      只看当前画师串
+    </button>
     <button
       type="button"
       role="menuitem"

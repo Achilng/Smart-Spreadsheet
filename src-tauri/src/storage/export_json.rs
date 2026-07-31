@@ -179,6 +179,7 @@ mod tests {
                     tag_mode: TagMatchMode::And,
                     dedupe: crate::db::DedupeMode::None,
                     single_artist_only: false,
+                    artist_filter: String::new(),
                     has_vibe: false,
                     untagged_only: false,
                     search: String::new(),

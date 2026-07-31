@@ -71,6 +71,7 @@ export interface RowQuery {
   tagMode: TagMatchMode;
   dedupe: DedupeMode;
   singleArtistOnly: boolean;
+  artistFilter: string;
   hasVibe: boolean;
   untaggedOnly: boolean;
   groupView: boolean;

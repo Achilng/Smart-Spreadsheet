@@ -539,6 +539,7 @@ mod tests {
                 tag_mode: TagMatchMode::And,
                 dedupe: DedupeMode::None,
                 single_artist_only: true,
+                artist_filter: String::new(),
                 has_vibe: false,
                 untagged_only: false,
                 group_view: false,

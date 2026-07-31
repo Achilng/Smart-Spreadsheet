@@ -29,6 +29,7 @@ export function exportScope(): RowSelection {
     tagMode: rowStore.tagMode,
     dedupe: rowStore.dedupe,
     singleArtistOnly: rowStore.singleArtistOnly,
+    artistFilter: rowStore.artistFilter,
     hasVibe: rowStore.hasVibe,
     untaggedOnly: rowStore.untaggedOnly,
     search: rowStore.search,
@@ -46,6 +47,7 @@ export function exportScopeLabel(): string {
     rowStore.tags.length > 0 ||
     rowStore.dedupe !== "none" ||
     rowStore.singleArtistOnly ||
+    rowStore.artistFilter !== "" ||
     rowStore.hasVibe ||
     rowStore.untaggedOnly ||
     rowStore.search.trim().length > 0;

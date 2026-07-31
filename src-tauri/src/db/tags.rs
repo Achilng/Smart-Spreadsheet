@@ -23,6 +23,8 @@ pub enum RowSelection {
         #[serde(default)]
         single_artist_only: bool,
         #[serde(default)]
+        artist_filter: String,
+        #[serde(default)]
         has_vibe: bool,
         #[serde(default)]
         untagged_only: bool,
@@ -392,6 +394,7 @@ pub(super) fn create_selection_rows(
             tag_mode,
             dedupe,
             single_artist_only,
+            artist_filter,
             has_vibe,
             untagged_only,
             search,
@@ -413,6 +416,7 @@ pub(super) fn create_selection_rows(
                 *tag_mode,
                 *dedupe,
                 *single_artist_only,
+                artist_filter,
                 *has_vibe,
                 *untagged_only,
                 false,
@@ -723,6 +727,7 @@ mod tests {
             tag_mode: TagMatchMode::And,
             dedupe: DedupeMode::None,
             single_artist_only: false,
+            artist_filter: String::new(),
             has_vibe: false,
             untagged_only: false,
             search: String::new(),
@@ -755,6 +760,7 @@ mod tests {
             tag_mode: TagMatchMode::And,
             dedupe: DedupeMode::None,
             single_artist_only: false,
+            artist_filter: String::new(),
             has_vibe: false,
             untagged_only: false,
             search: String::new(),
@@ -797,6 +803,7 @@ mod tests {
             tag_mode: TagMatchMode::And,
             dedupe: DedupeMode::PositivePrompt,
             single_artist_only: false,
+            artist_filter: String::new(),
             has_vibe: false,
             untagged_only: false,
             search: String::new(),
@@ -865,6 +872,7 @@ mod tests {
                 tag_mode: TagMatchMode::And,
                 dedupe: DedupeMode::None,
                 single_artist_only: false,
+                artist_filter: String::new(),
                 has_vibe: false,
                 untagged_only: false,
                 search: String::new(),
@@ -889,6 +897,7 @@ mod tests {
                 tag_mode: TagMatchMode::And,
                 dedupe: DedupeMode::None,
                 single_artist_only: false,
+                artist_filter: String::new(),
                 has_vibe: false,
                 untagged_only: false,
                 search: String::new(),
@@ -900,6 +909,38 @@ mod tests {
     }
 
     #[test]
+    fn filtered_selection_respects_exact_artist_filter() {
+        let mut database = database_with_rows(4);
+        database
+            .connection
+            .execute_batch(
+                "UPDATE rows SET artists = CASE id
+                     WHEN 1 THEN 'artist:a'
+                     WHEN 2 THEN ' artist:a '
+                     WHEN 3 THEN 'artist:b'
+                     ELSE NULL
+                 END;",
+            )
+            .unwrap();
+
+        let row_ids = database
+            .selected_row_ids(&RowSelection::Filtered {
+                tags: Vec::new(),
+                tag_mode: TagMatchMode::And,
+                dedupe: DedupeMode::None,
+                single_artist_only: false,
+                artist_filter: "artist:a".into(),
+                has_vibe: false,
+                untagged_only: false,
+                search: String::new(),
+                excluded_row_ids: Vec::new(),
+            })
+            .unwrap();
+
+        assert_eq!(row_ids, vec![1, 2]);
+    }
+
+    #[test]
     fn empty_filtered_selection_does_not_create_orphan_tag() {
         let mut database = database_with_rows(2);
         let selection = RowSelection::Filtered {
@@ -907,6 +948,7 @@ mod tests {
             tag_mode: TagMatchMode::And,
             dedupe: DedupeMode::None,
             single_artist_only: false,
+            artist_filter: String::new(),
             has_vibe: false,
             untagged_only: false,
             search: String::new(),

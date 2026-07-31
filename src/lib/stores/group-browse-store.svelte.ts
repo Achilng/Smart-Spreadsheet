@@ -80,6 +80,7 @@ function ungroupedQuery(offset: number) {
     tagMode: rowStore.tagMode,
     dedupe: "none",
     singleArtistOnly: rowStore.singleArtistOnly,
+    artistFilter: rowStore.artistFilter,
     hasVibe: rowStore.hasVibe,
     untaggedOnly: rowStore.untaggedOnly,
     groupView: false,

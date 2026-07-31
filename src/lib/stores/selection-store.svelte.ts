@@ -21,6 +21,7 @@ export const selection = $state({
   filteredMode: "and" as TagMatchMode,
   filteredDedupe: "none" as DedupeMode,
   filteredSingleArtistOnly: false,
+  filteredArtistFilter: "",
   filteredHasVibe: false,
   filteredUntaggedOnly: false,
   filteredSearch: "",
@@ -108,6 +109,7 @@ export function setExplicitSelection(ids: number[]): void {
   selection.filteredTags = [];
   selection.filteredDedupe = "none";
   selection.filteredSingleArtistOnly = false;
+  selection.filteredArtistFilter = "";
   selection.filteredHasVibe = false;
   selection.filteredUntaggedOnly = false;
   selection.filteredSearch = "";
@@ -125,6 +127,7 @@ export function clearSelection(): void {
   selection.filteredTags = [];
   selection.filteredDedupe = "none";
   selection.filteredSingleArtistOnly = false;
+  selection.filteredArtistFilter = "";
   selection.filteredHasVibe = false;
   selection.filteredUntaggedOnly = false;
   selection.filteredSearch = "";
@@ -147,6 +150,7 @@ export async function selectAllFiltered(): Promise<number> {
     tagMode: rowStore.tagMode,
     dedupe: rowStore.dedupe,
     singleArtistOnly: rowStore.singleArtistOnly,
+    artistFilter: rowStore.artistFilter,
     hasVibe: rowStore.hasVibe,
     untaggedOnly: rowStore.untaggedOnly,
     search: rowStore.search,
@@ -162,6 +166,7 @@ export async function selectAllFiltered(): Promise<number> {
     rowStore.tagMode !== dto.tagMode ||
     rowStore.dedupe !== dto.dedupe ||
     rowStore.singleArtistOnly !== dto.singleArtistOnly ||
+    rowStore.artistFilter !== dto.artistFilter ||
     rowStore.hasVibe !== dto.hasVibe ||
     rowStore.untaggedOnly !== dto.untaggedOnly ||
     rowStore.search !== dto.search
@@ -173,6 +178,7 @@ export async function selectAllFiltered(): Promise<number> {
   selection.filteredMode = dto.tagMode;
   selection.filteredDedupe = dto.dedupe;
   selection.filteredSingleArtistOnly = dto.singleArtistOnly;
+  selection.filteredArtistFilter = dto.artistFilter;
   selection.filteredHasVibe = dto.hasVibe;
   selection.filteredUntaggedOnly = dto.untaggedOnly;
   selection.filteredSearch = dto.search;
@@ -197,6 +203,7 @@ export async function materializeSelection(): Promise<number> {
   selection.filteredTags = [];
   selection.filteredDedupe = "none";
   selection.filteredSingleArtistOnly = false;
+  selection.filteredArtistFilter = "";
   selection.filteredHasVibe = false;
   selection.filteredUntaggedOnly = false;
   selection.filteredSearch = "";
@@ -223,6 +230,7 @@ export function selectionDto(): RowSelection {
     tagMode: selection.filteredMode,
     dedupe: selection.filteredDedupe,
     singleArtistOnly: selection.filteredSingleArtistOnly,
+    artistFilter: selection.filteredArtistFilter,
     hasVibe: selection.filteredHasVibe,
     untaggedOnly: selection.filteredUntaggedOnly,
     search: selection.filteredSearch,

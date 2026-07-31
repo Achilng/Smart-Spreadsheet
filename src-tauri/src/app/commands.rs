@@ -1786,6 +1786,7 @@ mod tests {
                 tag_mode: TagMatchMode::Or,
                 dedupe: DedupeMode::Artists,
                 single_artist_only: false,
+                artist_filter: String::new(),
                 has_vibe: false,
                 untagged_only: false,
                 search: String::new(),

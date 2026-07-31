@@ -157,6 +157,7 @@
         tagMode: "and",
         dedupe: "none",
         singleArtistOnly: false,
+        artistFilter: "",
         hasVibe: false,
         untaggedOnly: false,
         search: "",

@@ -8,6 +8,7 @@
   import {
     clearAllFilters,
     rowStore,
+    setArtistFilter,
     setDedupe,
     setFilter,
     setHasVibe,
@@ -51,6 +52,7 @@
       rowStore.tags.length > 0 ||
       rowStore.dedupe !== "none" ||
       rowStore.singleArtistOnly ||
+      rowStore.artistFilter !== "" ||
       rowStore.hasVibe ||
       rowStore.untaggedOnly ||
       rowStore.hideGrouped,
@@ -172,6 +174,14 @@
     {#if rowStore.singleArtistOnly}
       <span class="chip-f" transition:softPop={{ duration: 150, y: 0, start: 0.92 }}>单画师串
         <button type="button" class="x" title="取消筛选" onclick={() => { setSingleArtistOnly(false); clearSelection(); }}>
+          <X size={11} strokeWidth={2.2} />
+        </button>
+      </span>
+    {/if}
+    {#if rowStore.artistFilter !== ""}
+      <span class="chip-f" transition:softPop={{ duration: 150, y: 0, start: 0.92 }} title={rowStore.artistFilter}>
+        <span class="chip-text">画师串：{rowStore.artistFilter}</span>
+        <button type="button" class="x" title="取消画师串筛选" onclick={() => { setArtistFilter(""); clearSelection(); }}>
           <X size={11} strokeWidth={2.2} />
         </button>
       </span>
