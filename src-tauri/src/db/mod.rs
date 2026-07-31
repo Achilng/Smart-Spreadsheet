@@ -48,7 +48,8 @@ use migrations::{
     MIGRATION_9, MIGRATION_10, MIGRATION_11, MIGRATION_12, MIGRATION_14, MIGRATION_15,
     MIGRATION_16, MINIMUM_UPGRADABLE_SCHEMA_VERSION, SCHEMA_16,
 };
-use rusqlite::{Connection, MAIN_DB, OptionalExtension, TransactionBehavior};
+use rusqlite::backup::{Backup, StepResult};
+use rusqlite::{Connection, OptionalExtension, TransactionBehavior};
 use thiserror::Error;
 
 const ARTIST_STRING_FORMAT_SETTING: &str = "artist_string_format_version";
@@ -119,8 +120,35 @@ impl Database {
     }
 
     pub fn backup_to(&self, destination: impl AsRef<Path>) -> Result<(), DatabaseError> {
-        self.connection.backup(MAIN_DB, destination, None)?;
+        self.backup_to_with_progress(destination, |_, _| {})?;
         Ok(())
+    }
+
+    /// 使用 SQLite Online Backup 分批复制数据库，每批回报已完成/总页数。
+    /// BUSY/LOCKED 只表示源库暂时正在写入，稍后重试而不直接中止迁移。
+    pub fn backup_to_with_progress(
+        &self,
+        destination: impl AsRef<Path>,
+        mut progress: impl FnMut(u64, u64),
+    ) -> Result<(), DatabaseError> {
+        let mut destination = Connection::open(destination)?;
+        let backup = Backup::new(&self.connection, &mut destination)?;
+
+        loop {
+            let step = backup.step(100)?;
+            let state = backup.progress();
+            let total = u64::try_from(state.pagecount).unwrap_or_default();
+            let remaining = u64::try_from(state.remaining).unwrap_or_default();
+            progress(total.saturating_sub(remaining), total);
+            match step {
+                StepResult::Done => return Ok(()),
+                StepResult::More => {}
+                StepResult::Busy | StepResult::Locked => {
+                    std::thread::sleep(Duration::from_millis(50));
+                }
+                _ => std::thread::sleep(Duration::from_millis(50)),
+            }
+        }
     }
 
     pub fn verify_integrity(&self) -> Result<(), DatabaseError> {

@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use tauri::{
@@ -18,8 +19,8 @@ use crate::db::{
     TagMatchMode, TagMutationResult, TagSelectionSummary, TagSummary,
 };
 use crate::storage::{
-    PerceptualHashProgress, PromptDocAsset, PromptDocDetail, PromptDocSummary, SimilarImageMatch,
-    VibeStatusProgress,
+    MigrationStage, PerceptualHashProgress, PromptDocAsset, PromptDocDetail, PromptDocSummary,
+    SimilarImageMatch, VibeStatusProgress,
 };
 
 #[derive(Debug, Serialize)]
@@ -1679,8 +1680,21 @@ pub(crate) async fn migrate_data_directory(
 ) -> Result<MigrationResultDto, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let runtime = app.state::<AppRuntime>();
+        let mut last_stage: Option<MigrationStage> = None;
+        let mut last_emit: Option<Instant> = None;
         runtime
-            .migrate_directory(PathBuf::from(path))
+            .migrate_directory_with_progress(PathBuf::from(path), |progress| {
+                let now = Instant::now();
+                let stage_changed = last_stage != Some(progress.stage);
+                let due = last_emit
+                    .is_none_or(|last| now.duration_since(last) >= Duration::from_millis(100));
+                let finished = progress.total > 0 && progress.completed >= progress.total;
+                if stage_changed || due || finished {
+                    let _ = app.emit("migration://progress", progress);
+                    last_stage = Some(progress.stage);
+                    last_emit = Some(now);
+                }
+            })
             .map(|outcome| MigrationResultDto {
                 snapshot: outcome.snapshot.into(),
                 retired_source: outcome

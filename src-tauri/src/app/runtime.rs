@@ -24,9 +24,9 @@ use crate::storage::{
     ContentHashProgress, DataDirectory, ExportProgress, ImageFileExportMode, ImageFileNaming,
     ExistingImageUpdateOutcome, ImageFilesExportError, ImageFilesExportOutcome,
     ImageFilesProgress, ImageImportError, ImageImportOutcome, ImageImportProgress, JsonExportError,
-    JsonExportOutcome, JsonExportProgress, PerceptualHashProgress, PromptDocAsset, PromptDocDetail,
-    PromptDocError, PromptDocSummary, RowDeletionError, RowDeletionReport, SimilarImageMatch,
-    StorageError, XlsxExportError, XlsxExportOutcome,
+    JsonExportOutcome, JsonExportProgress, MigrationProgress, PerceptualHashProgress,
+    PromptDocAsset, PromptDocDetail, PromptDocError, PromptDocSummary, RowDeletionError,
+    RowDeletionReport, SimilarImageMatch, StorageError, XlsxExportError, XlsxExportOutcome,
 };
 
 const LOCATOR_VERSION: u32 = 1;
@@ -1071,9 +1071,18 @@ impl AppRuntime {
             .clone())
     }
 
+    #[cfg(test)]
     pub(crate) fn migrate_directory(
         &self,
         destination: impl AsRef<Path>,
+    ) -> Result<RuntimeMigrationOutcome, AppRuntimeError> {
+        self.migrate_directory_with_progress(destination, |_| {})
+    }
+
+    pub(crate) fn migrate_directory_with_progress(
+        &self,
+        destination: impl AsRef<Path>,
+        progress: impl FnMut(MigrationProgress),
     ) -> Result<RuntimeMigrationOutcome, AppRuntimeError> {
         let mut state = self.lock_state()?;
         ensure_startup_valid(&state)?;
@@ -1084,7 +1093,7 @@ impl AppRuntime {
             .clone();
         // 迁移会复制并清理旧目录文件，必须先关闭常驻连接释放文件句柄。
         state.database = None;
-        let prepared = current.prepare_migration(destination)?;
+        let prepared = current.prepare_migration_with_progress(destination, progress)?;
         let next_root = prepared.data_directory().root().to_owned();
         if let Err(locator_error) = write_locator(&self.locator_path, &next_root) {
             if let Err(rollback_error) = prepared.rollback() {

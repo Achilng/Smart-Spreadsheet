@@ -14,6 +14,7 @@ import {
   type ContentHashProgress,
   type ExportProgress,
   type ImageImportProgress,
+  type MigrationProgress,
   type PerceptualHashProgress,
   type VibeStatusProgress,
 } from "../api";
@@ -59,6 +60,8 @@ export const app = $state({
   phashProgress: null as PerceptualHashProgress | null,
   /** 升级后首启的 VIBE 索引回填进度，空闲时为 null */
   vibeBackfillProgress: null as VibeStatusProgress | null,
+  /** 数据目录迁移的分阶段进度，空闲时为 null */
+  migrationProgress: null as MigrationProgress | null,
   /** 分组管理视图是否打开 */
   groupManageOpen: false,
 });
@@ -280,15 +283,30 @@ export async function chooseMigration(): Promise<void> {
     return;
   }
   await runAction(async () => {
-    const result = await migrateDataDirectory(selection);
-    app.snapshot = result.snapshot;
-    clearOperationHistory();
-    await notifyMainStateChanged("migrated");
-    setNotice(
-      result.retiredSource
-        ? { tone: "error", text: `迁移成功，但旧目录未能自动清理：${result.retiredSource}` }
-        : { tone: "success", text: `数据目录已迁移到 ${selection}` },
-    );
+    const unlisten = await listen<MigrationProgress>("migration://progress", event => {
+      app.migrationProgress = event.payload;
+    });
+    app.migrationProgress = {
+      stage: "preparing",
+      completed: 0,
+      total: 0,
+      stageCompleted: 0,
+      stageTotal: 0,
+    };
+    try {
+      const result = await migrateDataDirectory(selection);
+      app.snapshot = result.snapshot;
+      clearOperationHistory();
+      await notifyMainStateChanged("migrated");
+      setNotice(
+        result.retiredSource
+          ? { tone: "error", text: `迁移成功，但旧目录未能自动清理：${result.retiredSource}` }
+          : { tone: "success", text: `数据目录已迁移到 ${selection}` },
+      );
+    } finally {
+      unlisten();
+      app.migrationProgress = null;
+    }
   });
 }
 

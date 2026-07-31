@@ -30,6 +30,23 @@ export interface MigrationResult {
   retiredSource: string | null;
 }
 
+export type MigrationStage =
+  | "preparing"
+  | "copyingFiles"
+  | "backingUpDatabase"
+  | "verifyingFiles"
+  | "verifyingDatabase"
+  | "switching";
+
+/** `migration://progress` 事件载荷。completed/total 用于整体进度条。 */
+export interface MigrationProgress {
+  stage: MigrationStage;
+  completed: number;
+  total: number;
+  stageCompleted: number;
+  stageTotal: number;
+}
+
 export function getAppSnapshot(): Promise<AppSnapshot> {
   return invoke<AppSnapshot>("get_app_snapshot");
 }

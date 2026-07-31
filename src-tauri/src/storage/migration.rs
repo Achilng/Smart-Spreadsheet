@@ -2,10 +2,54 @@ use std::fs::{self, File};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
+use serde::Serialize;
+
 use super::{DATABASE_FILE, DataDirectory, MARKER_FILE, StorageError};
 
 const DATABASE_WAL_FILE: &str = "smart-spreadsheet.sqlite3-wal";
 const DATABASE_SHM_FILE: &str = "smart-spreadsheet.sqlite3-shm";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum MigrationStage {
+    Preparing,
+    CopyingFiles,
+    BackingUpDatabase,
+    VerifyingFiles,
+    VerifyingDatabase,
+    Switching,
+}
+
+/// 迁移总进度使用文件字节数作为权重：非数据库文件复制与校验各计一次，
+/// 数据库备份与完整性校验各计一次。`stage_completed/total` 是当前阶段的原始单位：
+/// 复制/文件校验为字节，数据库备份为 SQLite 页数。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MigrationProgress {
+    pub stage: MigrationStage,
+    pub completed: u64,
+    pub total: u64,
+    pub stage_completed: u64,
+    pub stage_total: u64,
+}
+
+impl MigrationProgress {
+    fn new(
+        stage: MigrationStage,
+        completed: u64,
+        total: u64,
+        stage_completed: u64,
+        stage_total: u64,
+    ) -> Self {
+        Self {
+            stage,
+            completed: completed.min(total),
+            total,
+            stage_completed,
+            stage_total,
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct MigrationOutcome {
@@ -27,26 +71,134 @@ impl DataDirectory {
         &self,
         destination: impl AsRef<Path>,
     ) -> Result<MigrationOutcome, StorageError> {
-        Ok(self.prepare_migration(destination)?.commit())
+        self.migrate_to_with_progress(destination, |_| {})
+    }
+
+    pub fn migrate_to_with_progress(
+        &self,
+        destination: impl AsRef<Path>,
+        progress: impl FnMut(MigrationProgress),
+    ) -> Result<MigrationOutcome, StorageError> {
+        Ok(self
+            .prepare_migration_with_progress(destination, progress)?
+            .commit())
     }
 
     pub fn prepare_migration(
         &self,
         destination: impl AsRef<Path>,
     ) -> Result<PreparedMigration, StorageError> {
+        self.prepare_migration_with_progress(destination, |_| {})
+    }
+
+    pub fn prepare_migration_with_progress(
+        &self,
+        destination: impl AsRef<Path>,
+        mut progress: impl FnMut(MigrationProgress),
+    ) -> Result<PreparedMigration, StorageError> {
+        progress(MigrationProgress::new(
+            MigrationStage::Preparing,
+            0,
+            0,
+            0,
+            0,
+        ));
         let source = fs::canonicalize(self.root())?;
         let destination = prepare_destination(&source, destination.as_ref())?;
         let staging = create_staging_directory(&destination)?;
         let mut staging_guard = StagingGuard::new(staging.clone());
 
-        copy_non_database_tree(&source, &staging)?;
+        let non_database_bytes = measure_non_database_tree(&source)?;
+        let database_bytes = database_runtime_bytes(&source)?.max(1);
+        let total_work = non_database_bytes
+            .saturating_add(database_bytes)
+            .saturating_mul(2);
+
+        let mut copied_bytes = 0_u64;
+        progress(MigrationProgress::new(
+            MigrationStage::CopyingFiles,
+            0,
+            total_work,
+            0,
+            non_database_bytes,
+        ));
+        copy_non_database_tree(&source, &staging, |bytes| {
+            copied_bytes = copied_bytes.saturating_add(bytes);
+            progress(MigrationProgress::new(
+                MigrationStage::CopyingFiles,
+                copied_bytes,
+                total_work,
+                copied_bytes,
+                non_database_bytes,
+            ));
+        })?;
+
+        progress(MigrationProgress::new(
+            MigrationStage::BackingUpDatabase,
+            non_database_bytes,
+            total_work,
+            0,
+            0,
+        ));
         let source_database = self.open_database()?;
-        source_database.backup_to(staging.join(DATABASE_FILE))?;
+        source_database.backup_to_with_progress(
+            staging.join(DATABASE_FILE),
+            |completed_pages, total_pages| {
+                let database_progress = if total_pages == 0 {
+                    0
+                } else {
+                    database_bytes
+                        .saturating_mul(completed_pages)
+                        .checked_div(total_pages)
+                        .unwrap_or_default()
+                };
+                progress(MigrationProgress::new(
+                    MigrationStage::BackingUpDatabase,
+                    non_database_bytes.saturating_add(database_progress),
+                    total_work,
+                    completed_pages,
+                    total_pages,
+                ));
+            },
+        )?;
         drop(source_database);
 
-        verify_non_database_tree(&source, &staging)?;
+        let after_backup = non_database_bytes.saturating_add(database_bytes);
+        let mut verified_bytes = 0_u64;
+        progress(MigrationProgress::new(
+            MigrationStage::VerifyingFiles,
+            after_backup,
+            total_work,
+            0,
+            non_database_bytes,
+        ));
+        verify_non_database_tree(&source, &staging, |bytes| {
+            verified_bytes = verified_bytes.saturating_add(bytes);
+            progress(MigrationProgress::new(
+                MigrationStage::VerifyingFiles,
+                after_backup.saturating_add(verified_bytes),
+                total_work,
+                verified_bytes,
+                non_database_bytes,
+            ));
+        })?;
         let staged_directory = DataDirectory::open(&staging)?;
+        progress(MigrationProgress::new(
+            MigrationStage::VerifyingDatabase,
+            after_backup.saturating_add(non_database_bytes),
+            total_work,
+            0,
+            database_bytes,
+        ));
         staged_directory.open_database()?.verify_integrity()?;
+
+        progress(MigrationProgress::new(
+            MigrationStage::Switching,
+            total_work,
+            total_work,
+            1,
+            1,
+        ));
 
         let source_marker = source.join(MARKER_FILE);
         let retired_marker = available_retired_marker(self.migration_path())?;
@@ -243,14 +395,55 @@ fn available_retired_marker(migration_directory: PathBuf) -> Result<PathBuf, Sto
     )))
 }
 
-fn copy_non_database_tree(source: &Path, destination: &Path) -> Result<(), StorageError> {
-    copy_directory(source, destination, Path::new(""))
+fn database_runtime_bytes(source: &Path) -> Result<u64, StorageError> {
+    let mut total = 0_u64;
+    for name in [DATABASE_FILE, DATABASE_WAL_FILE] {
+        let path = source.join(name);
+        if path.is_file() {
+            total = total.saturating_add(fs::metadata(path)?.len());
+        }
+    }
+    Ok(total)
 }
 
-fn copy_directory(
+fn measure_non_database_tree(source: &Path) -> Result<u64, StorageError> {
+    measure_directory(source, Path::new(""))
+}
+
+fn measure_directory(source_root: &Path, relative: &Path) -> Result<u64, StorageError> {
+    let mut total = 0_u64;
+    for entry in fs::read_dir(source_root.join(relative))? {
+        let entry = entry?;
+        let child_relative = relative.join(entry.file_name());
+        if is_database_runtime_file(&child_relative) {
+            continue;
+        }
+
+        let metadata = fs::symlink_metadata(entry.path())?;
+        if metadata.is_dir() {
+            total = total.saturating_add(measure_directory(source_root, &child_relative)?);
+        } else if metadata.is_file() {
+            total = total.saturating_add(metadata.len());
+        } else {
+            return Err(StorageError::UnsupportedEntry(entry.path()));
+        }
+    }
+    Ok(total)
+}
+
+fn copy_non_database_tree(
+    source: &Path,
+    destination: &Path,
+    mut progress: impl FnMut(u64),
+) -> Result<(), StorageError> {
+    copy_directory(source, destination, Path::new(""), &mut progress)
+}
+
+fn copy_directory<F: FnMut(u64)>(
     source_root: &Path,
     destination_root: &Path,
     relative: &Path,
+    progress: &mut F,
 ) -> Result<(), StorageError> {
     for entry in fs::read_dir(source_root.join(relative))? {
         let entry = entry?;
@@ -263,9 +456,10 @@ fn copy_directory(
         let destination = destination_root.join(&child_relative);
         if metadata.is_dir() {
             fs::create_dir(&destination)?;
-            copy_directory(source_root, destination_root, &child_relative)?;
+            copy_directory(source_root, destination_root, &child_relative, progress)?;
         } else if metadata.is_file() {
-            fs::copy(entry.path(), destination)?;
+            let copied = fs::copy(entry.path(), destination)?;
+            progress(copied);
         } else {
             return Err(StorageError::UnsupportedEntry(entry.path()));
         }
@@ -273,14 +467,19 @@ fn copy_directory(
     Ok(())
 }
 
-fn verify_non_database_tree(source: &Path, destination: &Path) -> Result<(), StorageError> {
-    verify_directory(source, destination, Path::new(""))
+fn verify_non_database_tree(
+    source: &Path,
+    destination: &Path,
+    mut progress: impl FnMut(u64),
+) -> Result<(), StorageError> {
+    verify_directory(source, destination, Path::new(""), &mut progress)
 }
 
-fn verify_directory(
+fn verify_directory<F: FnMut(u64)>(
     source_root: &Path,
     destination_root: &Path,
     relative: &Path,
+    progress: &mut F,
 ) -> Result<(), StorageError> {
     for entry in fs::read_dir(source_root.join(relative))? {
         let entry = entry?;
@@ -295,11 +494,12 @@ fn verify_directory(
             if !destination.is_dir() {
                 return Err(StorageError::MigrationVerificationFailed(child_relative));
             }
-            verify_directory(source_root, destination_root, &child_relative)?;
+            verify_directory(source_root, destination_root, &child_relative, progress)?;
         } else if metadata.is_file() {
             if !destination.is_file() || !files_equal(&entry.path(), &destination)? {
                 return Err(StorageError::MigrationVerificationFailed(child_relative));
             }
+            progress(metadata.len());
         } else {
             return Err(StorageError::UnsupportedEntry(entry.path()));
         }
@@ -417,6 +617,49 @@ mod tests {
             )
             .unwrap();
         assert_eq!(value, "preserved");
+    }
+
+    #[test]
+    fn reports_monotonic_progress_for_every_migration_stage() {
+        let temporary = TemporaryMigration::new();
+        let source = DataDirectory::initialize(&temporary.source).unwrap();
+        let managed_file = source.files_path().join("1").join("image.png");
+        fs::create_dir_all(managed_file.parent().unwrap()).unwrap();
+        fs::write(&managed_file, vec![7_u8; 256 * 1024]).unwrap();
+        let mut events = Vec::new();
+
+        source
+            .migrate_to_with_progress(&temporary.destination, |progress| {
+                events.push(progress);
+            })
+            .unwrap();
+
+        assert!(!events.is_empty());
+        assert!(
+            events
+                .windows(2)
+                .all(|pair| pair[0].completed <= pair[1].completed)
+        );
+        let mut stages = events
+            .iter()
+            .map(|progress| progress.stage)
+            .collect::<Vec<_>>();
+        stages.dedup();
+        assert_eq!(
+            stages,
+            vec![
+                MigrationStage::Preparing,
+                MigrationStage::CopyingFiles,
+                MigrationStage::BackingUpDatabase,
+                MigrationStage::VerifyingFiles,
+                MigrationStage::VerifyingDatabase,
+                MigrationStage::Switching,
+            ]
+        );
+        let completed = events.last().unwrap();
+        assert_eq!(completed.stage, MigrationStage::Switching);
+        assert!(completed.total > 0);
+        assert_eq!(completed.completed, completed.total);
     }
 
     #[test]

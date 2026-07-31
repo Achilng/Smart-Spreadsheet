@@ -34,7 +34,7 @@ pub use import_images::{
     ExistingImageUpdateOutcome, ImageImportError, ImageImportOutcome, ImageImportProgress,
     ImageImportStage,
 };
-pub use migration::{MigrationOutcome, PreparedMigration};
+pub use migration::{MigrationOutcome, MigrationProgress, MigrationStage, PreparedMigration};
 pub use perceptual_hash::{
     PerceptualHashBackfillOutcome, PerceptualHashProgress, SimilarImageMatch,
 };

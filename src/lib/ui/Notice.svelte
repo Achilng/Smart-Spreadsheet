@@ -28,7 +28,42 @@
     }
   });
 
+  function formatBytes(value: number): string {
+    if (value < 1024) return `${formatCount(value)} B`;
+    const units = ["KB", "MB", "GB", "TB"];
+    let size = value / 1024;
+    let unit = 0;
+    while (size >= 1024 && unit < units.length - 1) {
+      size /= 1024;
+      unit += 1;
+    }
+    return `${size >= 10 ? size.toFixed(0) : size.toFixed(1)} ${units[unit]}`;
+  }
+
   const progressText = $derived.by(() => {
+    const migration = app.migrationProgress;
+    if (migration) {
+      switch (migration.stage) {
+        case "preparing":
+          return "正在统计资料库迁移数据…";
+        case "copyingFiles":
+          return migration.stageTotal > 0
+            ? `正在复制资料库文件 ${formatBytes(migration.stageCompleted)} / ${formatBytes(migration.stageTotal)}`
+            : "正在复制资料库文件…";
+        case "backingUpDatabase":
+          return "正在备份 SQLite 数据库…";
+        case "verifyingFiles":
+          return migration.stageTotal > 0
+            ? `正在校验资料库文件 ${formatBytes(migration.stageCompleted)} / ${formatBytes(migration.stageTotal)}`
+            : "正在校验资料库文件…";
+        case "verifyingDatabase":
+          return "正在校验 SQLite 数据库…";
+        case "switching":
+          return "正在切换到新数据目录…";
+        default:
+          return null;
+      }
+    }
     const hashing = app.hashProgress;
     if (hashing) {
       const unreadable = hashing.unreadable > 0
@@ -75,6 +110,10 @@
     return null;
   });
   const progressPercent = $derived.by(() => {
+    const migration = app.migrationProgress;
+    if (migration && migration.total > 0) {
+      return Math.round((migration.completed / migration.total) * 100);
+    }
     const hashing = app.hashProgress;
     if (hashing && hashing.total > 0) {
       return Math.round((hashing.processed / hashing.total) * 100);
