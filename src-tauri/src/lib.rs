@@ -73,6 +73,8 @@ pub fn run() {
             app::commands::rename_tag,
             app::commands::get_recent_tags,
             app::commands::set_recent_tags,
+            app::commands::get_image_export_settings,
+            app::commands::set_image_export_settings,
             app::commands::count_selected_rows,
             app::commands::list_selection_tags,
             app::commands::selected_row_ids,

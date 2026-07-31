@@ -39,6 +39,7 @@ pub use quick_edit::{
     QuickTagPreview,
 };
 pub use query::{DedupeCluster, DedupeMode, MAX_PAGE_SIZE, RowPage, RowQuery, RowRecord, SortMode, TagMatchMode, TagSummary};
+pub use settings::{ImageExportRenameMode, ImageExportSettings};
 pub use tags::{RowSelection, TagMutationError, TagMutationResult, TagSelectionSummary};
 
 use std::path::Path;

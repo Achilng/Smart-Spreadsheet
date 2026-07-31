@@ -10,7 +10,7 @@ use super::runtime::{AppRuntime, RuntimeSnapshot};
 use crate::db::{
     AutoArtistPrefixApplyResult, AutomationRule, AutomationRuleDraft, AutomationRuleExportResult,
     AutomationRuleImportInspection, AutomationRuleImportResult, AutoArtistPrefixPreview,
-    BatchSummary, DedupeCluster, DedupeMode, GroupSummary,
+    BatchSummary, DedupeCluster, DedupeMode, GroupSummary, ImageExportSettings,
     LibrarySummary, MutableRowState, PromptEditResult,
     QuickArtistPrefixApplyResult, QuickArtistPrefixChange, QuickArtistPrefixPreview,
     QuickEditCondition, QuickGroupApplyResult, QuickGroupChange, QuickGroupPreview,
@@ -769,6 +769,23 @@ pub(crate) fn get_recent_tags(runtime: State<'_, AppRuntime>) -> Result<String, 
 #[tauri::command]
 pub(crate) fn set_recent_tags(json: String, runtime: State<'_, AppRuntime>) -> Result<(), String> {
     runtime.set_recent_tags(&json).map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn get_image_export_settings(
+    runtime: State<'_, AppRuntime>,
+) -> Result<ImageExportSettings, String> {
+    runtime.image_export_settings().map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn set_image_export_settings(
+    settings: ImageExportSettings,
+    runtime: State<'_, AppRuntime>,
+) -> Result<(), String> {
+    runtime
+        .set_image_export_settings(&settings)
+        .map_err(error_text)
 }
 
 #[tauri::command]

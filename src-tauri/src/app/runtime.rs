@@ -768,6 +768,19 @@ impl AppRuntime {
         self.with_database(|db| db.set_setting("recent-tags", json))
     }
 
+    pub(crate) fn image_export_settings(
+        &self,
+    ) -> Result<crate::db::ImageExportSettings, AppRuntimeError> {
+        self.with_database(|db| db.image_export_settings())
+    }
+
+    pub(crate) fn set_image_export_settings(
+        &self,
+        settings: &crate::db::ImageExportSettings,
+    ) -> Result<(), AppRuntimeError> {
+        self.with_database(|db| db.set_image_export_settings(settings))
+    }
+
     pub(crate) fn list_prompt_docs(&self) -> Result<Vec<PromptDocSummary>, AppRuntimeError> {
         Ok(self.active_directory()?.list_prompt_docs()?)
     }

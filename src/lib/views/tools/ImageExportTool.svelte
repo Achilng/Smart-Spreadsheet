@@ -11,6 +11,8 @@
   import {
     collectExportImages,
     exportSelectedImages,
+    getImageExportSettings,
+    setImageExportSettings,
     type ExportProgress,
     type ImageFileRenameMode,
     type ImageFilesExportResult,
@@ -43,6 +45,7 @@
   let lastResult = $state<ImageFilesExportResult | null>(null);
   let localError = $state<string | null>(null);
   let selectionListenerReady = $state(false);
+  let settingsReady = $state(false);
   let addedPaths = $state<string[]>([]);
   let scanning = $state(false);
   let draggingOverSource = $state(false);
@@ -69,6 +72,20 @@
     let disposed = false;
     let unlistenSelection: UnlistenFn | null = null;
     let unlistenDragDrop: UnlistenFn | null = null;
+    void getImageExportSettings()
+      .then(settings => {
+        if (disposed) return;
+        destination = settings.destination;
+        renameEnabled = settings.renameEnabled;
+        renameMode = settings.renameMode;
+        customName = settings.customName;
+        stripMetadata = settings.stripMetadata;
+        settingsReady = true;
+      })
+      .catch(cause => {
+        if (disposed) return;
+        localError = `无法读取已保存的导出设置：${errorText(cause)}`;
+      });
     void listen<ToolboxSelectionSnapshot>("main://selection-changed", event => {
       selectionSnapshot = event.payload;
     }).then(unlisten => {
@@ -112,6 +129,23 @@
     if (active && selectionListenerReady) {
       void requestSelection();
     }
+  });
+
+  $effect(() => {
+    const settings = {
+      destination,
+      renameEnabled,
+      renameMode,
+      customName,
+      stripMetadata,
+    };
+    if (!settingsReady) return;
+    const timer = window.setTimeout(() => {
+      void setImageExportSettings(settings).catch(cause => {
+        localError = `无法保存导出设置：${errorText(cause)}`;
+      });
+    }, 250);
+    return () => window.clearTimeout(timer);
   });
 
   async function requestSelection(): Promise<void> {
@@ -430,6 +464,9 @@
         <span class="bar-hint">请输入自定义文件名前缀</span>
       {:else}
         <span class="bar-hint">准备导出 {formatCount(selectedCount)} 张图片</span>
+      {/if}
+      {#if settingsReady}
+        <small class="remember-hint">导出位置和选项会自动记住</small>
       {/if}
     </div>
     <button
@@ -854,6 +891,13 @@
 
   .export-button {
     min-width: 116px;
+  }
+
+  .remember-hint {
+    display: block;
+    margin-top: 3px;
+    color: var(--text-3);
+    font-size: var(--font-xs);
   }
 
   @media (max-width: 760px) {

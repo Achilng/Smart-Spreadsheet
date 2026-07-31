@@ -28,6 +28,14 @@ export interface JsonExportNoteInspection {
 export type ImageFileExportMode = "copy" | "hardlink";
 export type ImageFileRenameMode = "original" | "random" | "custom";
 
+export interface ImageExportSettings {
+  destination: string | null;
+  renameEnabled: boolean;
+  renameMode: "random" | "custom";
+  customName: string;
+  stripMetadata: boolean;
+}
+
 export interface ImageFilesExportResult {
   directory: string;
   exported: number;
@@ -92,6 +100,14 @@ export function exportSelectedImages(
 
 export function collectExportImages(paths: string[]): Promise<string[]> {
   return invoke<string[]>("collect_export_images", { paths });
+}
+
+export function getImageExportSettings(): Promise<ImageExportSettings> {
+  return invoke<ImageExportSettings>("get_image_export_settings");
+}
+
+export function setImageExportSettings(settings: ImageExportSettings): Promise<void> {
+  return invoke<void>("set_image_export_settings", { settings });
 }
 
 export interface JsonDedupePreviewItem {
