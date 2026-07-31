@@ -723,8 +723,8 @@ impl DataDirectory {
                 );
                 continue;
             }
-            // 缓存删除失败不应阻止元数据更新；下次图片加载仍会按文件签名生成新缓存。
-            let _ = remove_row_thumbnail_cache(self, target.row_id);
+            // 缓存键包含文件元数据签名，替换受管副本后旧缓存自动失效，
+            // 无需为每一行扫描整个缓存目录；旧文件由统一容量淘汰回收。
             updates.push(ExistingImageUpdate {
                 row_id: target.row_id,
                 identity,
@@ -817,20 +817,6 @@ fn refresh_stored_copy(
         return Err(error);
     }
     replace_output_file(&temporary, &target)
-}
-
-fn remove_row_thumbnail_cache(
-    directory: &DataDirectory,
-    row_id: i64,
-) -> Result<(), std::io::Error> {
-    let prefix = format!("row-{row_id}-");
-    for entry in fs::read_dir(directory.thumbnail_cache_path())? {
-        let entry = entry?;
-        if entry.path().is_file() && entry.file_name().to_string_lossy().starts_with(&prefix) {
-            fs::remove_file(entry.path())?;
-        }
-    }
-    Ok(())
 }
 
 struct ProcessImageContext<'a> {

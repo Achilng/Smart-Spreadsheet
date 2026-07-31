@@ -660,6 +660,9 @@ mod tests {
                 [],
             )
             .unwrap();
+        connection
+            .execute("INSERT INTO tags(name) VALUES ('迁移保留标签')", [])
+            .unwrap();
         drop(connection);
 
         fs::create_dir_all(&temporary.destination).unwrap();
@@ -695,6 +698,14 @@ mod tests {
             )
             .unwrap();
         assert_eq!(value, "preserved");
+        let migrated_tag_count: i64 = migrated
+            .query_row(
+                "SELECT COUNT(*) FROM tags WHERE name = '迁移保留标签'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(migrated_tag_count, 1);
     }
 
     #[test]

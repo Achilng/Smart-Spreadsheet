@@ -1,9 +1,9 @@
 use std::collections::hash_map::DefaultHasher;
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, OpenOptions};
 use std::hash::{Hash, Hasher};
-use std::io::{Cursor, Read, Write};
+use std::io::{Cursor, Write};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use image::{DynamicImage, ImageFormat, ImageReader};
@@ -17,9 +17,10 @@ const GALLERY_PREVIEW_MAX_EDGE: u32 = 1024;
 const PREVIEW_MAX_EDGE: u32 = 2048;
 const DERIVED_CACHE_MAX_BYTES: u64 = 512 * 1024 * 1024;
 const DERIVED_CACHE_TARGET_BYTES: u64 = 448 * 1024 * 1024;
-const CACHE_PRUNE_INTERVAL: usize = 32;
+const CACHE_PRUNE_NEW_BYTES: u64 = 64 * 1024 * 1024;
 const PNG_SIGNATURE: &[u8] = b"\x89PNG\r\n\x1a\n";
 static CACHE_WRITES: AtomicUsize = AtomicUsize::new(0);
+static CACHE_NEW_BYTES: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ImageVariant {
@@ -152,8 +153,6 @@ fn load_external(
         let image = ImageReader::open(path)?.with_guessed_format()?.decode()?;
         return encode_and_cache_image(
             directory,
-            row_id,
-            cache_label,
             cache_path,
             image,
             variant
@@ -192,8 +191,6 @@ fn load_stored(
         let image = ImageReader::open(&path)?.with_guessed_format()?.decode()?;
         return encode_and_cache_image(
             directory,
-            row_id,
-            cache_label,
             cache_path,
             image,
             variant
@@ -219,17 +216,16 @@ fn load_original(path: &Path, origin: ImageOrigin) -> Result<ImagePayload, RowIm
 
 fn encode_and_cache_image(
     directory: &DataDirectory,
-    row_id: i64,
-    cache_label: &str,
     cache_path: PathBuf,
     image: DynamicImage,
     max_edge: u32,
     origin: ImageOrigin,
 ) -> Result<ImagePayload, RowImageError> {
     let payload = encode_resized(image, max_edge, origin, false)?;
-    write_cache_atomically(&cache_path, &payload.png_bytes)?;
-    remove_stale_row_variant_cache(directory, row_id, cache_label, &cache_path)?;
-    prune_derived_cache_if_needed(directory, &cache_path);
+    if write_cache_atomically(&cache_path, &payload.png_bytes)? {
+        let written_bytes = u64::try_from(payload.png_bytes.len()).unwrap_or(u64::MAX);
+        prune_derived_cache_if_needed(directory, &cache_path, written_bytes);
+    }
     Ok(payload)
 }
 
@@ -264,13 +260,14 @@ fn read_cached_image(
     if !path.is_file() {
         return Ok(None);
     }
-    let mut bytes = Vec::new();
-    File::open(path)?.read_to_end(&mut bytes)?;
+    let bytes = fs::read(path)?;
     if !bytes.starts_with(PNG_SIGNATURE) {
         let _ = fs::remove_file(path);
         return Ok(None);
     }
-    let dimensions = image::image_dimensions(path)?;
+    let dimensions = ImageReader::new(Cursor::new(bytes.as_slice()))
+        .with_guessed_format()?
+        .into_dimensions()?;
     Ok(Some(ImagePayload {
         png_bytes: bytes,
         width: dimensions.0,
@@ -303,9 +300,9 @@ fn metadata_signature(metadata: &fs::Metadata) -> (u64, u128) {
     (metadata.len(), modified)
 }
 
-fn write_cache_atomically(path: &Path, bytes: &[u8]) -> Result<(), RowImageError> {
+fn write_cache_atomically(path: &Path, bytes: &[u8]) -> Result<bool, RowImageError> {
     if path.is_file() {
-        return Ok(());
+        return Ok(false);
     }
     let parent = path
         .parent()
@@ -320,50 +317,29 @@ fn write_cache_atomically(path: &Path, bytes: &[u8]) -> Result<(), RowImageError
         .create_new(true)
         .open(&temporary)?;
     file.write_all(bytes)?;
-    file.sync_all()?;
+    // 缩略图是可重建的派生数据；关闭句柄后原子改名即可，不为每张图强制刷新磁盘缓存。
     drop(file);
-    if let Err(error) = fs::rename(&temporary, path) {
-        let _ = fs::remove_file(&temporary);
-        if !path.is_file() {
-            return Err(error.into());
+    match fs::rename(&temporary, path) {
+        Ok(()) => Ok(true),
+        Err(error) => {
+            let _ = fs::remove_file(&temporary);
+            if path.is_file() {
+                Ok(false)
+            } else {
+                Err(error.into())
+            }
         }
     }
-    Ok(())
 }
 
-fn remove_stale_row_variant_cache(
+fn prune_derived_cache_if_needed(
     directory: &DataDirectory,
-    row_id: i64,
-    cache_label: &str,
-    current: &Path,
-) -> Result<(), RowImageError> {
-    let prefix = format!("row-{row_id}-{cache_label}-");
-    let legacy_prefix = format!("row-{row_id}-");
-    for entry in fs::read_dir(directory.thumbnail_cache_path())? {
-        let entry = entry?;
-        let path = entry.path();
-        let name = entry.file_name();
-        let name = name.to_string_lossy();
-        let is_legacy_thumbnail = cache_label == "thumb"
-            && name.starts_with(&legacy_prefix)
-            && !name.starts_with(&prefix)
-            && name.strip_prefix(&legacy_prefix).is_some_and(|suffix| {
-                suffix.strip_suffix(".png").is_some_and(|hash| {
-                    hash.len() == 16 && hash.chars().all(|c| c.is_ascii_hexdigit())
-                })
-            });
-        if path != current && path.is_file() && (name.starts_with(&prefix) || is_legacy_thumbnail) {
-            fs::remove_file(path)?;
-        }
-    }
-    Ok(())
-}
-
-fn prune_derived_cache_if_needed(directory: &DataDirectory, protected_path: &Path) {
-    if !CACHE_WRITES
-        .fetch_add(1, Ordering::Relaxed)
-        .is_multiple_of(CACHE_PRUNE_INTERVAL)
-    {
+    protected_path: &Path,
+    written_bytes: u64,
+) {
+    let previous_writes = CACHE_WRITES.fetch_add(1, Ordering::Relaxed);
+    let previous_bytes = CACHE_NEW_BYTES.fetch_add(written_bytes, Ordering::Relaxed);
+    if !cache_prune_due(previous_writes, previous_bytes, written_bytes) {
         return;
     }
 
@@ -407,6 +383,12 @@ fn prune_derived_cache_if_needed(directory: &DataDirectory, protected_path: &Pat
     }
 }
 
+fn cache_prune_due(previous_writes: usize, previous_bytes: u64, written_bytes: u64) -> bool {
+    previous_writes == 0
+        || written_bytes
+            >= CACHE_PRUNE_NEW_BYTES.saturating_sub(previous_bytes % CACHE_PRUNE_NEW_BYTES)
+}
+
 fn nonempty_path(value: Option<&str>) -> Option<&Path> {
     nonempty_text(value).map(Path::new)
 }
@@ -421,6 +403,26 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::*;
+
+    #[test]
+    fn cache_pruning_runs_once_then_only_after_each_new_byte_budget() {
+        assert!(cache_prune_due(0, 0, 1));
+        assert!(!cache_prune_due(1, 0, 1));
+        assert!(!cache_prune_due(1, CACHE_PRUNE_NEW_BYTES - 2, 1));
+        assert!(cache_prune_due(2, CACHE_PRUNE_NEW_BYTES - 1, 1));
+        assert!(cache_prune_due(3, 0, CACHE_PRUNE_NEW_BYTES));
+
+        let average_cache_file_bytes = 32 * 1024;
+        let mut cumulative_bytes = 0_u64;
+        let mut full_directory_scans = 0;
+        for previous_writes in 0..50_000 {
+            if cache_prune_due(previous_writes, cumulative_bytes, average_cache_file_bytes) {
+                full_directory_scans += 1;
+            }
+            cumulative_bytes += average_cache_file_bytes;
+        }
+        assert_eq!(full_directory_scans, 25);
+    }
 
     #[test]
     fn falls_back_to_stored_copy_and_reuses_thumbnail_cache() {
