@@ -17,7 +17,7 @@
     setSingleArtistOnly,
     setUntaggedOnly,
   } from "../../stores/row-store.svelte";
-  import { clearSelection } from "../../stores/selection-store.svelte";
+  import { clearSelection, resetSelectionAnchor } from "../../stores/selection-store.svelte";
   import { softFade, softPop } from "../../ui/motion";
   import type { DedupeMode } from "../../api";
   import SizeSlider from "./SizeSlider.svelte";
@@ -43,7 +43,24 @@
   });
 
   function setDedupeMode(mode: DedupeMode): void {
-    duplicateBrowse.dedupeMode = mode;
+    if (duplicateBrowse.dedupeMode !== mode) {
+      duplicateBrowse.dedupeMode = mode;
+      clearSelection();
+    }
+  }
+
+  function setGroupSort(sortByCount: boolean): void {
+    if (groupBrowse.sortByCount !== sortByCount) {
+      groupBrowse.sortByCount = sortByCount;
+      resetSelectionAnchor();
+    }
+  }
+
+  function setDuplicateSort(sortByCount: boolean): void {
+    if (duplicateBrowse.sortByCount !== sortByCount) {
+      duplicateBrowse.sortByCount = sortByCount;
+      resetSelectionAnchor();
+    }
   }
 
   const searchTerm = $derived(rowStore.search.trim());
@@ -86,13 +103,13 @@
           type="button"
           class="txt-opt"
           class:is-active={!groupBrowse.sortByCount}
-          onclick={() => (groupBrowse.sortByCount = false)}
+          onclick={() => setGroupSort(false)}
         >按名称</button>
         <button
           type="button"
           class="txt-opt"
           class:is-active={groupBrowse.sortByCount}
-          onclick={() => (groupBrowse.sortByCount = true)}
+          onclick={() => setGroupSort(true)}
         >按数量</button>
       </div>
       <button
@@ -127,13 +144,13 @@
           type="button"
           class="txt-opt"
           class:is-active={duplicateBrowse.sortByCount}
-          onclick={() => (duplicateBrowse.sortByCount = true)}
+          onclick={() => setDuplicateSort(true)}
         >按数量</button>
         <button
           type="button"
           class="txt-opt"
           class:is-active={!duplicateBrowse.sortByCount}
-          onclick={() => (duplicateBrowse.sortByCount = false)}
+          onclick={() => setDuplicateSort(false)}
         >按名称</button>
       </div>
     {/if}

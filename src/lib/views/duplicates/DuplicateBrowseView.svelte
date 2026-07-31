@@ -72,6 +72,19 @@
         ),
   );
 
+  /** Shift 连选只覆盖当前展开区段中已加载、已显示的成员。 */
+  const selectionOrder = $derived.by(() => {
+    const ids: number[] = [];
+    for (const cluster of sortedClusters) {
+      if (!isExpanded(cluster.key)) continue;
+      const data = duplicateBrowse.memberCache[cluster.key];
+      if (data) {
+        ids.push(...data.rows.map(row => row.id));
+      }
+    }
+    return ids;
+  });
+
   function isExpanded(key: string): boolean {
     return duplicateBrowse.expandedKeys.includes(key);
   }
@@ -157,7 +170,12 @@
                 <p class="muted grid-status">加载失败：{data.error}</p>
               {:else}
                 {#each data.rows as member (member.id)}
-                  <GroupSectionCard row={member} onactivate={() => setActive(member)} />
+                  <GroupSectionCard
+                    row={member}
+                    {selectionOrder}
+                    selectionScope="duplicates"
+                    onactivate={() => setActive(member)}
+                  />
                 {/each}
                 {#if data.rows.length < data.totalCount}
                   <button

@@ -2,7 +2,7 @@
   import { app, formatCount, type ViewMode } from "../../stores/app-state.svelte";
   import { duplicateBrowse } from "../../stores/duplicate-browse-store.svelte";
   import { groupStore } from "../../stores/group-store.svelte";
-  import { clearSelection } from "../../stores/selection-store.svelte";
+  import { clearSelection, resetSelectionAnchor } from "../../stores/selection-store.svelte";
   import { VIEW_MODES } from "./view-modes";
 
   let segmentedEl = $state<HTMLElement | null>(null);
@@ -10,10 +10,15 @@
   let indicator = $state<{ x: number; w: number } | null>(null);
 
   function switchView(mode: ViewMode): void {
-    const wasGroup = app.viewMode === "group";
-    const isGroup = mode === "group";
+    const previousMode = app.viewMode;
+    const stayedInFlatView =
+      (previousMode === "gallery" || previousMode === "table") &&
+      (mode === "gallery" || mode === "table");
     app.viewMode = mode;
-    if (wasGroup !== isGroup) {
+    resetSelectionAnchor();
+    // 画廊/表格共享同一筛选结果，可保留选区；分组/重复项的卡片集合不同，
+    // 跨边界时清空，避免批量操作包含当前视图没有显示的行。
+    if (previousMode !== mode && !stayedInFlatView) {
       clearSelection();
     }
   }

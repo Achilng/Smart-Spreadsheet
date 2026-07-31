@@ -7,12 +7,14 @@
     clearSelection,
     getSelectedCount,
     materializeSelection,
-    selectAllFiltered,
     selection,
     selectionDto,
     selectionIds,
   } from "../../stores/selection-store.svelte";
-  import { rowStore } from "../../stores/row-store.svelte";
+  import {
+    currentViewSelectionTotal,
+    selectAllCurrentView,
+  } from "../../stores/view-selection.svelte";
   import Dropdown from "../../ui/Dropdown.svelte";
   import GroupAssignDialog from "../groups/GroupAssignDialog.svelte";
   import PromptEditDialog from "./PromptEditDialog.svelte";
@@ -26,6 +28,7 @@
 
   const count = $derived(getSelectedCount());
   const exportItems = $derived(buildExportItems());
+  const viewTotal = $derived(currentViewSelectionTotal());
   let selectingAll = $state(false);
 
   async function selectAll(): Promise<void> {
@@ -34,7 +37,7 @@
     }
     selectingAll = true;
     try {
-      await selectAllFiltered();
+      await selectAllCurrentView();
     } finally {
       selectingAll = false;
     }
@@ -88,7 +91,7 @@
         <small class="faint">（筛选全选{selectionIds.size > 0 ? `，排除 ${formatCount(selectionIds.size)} 张` : ""}）</small>
       {/if}
     </span>
-    {#if selection.kind === "explicit" && count < rowStore.totalCount}
+    {#if selection.kind === "explicit" && (viewTotal == null || count < viewTotal)}
       <button
         type="button"
         class="btn sel-act"

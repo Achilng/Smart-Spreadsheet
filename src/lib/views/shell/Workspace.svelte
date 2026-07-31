@@ -11,10 +11,10 @@
   import {
     clearSelection,
     getSelectedCount,
-    selectAllFiltered,
     selection,
     selectionDto,
   } from "../../stores/selection-store.svelte";
+  import { selectAllCurrentView } from "../../stores/view-selection.svelte";
   import {
     resetRows,
     revealRowInGallery,
@@ -216,9 +216,7 @@
       !(event.target instanceof HTMLTextAreaElement)
     ) {
       event.preventDefault();
-      if (rowStore.totalCount > 0) {
-        void selectAllFiltered();
-      }
+      void selectAllCurrentView();
       return;
     }
 

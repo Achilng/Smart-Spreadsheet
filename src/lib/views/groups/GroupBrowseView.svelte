@@ -88,6 +88,26 @@
       : groupStore.list,
   );
 
+  /** Shift 连选只覆盖当前已加载、已渲染的卡片，顺序与页面视觉顺序一致。 */
+  const selectionOrder = $derived.by(() => {
+    const ids: number[] = [];
+    for (const group of sortedGroups) {
+      if (!isExpanded(group.id)) continue;
+      const data = groupBrowse.memberCache[group.id];
+      if (!data) continue;
+      const limit = getRenderLimit(String(group.id));
+      ids.push(...data.rows.slice(0, limit).map(row => row.id));
+    }
+    if (groupBrowse.ungroupedExpanded && groupBrowse.ungrouped) {
+      ids.push(
+        ...groupBrowse.ungrouped.rows
+          .slice(0, getRenderLimit("ungrouped"))
+          .map(row => row.id),
+      );
+    }
+    return ids;
+  });
+
   function isExpanded(groupId: number): boolean {
     return groupBrowse.expandedIds.includes(groupId);
   }
@@ -183,7 +203,12 @@
                 <p class="muted grid-status">加载失败：{data.error}</p>
               {:else}
                 {#each data.rows.slice(0, limit) as member (member.id)}
-                  <GroupSectionCard row={member} onactivate={() => setActive(member)} />
+                  <GroupSectionCard
+                    row={member}
+                    {selectionOrder}
+                    selectionScope="groups"
+                    onactivate={() => setActive(member)}
+                  />
                 {/each}
                 {#if limit < data.rows.length}
                   <div class="render-sentinel" use:observeSentinel={renderKey}></div>
@@ -221,7 +246,12 @@
               <p class="muted grid-status">没有未分组的行。</p>
             {:else}
               {#each uData.rows.slice(0, uLimit) as row (row.id)}
-                <GroupSectionCard {row} onactivate={() => setActive(row)} />
+                <GroupSectionCard
+                  {row}
+                  {selectionOrder}
+                  selectionScope="groups"
+                  onactivate={() => setActive(row)}
+                />
               {/each}
               {#if uLimit < uData.rows.length}
                 <div class="render-sentinel" use:observeSentinel={"ungrouped"}></div>

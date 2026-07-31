@@ -32,6 +32,7 @@ export const selection = $state({
 export const selectionIds = new SvelteSet<number>();
 
 let anchorIndex: number | null = null;
+let orderedAnchor: { scope: string; rowId: number } | null = null;
 
 export function isRowSelected(rowId: number): boolean {
   return selection.kind === "explicit" ? selectionIds.has(rowId) : !selectionIds.has(rowId);
@@ -103,6 +104,55 @@ export function modifierSelect(rowId: number, index: number, event: MouseEvent):
   return false;
 }
 
+/**
+ * 在分组/重复项这类“多个分页区段拼成的卡片流”里勾选一行。
+ * orderedRowIds 必须是当前已经渲染卡片的视觉顺序；Shift 只选择两端之间
+ * 已经加载并显示的卡片，不会把折叠区段或尚未加载的成员静默算进去。
+ */
+export function toggleOrderedRow(
+  rowId: number,
+  orderedRowIds: readonly number[],
+  scope: string,
+  shiftKey: boolean,
+): void {
+  if (shiftKey && orderedAnchor?.scope === scope && orderedAnchor.rowId !== rowId) {
+    const fromIndex = orderedRowIds.indexOf(orderedAnchor.rowId);
+    const toIndex = orderedRowIds.indexOf(rowId);
+    if (fromIndex >= 0 && toIndex >= 0) {
+      const from = Math.min(fromIndex, toIndex);
+      const to = Math.max(fromIndex, toIndex);
+      for (let index = from; index <= to; index += 1) {
+        setRowSelected(orderedRowIds[index], true);
+      }
+    } else {
+      setRowSelected(rowId, !isRowSelected(rowId));
+    }
+  } else {
+    setRowSelected(rowId, !isRowSelected(rowId));
+  }
+  orderedAnchor = { scope, rowId };
+  anchorIndex = null;
+  selection.version += 1;
+}
+
+/** 分组卡片主体的 Ctrl/Shift 选择；普通单击仍交给详情面板。 */
+export function modifierSelectOrdered(
+  rowId: number,
+  orderedRowIds: readonly number[],
+  scope: string,
+  event: MouseEvent,
+): boolean {
+  if (event.shiftKey && orderedAnchor?.scope === scope) {
+    toggleOrderedRow(rowId, orderedRowIds, scope, true);
+    return true;
+  }
+  if (event.ctrlKey || event.metaKey) {
+    toggleOrderedRow(rowId, orderedRowIds, scope, false);
+    return true;
+  }
+  return false;
+}
+
 /** 用一组明确行 ID 覆盖当前选择（切换为 explicit 模式）。 */
 export function setExplicitSelection(ids: number[]): void {
   selection.kind = "explicit";
@@ -119,6 +169,7 @@ export function setExplicitSelection(ids: number[]): void {
     selectionIds.add(id);
   }
   anchorIndex = null;
+  orderedAnchor = null;
   selection.version += 1;
 }
 
@@ -134,12 +185,14 @@ export function clearSelection(): void {
   selection.filteredTotal = 0;
   selectionIds.clear();
   anchorIndex = null;
+  orderedAnchor = null;
   selection.version += 1;
 }
 
 /** 排序等重排操作后调用：清掉 Shift 范围选择的锚点，避免按旧顺序选错行。 */
 export function resetSelectionAnchor(): void {
   anchorIndex = null;
+  orderedAnchor = null;
 }
 
 /** 全选当前筛选结果；行数在后端按当前筛选统计。 */
@@ -185,6 +238,7 @@ export async function selectAllFiltered(): Promise<number> {
   selection.filteredTotal = totalCount;
   selectionIds.clear();
   anchorIndex = null;
+  orderedAnchor = null;
   selection.version += 1;
   return totalCount;
 }
@@ -213,6 +267,7 @@ export async function materializeSelection(): Promise<number> {
     selectionIds.add(rowId);
   }
   anchorIndex = null;
+  orderedAnchor = null;
   selection.version += 1;
   return rowIds.length;
 }
