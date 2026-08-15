@@ -304,6 +304,9 @@ pub enum RuleAction {
     SetNote {
         value: String,
     },
+    SetNoteSequence {
+        prefix: String,
+    },
     AppendNote {
         value: String,
         #[serde(default = "default_note_separator")]
@@ -1043,6 +1046,8 @@ impl Database {
         validate_group_targets(&self.connection, &draft.actions)?;
         let prepared = PreparedConditionSet::new(&draft.conditions)?;
         let rows = load_rule_rows(&self.connection, None)?;
+        let mut sequence_counters =
+            seed_note_sequence_counters(&self.connection, &note_sequence_prefixes(&draft.actions))?;
         let mut matched = Vec::new();
         let mut needing_changes = 0_u64;
         let mut stopped = 0_u64;
@@ -1051,7 +1056,8 @@ impl Database {
                 continue;
             }
             matched.push(row.id);
-            let (_, changed_actions, should_stop) = simulate_actions(row, &draft.actions)?;
+            let (_, changed_actions, should_stop) =
+                simulate_actions(row, &draft.actions, &mut sequence_counters)?;
             if changed_actions > 0 {
                 needing_changes += 1;
             }
@@ -1174,6 +1180,8 @@ impl Database {
         let prepared = PreparedConditionSet::new(&rule.conditions)?;
         let rows = load_rule_rows(&transaction, Some(row_ids))?;
         let scanned_rows = u64::try_from(rows.len()).map_err(|_| DatabaseError::CountOverflow)?;
+        let mut sequence_counters =
+            seed_note_sequence_counters(&transaction, &note_sequence_prefixes(&rule.actions))?;
         let mut matched_rows = 0_u64;
         let mut actions_changed = 0_u64;
         let mut changed_row_ids = HashSet::new();
@@ -1183,7 +1191,8 @@ impl Database {
                 continue;
             }
             matched_rows += 1;
-            let (updated, changed_actions, should_stop) = simulate_actions(&row, &rule.actions)?;
+            let (updated, changed_actions, should_stop) =
+                simulate_actions(&row, &rule.actions, &mut sequence_counters)?;
             if changed_actions > 0 {
                 persist_rule_row(&transaction, &row, &updated)?;
                 changed_row_ids.insert(row.id);
@@ -1850,6 +1859,7 @@ fn normalize_draft_lists(draft: &mut AutomationRuleDraft) {
                 *tags = normalized_strings(tags);
             }
             RuleAction::PrefixArtist { artists } => *artists = normalized_strings(artists),
+            RuleAction::SetNoteSequence { prefix } => *prefix = prefix.trim().to_owned(),
             _ => {}
         }
     }
@@ -2029,6 +2039,9 @@ fn validate_action(action: &RuleAction) -> Result<(), AutomationRuleError> {
         RuleAction::AppendNote { value, .. } if value.is_empty() => {
             Err(AutomationRuleError::EmptyValue("备注任务"))
         }
+        RuleAction::SetNoteSequence { prefix } if prefix.trim().is_empty() => {
+            Err(AutomationRuleError::EmptyValue("备注编号前缀"))
+        }
         _ => Ok(()),
     }
 }
@@ -2207,6 +2220,7 @@ fn load_rule_rows(
 fn simulate_actions(
     original: &RuleRow,
     actions: &[RuleAction],
+    sequence_counters: &mut HashMap<String, u64>,
 ) -> Result<(RuleRow, u64, bool), AutomationRuleError> {
     let mut row = original.clone();
     let mut changed_actions = 0_u64;
@@ -2305,6 +2319,7 @@ fn simulate_actions(
                     false
                 }
             }
+            RuleAction::SetNoteSequence { prefix } => apply_note_sequence(&mut row, prefix, sequence_counters),
             RuleAction::AppendNote { value, separator } => {
                 let updated = match row.note.as_deref().filter(|note| !note.is_empty()) {
                     Some(note) => format!("{note}{separator}{value}"),
@@ -2543,6 +2558,74 @@ fn replace_text(value: &str, find: &str, replace: &str, case_sensitive: bool) ->
 
 fn nonempty(value: String) -> Option<String> {
     (!value.trim().is_empty()).then_some(value)
+}
+
+fn note_sequence_prefixes(actions: &[RuleAction]) -> Vec<String> {
+    let mut prefixes = Vec::new();
+    let mut seen = HashSet::new();
+    for action in actions {
+        if let RuleAction::SetNoteSequence { prefix } = action {
+            let prefix = prefix.trim().to_owned();
+            if !prefix.is_empty() && seen.insert(prefix.clone()) {
+                prefixes.push(prefix);
+            }
+        }
+    }
+    prefixes
+}
+
+fn seed_note_sequence_counters(
+    connection: &Connection,
+    prefixes: &[String],
+) -> Result<HashMap<String, u64>, AutomationRuleError> {
+    let mut counters = HashMap::new();
+    if prefixes.is_empty() {
+        return Ok(counters);
+    }
+    let mut statement = connection.prepare("SELECT note FROM rows WHERE note IS NOT NULL")?;
+    let notes = statement
+        .query_map([], |row| row.get::<_, String>(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+    for prefix in prefixes {
+        let max = notes
+            .iter()
+            .filter_map(|note| parse_note_sequence_number(note, prefix))
+            .max()
+            .unwrap_or(0);
+        counters.insert(prefix.clone(), max);
+    }
+    Ok(counters)
+}
+
+fn apply_note_sequence(
+    row: &mut RuleRow,
+    prefix: &str,
+    sequence_counters: &mut HashMap<String, u64>,
+) -> bool {
+    let prefix = prefix.trim();
+    if prefix.is_empty() {
+        return false;
+    }
+    if parse_note_sequence_number(row.note.as_deref().unwrap_or(""), prefix).is_some() {
+        return false;
+    }
+    let next = sequence_counters
+        .get(prefix)
+        .copied()
+        .unwrap_or(0)
+        .saturating_add(1);
+    sequence_counters.insert(prefix.to_owned(), next);
+    row.note = Some(format!("{prefix}{next}"));
+    true
+}
+
+fn parse_note_sequence_number(note: &str, prefix: &str) -> Option<u64> {
+    let trimmed = note.trim();
+    let remainder = trimmed.strip_prefix(prefix)?;
+    if remainder.is_empty() || !remainder.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    remainder.parse().ok()
 }
 
 fn build_regex(value: &str, case_sensitive: bool) -> Result<Regex, AutomationRuleError> {
@@ -3299,6 +3382,65 @@ mod tests {
             }],
         );
         assert!(database.preview_automation_rule_draft(&invalid).is_err());
+    }
+
+    #[test]
+    fn set_note_sequence_continues_from_library_max_and_skips_existing() {
+        let mut database = Database::open_in_memory().unwrap();
+        let first = append_row(&mut database, "seq-1", "watercolor");
+        let existing = append_row(&mut database, "seq-2", "watercolor");
+        let later = append_row(&mut database, "seq-3", "watercolor");
+        let skip_prompt = append_row(&mut database, "seq-4", "oil painting");
+        database.update_note(existing, "水彩7").unwrap();
+        database.update_note(first, "草稿").unwrap();
+
+        let rule_draft = draft(
+            "水彩编号",
+            RuleCondition::Prompt {
+                scope: PromptScope::Positive,
+                operator: PromptOperator::ContainsAll,
+                value: "watercolor".into(),
+                case_sensitive: false,
+            },
+            vec![RuleAction::SetNoteSequence {
+                prefix: "水彩".into(),
+            }],
+        );
+        let preview = database.preview_automation_rule_draft(&rule_draft).unwrap();
+        assert_eq!(preview.matched_rows, 3);
+        assert_eq!(preview.rows_needing_changes, 2);
+
+        let saved = database.create_automation_rule(&rule_draft).unwrap();
+        let result = database.run_automation_rule_on_library(saved.id).unwrap();
+        assert_eq!(result.changed_rows, 2);
+        assert_eq!(
+            database.get_rows_by_ids(&[first]).unwrap()[0].note.as_deref(),
+            Some("水彩8")
+        );
+        assert_eq!(
+            database.get_rows_by_ids(&[existing]).unwrap()[0]
+                .note
+                .as_deref(),
+            Some("水彩7")
+        );
+        assert_eq!(
+            database.get_rows_by_ids(&[later]).unwrap()[0].note.as_deref(),
+            Some("水彩9")
+        );
+        assert_eq!(
+            database.get_rows_by_ids(&[skip_prompt]).unwrap()[0].note,
+            None
+        );
+
+        let rerun = database.run_automation_rule_on_library(saved.id).unwrap();
+        assert_eq!(rerun.changed_rows, 0);
+        assert_eq!(
+            parse_note_sequence_number("水彩10", "水彩"),
+            Some(10)
+        );
+        assert_eq!(parse_note_sequence_number("水彩", "水彩"), None);
+        assert_eq!(parse_note_sequence_number("草稿", "水彩"), None);
+        assert_eq!(parse_note_sequence_number("水彩7稿", "水彩"), None);
     }
 
     #[test]

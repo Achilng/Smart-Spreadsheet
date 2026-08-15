@@ -529,6 +529,7 @@
       case "replacePrompt": return { type, field: "positive", find: "", replace: "", caseSensitive: true };
       case "prefixArtist": return { type, artists: [] };
       case "setNote": return { type, value: "" };
+      case "setNoteSequence": return { type, prefix: "" };
       case "appendNote": return { type, value: "", separator: "\n" };
       case "clearNote": return { type };
       case "stopProcessing": return { type };

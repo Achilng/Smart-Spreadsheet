@@ -41,6 +41,7 @@
     { value: "replacePrompt", label: "查找替换提示词" },
     { value: "prefixArtist", label: "修正 artist: 前缀" },
     { value: "setNote", label: "设置备注" },
+    { value: "setNoteSequence", label: "备注自动编号" },
     { value: "appendNote", label: "追加备注" },
     { value: "clearNote", label: "清空备注" },
     { value: "stopProcessing", label: "停止这张图片的后续规则" },
@@ -57,6 +58,7 @@
       case "replacePrompt": return { type, field: "positive", find: "", replace: "", caseSensitive: true };
       case "prefixArtist": return { type, artists: [] };
       case "setNote": return { type, value: "" };
+      case "setNoteSequence": return { type, prefix: "" };
       case "appendNote": return { type, value: "", separator: "\n" };
       case "clearNote": return { type };
       case "stopProcessing": return { type };
@@ -88,6 +90,7 @@
       case "deletePromptTags":
       case "setNote":
       case "appendNote": return value.value.trim() !== "";
+      case "setNoteSequence": return value.prefix.trim() !== "";
       case "replacePrompt": return value.find.trim() !== "" || value.replace.trim() !== "";
       case "prefixArtist": return value.artists.length > 0;
       default: return false;
@@ -162,6 +165,9 @@
       {:else if action.type === "setNote" || action.type === "appendNote"}
         <label class="wide"><span>{action.type === "setNote" ? "新备注" : "追加内容"}</span><textarea rows="2" value={action.value} oninput={event => patch({ value: text(event) })}></textarea></label>
         {#if action.type === "appendNote"}<label><span>分隔符</span><select value={action.separator} onchange={event => patch({ separator: (event.currentTarget as HTMLSelectElement).value })}><option value={'\n'}>换行</option><option value="，">中文逗号</option><option value=" | ">竖线</option><option value=" ">空格</option></select></label>{/if}
+      {:else if action.type === "setNoteSequence"}
+        <label><span>前缀</span><input value={action.prefix} oninput={event => patch({ prefix: text(event) })} placeholder="例如：水彩" /></label>
+        <p class="description">命中图片会按“前缀 + 数字”依次编号，例如水彩1、水彩2。编号从整库已有同前缀备注的最大数字后面继续，已经是这个格式的备注不会改。</p>
       {:else if action.type === "clearNote"}
         <p class="description">清空命中图片的备注。</p>
       {:else if action.type === "stopProcessing"}

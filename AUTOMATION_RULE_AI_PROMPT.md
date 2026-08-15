@@ -719,9 +719,20 @@ Windows 路径中的反斜杠必须在 JSON 字符串中写成双反斜杠，例
 }
 ```
 
-用新内容覆盖命中图片原有备注。必须确认用户接受覆盖。不要用空字符串模拟清空，清空应使用 `clearNote`。
+用新内容覆盖命中图片原有备注。必须确认用户接受覆盖。不要用空字符串模拟清空，清空应使用 `clearNote`。不要用固定文本模拟编号；连续编号应使用 `setNoteSequence`。
 
-### 10. 追加备注
+### 10. 备注自动编号
+
+```json
+{
+  "type": "setNoteSequence",
+  "prefix": "水彩"
+}
+```
+
+把命中图片的备注写成“前缀 + 连续数字”，例如 `水彩1`、`水彩2`、`水彩3`。编号从整个资料库里已经是同一前缀格式的最大数字后面继续；已经完全符合该格式的备注不会改写。`prefix` 不能为空，前后空白会被去掉。同一次预览或执行会共用同一套计数，确保预览里“需要修改”的数量与实际写入一致。
+
+### 11. 追加备注
 
 ```json
 {
@@ -738,7 +749,7 @@ Windows 路径中的反斜杠必须在 JSON 字符串中写成双反斜杠，例
 - `" | "`：带空格的竖线。
 - `" "`：空格。
 
-### 11. 清空备注
+### 12. 清空备注
 
 ```json
 {
@@ -748,7 +759,7 @@ Windows 路径中的反斜杠必须在 JSON 字符串中写成双反斜杠，例
 
 清空命中图片的备注。这是批量删除备注内容，必须单独确认。
 
-### 12. 停止这张图片的后续规则
+### 13. 停止这张图片的后续规则
 
 ```json
 {
@@ -784,7 +795,7 @@ Windows 路径中的反斜杠必须在 JSON 字符串中写成双反斜杠，例
 - 条件可能让空提示词、无 Tag、无画师或未分组图片也命中。
 - 两个自动触发开关都打开。
 - `setGroup` 使用 `onlyIfUngrouped: false`。
-- 使用 `removeTags`、`clearGroup`、`deletePromptTags`、`replacePrompt`、`setNote` 或 `clearNote`。
+- 使用 `removeTags`、`clearGroup`、`deletePromptTags`、`replacePrompt`、`setNote`、`setNoteSequence` 或 `clearNote`。
 - 使用 `stopProcessing`。
 - 使用正则表达式。
 - 多条规则会读取前面规则刚刚修改的字段。
