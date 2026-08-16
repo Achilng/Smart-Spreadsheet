@@ -1,13 +1,15 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 
+use serde::Deserialize;
 use thiserror::Error;
 
 use super::{DataDirectory, StorageError};
-use crate::db::{RowSelection, TagMutationError};
+use crate::db::{ExportRow, RowSelection, TagMutationError};
 use crate::fsx::{TemporaryFile, has_extension, replace_output_file, unique_sibling_path};
+use crate::pipeline::extract_artist_tags;
 
 const PROGRESS_EVERY_ROWS: usize = 250;
 
@@ -21,6 +23,34 @@ pub struct JsonExportProgress {
 pub struct JsonExportOutcome {
     pub destination: PathBuf,
     pub exported: usize,
+    pub duplicates_removed: usize,
+    pub artists_added: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JsonExportOptions {
+    pub note_number_names: bool,
+    pub include_artists: bool,
+    pub deduplicate: bool,
+}
+
+impl Default for JsonExportOptions {
+    fn default() -> Self {
+        Self {
+            note_number_names: true,
+            include_artists: true,
+            deduplicate: true,
+        }
+    }
+}
+
+#[derive(Debug)]
+struct PreparedPreset {
+    fixed_prompt: String,
+    negative_prompt: String,
+    note: Option<String>,
+    artists_added: bool,
 }
 
 #[derive(Debug, Error)]
@@ -29,8 +59,6 @@ pub enum JsonExportError {
     InvalidExtension(PathBuf),
     #[error("没有可导出的行")]
     EmptySelection,
-    #[error("第 {position} 个导出项未填写备注；智绘姬 JSON 的预设名称不能为空")]
-    EmptyNote { position: usize },
     #[error("导出项 {first_position} 和 {second_position} 的备注重复：{note}")]
     DuplicateNote {
         note: String,
@@ -48,15 +76,15 @@ pub enum JsonExportError {
 }
 
 impl DataDirectory {
-    /// 把选中行导出为智绘姬 JSON：按入库顺序输出，以备注作为 preset 键，
-    /// 正向提示词 → fixedPrompt、负向提示词 → negativePrompt，
-    /// `fixedPrompt_end` 为空串、顶层 `images` 为空对象。
+    /// 把选中行导出为智绘姬 JSON。可把资料库画师串补入正向提示词，随后按最终
+    /// `fixedPrompt` 去重；同组优先保留有备注的行。预设名称默认使用“备注_序号”，
+    /// 空备注只使用序号。`fixedPrompt_end` 为空串、顶层 `images` 为空对象。
     /// 逐条写入临时文件，成功后原子替换目标。
     pub fn export_zhihuiji_json(
         &self,
         selection: &RowSelection,
         destination: impl AsRef<Path>,
-        use_numeric_names_for_empty: bool,
+        options: JsonExportOptions,
         progress: impl Fn(JsonExportProgress) + Sync,
     ) -> Result<JsonExportOutcome, JsonExportError> {
         let destination = destination.as_ref();
@@ -68,24 +96,40 @@ impl DataDirectory {
         if rows.is_empty() {
             return Err(JsonExportError::EmptySelection);
         }
+        let original_count = rows.len();
+        let rows = prepare_presets(rows, options);
+        let duplicates_removed = original_count - rows.len();
+        let artists_added = rows.iter().filter(|row| row.artists_added).count();
+
         let mut preset_names = Vec::with_capacity(rows.len());
         let mut first_position_by_name = HashMap::with_capacity(rows.len());
         for (index, row) in rows.iter().enumerate() {
             let position = index + 1;
-            let name = row
-                .note
-                .as_deref()
-                .map(str::trim)
-                .filter(|name| !name.is_empty())
-                .map(str::to_owned)
-                .or_else(|| use_numeric_names_for_empty.then(|| position.to_string()))
-                .ok_or(JsonExportError::EmptyNote { position })?;
-            if let Some(first_position) = first_position_by_name.insert(name.clone(), position) {
-                return Err(JsonExportError::DuplicateNote {
-                    note: name,
-                    first_position,
-                    second_position: position,
-                });
+            let note = row.note.as_deref().unwrap_or("");
+            let name = if options.note_number_names {
+                if note.is_empty() {
+                    position.to_string()
+                } else {
+                    format!("{note}_{position}")
+                }
+            } else {
+                let name = if note.is_empty() {
+                    position.to_string()
+                } else {
+                    note.to_owned()
+                };
+                if let Some(first_position) = first_position_by_name.insert(name.clone(), position)
+                {
+                    return Err(JsonExportError::DuplicateNote {
+                        note: name,
+                        first_position,
+                        second_position: position,
+                    });
+                }
+                name
+            };
+            if options.note_number_names {
+                first_position_by_name.insert(name.clone(), position);
             }
             preset_names.push(name);
         }
@@ -109,9 +153,9 @@ impl DataDirectory {
             writer.write_all(b"\n    ")?;
             serde_json::to_writer(&mut writer, &preset_names[index])?;
             writer.write_all(b": {\n      \"fixedPrompt\": ")?;
-            serde_json::to_writer(&mut writer, row.positive_prompt.as_deref().unwrap_or(""))?;
+            serde_json::to_writer(&mut writer, &row.fixed_prompt)?;
             writer.write_all(b",\n      \"fixedPrompt_end\": \"\",\n      \"negativePrompt\": ")?;
-            serde_json::to_writer(&mut writer, row.negative_prompt.as_deref().unwrap_or(""))?;
+            serde_json::to_writer(&mut writer, &row.negative_prompt)?;
             writer.write_all(b"\n    }")?;
 
             if exported % PROGRESS_EVERY_ROWS == 0 || exported == total {
@@ -132,8 +176,78 @@ impl DataDirectory {
         Ok(JsonExportOutcome {
             destination: destination.to_owned(),
             exported: total,
+            duplicates_removed,
+            artists_added,
         })
     }
+}
+
+fn prepare_presets(rows: Vec<ExportRow>, options: JsonExportOptions) -> Vec<PreparedPreset> {
+    let mut retained: Vec<PreparedPreset> = Vec::with_capacity(rows.len());
+    let mut index_by_prompt = HashMap::<String, usize>::with_capacity(rows.len());
+
+    for row in rows {
+        let positive_prompt = row.positive_prompt.as_deref().unwrap_or("");
+        let (fixed_prompt, artists_added) = if options.include_artists {
+            merge_missing_artists(positive_prompt, row.artists.as_deref())
+        } else {
+            (positive_prompt.to_owned(), false)
+        };
+        let preset = PreparedPreset {
+            fixed_prompt,
+            negative_prompt: row.negative_prompt.unwrap_or_default(),
+            note: row
+                .note
+                .as_deref()
+                .map(str::trim)
+                .filter(|note| !note.is_empty())
+                .map(str::to_owned),
+            artists_added,
+        };
+
+        let key = preset.fixed_prompt.trim();
+        if !options.deduplicate || key.is_empty() {
+            retained.push(preset);
+            continue;
+        }
+
+        if let Some(&existing_index) = index_by_prompt.get(key) {
+            if retained[existing_index].note.is_none() && preset.note.is_some() {
+                retained[existing_index] = preset;
+            }
+        } else {
+            index_by_prompt.insert(key.to_owned(), retained.len());
+            retained.push(preset);
+        }
+    }
+
+    retained
+}
+
+fn merge_missing_artists(positive_prompt: &str, artists: Option<&str>) -> (String, bool) {
+    let Some(artists) = artists.filter(|value| !value.trim().is_empty()) else {
+        return (positive_prompt.to_owned(), false);
+    };
+
+    let mut seen: HashSet<String> = extract_artist_tags(positive_prompt).into_iter().collect();
+    let missing: Vec<String> = extract_artist_tags(artists)
+        .into_iter()
+        .filter(|artist| seen.insert(artist.clone()))
+        .collect();
+    if missing.is_empty() {
+        return (positive_prompt.to_owned(), false);
+    }
+
+    let prompt = positive_prompt.trim();
+    let suffix = missing.join(", ");
+    let merged = if prompt.is_empty() {
+        suffix
+    } else if prompt.ends_with(',') {
+        format!("{prompt} {suffix}")
+    } else {
+        format!("{prompt}, {suffix}")
+    };
+    (merged, true)
 }
 
 #[cfg(test)]
@@ -147,26 +261,23 @@ mod tests {
     use crate::db::{NewRow, SourceType, TagMatchMode};
 
     #[test]
-    fn exports_selection_with_notes_as_preset_names() {
+    fn exports_selection_with_note_number_names() {
         let temporary = TemporaryJsonExport::new();
         let directory = DataDirectory::initialize(&temporary.data).unwrap();
         {
             let mut database = directory.open_database().unwrap();
-            let rows: Vec<NewRow> = [
-                ("第一行\n\"引号\"与中文", Some("负向一")),
-                ("second", None),
-            ]
-            .iter()
-            .enumerate()
-            .map(|(index, (positive, negative))| NewRow {
-                source_ordinal: (index + 1) as u32,
-                identity: format!("file:test\\{index}.png"),
-                positive_prompt: Some((*positive).to_owned()),
-                negative_prompt: negative.map(str::to_owned),
-                note: Some(["预设一", "预设二"][index].into()),
-                ..NewRow::default()
-            })
-            .collect();
+            let rows: Vec<NewRow> = [("第一行\n\"引号\"与中文", Some("负向一")), ("second", None)]
+                .iter()
+                .enumerate()
+                .map(|(index, (positive, negative))| NewRow {
+                    source_ordinal: (index + 1) as u32,
+                    identity: format!("file:test\\{index}.png"),
+                    positive_prompt: Some((*positive).to_owned()),
+                    negative_prompt: negative.map(str::to_owned),
+                    note: Some(["预设一", "预设二"][index].into()),
+                    ..NewRow::default()
+                })
+                .collect();
             database
                 .append_batch(SourceType::Folder, r"D:\test", &rows, |_| Ok(()))
                 .unwrap();
@@ -186,7 +297,7 @@ mod tests {
                     excluded_row_ids: Vec::new(),
                 },
                 &temporary.destination,
-                false,
+                JsonExportOptions::default(),
                 |_| {},
             )
             .unwrap();
@@ -194,11 +305,14 @@ mod tests {
         assert_eq!(outcome.exported, 2);
         let json: Value =
             serde_json::from_slice(&fs::read(&temporary.destination).unwrap()).unwrap();
-        assert_eq!(json["presets"]["预设一"]["fixedPrompt"], "第一行\n\"引号\"与中文");
-        assert_eq!(json["presets"]["预设一"]["fixedPrompt_end"], "");
-        assert_eq!(json["presets"]["预设一"]["negativePrompt"], "负向一");
-        assert_eq!(json["presets"]["预设二"]["fixedPrompt"], "second");
-        assert_eq!(json["presets"]["预设二"]["negativePrompt"], "");
+        assert_eq!(
+            json["presets"]["预设一_1"]["fixedPrompt"],
+            "第一行\n\"引号\"与中文"
+        );
+        assert_eq!(json["presets"]["预设一_1"]["fixedPrompt_end"], "");
+        assert_eq!(json["presets"]["预设一_1"]["negativePrompt"], "负向一");
+        assert_eq!(json["presets"]["预设二_2"]["fixedPrompt"], "second");
+        assert_eq!(json["presets"]["预设二_2"]["negativePrompt"], "");
         assert_eq!(json["images"], serde_json::json!({}));
     }
 
@@ -229,18 +343,18 @@ mod tests {
             .export_zhihuiji_json(
                 &RowSelection::Explicit { row_ids: vec![1] },
                 &temporary.destination,
-                false,
+                JsonExportOptions::default(),
                 |_| {},
             )
             .unwrap();
 
         let json: Value =
             serde_json::from_slice(&fs::read(&temporary.destination).unwrap()).unwrap();
-        assert_eq!(json["presets"]["替换后的预设"]["fixedPrompt"], "replaced");
+        assert_eq!(json["presets"]["替换后的预设_1"]["fixedPrompt"], "replaced");
     }
 
     #[test]
-    fn confirms_blank_fallback_and_rejects_all_name_collisions() {
+    fn merges_artists_then_deduplicates_and_prefers_a_note() {
         let temporary = TemporaryJsonExport::new();
         let directory = DataDirectory::initialize(&temporary.data).unwrap();
         {
@@ -253,14 +367,26 @@ mod tests {
                         NewRow {
                             source_ordinal: 1,
                             identity: "file:one".into(),
-                            positive_prompt: Some("one".into()),
+                            positive_prompt: Some("summer dress".into()),
+                            negative_prompt: Some("first negative".into()),
+                            artists: Some("artist:alice".into()),
                             ..NewRow::default()
                         },
                         NewRow {
                             source_ordinal: 2,
                             identity: "file:two".into(),
-                            positive_prompt: Some("two".into()),
-                            note: Some("同名".into()),
+                            positive_prompt: Some("summer dress, artist:alice".into()),
+                            negative_prompt: Some("retained negative".into()),
+                            note: Some("夏日白裙".into()),
+                            artists: Some("artist:alice".into()),
+                            ..NewRow::default()
+                        },
+                        NewRow {
+                            source_ordinal: 3,
+                            identity: "file:three".into(),
+                            positive_prompt: Some("summer dress".into()),
+                            note: Some("另一位画师".into()),
+                            artists: Some("artist:bob".into()),
                             ..NewRow::default()
                         },
                     ],
@@ -269,71 +395,91 @@ mod tests {
                 .unwrap();
         }
 
-        let blank = directory
+        let outcome = directory
             .export_zhihuiji_json(
-                &RowSelection::Explicit { row_ids: vec![1] },
+                &RowSelection::Explicit {
+                    row_ids: vec![1, 2, 3],
+                },
                 &temporary.destination,
-                false,
-                |_| {},
-            )
-            .unwrap_err();
-        assert!(matches!(blank, JsonExportError::EmptyNote { position: 1 }));
-        assert!(!temporary.destination.exists());
-
-        directory
-            .export_zhihuiji_json(
-                &RowSelection::Explicit { row_ids: vec![1, 2] },
-                &temporary.destination,
-                true,
+                JsonExportOptions::default(),
                 |_| {},
             )
             .unwrap();
+
+        assert_eq!(outcome.exported, 2);
+        assert_eq!(outcome.duplicates_removed, 1);
+        assert_eq!(outcome.artists_added, 1);
         let json: Value =
             serde_json::from_slice(&fs::read(&temporary.destination).unwrap()).unwrap();
-        assert_eq!(json["presets"]["1"]["fixedPrompt"], "one");
-        assert_eq!(json["presets"]["同名"]["fixedPrompt"], "two");
-        fs::remove_file(&temporary.destination).unwrap();
+        assert_eq!(
+            json["presets"]["夏日白裙_1"]["fixedPrompt"],
+            "summer dress, artist:alice"
+        );
+        assert_eq!(
+            json["presets"]["夏日白裙_1"]["negativePrompt"],
+            "retained negative"
+        );
+        assert_eq!(
+            json["presets"]["另一位画师_2"]["fixedPrompt"],
+            "summer dress, artist:bob"
+        );
+    }
 
+    #[test]
+    fn options_can_keep_rows_and_legacy_names() {
+        let temporary = TemporaryJsonExport::new();
+        let directory = DataDirectory::initialize(&temporary.data).unwrap();
         {
             let mut database = directory.open_database().unwrap();
-            database.update_note(1, "同名").unwrap();
+            database
+                .append_batch(
+                    SourceType::Folder,
+                    r"D:\test",
+                    &[
+                        NewRow {
+                            source_ordinal: 1,
+                            identity: "file:one".into(),
+                            positive_prompt: Some("same".into()),
+                            note: Some("预设一".into()),
+                            artists: Some("artist:alice".into()),
+                            ..NewRow::default()
+                        },
+                        NewRow {
+                            source_ordinal: 2,
+                            identity: "file:two".into(),
+                            positive_prompt: Some("same".into()),
+                            note: Some("预设二".into()),
+                            artists: Some("artist:alice".into()),
+                            ..NewRow::default()
+                        },
+                    ],
+                    |_| Ok(()),
+                )
+                .unwrap();
         }
-        let duplicate = directory
-            .export_zhihuiji_json(
-                &RowSelection::Explicit { row_ids: vec![1, 2] },
-                &temporary.destination,
-                false,
-                |_| {},
-            )
-            .unwrap_err();
-        assert!(matches!(
-            duplicate,
-            JsonExportError::DuplicateNote {
-                first_position: 1,
-                second_position: 2,
-                ..
-            }
-        ));
-        assert!(!temporary.destination.exists());
 
-        {
-            let mut database = directory.open_database().unwrap();
-            database.update_note(1, "2").unwrap();
-            database.update_note(2, "").unwrap();
-        }
-        let fallback_collision = directory
+        let outcome = directory
             .export_zhihuiji_json(
-                &RowSelection::Explicit { row_ids: vec![1, 2] },
+                &RowSelection::Explicit {
+                    row_ids: vec![1, 2],
+                },
                 &temporary.destination,
-                true,
+                JsonExportOptions {
+                    note_number_names: false,
+                    include_artists: false,
+                    deduplicate: false,
+                },
                 |_| {},
             )
-            .unwrap_err();
-        assert!(matches!(
-            fallback_collision,
-            JsonExportError::DuplicateNote { ref note, .. } if note == "2"
-        ));
-        assert!(!temporary.destination.exists());
+            .unwrap();
+
+        assert_eq!(outcome.exported, 2);
+        assert_eq!(outcome.duplicates_removed, 0);
+        assert_eq!(outcome.artists_added, 0);
+        let json: Value =
+            serde_json::from_slice(&fs::read(&temporary.destination).unwrap()).unwrap();
+        assert_eq!(json["presets"]["预设一"]["fixedPrompt"], "same");
+        assert_eq!(json["presets"]["预设二"]["fixedPrompt"], "same");
     }
 
     struct TemporaryJsonExport {

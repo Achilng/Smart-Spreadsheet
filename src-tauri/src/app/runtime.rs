@@ -24,7 +24,8 @@ use crate::storage::{
     ContentHashProgress, DataDirectory, ExportProgress, ImageFileExportMode, ImageFileNaming,
     ExistingImageUpdateOutcome, ImageFilesExportError, ImageFilesExportOutcome,
     ImageFilesProgress, ImageImportError, ImageImportOutcome, ImageImportProgress, JsonExportError,
-    JsonExportOutcome, JsonExportProgress, MigrationProgress, PerceptualHashProgress,
+    JsonExportOptions, JsonExportOutcome, JsonExportProgress, MigrationProgress,
+    PerceptualHashProgress,
     PromptDocAsset, PromptDocDetail, PromptDocError, PromptDocSummary, RowDeletionError,
     RowDeletionReport, SimilarImageMatch, StorageError, XlsxExportError, XlsxExportOutcome,
 };
@@ -914,14 +915,14 @@ impl AppRuntime {
         &self,
         selection: &RowSelection,
         destination: impl AsRef<Path>,
-        use_numeric_names_for_empty: bool,
+        options: JsonExportOptions,
         progress: impl Fn(JsonExportProgress) + Sync,
     ) -> Result<JsonExportOutcome, AppRuntimeError> {
         let directory = self.active_directory()?;
         Ok(directory.export_zhihuiji_json(
             selection,
             destination,
-            use_numeric_names_for_empty,
+            options,
             progress,
         )?)
     }

@@ -1,17 +1,17 @@
 import { listen } from "@tauri-apps/api/event";
-import { confirm as confirmDialog, open, save } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 
 import {
   exportImageFiles,
   exportXlsx,
   exportZhihuijiJson,
-  inspectZhihuijiExportNotes,
   type ExportProgress,
   type ImageFileExportMode,
-  type JsonExportNoteInspection,
+  type JsonExportOptions,
   type RowSelection,
 } from "../api";
-import { app, errorText, formatCount, runAction, setNotice } from "./app-state.svelte";
+import { app, formatCount, runAction, setNotice } from "./app-state.svelte";
+import { requestJsonExport } from "./json-export-dialog.svelte";
 import { rowStore } from "./row-store.svelte";
 import { getSelectedCount, selectionDto } from "./selection-store.svelte";
 
@@ -104,49 +104,32 @@ export async function chooseJsonExport(): Promise<void> {
   if (!hasRows()) {
     return;
   }
-  const scope = exportScope();
-  let inspection: JsonExportNoteInspection;
-  app.busy = true;
-  setNotice(null);
-  try {
-    inspection = await inspectZhihuijiExportNotes(scope);
-  } catch (error) {
-    setNotice({ tone: "error", text: errorText(error) });
-    return;
-  } finally {
-    app.busy = false;
-  }
+  requestJsonExport(exportScope(), exportScopeLabel());
+}
 
-  let useNumericNamesForEmpty = false;
-  if (inspection.emptyNotes > 0) {
-    const confirmed = await confirmDialog(
-      `导出范围内有 ${formatCount(inspection.emptyNotes)} 条空备注。继续后，这些预设将使用其导出序号命名。要继续吗？`,
-      {
-        title: "存在空备注",
-        kind: "warning",
-        okLabel: "继续导出",
-        cancelLabel: "取消",
-      },
-    );
-    if (!confirmed) {
-      return;
-    }
-    useNumericNamesForEmpty = true;
-  }
-
+export async function executeJsonExport(
+  scope: RowSelection,
+  options: JsonExportOptions,
+): Promise<void> {
   const destination = await save({
     title: "导出智绘姬 JSON（已有文件会被替换）",
     defaultPath: "智绘姬预设.json",
     filters: [{ name: "JSON 文件", extensions: ["json"] }],
   });
-  if (typeof destination !== "string") {
-    return;
-  }
+  if (typeof destination !== "string") return;
+
   await runExport(async () => {
-    const result = await exportZhihuijiJson(scope, destination, useNumericNamesForEmpty);
+    const result = await exportZhihuijiJson(scope, destination, options);
+    const parts = [`已导出 ${formatCount(result.exported)} 条预设到 ${result.path}`];
+    if (result.duplicatesRemoved > 0) {
+      parts.push(`去除 ${formatCount(result.duplicatesRemoved)} 条重复`);
+    }
+    if (result.artistsAdded > 0) {
+      parts.push(`为 ${formatCount(result.artistsAdded)} 条补齐画师`);
+    }
     setNotice({
       tone: "success",
-      text: `已导出 ${formatCount(result.exported)} 条预设到 ${result.path}`,
+      text: parts.join("，"),
     });
   });
 }

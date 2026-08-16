@@ -28,7 +28,7 @@ pub use export_images::{
     ImageFilesProgress, OriginalSourceError, collect_export_image_paths,
     resolve_locator_source as resolve_image_source, resolve_original_source,
 };
-pub use export_json::{JsonExportError, JsonExportOutcome, JsonExportProgress};
+pub use export_json::{JsonExportError, JsonExportOptions, JsonExportOutcome, JsonExportProgress};
 pub use export_xlsx::{ExportProgress, XlsxExportError, XlsxExportOutcome};
 pub use import_images::{
     ExistingImageUpdateOutcome, ImageImportError, ImageImportOutcome, ImageImportProgress,

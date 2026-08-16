@@ -40,6 +40,7 @@
   import GroupBrowseView from "../groups/GroupBrowseView.svelte";
   import GroupDeleteConfirmDialog from "../groups/GroupDeleteConfirmDialog.svelte";
   import GroupManageView from "../groups/GroupManageView.svelte";
+  import JsonExportDialog from "./JsonExportDialog.svelte";
   import PromptDocsView from "../prompt-docs/PromptDocsView.svelte";
   import SectionContextMenu from "./SectionContextMenu.svelte";
   import SelectionBar from "./SelectionBar.svelte";
@@ -316,6 +317,7 @@
 <DeleteDialog />
 <DropConfirmDialog />
 <UpdateImportDialog />
+<JsonExportDialog />
 
 {#if dropState.dragging && app.viewMode !== "promptDocs"}
   <div class="drop-overlay" transition:softFade={{ duration: 120 }}>

@@ -18,6 +18,14 @@ export interface XlsxExportResult {
 export interface JsonExportResult {
   path: string;
   exported: number;
+  duplicatesRemoved: number;
+  artistsAdded: number;
+}
+
+export interface JsonExportOptions {
+  noteNumberNames: boolean;
+  includeArtists: boolean;
+  deduplicate: boolean;
 }
 
 export interface JsonExportNoteInspection {
@@ -53,12 +61,12 @@ export function exportXlsx(
 export function exportZhihuijiJson(
   selection: RowSelection,
   path: string,
-  useNumericNamesForEmpty: boolean,
+  options: JsonExportOptions,
 ): Promise<JsonExportResult> {
   return invoke<JsonExportResult>("export_zhihuiji_json", {
     selection,
     path,
-    useNumericNamesForEmpty,
+    options,
   });
 }
 

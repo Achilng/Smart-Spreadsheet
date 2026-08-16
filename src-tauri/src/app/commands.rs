@@ -19,8 +19,8 @@ use crate::db::{
     TagMatchMode, TagMutationResult, TagSelectionSummary, TagSummary,
 };
 use crate::storage::{
-    MigrationStage, PerceptualHashProgress, PromptDocAsset, PromptDocDetail, PromptDocSummary,
-    SimilarImageMatch, VibeStatusProgress,
+    JsonExportOptions, MigrationStage, PerceptualHashProgress, PromptDocAsset, PromptDocDetail,
+    PromptDocSummary, SimilarImageMatch, VibeStatusProgress,
 };
 
 #[derive(Debug, Serialize)]
@@ -153,6 +153,8 @@ pub(crate) struct XlsxExportResultDto {
 pub(crate) struct JsonExportResultDto {
     path: String,
     exported: usize,
+    duplicates_removed: usize,
+    artists_added: usize,
 }
 
 #[derive(Debug, Serialize)]
@@ -1337,7 +1339,7 @@ pub(crate) fn inspect_zhihuiji_export_notes(
 pub(crate) async fn export_zhihuiji_json(
     selection: RowSelection,
     path: String,
-    use_numeric_names_for_empty: bool,
+    options: JsonExportOptions,
     app: tauri::AppHandle,
 ) -> Result<JsonExportResultDto, String> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -1346,7 +1348,7 @@ pub(crate) async fn export_zhihuiji_json(
             .export_zhihuiji_json(
                 &selection,
                 PathBuf::from(path),
-                use_numeric_names_for_empty,
+                options,
                 |progress| {
                     emit_export_progress(&app, progress.processed, progress.total);
                 },
@@ -1354,6 +1356,8 @@ pub(crate) async fn export_zhihuiji_json(
             .map(|outcome| JsonExportResultDto {
                 path: outcome.destination.to_string_lossy().into_owned(),
                 exported: outcome.exported,
+                duplicates_removed: outcome.duplicates_removed,
+                artists_added: outcome.artists_added,
             })
             .map_err(error_text)
     })
