@@ -204,9 +204,10 @@
     close();
   }
 
-  function clearDraft(): void {
-    draft = emptyDraft();
-    error = null;
+  function clearFilters(): void {
+    setLibraryFilters([]);
+    clearSelection();
+    close();
   }
 
   function patchComparison(target: "vibe" | "dimension" | "generation", values: Partial<FilterNumericComparison>): void {
@@ -323,7 +324,7 @@
     </div>
 
     <footer class="panel-footer">
-      <button type="button" class="clear-btn" onclick={clearDraft}>清除过滤</button>
+      <button type="button" class="clear-btn" onclick={clearFilters}>清除过滤</button>
       <span></span>
       <button type="button" class="secondary-btn" onclick={close}>取消</button>
       <button type="button" class="apply-btn" onclick={apply}>应用过滤</button>
