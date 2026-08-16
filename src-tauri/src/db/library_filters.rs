@@ -46,6 +46,15 @@ pub enum FilterNoteOperator {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub enum FilterPromptOperator {
+    ContainsAll,
+    ContainsAny,
+    ContainsNone,
+    IsEmpty,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub enum FilterNumericOperator {
     Equal,
     NotEqual,
@@ -131,6 +140,13 @@ pub enum LibraryFilter {
         operator: FilterNoteOperator,
         #[serde(default)]
         value: String,
+        #[serde(default)]
+        case_sensitive: bool,
+    },
+    Prompt {
+        operator: FilterPromptOperator,
+        #[serde(default)]
+        values: Vec<String>,
         #[serde(default)]
         case_sensitive: bool,
     },
@@ -242,6 +258,31 @@ fn artist_contains(value: &str, params: &mut Vec<Value>) -> String {
     format!("INSTR({}, {parameter}) > 0", artist_token_expression())
 }
 
+fn prompt_contains(value: &str, case_sensitive: bool, params: &mut Vec<Value>) -> String {
+    let value = if case_sensitive {
+        value.trim().to_owned()
+    } else {
+        value.trim().to_lowercase()
+    };
+    let parameter = push_text(params, value);
+    [
+        "rows.positive_prompt",
+        "rows.character_prompt",
+        "rows.negative_prompt",
+    ]
+    .into_iter()
+    .map(|expression| {
+        let expression = if case_sensitive {
+            format!("COALESCE({expression}, '')")
+        } else {
+            format!("LOWER(COALESCE({expression}, ''))")
+        };
+        format!("INSTR({expression}, {parameter}) > 0")
+    })
+    .collect::<Vec<_>>()
+    .join(" OR ")
+}
+
 fn compile_filter(filter: &LibraryFilter, params: &mut Vec<Value>) -> String {
     match filter {
         LibraryFilter::Tag { operator, values } => {
@@ -345,6 +386,38 @@ fn compile_filter(filter: &LibraryFilter, params: &mut Vec<Value>) -> String {
                 params,
             ),
         },
+        LibraryFilter::Prompt { operator, values, case_sensitive } => {
+            let values = normalized_values(values);
+            match operator {
+                FilterPromptOperator::IsEmpty =>
+                    "TRIM(COALESCE(rows.positive_prompt, '')) = '' AND TRIM(COALESCE(rows.character_prompt, '')) = '' AND TRIM(COALESCE(rows.negative_prompt, '')) = ''".into(),
+                FilterPromptOperator::ContainsAll => {
+                    if values.is_empty() {
+                        return "1".into();
+                    }
+                    values
+                        .iter()
+                        .map(|value| format!("({})", prompt_contains(value, *case_sensitive, params)))
+                        .collect::<Vec<_>>()
+                        .join(" AND ")
+                }
+                FilterPromptOperator::ContainsAny | FilterPromptOperator::ContainsNone => {
+                    if values.is_empty() {
+                        return if matches!(operator, FilterPromptOperator::ContainsAny) { "0" } else { "1" }.into();
+                    }
+                    let joined = values
+                        .iter()
+                        .map(|value| format!("({})", prompt_contains(value, *case_sensitive, params)))
+                        .collect::<Vec<_>>()
+                        .join(" OR ");
+                    if matches!(operator, FilterPromptOperator::ContainsNone) {
+                        format!("NOT ({joined})")
+                    } else {
+                        format!("({joined})")
+                    }
+                }
+            }
+        }
         LibraryFilter::Metadata { parsed } => {
             if *parsed { "rows.metadata_failed = 0" } else { "rows.metadata_failed = 1" }.into()
         }
@@ -392,4 +465,92 @@ pub(super) fn append_library_filters(
         predicate = format!("({predicate}) AND ({compiled})");
     }
     predicate
+}
+
+#[cfg(test)]
+mod tests {
+    use rusqlite::{Connection, params_from_iter};
+
+    use super::*;
+
+    fn prompt_database() -> Connection {
+        let connection = Connection::open_in_memory().unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE rows (
+                    id INTEGER PRIMARY KEY,
+                    positive_prompt TEXT,
+                    character_prompt TEXT,
+                    negative_prompt TEXT
+                );
+                INSERT INTO rows VALUES (1, 'girl, blue eyes', 'long hair', 'bad hands');
+                INSERT INTO rows VALUES (2, 'landscape', 'LONG HAIR', 'GIRL');
+                INSERT INTO rows VALUES (3, 'cat', NULL, NULL);
+                INSERT INTO rows VALUES (4, NULL, NULL, NULL);",
+            )
+            .unwrap();
+        connection
+    }
+
+    fn matching_ids(connection: &Connection, filter: LibraryFilter) -> Vec<i64> {
+        let mut params = Vec::new();
+        let predicate = append_library_filters("1".into(), &[filter], &mut params);
+        let mut statement = connection
+            .prepare(&format!("SELECT id FROM rows WHERE {predicate} ORDER BY id"))
+            .unwrap();
+        statement
+            .query_map(params_from_iter(params.iter()), |row| row.get(0))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
+    }
+
+    #[test]
+    fn prompt_filters_search_positive_character_and_negative_prompts() {
+        let connection = prompt_database();
+        assert_eq!(
+            matching_ids(
+                &connection,
+                LibraryFilter::Prompt {
+                    operator: FilterPromptOperator::ContainsAll,
+                    values: vec!["girl".into(), "long hair".into()],
+                    case_sensitive: false,
+                },
+            ),
+            vec![1, 2]
+        );
+        assert_eq!(
+            matching_ids(
+                &connection,
+                LibraryFilter::Prompt {
+                    operator: FilterPromptOperator::ContainsAny,
+                    values: vec!["blue eyes".into(), "landscape".into()],
+                    case_sensitive: false,
+                },
+            ),
+            vec![1, 2]
+        );
+        assert_eq!(
+            matching_ids(
+                &connection,
+                LibraryFilter::Prompt {
+                    operator: FilterPromptOperator::ContainsNone,
+                    values: vec!["girl".into(), "long hair".into()],
+                    case_sensitive: false,
+                },
+            ),
+            vec![3, 4]
+        );
+        assert_eq!(
+            matching_ids(
+                &connection,
+                LibraryFilter::Prompt {
+                    operator: FilterPromptOperator::IsEmpty,
+                    values: vec![],
+                    case_sensitive: false,
+                },
+            ),
+            vec![4]
+        );
+    }
 }

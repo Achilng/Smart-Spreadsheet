@@ -39,6 +39,11 @@ export function libraryFilterLabel(filter: LibraryFilter, groups: readonly Group
       if (filter.operator in fixed) return `画师：${fixed[filter.operator as keyof typeof fixed]}`;
       return `画师：${filter.operator === "containsAny" ? "包含" : "不包含"} ${filter.values.join("、")}`;
     }
+    case "prompt": {
+      if (filter.operator === "isEmpty") return "提示词：为空";
+      const operator = { containsAll: "包含全部", containsAny: "包含任意", containsNone: "均不包含" }[filter.operator];
+      return `提示词：${operator} ${filter.values.join("、")}`;
+    }
     case "vibe":
       return filter.operator === "hasAny"
         ? "VIBE：存在"

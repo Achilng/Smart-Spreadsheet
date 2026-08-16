@@ -25,6 +25,8 @@
     groupId: number | null;
     artistMode: OptionalMode<"containsAny" | "containsNone" | "isSingle" | "isMultiple" | "isEmpty">;
     artistText: string;
+    promptMode: OptionalMode<"containsAll" | "containsAny" | "containsNone" | "isEmpty">;
+    promptText: string;
     vibeMode: OptionalMode<"hasAny" | "hasNone" | "count">;
     vibeComparison: FilterNumericComparison;
     noteMode: OptionalMode<"contains" | "isEmpty" | "isNotEmpty">;
@@ -51,6 +53,8 @@
       groupId: null,
       artistMode: "any",
       artistText: "",
+      promptMode: "any",
+      promptText: "",
       vibeMode: "any",
       vibeComparison: comparison(),
       noteMode: "any",
@@ -85,6 +89,7 @@
         case "tag": draft.tagMode = filter.operator; draft.tagValues = [...filter.values]; break;
         case "group": draft.groupMode = filter.operator; draft.groupId = filter.groupId; break;
         case "artist": draft.artistMode = filter.operator; draft.artistText = filter.values.join(", "); break;
+        case "prompt": draft.promptMode = filter.operator; draft.promptText = filter.values.join(", "); break;
         case "vibe": draft.vibeMode = filter.operator; if (filter.comparison) draft.vibeComparison = { ...filter.comparison }; break;
         case "note": draft.noteMode = filter.operator; draft.noteText = filter.value; break;
         case "metadata": draft.metadataMode = filter.parsed ? "parsed" : "failed"; break;
@@ -154,6 +159,14 @@
         return null;
       }
       filters.push({ type: "artist", operator: draft.artistMode, values });
+    }
+    if (draft.promptMode !== "any") {
+      const values = splitValues(draft.promptText);
+      if (draft.promptMode !== "isEmpty" && values.length === 0) {
+        error = "请输入至少一个提示词。";
+        return null;
+      }
+      filters.push({ type: "prompt", operator: draft.promptMode, values, caseSensitive: false });
     }
     if (draft.vibeMode !== "any") {
       if (draft.vibeMode === "count" && !validComparison(draft.vibeComparison)) {
@@ -261,6 +274,14 @@
         {#if draft.artistMode === "containsAny" || draft.artistMode === "containsNone"}
           <input list="filter-artist-options" placeholder="输入画师名；多个名称用逗号分隔" bind:value={draft.artistText} />
           <datalist id="filter-artist-options">{#each artists as artist}<option value={artist}></option>{/each}</datalist>
+        {/if}
+      </section>
+
+      <section class="filter-section">
+        <div class="section-copy"><b>提示词</b><span>同时查找正面、角色与负面提示词</span></div>
+        <select bind:value={draft.promptMode}><option value="any">任何提示词状态</option><option value="containsAll">包含全部输入内容</option><option value="containsAny">包含任意输入内容</option><option value="containsNone">均不包含输入内容</option><option value="isEmpty">没有任何提示词</option></select>
+        {#if draft.promptMode !== "any" && draft.promptMode !== "isEmpty"}
+          <input placeholder="例如：girl, long hair；用逗号或换行分隔" bind:value={draft.promptText} />
         {/if}
       </section>
 

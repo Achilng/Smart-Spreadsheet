@@ -14,6 +14,7 @@ export type LibraryFilter =
   | { type: "tag"; operator: "hasAll" | "hasAny" | "hasNone" | "isEmpty"; values: string[] }
   | { type: "group"; operator: "is" | "isNot" | "isEmpty"; groupId: number | null }
   | { type: "artist"; operator: "containsAny" | "containsNone" | "isSingle" | "isMultiple" | "isEmpty"; values: string[] }
+  | { type: "prompt"; operator: "containsAll" | "containsAny" | "containsNone" | "isEmpty"; values: string[]; caseSensitive: boolean }
   | { type: "vibe"; operator: "hasAny" | "hasNone" | "count"; comparison: FilterNumericComparison | null }
   | { type: "note"; operator: "contains" | "isEmpty" | "isNotEmpty"; value: string; caseSensitive: boolean }
   | { type: "metadata"; parsed: boolean }
