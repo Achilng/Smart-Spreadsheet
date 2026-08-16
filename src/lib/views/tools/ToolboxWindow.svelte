@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { LucideIcon } from "@lucide/svelte";
   import Braces from "@lucide/svelte/icons/braces";
+  import CircleArrowUp from "@lucide/svelte/icons/circle-arrow-up";
   import Database from "@lucide/svelte/icons/database";
   import FileOutput from "@lucide/svelte/icons/file-output";
   import ListFilter from "@lucide/svelte/icons/list-filter";
@@ -24,6 +25,7 @@
   import Notice from "../../ui/Notice.svelte";
   import WindowControls from "../../ui/WindowControls.svelte";
   import ArtistGeneratorView from "./ArtistGeneratorView.svelte";
+  import AppUpdateTool from "./AppUpdateTool.svelte";
   import ArtistPrefixTool from "./ArtistPrefixTool.svelte";
   import AutomationRulesTool from "./AutomationRulesTool.svelte";
   import DataManagementTool from "./DataManagementTool.svelte";
@@ -42,13 +44,14 @@
     | "imageExport"
     | "jsonDedupe"
     | "maintenance"
-    | "data";
+    | "data"
+    | "update";
 
   interface ToolDefinition {
     id: ToolId;
     label: string;
     description: string;
-    group: "常用工具" | "文件处理" | "资料库维护";
+    group: "常用工具" | "文件处理" | "资料库维护" | "应用";
     requiresLibrary: boolean;
     icon: LucideIcon;
     /** 页面自带完整头部（如自动规则的 editor-head），外壳不再渲染 content-header */
@@ -130,9 +133,17 @@
       requiresLibrary: true,
       icon: Database,
     },
+    {
+      id: "update",
+      label: "应用更新",
+      description: "从 GitHub Release 检查并安装新版本",
+      group: "应用",
+      requiresLibrary: false,
+      icon: CircleArrowUp,
+    },
   ];
 
-  const groups = ["常用工具", "文件处理", "资料库维护"] as const;
+  const groups = ["常用工具", "文件处理", "资料库维护", "应用"] as const;
 
   let activeTool = $state<ToolId>("automationRules");
   const visited = $state<Record<ToolId, boolean>>({
@@ -145,6 +156,7 @@
     jsonDedupe: false,
     maintenance: false,
     data: false,
+    update: false,
   });
 
   const hasLibrary = $derived(
@@ -389,6 +401,11 @@
           {#if visited.data}
             <section class="tool-panel" class:is-active={activeTool === "data"}>
               <DataManagementTool />
+            </section>
+          {/if}
+          {#if visited.update}
+            <section class="tool-panel" class:is-active={activeTool === "update"}>
+              <AppUpdateTool />
             </section>
           {/if}
         {/if}
