@@ -612,12 +612,20 @@ fn query_cache_key(query: &RowQuery, normalized_tags: &[String]) -> String {
         filters = serde_json::to_string(&query.filters).unwrap_or_default(),
         gv = query.group_view,
         hg = query.hide_grouped,
-        search = normalize_search(&query.search),
+        search = query.search.trim().to_lowercase(),
     )
 }
 
-fn normalize_search(search: &str) -> String {
+fn search_without_line_breaks(search: &str) -> String {
     search.trim().to_lowercase().replace(['\r', '\n'], "")
+}
+
+fn search_with_spaced_line_breaks(search: &str) -> String {
+    search
+        .trim()
+        .to_lowercase()
+        .replace("\r\n", " ")
+        .replace(['\r', '\n'], " ")
 }
 
 pub(super) fn create_filter_tags(
@@ -710,24 +718,53 @@ pub(super) fn populate_filtered_rows(
     }
     predicate = append_library_filters(predicate, filters, &mut filter_params);
 
-    // 顶部搜索框是单行输入框：把详情中的多行提示词粘贴进去时，浏览器会按
-    // HTML value sanitization 自动移除 CR/LF。查询侧同样忽略字段中的换行，
-    // 才能让“复制库内完整提示词 -> 搜索”稳定命中。
-    let search_lower = normalize_search(search);
+    let search_lower = search.trim().to_lowercase();
     let has_search = !search_lower.is_empty();
     if has_search {
-        let parameter = filter_params.len() + 1;
-        predicate = format!(
-            "({predicate}) AND (
-                INSTR(LOWER(REPLACE(REPLACE(COALESCE(rows.image_path, ''), CHAR(13), ''), CHAR(10), '')), ?{parameter}) > 0
-                OR INSTR(LOWER(REPLACE(REPLACE(COALESCE(rows.positive_prompt, ''), CHAR(13), ''), CHAR(10), '')), ?{parameter}) > 0
-                OR INSTR(LOWER(REPLACE(REPLACE(COALESCE(rows.character_prompt, ''), CHAR(13), ''), CHAR(10), '')), ?{parameter}) > 0
-                OR INSTR(LOWER(REPLACE(REPLACE(COALESCE(rows.negative_prompt, ''), CHAR(13), ''), CHAR(10), '')), ?{parameter}) > 0
-                OR INSTR(LOWER(REPLACE(REPLACE(COALESCE(rows.note, ''), CHAR(13), ''), CHAR(10), '')), ?{parameter}) > 0
-                OR INSTR(LOWER(REPLACE(REPLACE(COALESCE(rows.artists, ''), CHAR(13), ''), CHAR(10), '')), ?{parameter}) > 0
-            )"
-        );
-        filter_params.push(Value::Text(search_lower));
+        let columns = [
+            "rows.image_path",
+            "rows.positive_prompt",
+            "rows.character_prompt",
+            "rows.negative_prompt",
+            "rows.note",
+            "rows.artists",
+        ];
+        // Chromium/WebView 把粘贴进单行输入框的换行替换为空格；部分环境会直接
+        // 删除换行。仅对长文本或逗号分隔的提示词启用双重兼容，普通短关键词继续
+        // 使用原来的轻量 INSTR 全扫。
+        let prompt_like = search_lower.len() >= 64
+            || search_lower.contains([',', '，', '\r', '\n']);
+        let search_predicate = if prompt_like {
+            let compact_parameter = filter_params.len() + 1;
+            let spaced_parameter = compact_parameter + 1;
+            let compiled = columns
+                .iter()
+                .map(|column| {
+                    format!(
+                        "(INSTR(LOWER(REPLACE(REPLACE(COALESCE({column}, ''), CHAR(13), ''), CHAR(10), '')), ?{compact_parameter}) > 0
+                         OR INSTR(LOWER(REPLACE(REPLACE(REPLACE(COALESCE({column}, ''), CHAR(13) || CHAR(10), ' '), CHAR(13), ' '), CHAR(10), ' ')), ?{spaced_parameter}) > 0)"
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(" OR ");
+            filter_params.push(Value::Text(search_without_line_breaks(search)));
+            filter_params.push(Value::Text(search_with_spaced_line_breaks(search)));
+            compiled
+        } else {
+            let parameter = filter_params.len() + 1;
+            let compiled = columns
+                .iter()
+                .map(|column| {
+                    format!(
+                        "INSTR(LOWER(COALESCE({column}, '')), ?{parameter}) > 0"
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(" OR ");
+            filter_params.push(Value::Text(search_lower));
+            compiled
+        };
+        predicate = format!("({predicate}) AND ({search_predicate})");
     }
 
     if group_view {
@@ -1347,12 +1384,26 @@ mod tests {
     }
 
     #[test]
-    fn search_matches_multiline_prompt_after_single_line_paste_strips_line_breaks() {
+    fn search_matches_multiline_prompt_after_single_line_paste_normalizes_line_breaks() {
         let mut database = database_with_rows(3);
         let prompt = concat!(
-            "masterpiece, best quality, very aesthetic, absurdres, ",
-            "cinematic lighting, intricate details,\r\n",
-            "1girl, solo, silver hair, blue eyes, detailed background"
+            "masterpiece, best quality, extremely detailed,\r\n",
+            "0.5::artist:maidcode1023 ::,\r\n",
+            "0.5::artist:fusuma_(ramunezake)::,\r\n",
+            "artist:sune (mugendai),\r\n",
+            "artist:takepoison,\r\n",
+            "1.5::artist:riri (ri0177)::,\r\n",
+            "1.2::artist:izumi_nanase::,\r\n",
+            "0.5::artist:chen_bin::,\r\n",
+            ", year 2024, -3::artist collaboration::\r\n",
+            "\r\n",
+            "1girl, white long hair, blue eyes, \r\n",
+            "maid, black and white maid outfit,white pantyhose,detailed maid outfit, ",
+            "frilled apron, lace trim, maid headdress, wrist cuffs, lace collar, ribbon,\r\n",
+            "colored inner hair(blue),\r\n",
+            "\r\n",
+            "soft smile, sit, hair flower(white flower)\r\n",
+            ", very aesthetic, masterpiece, no text"
         );
         database
             .connection
@@ -1362,30 +1413,35 @@ mod tests {
             )
             .unwrap();
 
-        // HTML 单行输入框粘贴多行文本后会删掉 CR/LF。
-        let pasted = prompt.replace(['\r', '\n'], "");
-        assert!(pasted.len() > 100);
-        let result = database
-            .query_rows(&RowQuery {
-                offset: 0,
-                limit: 10,
-                tags: Vec::new(),
-                tag_mode: TagMatchMode::And,
-                dedupe: DedupeMode::None,
-                single_artist_only: false,
-                artist_filter: String::new(),
-                has_vibe: false,
-                untagged_only: false,
-                filters: vec![],
-                group_view: false,
-                hide_grouped: false,
-                search: pasted,
-            })
-            .unwrap();
+        // Chromium/WebView 会把换行变为空格，其他输入环境可能直接删除换行。
+        let pasted_variants = [
+            prompt.replace("\r\n", " ").replace(['\r', '\n'], " "),
+            prompt.replace(['\r', '\n'], ""),
+        ];
+        for pasted in pasted_variants {
+            assert!(pasted.len() > 100);
+            let result = database
+                .query_rows(&RowQuery {
+                    offset: 0,
+                    limit: 10,
+                    tags: Vec::new(),
+                    tag_mode: TagMatchMode::And,
+                    dedupe: DedupeMode::None,
+                    single_artist_only: false,
+                    artist_filter: String::new(),
+                    has_vibe: false,
+                    untagged_only: false,
+                    filters: vec![],
+                    group_view: false,
+                    hide_grouped: false,
+                    search: pasted,
+                })
+                .unwrap();
 
-        assert_eq!(result.total_count, 1);
-        assert_eq!(result.rows[0].id, 2);
-        assert_eq!(result.rows[0].positive_prompt.as_deref(), Some(prompt));
+            assert_eq!(result.total_count, 1);
+            assert_eq!(result.rows[0].id, 2);
+            assert_eq!(result.rows[0].positive_prompt.as_deref(), Some(prompt));
+        }
     }
 
     #[test]
