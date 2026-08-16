@@ -612,8 +612,12 @@ fn query_cache_key(query: &RowQuery, normalized_tags: &[String]) -> String {
         filters = serde_json::to_string(&query.filters).unwrap_or_default(),
         gv = query.group_view,
         hg = query.hide_grouped,
-        search = query.search.trim().to_lowercase(),
+        search = normalize_search(&query.search),
     )
+}
+
+fn normalize_search(search: &str) -> String {
+    search.trim().to_lowercase().replace(['\r', '\n'], "")
 }
 
 pub(super) fn create_filter_tags(
@@ -706,18 +710,21 @@ pub(super) fn populate_filtered_rows(
     }
     predicate = append_library_filters(predicate, filters, &mut filter_params);
 
-    let search_lower = search.trim().to_lowercase();
+    // 顶部搜索框是单行输入框：把详情中的多行提示词粘贴进去时，浏览器会按
+    // HTML value sanitization 自动移除 CR/LF。查询侧同样忽略字段中的换行，
+    // 才能让“复制库内完整提示词 -> 搜索”稳定命中。
+    let search_lower = normalize_search(search);
     let has_search = !search_lower.is_empty();
     if has_search {
         let parameter = filter_params.len() + 1;
         predicate = format!(
             "({predicate}) AND (
-                INSTR(LOWER(COALESCE(rows.image_path, '')), ?{parameter}) > 0
-                OR INSTR(LOWER(COALESCE(rows.positive_prompt, '')), ?{parameter}) > 0
-                OR INSTR(LOWER(COALESCE(rows.character_prompt, '')), ?{parameter}) > 0
-                OR INSTR(LOWER(COALESCE(rows.negative_prompt, '')), ?{parameter}) > 0
-                OR INSTR(LOWER(COALESCE(rows.note, '')), ?{parameter}) > 0
-                OR INSTR(LOWER(COALESCE(rows.artists, '')), ?{parameter}) > 0
+                INSTR(LOWER(REPLACE(REPLACE(COALESCE(rows.image_path, ''), CHAR(13), ''), CHAR(10), '')), ?{parameter}) > 0
+                OR INSTR(LOWER(REPLACE(REPLACE(COALESCE(rows.positive_prompt, ''), CHAR(13), ''), CHAR(10), '')), ?{parameter}) > 0
+                OR INSTR(LOWER(REPLACE(REPLACE(COALESCE(rows.character_prompt, ''), CHAR(13), ''), CHAR(10), '')), ?{parameter}) > 0
+                OR INSTR(LOWER(REPLACE(REPLACE(COALESCE(rows.negative_prompt, ''), CHAR(13), ''), CHAR(10), '')), ?{parameter}) > 0
+                OR INSTR(LOWER(REPLACE(REPLACE(COALESCE(rows.note, ''), CHAR(13), ''), CHAR(10), '')), ?{parameter}) > 0
+                OR INSTR(LOWER(REPLACE(REPLACE(COALESCE(rows.artists, ''), CHAR(13), ''), CHAR(10), '')), ?{parameter}) > 0
             )"
         );
         filter_params.push(Value::Text(search_lower));
@@ -1337,6 +1344,48 @@ mod tests {
             result.rows[0].character_prompt.as_deref(),
             Some("silver hair, unique_role_token")
         );
+    }
+
+    #[test]
+    fn search_matches_multiline_prompt_after_single_line_paste_strips_line_breaks() {
+        let mut database = database_with_rows(3);
+        let prompt = concat!(
+            "masterpiece, best quality, very aesthetic, absurdres, ",
+            "cinematic lighting, intricate details,\r\n",
+            "1girl, solo, silver hair, blue eyes, detailed background"
+        );
+        database
+            .connection
+            .execute(
+                "UPDATE rows SET positive_prompt = ?1 WHERE id = 2",
+                [prompt],
+            )
+            .unwrap();
+
+        // HTML 单行输入框粘贴多行文本后会删掉 CR/LF。
+        let pasted = prompt.replace(['\r', '\n'], "");
+        assert!(pasted.len() > 100);
+        let result = database
+            .query_rows(&RowQuery {
+                offset: 0,
+                limit: 10,
+                tags: Vec::new(),
+                tag_mode: TagMatchMode::And,
+                dedupe: DedupeMode::None,
+                single_artist_only: false,
+                artist_filter: String::new(),
+                has_vibe: false,
+                untagged_only: false,
+                filters: vec![],
+                group_view: false,
+                hide_grouped: false,
+                search: pasted,
+            })
+            .unwrap();
+
+        assert_eq!(result.total_count, 1);
+        assert_eq!(result.rows[0].id, 2);
+        assert_eq!(result.rows[0].positive_prompt.as_deref(), Some(prompt));
     }
 
     #[test]
