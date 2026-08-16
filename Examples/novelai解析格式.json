@@ -1,0 +1,108 @@
+{
+    "prompt": "1.5::artist kuangchiyidakou::, 0.8::artist nixiaozi::,  ::artist mano0wvw ::, 5::masterpiece, best quality::,2::path to nowhere::,masterpiece, best quality, ultra-detailed, highres,, very aesthetic, masterpiece, no text",
+    "steps": 28,
+    "height": 1216,
+    "width": 832,
+    "scale": 5,
+    "uncond_scale": 0,
+    "cfg_rescale": 0.18,
+    "seed": 3380055688,
+    "n_samples": 1,
+    "noise_schedule": "karras",
+    "legacy_v3_extend": false,
+    "reference_image_multiple": [
+        "1Xzh/MJ29fyc6aJcx4A1...",
+        "B2ePjTyqARQsGu+6h9vV...",
+        "6R/rdESdR7Hbu3IGSxZ9...",
+        "RlAokWDC3ZVwVme6ReXn..."
+    ],
+    "reference_information_extracted_multiple": [],
+    "reference_strength_multiple": [
+        0.21935483870967745,
+        0.23225806451612904,
+        0.38709677419354843,
+        0.16129032258064518
+    ],
+    "extra_passthrough_testing": {
+        "prompt": null,
+        "uc": null,
+        "hide_debug_overlay": false,
+        "r": 0,
+        "eta": 1,
+        "negative_momentum": 0,
+        "director_reference_images": null,
+        "director_reference_descriptions": null,
+        "director_reference_information_extracted": null,
+        "director_reference_strengths": null,
+        "director_reference_secondary_strengths": null,
+        "crash_hydra": false
+    },
+    "v4_prompt": {
+        "caption": {
+            "base_caption": "1.5::artist kuangchiyidakou::, 0.8::artist nixiaozi::,  ::artist mano0wvw ::, 5::masterpiece, best quality::,2::path to nowhere::,masterpiece, best quality, ultra-detailed, highres,, very aesthetic, masterpiece, no text",
+            "char_captions": [
+                {
+                    "char_caption": "1 girl,soft colorful sexy lolita dress,beautiful face, eyelashes, reflection in eyes, beautiful eyes, Children face, 1.4::oppai_loli, snow white hair::, solo, 2::gradient eyes,soft blue eyes, soft pink eyes, bare shoulders, snow white hair,soft pink ends, gradient hair, very long hair, multicolored hair,soft blue inner hair, chest, side drill hair, cut bangs, twintails::,Pink lips, glossy lips,kitten lips, lolita,ornate,very beautiufl background,summer,complex background,\n{{negative space}}, cinematic lighting, depth of field, cowboy shot, from above, from behind, clean aesthetic, year 2025, year 2026, \nfrom behind, full body, wide shot, off-center composition, negative space, gothic garden, lush green foliage, dark muted color palette, cinematic lighting, screentone texture, painterly, \nlong lace veil, beaded lace cape, layered tulle wedding dress, very long train, trailing dress",
+                    "centers": [
+                        {
+                            "x": 0.5,
+                            "y": 0.5
+                        }
+                    ]
+                }
+            ]
+        },
+        "use_coords": false,
+        "use_order": true,
+        "legacy_uc": false
+    },
+    "v4_negative_prompt": {
+        "caption": {
+            "base_caption": "nsfw, lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page, (worst quality, low quality:1.4), realistic, artist collaboration,photorealistic, 3d, shading, complex background, text, watermark, signature, adult, mature, long body, normal proportions, easynegative,female adult, lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page, 3::crown,dark areola, dark pussy,:: ,3.8::extra fingers, multiple fingers (e.g., 6 fingers), extra digits::, logo, chibi,doll,dark penis, watermark, too many watermarks, blank page, text-only page, reference, blush, shy, username, signature, artist:xinzoruo, artist:milkpanda, artist collaboration, variant set, large variant set, 4koma, 2koma, toon (style), oekaki, chibi, turnaround, film grain, monochrome, dithering, halftone, screentones, dated, old, 1990s (style), mutation, deformed, distorted, disfigured, artistic error, distorted anatomy, anatomical structure error, asymmetrical face, unnatural hair, bad eyes, cloudy eyes, blank eyes, pointy ears, bad proportions, bad limb, bad hands, extra hands, bad hand structure, extra digits, fewer digits, bad legs, extra legs, amputee, distorted composition, bad perspective, multiple views, negative space, animation error, chromatic aberration, disorganized colors, scan artifacts, jpeg artifacts, vertical lines, vertical banding, worst quality, bad quality, lowres, blurry, upscaled, fewer details, unfinished, incomplete, amateur, cheesy, unsatisfactory, inadequate, deficient, subpar, poor, displeasing, very displeasing, bad illustration, bad portrait,dark, high contrast, eye-catching bright red, childish stature, The blush on the face,Lipstick, blue skin, dark, dark,high contrast,tight pants,Limbs that disappear out of nowhere,childish stature,The proportions are incorrect,limbs are fused together,The face does not match the body,black face, Eye-catching bright red, extra people, incorrect eyes, black skin",
+            "char_captions": [
+                {
+                    "char_caption": "10::black hair,black dress,green dress::",
+                    "centers": [
+                        {
+                            "x": 0.5,
+                            "y": 0.5
+                        }
+                    ]
+                }
+            ]
+        },
+        "use_coords": false,
+        "use_order": false,
+        "legacy_uc": false
+    },
+    "director_references": [],
+    "director_reference_strengths": null,
+    "director_reference_images": null,
+    "director_reference_descriptions": null,
+    "director_reference_information_extracted": null,
+    "director_reference_secondary_strengths": null,
+    "sampler": "k_dpmpp_2m",
+    "controlnet_strength": 1,
+    "controlnet_model": null,
+    "dynamic_thresholding": false,
+    "dynamic_thresholding_percentile": 0.999,
+    "dynamic_thresholding_mimic_scale": 10,
+    "sm": false,
+    "sm_dyn": false,
+    "skip_cfg_above_sigma": 58,
+    "skip_cfg_below_sigma": 0,
+    "lora_unet_weights": null,
+    "lora_clip_weights": null,
+    "deliberate_euler_ancestral_bug": true,
+    "prefer_brownian": false,
+    "cfg_sched_eligibility": "enable_for_post_summer_samplers",
+    "explike_fine_detail": false,
+    "minimize_sigma_inf": false,
+    "uncond_per_vibe": true,
+    "wonky_vibe_correlation": true,
+    "stream": "msgpack",
+    "version": 1,
+    "uc": "nsfw, lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page, (worst quality, low quality:1.4), realistic, artist collaboration,photorealistic, 3d, shading, complex background, text, watermark, signature, adult, mature, long body, normal proportions, easynegative,female adult, lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page, 3::crown,dark areola, dark pussy,:: ,3.8::extra fingers, multiple fingers (e.g., 6 fingers), extra digits::, logo, chibi,doll,dark penis, watermark, too many watermarks, blank page, text-only page, reference, blush, shy, username, signature, artist:xinzoruo, artist:milkpanda, artist collaboration, variant set, large variant set, 4koma, 2koma, toon (style), oekaki, chibi, turnaround, film grain, monochrome, dithering, halftone, screentones, dated, old, 1990s (style), mutation, deformed, distorted, disfigured, artistic error, distorted anatomy, anatomical structure error, asymmetrical face, unnatural hair, bad eyes, cloudy eyes, blank eyes, pointy ears, bad proportions, bad limb, bad hands, extra hands, bad hand structure, extra digits, fewer digits, bad legs, extra legs, amputee, distorted composition, bad perspective, multiple views, negative space, animation error, chromatic aberration, disorganized colors, scan artifacts, jpeg artifacts, vertical lines, vertical banding, worst quality, bad quality, lowres, blurry, upscaled, fewer details, unfinished, incomplete, amateur, cheesy, unsatisfactory, inadequate, deficient, subpar, poor, displeasing, very displeasing, bad illustration, bad portrait,dark, high contrast, eye-catching bright red, childish stature, The blush on the face,Lipstick, blue skin, dark, dark,high contrast,tight pants,Limbs that disappear out of nowhere,childish stature,The proportions are incorrect,limbs are fused together,The face does not match the body,black face, Eye-catching bright red, extra people, incorrect eyes, black skin",
+    "request_type": "PromptGenerateRequest",
+    "signed_hash": "wggNx3qgeNS4lyfve+R5/1omljSxOGz/qA5toBo1J80ZUrx1ouGqbHbGw29ygOyQIlRYH9FQkbSk7YDPpRheAg=="
+}
