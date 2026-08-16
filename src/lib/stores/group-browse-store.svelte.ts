@@ -4,6 +4,7 @@ import { groupStore } from "./group-store.svelte";
 import { rowStore } from "./row-store.svelte";
 import { createSectionCache, MEMBERS_PAGE } from "./section-cache";
 import type { SectionMembers } from "./section-types";
+import { cloneLibraryFilters } from "../utils/library-filters";
 
 /**
  * 分组浏览视图的模块级状态：切走再切回时保留展开状态、已加载的成员和滚动位置。
@@ -34,6 +35,7 @@ function currentUngroupedSignature(): string {
     String(rowStore.singleArtistOnly),
     String(rowStore.hasVibe),
     String(rowStore.untaggedOnly),
+    JSON.stringify(rowStore.filters),
     rowStore.search,
   ].join("\u{1}");
 }
@@ -83,6 +85,7 @@ function ungroupedQuery(offset: number) {
     artistFilter: rowStore.artistFilter,
     hasVibe: rowStore.hasVibe,
     untaggedOnly: rowStore.untaggedOnly,
+    filters: cloneLibraryFilters(rowStore.filters),
     groupView: false,
     hideGrouped: true,
     search: rowStore.search,

@@ -33,6 +33,7 @@
   import ContextMenu from "./ContextMenu.svelte";
   import CanvasHeader from "./CanvasHeader.svelte";
   import DetailPanel from "./DetailPanel.svelte";
+  import FilterPanel from "./FilterPanel.svelte";
   import DeleteDialog from "./DeleteDialog.svelte";
   import DropConfirmDialog from "./DropConfirmDialog.svelte";
   import DuplicateBrowseView from "../duplicates/DuplicateBrowseView.svelte";
@@ -318,6 +319,7 @@
 <DropConfirmDialog />
 <UpdateImportDialog />
 <JsonExportDialog />
+<FilterPanel />
 
 {#if dropState.dragging && app.viewMode !== "promptDocs"}
   <div class="drop-overlay" transition:softFade={{ duration: 120 }}>

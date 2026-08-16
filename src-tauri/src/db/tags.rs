@@ -5,12 +5,13 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use super::query::{DedupeMode, FILTER_TAGS_TABLE, TagMatchMode, create_filter_tags, populate_filtered_rows};
+use super::LibraryFilter;
 use super::{Database, DatabaseError};
 
 pub(super) const TARGET_ROWS_TABLE: &str = "temp.tag_target_rows";
 const EXCLUDED_ROWS_TABLE: &str = "temp.tag_excluded_rows";
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum RowSelection {
     Explicit {
@@ -28,6 +29,8 @@ pub enum RowSelection {
         has_vibe: bool,
         #[serde(default)]
         untagged_only: bool,
+        #[serde(default)]
+        filters: Vec<LibraryFilter>,
         #[serde(default)]
         search: String,
         excluded_row_ids: Vec<i64>,
@@ -397,6 +400,7 @@ pub(super) fn create_selection_rows(
             artist_filter,
             has_vibe,
             untagged_only,
+            filters,
             search,
             excluded_row_ids,
         } => {
@@ -419,6 +423,7 @@ pub(super) fn create_selection_rows(
                 artist_filter,
                 *has_vibe,
                 *untagged_only,
+                filters,
                 false,
                 false,
                 search,
@@ -730,6 +735,7 @@ mod tests {
             artist_filter: String::new(),
             has_vibe: false,
             untagged_only: false,
+            filters: vec![],
             search: String::new(),
             excluded_row_ids: vec![2, 9_999],
         };
@@ -763,6 +769,7 @@ mod tests {
             artist_filter: String::new(),
             has_vibe: false,
             untagged_only: false,
+            filters: vec![],
             search: String::new(),
             excluded_row_ids: vec![3],
         };
@@ -806,6 +813,7 @@ mod tests {
             artist_filter: String::new(),
             has_vibe: false,
             untagged_only: false,
+            filters: vec![],
             search: String::new(),
             excluded_row_ids: vec![1],
         };
@@ -875,6 +883,7 @@ mod tests {
                 artist_filter: String::new(),
                 has_vibe: false,
                 untagged_only: false,
+                filters: vec![],
                 search: String::new(),
                 excluded_row_ids: vec![2],
             })
@@ -900,6 +909,7 @@ mod tests {
                 artist_filter: String::new(),
                 has_vibe: false,
                 untagged_only: false,
+                filters: vec![],
                 search: String::new(),
                 excluded_row_ids: vec![2],
             })
@@ -932,12 +942,45 @@ mod tests {
                 artist_filter: "artist:a".into(),
                 has_vibe: false,
                 untagged_only: false,
+                filters: vec![],
                 search: String::new(),
                 excluded_row_ids: Vec::new(),
             })
             .unwrap();
 
         assert_eq!(row_ids, vec![1, 2]);
+    }
+
+    #[test]
+    fn filtered_selection_respects_structured_filters() {
+        let mut database = database_with_rows(4);
+        database
+            .connection
+            .execute(
+                "UPDATE rows SET vibe_reference_count = CASE id WHEN 2 THEN 1 ELSE 0 END",
+                [],
+            )
+            .unwrap();
+
+        let row_ids = database
+            .selected_row_ids(&RowSelection::Filtered {
+                tags: Vec::new(),
+                tag_mode: TagMatchMode::And,
+                dedupe: DedupeMode::None,
+                single_artist_only: false,
+                artist_filter: String::new(),
+                has_vibe: false,
+                untagged_only: false,
+                filters: vec![LibraryFilter::Vibe {
+                    operator: super::super::FilterVibeOperator::HasAny,
+                    comparison: None,
+                }],
+                search: String::new(),
+                excluded_row_ids: Vec::new(),
+            })
+            .unwrap();
+
+        assert_eq!(row_ids, vec![2]);
     }
 
     #[test]
@@ -951,6 +994,7 @@ mod tests {
             artist_filter: String::new(),
             has_vibe: false,
             untagged_only: false,
+            filters: vec![],
             search: String::new(),
             excluded_row_ids: Vec::new(),
         };

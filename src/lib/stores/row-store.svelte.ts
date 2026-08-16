@@ -1,6 +1,7 @@
-import { queryRows, type DedupeMode, type RowRecord, type SortMode, type TagMatchMode } from "../api";
+import { queryRows, type DedupeMode, type LibraryFilter, type RowRecord, type SortMode, type TagMatchMode } from "../api";
 import { errorText } from "./app-state.svelte";
 import { clearScrollPositions } from "./view-state";
+import { cloneLibraryFilters } from "../utils/library-filters";
 
 export const PAGE_SIZE = 200;
 
@@ -20,6 +21,8 @@ export const rowStore = $state({
   artistFilter: "",
   hasVibe: false,
   untaggedOnly: false,
+  /** Discord 风格筛选面板应用的结构化条件；条件之间固定为 AND。 */
+  filters: [] as LibraryFilter[],
   groupView: false,
   hideGrouped: false,
   search: "",
@@ -74,6 +77,7 @@ export function ensurePage(pageIndex: number): void {
         artistFilter: rowStore.artistFilter,
         hasVibe: rowStore.hasVibe,
         untaggedOnly: rowStore.untaggedOnly,
+        filters: cloneLibraryFilters(rowStore.filters),
         groupView: rowStore.groupView,
         hideGrouped: rowStore.hideGrouped,
         search: rowStore.search,
@@ -198,6 +202,7 @@ export function focusArtistFilter(artists: string): void {
   rowStore.artistFilter = normalized;
   rowStore.hasVibe = false;
   rowStore.untaggedOnly = false;
+  rowStore.filters = [];
   rowStore.groupView = false;
   rowStore.hideGrouped = false;
   rowStore.search = "";
@@ -227,6 +232,19 @@ export function setUntaggedOnly(value: boolean): void {
     }
     resetRows({ keepStale: true, resetScroll: true });
   }
+}
+
+export function setLibraryFilters(filters: LibraryFilter[]): void {
+  const next = cloneLibraryFilters(filters);
+  if (JSON.stringify(rowStore.filters) !== JSON.stringify(next)) {
+    rowStore.filters = next;
+    resetRows({ keepStale: true, resetScroll: true });
+  }
+}
+
+export function removeLibraryFilter(index: number): void {
+  if (index < 0 || index >= rowStore.filters.length) return;
+  setLibraryFilters(rowStore.filters.filter((_, filterIndex) => filterIndex !== index));
 }
 
 export function setGroupView(value: boolean): void {
@@ -264,6 +282,7 @@ export function clearAllFilters(): void {
     rowStore.artistFilter !== "" ||
     rowStore.hasVibe ||
     rowStore.untaggedOnly ||
+    rowStore.filters.length > 0 ||
     rowStore.hideGrouped ||
     rowStore.search !== "";
   if (!dirty) return;
@@ -273,6 +292,7 @@ export function clearAllFilters(): void {
   rowStore.artistFilter = "";
   rowStore.hasVibe = false;
   rowStore.untaggedOnly = false;
+  rowStore.filters = [];
   rowStore.hideGrouped = false;
   rowStore.search = "";
   resetRows({ keepStale: true, resetScroll: true });
@@ -294,6 +314,7 @@ export function revealRowInGallery(row: RowRecord, index: number): void {
   rowStore.artistFilter = "";
   rowStore.hasVibe = false;
   rowStore.untaggedOnly = false;
+  rowStore.filters = [];
   rowStore.groupView = false;
   rowStore.hideGrouped = false;
   rowStore.search = "";

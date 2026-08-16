@@ -1,8 +1,10 @@
 use std::collections::HashMap;
 
-use rusqlite::{Connection, params};
+use rusqlite::types::Value;
+use rusqlite::{Connection, params, params_from_iter};
 use serde::{Deserialize, Serialize};
 
+use super::library_filters::{LibraryFilter, append_library_filters};
 use super::tags::normalize_tags;
 use super::{Database, DatabaseError};
 
@@ -48,7 +50,7 @@ pub enum SortMode {
     RecentlyUpdated,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RowQuery {
     pub offset: u64,
@@ -64,6 +66,8 @@ pub struct RowQuery {
     pub has_vibe: bool,
     #[serde(default)]
     pub untagged_only: bool,
+    #[serde(default)]
+    pub filters: Vec<LibraryFilter>,
     #[serde(default)]
     pub group_view: bool,
     #[serde(default)]
@@ -172,6 +176,7 @@ impl Database {
                     &query.artist_filter,
                     query.has_vibe,
                     query.untagged_only,
+                    &query.filters,
                     query.group_view,
                     query.hide_grouped,
                     &query.search,
@@ -389,6 +394,7 @@ impl Database {
         single_artist_only: bool,
         has_vibe: bool,
         untagged_only: bool,
+        filters: &[LibraryFilter],
         hide_grouped: bool,
     ) -> Result<Vec<DedupeCluster>, DatabaseError> {
         let (column, mode_str) = match dedupe {
@@ -423,6 +429,10 @@ impl Database {
         if hide_grouped {
             predicate = format!("({predicate}) AND rows.group_id IS NULL");
         }
+        let mut filter_params = Vec::new();
+        predicate = append_library_filters(predicate, filters, &mut filter_params);
+        filter_params.push(Value::Text(mode_str.to_owned()));
+        let mode_parameter = filter_params.len();
 
         let clusters = {
             let mut statement = transaction.prepare(&format!(
@@ -438,11 +448,11 @@ impl Database {
                      GROUP BY dedupe_key
                      HAVING cnt >= 2
                  ) g
-                 LEFT JOIN dedupe_aliases da ON da.mode = ?1 AND da.key = g.dedupe_key
+                 LEFT JOIN dedupe_aliases da ON da.mode = ?{mode_parameter} AND da.key = g.dedupe_key
                  ORDER BY g.cnt DESC, g.dedupe_key"
             ))?;
             statement
-                .query_map([mode_str], |row| {
+                .query_map(params_from_iter(filter_params.iter()), |row| {
                     Ok(DedupeCluster {
                         key: row.get(0)?,
                         member_count: row.get::<_, i64>(1)? as u64,
@@ -467,6 +477,7 @@ impl Database {
         single_artist_only: bool,
         has_vibe: bool,
         untagged_only: bool,
+        filters: &[LibraryFilter],
         hide_grouped: bool,
         offset: u64,
         limit: u32,
@@ -517,6 +528,8 @@ impl Database {
         if hide_grouped {
             predicate = format!("({predicate}) AND rows.group_id IS NULL");
         }
+        let mut filter_params = vec![Value::Text(key.to_owned())];
+        predicate = append_library_filters(predicate, filters, &mut filter_params);
 
         create_filtered_rows_table(&transaction, SCRATCH_ROWS_TABLE)?;
         transaction.execute(
@@ -526,7 +539,7 @@ impl Database {
                  WHERE NULLIF(TRIM(COALESCE(rows.{column}, '')), '') = ?1
                    AND ({predicate})"
             ),
-            params![key],
+            params_from_iter(filter_params.iter()),
         )?;
         create_page_rows_table(&transaction)?;
         create_page_rows(
@@ -588,7 +601,7 @@ impl Database {
 /// 缓存键覆盖影响筛选结果集的全部参数（分页参数除外）。
 fn query_cache_key(query: &RowQuery, normalized_tags: &[String]) -> String {
     format!(
-        "{tags:?}\u{1}{mode:?}\u{1}{dedupe:?}\u{1}{sao}\u{1}{artist}\u{1}{vibe}\u{1}{untagged}\u{1}{gv}\u{1}{hg}\u{1}{search}",
+        "{tags:?}\u{1}{mode:?}\u{1}{dedupe:?}\u{1}{sao}\u{1}{artist}\u{1}{vibe}\u{1}{untagged}\u{1}{filters}\u{1}{gv}\u{1}{hg}\u{1}{search}",
         tags = normalized_tags,
         mode = query.tag_mode,
         dedupe = query.dedupe,
@@ -596,6 +609,7 @@ fn query_cache_key(query: &RowQuery, normalized_tags: &[String]) -> String {
         artist = query.artist_filter.trim(),
         vibe = query.has_vibe,
         untagged = query.untagged_only,
+        filters = serde_json::to_string(&query.filters).unwrap_or_default(),
         gv = query.group_view,
         hg = query.hide_grouped,
         search = query.search.trim().to_lowercase(),
@@ -653,6 +667,7 @@ pub(super) fn populate_filtered_rows(
     artist_filter: &str,
     has_vibe: bool,
     untagged_only: bool,
+    filters: &[LibraryFilter],
     group_view: bool,
     hide_grouped: bool,
     search: &str,
@@ -669,13 +684,13 @@ pub(super) fn populate_filtered_rows(
         );
     }
     let artist_filter = artist_filter.trim().to_owned();
-    let mut filter_params: Vec<&dyn rusqlite::types::ToSql> = Vec::new();
+    let mut filter_params: Vec<Value> = Vec::new();
     if !artist_filter.is_empty() {
         let parameter = filter_params.len() + 1;
         predicate = format!(
             "({predicate}) AND NULLIF(TRIM(COALESCE(rows.artists, '')), '') = ?{parameter}"
         );
-        filter_params.push(&artist_filter);
+        filter_params.push(Value::Text(artist_filter));
     }
     if has_vibe {
         predicate = format!("({predicate}) AND rows.vibe_reference_count > 0");
@@ -689,6 +704,7 @@ pub(super) fn populate_filtered_rows(
     if !group_view && hide_grouped {
         predicate = format!("({predicate}) AND rows.group_id IS NULL");
     }
+    predicate = append_library_filters(predicate, filters, &mut filter_params);
 
     let search_lower = search.trim().to_lowercase();
     let has_search = !search_lower.is_empty();
@@ -704,7 +720,7 @@ pub(super) fn populate_filtered_rows(
                 OR INSTR(LOWER(COALESCE(rows.artists, '')), ?{parameter}) > 0
             )"
         );
-        filter_params.push(&search_lower);
+        filter_params.push(Value::Text(search_lower));
     }
 
     if group_view {
@@ -718,7 +734,7 @@ pub(super) fn populate_filtered_rows(
                  SELECT rows.id FROM rows
                  WHERE ({predicate}) AND rows.group_id IS NULL"
             ),
-            filter_params.as_slice(),
+            params_from_iter(filter_params.iter()),
         )?;
     } else {
         match dedupe {
@@ -727,7 +743,7 @@ pub(super) fn populate_filtered_rows(
                     "INSERT INTO {target_table}(id)
                      SELECT rows.id FROM rows WHERE {predicate}"
                 ),
-                filter_params.as_slice(),
+                params_from_iter(filter_params.iter()),
             )?,
             DedupeMode::PositivePrompt | DedupeMode::Artists | DedupeMode::Vibes => {
                 let column = match dedupe {
@@ -752,7 +768,7 @@ pub(super) fn populate_filtered_rows(
                          WHERE dedupe_key IS NOT NULL
                          GROUP BY dedupe_key"
                     ),
-                    filter_params.as_slice(),
+                    params_from_iter(filter_params.iter()),
                 )?
             }
         };
@@ -914,6 +930,12 @@ pub(super) fn filter_predicate(mode: TagMatchMode) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::super::test_support::database_with_rows;
+    use super::super::library_filters::{
+        FilterArtistOperator, FilterGenerationNumberField, FilterGenerationTextField,
+        FilterGroupOperator, FilterImageDimensionField, FilterNoteOperator,
+        FilterNumericComparison, FilterNumericOperator, FilterOrientation, FilterTagOperator,
+        FilterTextOperator, FilterVibeOperator,
+    };
     use super::*;
 
     #[test]
@@ -931,6 +953,7 @@ mod tests {
                 artist_filter: String::new(),
                 has_vibe: false,
                 untagged_only: false,
+                filters: vec![],
                 group_view: false,
                 hide_grouped: false,
                 search: String::new(),
@@ -971,6 +994,7 @@ mod tests {
             artist_filter: String::new(),
             has_vibe: false,
             untagged_only: false,
+            filters: vec![],
             group_view: false,
             hide_grouped: false,
             search: String::new(),
@@ -1013,6 +1037,7 @@ mod tests {
             artist_filter: String::new(),
             has_vibe: false,
             untagged_only: false,
+            filters: vec![],
             group_view: false,
             hide_grouped: false,
             search: String::new(),
@@ -1124,6 +1149,7 @@ mod tests {
                 artist_filter: String::new(),
                 has_vibe: false,
                 untagged_only: false,
+                filters: vec![],
                 group_view: false,
                 hide_grouped: false,
                 search: String::new(),
@@ -1146,6 +1172,7 @@ mod tests {
                 artist_filter: String::new(),
                 has_vibe: false,
                 untagged_only: false,
+                filters: vec![],
                 group_view: false,
                 hide_grouped: false,
                 search: String::new(),
@@ -1180,6 +1207,7 @@ mod tests {
                 artist_filter: String::new(),
                 has_vibe: false,
                 untagged_only: false,
+                filters: vec![],
                 group_view: false,
                 hide_grouped: false,
                 search: String::new(),
@@ -1239,6 +1267,7 @@ mod tests {
                     artist_filter: String::new(),
                     has_vibe: false,
                     untagged_only: false,
+                    filters: vec![],
                     group_view: false,
                     hide_grouped: false,
                     search: String::new(),
@@ -1295,6 +1324,7 @@ mod tests {
                 artist_filter: String::new(),
                 has_vibe: false,
                 untagged_only: false,
+                filters: vec![],
                 group_view: false,
                 hide_grouped: false,
                 search: "UNIQUE_ROLE_TOKEN".into(),
@@ -1325,6 +1355,7 @@ mod tests {
                 artist_filter: String::new(),
                 has_vibe: false,
                 untagged_only: false,
+                filters: vec![],
                 group_view: false,
                 hide_grouped: false,
                 search: "海边".into(),
@@ -1360,6 +1391,7 @@ mod tests {
                 artist_filter: String::new(),
                 has_vibe: true,
                 untagged_only: false,
+                filters: vec![],
                 group_view: false,
                 hide_grouped: false,
                 search: String::new(),
@@ -1392,6 +1424,7 @@ mod tests {
                 artist_filter: String::new(),
                 has_vibe: false,
                 untagged_only: true,
+                filters: vec![],
                 group_view: false,
                 hide_grouped: false,
                 search: String::new(),
@@ -1420,6 +1453,7 @@ mod tests {
                 artist_filter: String::new(),
                 has_vibe: false,
                 untagged_only: true,
+                filters: vec![],
                 group_view: false,
                 hide_grouped: false,
                 search: String::new(),
@@ -1455,6 +1489,7 @@ mod tests {
                 artist_filter: String::new(),
                 has_vibe: false,
                 untagged_only: false,
+                filters: vec![],
                 group_view: false,
                 hide_grouped: false,
                 search: String::new(),
@@ -1493,6 +1528,7 @@ mod tests {
             artist_filter: "  artist:a  ".into(),
             has_vibe: false,
             untagged_only: false,
+            filters: vec![],
             group_view: false,
             hide_grouped: false,
             search: String::new(),
@@ -1514,6 +1550,135 @@ mod tests {
     }
 
     #[test]
+    fn structured_filters_combine_tag_artist_vibe_and_group_with_and() {
+        let mut database = tagged_database();
+        let group = database.create_group("已归档").unwrap();
+        database
+            .connection
+            .execute_batch(&format!(
+                "UPDATE rows SET artists = CASE id
+                     WHEN 1 THEN 'artist:Alice'
+                     WHEN 2 THEN 'artist:alice' || CHAR(10) || 'artist:bob'
+                     WHEN 3 THEN NULL
+                     ELSE 'artist:alice' END,
+                 vibe_reference_count = CASE id WHEN 3 THEN 2 ELSE 0 END,
+                 group_id = CASE id WHEN 4 THEN {} ELSE NULL END;",
+                group.id
+            ))
+            .unwrap();
+
+        let page = database
+            .query_rows(&RowQuery {
+                offset: 0,
+                limit: 100,
+                tags: vec![],
+                tag_mode: TagMatchMode::And,
+                dedupe: DedupeMode::None,
+                single_artist_only: false,
+                artist_filter: String::new(),
+                has_vibe: false,
+                untagged_only: false,
+                filters: vec![
+                    LibraryFilter::Tag {
+                        operator: FilterTagOperator::HasAny,
+                        values: vec!["Red".into()],
+                    },
+                    LibraryFilter::Artist {
+                        operator: FilterArtistOperator::ContainsAny,
+                        values: vec!["ALICE".into()],
+                    },
+                    LibraryFilter::Artist {
+                        operator: FilterArtistOperator::IsSingle,
+                        values: vec![],
+                    },
+                    LibraryFilter::Vibe {
+                        operator: FilterVibeOperator::HasNone,
+                        comparison: None,
+                    },
+                    LibraryFilter::Group {
+                        operator: FilterGroupOperator::IsEmpty,
+                        group_id: None,
+                    },
+                ],
+                group_view: false,
+                hide_grouped: false,
+                search: String::new(),
+            })
+            .unwrap();
+
+        assert_eq!(page.rows.iter().map(|row| row.id).collect::<Vec<_>>(), vec![1]);
+    }
+
+    #[test]
+    fn structured_filters_cover_notes_metadata_dimensions_and_generation_fields() {
+        let mut database = database_with_rows(3);
+        database
+            .connection
+            .execute_batch(
+                "UPDATE rows SET
+                   note = CASE id WHEN 2 THEN '夏日草稿' ELSE '' END,
+                   metadata_failed = CASE id WHEN 3 THEN 1 ELSE 0 END,
+                   image_width = CASE id WHEN 1 THEN 1200 WHEN 2 THEN 832 ELSE 1024 END,
+                   image_height = CASE id WHEN 1 THEN 800 WHEN 2 THEN 1216 ELSE 1024 END,
+                   generation_model = CASE id WHEN 2 THEN 'NovelAI Diffusion V4.5' ELSE 'V3' END,
+                   generation_steps = CASE id WHEN 2 THEN 28 ELSE 20 END;",
+            )
+            .unwrap();
+
+        let page = database
+            .query_rows(&RowQuery {
+                offset: 0,
+                limit: 100,
+                tags: vec![],
+                tag_mode: TagMatchMode::And,
+                dedupe: DedupeMode::None,
+                single_artist_only: false,
+                artist_filter: String::new(),
+                has_vibe: false,
+                untagged_only: false,
+                filters: vec![
+                    LibraryFilter::Note {
+                        operator: FilterNoteOperator::Contains,
+                        value: "夏日".into(),
+                        case_sensitive: false,
+                    },
+                    LibraryFilter::Metadata { parsed: true },
+                    LibraryFilter::Orientation {
+                        orientation: FilterOrientation::Portrait,
+                    },
+                    LibraryFilter::ImageDimension {
+                        field: FilterImageDimensionField::Width,
+                        comparison: FilterNumericComparison {
+                            operator: FilterNumericOperator::GreaterOrEqual,
+                            value: 800.0,
+                            second_value: None,
+                        },
+                    },
+                    LibraryFilter::GenerationText {
+                        field: FilterGenerationTextField::Model,
+                        operator: FilterTextOperator::Contains,
+                        value: "v4.5".into(),
+                        case_sensitive: false,
+                    },
+                    LibraryFilter::GenerationNumber {
+                        field: FilterGenerationNumberField::Steps,
+                        comparison: FilterNumericComparison {
+                            operator: FilterNumericOperator::Between,
+                            value: 25.0,
+                            second_value: Some(30.0),
+                        },
+                    },
+                ],
+                group_view: false,
+                hide_grouped: false,
+                search: String::new(),
+            })
+            .unwrap();
+
+        assert_eq!(page.rows.iter().map(|row| row.id).collect::<Vec<_>>(), vec![2]);
+    }
+
+    #[test]
     fn cache_hit_paging_returns_consistent_pages() {
         let mut database = database_with_rows(10);
         let page_query = |offset: u64| RowQuery {
@@ -1526,6 +1691,7 @@ mod tests {
             artist_filter: String::new(),
             has_vibe: false,
             untagged_only: false,
+            filters: vec![],
             group_view: false,
             hide_grouped: false,
             search: String::new(),
@@ -1560,6 +1726,7 @@ mod tests {
             artist_filter: String::new(),
             has_vibe: false,
             untagged_only: false,
+            filters: vec![],
             group_view: false,
             hide_grouped: false,
             search: String::new(),
@@ -1576,6 +1743,7 @@ mod tests {
                 false,
                 false,
                 false,
+                &[],
                 false,
                 0,
                 100,
@@ -1603,6 +1771,7 @@ mod tests {
                 artist_filter: String::new(),
                 has_vibe: false,
                 untagged_only: false,
+                filters: vec![],
                 group_view: false,
                 hide_grouped: false,
                 search: String::new(),
@@ -1658,6 +1827,7 @@ mod tests {
             artist_filter: String::new(),
             has_vibe: false,
             untagged_only: false,
+            filters: vec![],
             group_view: false,
             hide_grouped: false,
             search: String::new(),
@@ -1705,6 +1875,7 @@ mod tests {
                 artist_filter: String::new(),
                 has_vibe: false,
                 untagged_only: false,
+                filters: vec![],
                 group_view: false,
                 hide_grouped: false,
                 search: String::new(),
@@ -1797,9 +1968,16 @@ mod tests {
                      WHEN 1 THEN 'artist:a'
                      WHEN 2 THEN 'artist:a'
                      WHEN 3 THEN 'artist:solo'
-                 END;",
+                 END,
+                 note = CASE id WHEN 1 THEN 'keep one' WHEN 2 THEN 'keep two' ELSE 'skip' END;",
             )
             .unwrap();
+
+        let filters = vec![LibraryFilter::Note {
+            operator: FilterNoteOperator::Contains,
+            value: "KEEP".into(),
+            case_sensitive: false,
+        }];
 
         let duplicates = database
             .list_dedupe_clusters(
@@ -1809,12 +1987,30 @@ mod tests {
                 false,
                 false,
                 false,
+                &filters,
                 false,
             )
             .unwrap();
         assert_eq!(duplicates.len(), 1);
         assert_eq!(duplicates[0].key, "artist:a");
         assert_eq!(duplicates[0].member_count, 2);
+
+        let members = database
+            .get_dedupe_cluster_members(
+                DedupeMode::Artists,
+                "artist:a",
+                &[],
+                TagMatchMode::And,
+                false,
+                false,
+                false,
+                &filters,
+                false,
+                0,
+                100,
+            )
+            .unwrap();
+        assert_eq!(members.rows.iter().map(|row| row.id).collect::<Vec<_>>(), vec![1, 2]);
     }
 
     #[test]
@@ -1842,6 +2038,7 @@ mod tests {
                 false,
                 false,
                 false,
+                &[],
                 false,
             )
             .unwrap();
@@ -1861,6 +2058,7 @@ mod tests {
                 false,
                 false,
                 false,
+                &[],
                 false,
             )
             .unwrap();
@@ -1875,6 +2073,7 @@ mod tests {
                 false,
                 false,
                 false,
+                &[],
                 false,
                 0,
                 100,

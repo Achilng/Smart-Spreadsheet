@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import type { RowPage } from "./rows";
-import type { DedupeCluster, DedupeMode, TagMatchMode } from "./types";
+import type { DedupeCluster, DedupeMode, LibraryFilter, TagMatchMode } from "./types";
 
 export function listDedupeClusters(
   dedupe: DedupeMode,
@@ -10,6 +10,7 @@ export function listDedupeClusters(
   singleArtistOnly: boolean,
   hasVibe: boolean,
   untaggedOnly: boolean,
+  filters: LibraryFilter[],
   hideGrouped: boolean,
 ): Promise<DedupeCluster[]> {
   return invoke<DedupeCluster[]>("list_dedupe_clusters", {
@@ -19,6 +20,7 @@ export function listDedupeClusters(
     singleArtistOnly,
     hasVibe,
     untaggedOnly,
+    filters,
     hideGrouped,
   });
 }
@@ -31,6 +33,7 @@ export function getDedupeClusterMembers(
   singleArtistOnly: boolean,
   hasVibe: boolean,
   untaggedOnly: boolean,
+  filters: LibraryFilter[],
   hideGrouped: boolean,
   offset: number,
   limit: number,
@@ -43,6 +46,7 @@ export function getDedupeClusterMembers(
     singleArtistOnly,
     hasVibe,
     untaggedOnly,
+    filters,
     hideGrouped,
     offset,
     limit,

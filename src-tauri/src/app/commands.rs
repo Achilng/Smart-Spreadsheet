@@ -10,7 +10,7 @@ use super::runtime::{AppRuntime, RuntimeSnapshot};
 use crate::db::{
     AutoArtistPrefixApplyResult, AutomationRule, AutomationRuleDraft, AutomationRuleExportResult,
     AutomationRuleImportInspection, AutomationRuleImportResult, AutoArtistPrefixPreview,
-    BatchSummary, DedupeCluster, DedupeMode, GroupSummary, ImageExportSettings,
+    BatchSummary, DedupeCluster, DedupeMode, GroupSummary, ImageExportSettings, LibraryFilter,
     LibrarySummary, MutableRowState, PromptEditResult,
     QuickArtistPrefixApplyResult, QuickArtistPrefixChange, QuickArtistPrefixPreview,
     QuickEditCondition, QuickGroupApplyResult, QuickGroupChange, QuickGroupPreview,
@@ -552,6 +552,7 @@ pub(crate) fn list_dedupe_clusters(
     single_artist_only: bool,
     has_vibe: bool,
     untagged_only: bool,
+    filters: Vec<LibraryFilter>,
     hide_grouped: bool,
     runtime: State<'_, AppRuntime>,
 ) -> Result<Vec<DedupeClusterDto>, String> {
@@ -563,6 +564,7 @@ pub(crate) fn list_dedupe_clusters(
             single_artist_only,
             has_vibe,
             untagged_only,
+            &filters,
             hide_grouped,
         )
         .map(|clusters| clusters.into_iter().map(DedupeClusterDto::from).collect())
@@ -674,6 +676,7 @@ pub(crate) fn get_dedupe_cluster_members(
     single_artist_only: bool,
     has_vibe: bool,
     untagged_only: bool,
+    filters: Vec<LibraryFilter>,
     hide_grouped: bool,
     offset: u64,
     limit: u32,
@@ -688,6 +691,7 @@ pub(crate) fn get_dedupe_cluster_members(
             single_artist_only,
             has_vibe,
             untagged_only,
+            &filters,
             hide_grouped,
             offset,
             limit,
@@ -1849,6 +1853,7 @@ mod tests {
                 artist_filter: String::new(),
                 has_vibe: false,
                 untagged_only: false,
+                filters: vec![],
                 search: String::new(),
                 excluded_row_ids: vec![2, 9],
             }

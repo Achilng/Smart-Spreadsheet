@@ -14,6 +14,7 @@ import { app, formatCount, runAction, setNotice } from "./app-state.svelte";
 import { requestJsonExport } from "./json-export-dialog.svelte";
 import { rowStore } from "./row-store.svelte";
 import { getSelectedCount, selectionDto } from "./selection-store.svelte";
+import { cloneLibraryFilters } from "../utils/library-filters";
 
 /**
  * 导出范围：有勾选时导出勾选行，否则导出当前筛选结果
@@ -32,6 +33,7 @@ export function exportScope(): RowSelection {
     artistFilter: rowStore.artistFilter,
     hasVibe: rowStore.hasVibe,
     untaggedOnly: rowStore.untaggedOnly,
+    filters: cloneLibraryFilters(rowStore.filters),
     search: rowStore.search,
     excludedRowIds: [],
   };
@@ -50,6 +52,7 @@ export function exportScopeLabel(): string {
     rowStore.artistFilter !== "" ||
     rowStore.hasVibe ||
     rowStore.untaggedOnly ||
+    rowStore.filters.length > 0 ||
     rowStore.search.trim().length > 0;
   return filtered ? "当前筛选结果" : "全部行";
 }

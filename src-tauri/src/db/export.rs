@@ -134,6 +134,7 @@ mod tests {
                 artist_filter: String::new(),
                 has_vibe: false,
                 untagged_only: false,
+                filters: vec![],
                 search: String::new(),
                 excluded_row_ids: Vec::new(),
             })

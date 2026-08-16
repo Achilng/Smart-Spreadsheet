@@ -9,6 +9,7 @@ import { rowStore } from "./row-store.svelte";
 import { sectionMenu } from "./section-context-menu.svelte";
 import { createSectionCache } from "./section-cache";
 import type { SectionMembers } from "./section-types";
+import { cloneLibraryFilters } from "../utils/library-filters";
 
 /**
  * 重复视图的模块级状态：聚合结果、展开状态和已加载成员跨视图切换保留，
@@ -38,6 +39,7 @@ function currentClusterSignature(): string {
     String(rowStore.singleArtistOnly),
     String(rowStore.hasVibe),
     String(rowStore.untaggedOnly),
+    JSON.stringify(rowStore.filters),
     String(rowStore.hideGrouped),
   ].join("\u{1}");
 }
@@ -69,6 +71,7 @@ async function loadClusters(): Promise<void> {
       rowStore.singleArtistOnly,
       rowStore.hasVibe,
       rowStore.untaggedOnly,
+      cloneLibraryFilters(rowStore.filters),
       rowStore.hideGrouped,
     );
     if (generation !== loadGeneration) {
@@ -97,6 +100,7 @@ function fetchMembers(key: string, offset: number, limit: number) {
     rowStore.singleArtistOnly,
     rowStore.hasVibe,
     rowStore.untaggedOnly,
+    cloneLibraryFilters(rowStore.filters),
     rowStore.hideGrouped,
     offset,
     limit,

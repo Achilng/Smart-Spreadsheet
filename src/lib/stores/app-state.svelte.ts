@@ -64,6 +64,8 @@ export const app = $state({
   migrationProgress: null as MigrationProgress | null,
   /** 分组管理视图是否打开 */
   groupManageOpen: false,
+  /** Discord 风格资料库筛选面板是否打开。 */
+  filterOpen: false,
 });
 
 let noticeSerial = 1;

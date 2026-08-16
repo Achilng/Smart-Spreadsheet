@@ -8,6 +8,7 @@
   import {
     clearAllFilters,
     rowStore,
+    removeLibraryFilter,
     setArtistFilter,
     setDedupe,
     setFilter,
@@ -23,6 +24,7 @@
   import SizeSlider from "./SizeSlider.svelte";
   import SortControl from "./SortControl.svelte";
   import { viewLabel } from "./view-modes";
+  import { libraryFilterLabel } from "../../utils/library-filters";
 
   const title = $derived(viewLabel(app.viewMode));
 
@@ -72,6 +74,7 @@
       rowStore.artistFilter !== "" ||
       rowStore.hasVibe ||
       rowStore.untaggedOnly ||
+      rowStore.filters.length > 0 ||
       rowStore.hideGrouped,
   );
 
@@ -224,6 +227,14 @@
         </button>
       </span>
     {/if}
+    {#each rowStore.filters as filter, index (`${filter.type}-${index}`)}
+      <span class="chip-f" transition:softPop={{ duration: 150, y: 0, start: 0.92 }} title={libraryFilterLabel(filter, groupStore.list)}>
+        <span class="chip-text">{libraryFilterLabel(filter, groupStore.list)}</span>
+        <button type="button" class="x" title="移除此过滤条件" onclick={() => { removeLibraryFilter(index); clearSelection(); }}>
+          <X size={11} strokeWidth={2.2} />
+        </button>
+      </span>
+    {/each}
     <button type="button" class="chip-clear" transition:softFade={{ duration: 130 }} onclick={clearAll}>清除全部</button>
   </div>
 {/if}

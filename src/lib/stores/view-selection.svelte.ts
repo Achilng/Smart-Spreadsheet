@@ -14,6 +14,7 @@ import {
   selectAllFiltered,
   setExplicitSelection,
 } from "./selection-store.svelte";
+import { cloneLibraryFilters } from "../utils/library-filters";
 
 const SELECT_PAGE_SIZE = 500;
 
@@ -33,6 +34,7 @@ function groupScopeSignature(): string {
     rowStore.artistFilter,
     String(rowStore.hasVibe),
     String(rowStore.untaggedOnly),
+    JSON.stringify(rowStore.filters),
     rowStore.search,
   ].join("\u{1}");
 }
@@ -47,6 +49,7 @@ function duplicateScopeSignature(): string {
     String(rowStore.singleArtistOnly),
     String(rowStore.hasVibe),
     String(rowStore.untaggedOnly),
+    JSON.stringify(rowStore.filters),
     String(rowStore.hideGrouped),
   ].join("\u{1}");
 }
@@ -106,6 +109,7 @@ async function groupViewRowIds(): Promise<number[]> {
     artistFilter: rowStore.artistFilter,
     hasVibe: rowStore.hasVibe,
     untaggedOnly: rowStore.untaggedOnly,
+    filters: cloneLibraryFilters(rowStore.filters),
     groupView: false,
     hideGrouped: true,
     search: rowStore.search,
@@ -138,6 +142,7 @@ async function duplicateViewRowIds(): Promise<number[]> {
         rowStore.singleArtistOnly,
         rowStore.hasVibe,
         rowStore.untaggedOnly,
+        rowStore.filters,
         rowStore.hideGrouped,
         offset,
         limit,
@@ -167,6 +172,7 @@ export function currentViewSelectionTotal(): number | null {
       rowStore.artistFilter === "" &&
       !rowStore.hasVibe &&
       !rowStore.untaggedOnly &&
+      rowStore.filters.length === 0 &&
       rowStore.search === "";
     return filtersInactive ? (app.snapshot?.library?.rowCount ?? null) : null;
   }

@@ -6,6 +6,7 @@
     type DedupeMode,
     type TagMatchMode,
   } from "../../api";
+  import ListFilter from "@lucide/svelte/icons/list-filter";
   import ContextMenuShell from "../../ui/ContextMenuShell.svelte";
   import Modal from "../../ui/Modal.svelte";
   import { app, bumpDataVersion, errorText, formatCount } from "../../stores/app-state.svelte";
@@ -16,10 +17,6 @@
     rowStore,
     setDedupe,
     setFilter,
-    setHasVibe,
-    setHideGrouped,
-    setSingleArtistOnly,
-    setUntaggedOnly,
   } from "../../stores/row-store.svelte";
   import { clearSelection } from "../../stores/selection-store.svelte";
   import { loadTags, tagStore } from "../../stores/tag-store.svelte";
@@ -160,6 +157,7 @@
         artistFilter: "",
         hasVibe: false,
         untaggedOnly: false,
+        filters: [],
         search: "",
         excludedRowIds: [],
       });
@@ -206,12 +204,13 @@
       Number(rowStore.singleArtistOnly) +
       Number(rowStore.hasVibe) +
       Number(rowStore.untaggedOnly) +
-      Number(rowStore.hideGrouped),
+      Number(rowStore.hideGrouped) +
+      rowStore.filters.length,
   );
   const filterSummary = $derived(
     activeTags.length === 0 && switchCount === 0
       ? "未启用筛选"
-      : `${activeTags.length} 个 Tag · ${switchCount} 个开关生效`,
+      : `${activeTags.length} 个 Tag · ${switchCount} 个条件生效`,
   );
 </script>
 
@@ -245,43 +244,20 @@
       <span class="cbox" aria-hidden="true"></span>
       按画师串去重
     </label>
-    <label class="check-row" class:on={rowStore.singleArtistOnly}>
-      <input
-        type="checkbox"
-        checked={rowStore.singleArtistOnly}
-        onchange={() => { setSingleArtistOnly(!rowStore.singleArtistOnly); clearSelection(); }}
-      />
-      <span class="cbox" aria-hidden="true"></span>
-      筛选单画师串图片
-    </label>
-    <label class="check-row" class:on={rowStore.hasVibe}>
-      <input
-        type="checkbox"
-        checked={rowStore.hasVibe}
-        onchange={() => { setHasVibe(!rowStore.hasVibe); clearSelection(); }}
-      />
-      <span class="cbox" aria-hidden="true"></span>
-      筛选存在 VIBE 的图片
-    </label>
-    <label class="check-row" class:on={rowStore.untaggedOnly}>
-      <input
-        type="checkbox"
-        checked={rowStore.untaggedOnly}
-        onchange={() => { setUntaggedOnly(!rowStore.untaggedOnly); clearSelection(); }}
-      />
-      <span class="cbox" aria-hidden="true"></span>
-      筛选无 Tag 的图片
-    </label>
-    <label class="check-row" class:on={rowStore.hideGrouped} class:is-disabled={app.viewMode === "group"}>
-      <input
-        type="checkbox"
-        checked={rowStore.hideGrouped}
-        disabled={app.viewMode === "group"}
-        onchange={() => { setHideGrouped(!rowStore.hideGrouped); clearSelection(); }}
-      />
-      <span class="cbox" aria-hidden="true"></span>
-      隐藏已分组
-    </label>
+    <button
+      type="button"
+      class="filter-launch"
+      class:on={rowStore.filters.length > 0}
+      onclick={() => (app.filterOpen = true)}
+    >
+      <ListFilter size={16} strokeWidth={1.9} />
+      <span>过滤</span>
+      {#if rowStore.filters.length > 0}
+        <span class="filter-badge tabular">{rowStore.filters.length}</span>
+      {:else}
+        <span class="filter-hint">选择条件</span>
+      {/if}
+    </button>
   </div>
 
   <div class="f-head tag-head">
@@ -448,6 +424,56 @@
     padding: 0 16px;
     margin-bottom: 2px;
     flex: none;
+  }
+
+  .filter-launch {
+    width: 100%;
+    min-height: 36px;
+    margin-top: 8px;
+    padding: 0 9px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-s);
+    background: var(--surface-2);
+    color: var(--text-2);
+    font: inherit;
+    text-align: left;
+  }
+
+  .filter-launch:hover,
+  .filter-launch.on {
+    border-color: color-mix(in srgb, var(--primary) 45%, var(--border-strong));
+    color: var(--text);
+  }
+
+  .filter-launch.on {
+    background: var(--primary-soft);
+  }
+
+  .filter-launch > span:nth-child(2) {
+    font-weight: 650;
+  }
+
+  .filter-hint {
+    margin-left: auto;
+    color: var(--text-4);
+    font-size: var(--font-xs);
+  }
+
+  .filter-badge {
+    min-width: 20px;
+    height: 20px;
+    margin-left: auto;
+    padding: 0 6px;
+    display: grid;
+    place-items: center;
+    border-radius: var(--radius-full);
+    background: var(--primary);
+    color: white;
+    font-size: 11px;
+    font-weight: 700;
   }
 
   .mode-link {

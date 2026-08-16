@@ -4,11 +4,13 @@ import {
   countSelectedRows,
   selectedRowIds,
   type DedupeMode,
+  type LibraryFilter,
   type RowSelection,
   type TagMatchMode,
 } from "../api";
 import { getRow, rowStore } from "./row-store.svelte";
 import { setNotice } from "./app-state.svelte";
+import { cloneLibraryFilters } from "../utils/library-filters";
 
 /**
  * 选择模型，沿用后端的 explicit / filtered 双模式：
@@ -24,6 +26,7 @@ export const selection = $state({
   filteredArtistFilter: "",
   filteredHasVibe: false,
   filteredUntaggedOnly: false,
+  filteredFilters: [] as LibraryFilter[],
   filteredSearch: "",
   filteredTotal: 0,
   version: 0,
@@ -162,6 +165,7 @@ export function setExplicitSelection(ids: number[]): void {
   selection.filteredArtistFilter = "";
   selection.filteredHasVibe = false;
   selection.filteredUntaggedOnly = false;
+  selection.filteredFilters = [];
   selection.filteredSearch = "";
   selection.filteredTotal = 0;
   selectionIds.clear();
@@ -181,6 +185,7 @@ export function clearSelection(): void {
   selection.filteredArtistFilter = "";
   selection.filteredHasVibe = false;
   selection.filteredUntaggedOnly = false;
+  selection.filteredFilters = [];
   selection.filteredSearch = "";
   selection.filteredTotal = 0;
   selectionIds.clear();
@@ -206,6 +211,7 @@ export async function selectAllFiltered(): Promise<number> {
     artistFilter: rowStore.artistFilter,
     hasVibe: rowStore.hasVibe,
     untaggedOnly: rowStore.untaggedOnly,
+    filters: cloneLibraryFilters(rowStore.filters),
     search: rowStore.search,
     excludedRowIds: [],
   };
@@ -222,6 +228,7 @@ export async function selectAllFiltered(): Promise<number> {
     rowStore.artistFilter !== dto.artistFilter ||
     rowStore.hasVibe !== dto.hasVibe ||
     rowStore.untaggedOnly !== dto.untaggedOnly ||
+    JSON.stringify(rowStore.filters) !== JSON.stringify(dto.filters) ||
     rowStore.search !== dto.search
   ) {
     return getSelectedCount();
@@ -234,6 +241,7 @@ export async function selectAllFiltered(): Promise<number> {
   selection.filteredArtistFilter = dto.artistFilter;
   selection.filteredHasVibe = dto.hasVibe;
   selection.filteredUntaggedOnly = dto.untaggedOnly;
+  selection.filteredFilters = cloneLibraryFilters(dto.filters);
   selection.filteredSearch = dto.search;
   selection.filteredTotal = totalCount;
   selectionIds.clear();
@@ -260,6 +268,7 @@ export async function materializeSelection(): Promise<number> {
   selection.filteredArtistFilter = "";
   selection.filteredHasVibe = false;
   selection.filteredUntaggedOnly = false;
+  selection.filteredFilters = [];
   selection.filteredSearch = "";
   selection.filteredTotal = 0;
   selectionIds.clear();
@@ -288,6 +297,7 @@ export function selectionDto(): RowSelection {
     artistFilter: selection.filteredArtistFilter,
     hasVibe: selection.filteredHasVibe,
     untaggedOnly: selection.filteredUntaggedOnly,
+    filters: cloneLibraryFilters(selection.filteredFilters),
     search: selection.filteredSearch,
     excludedRowIds: [...selectionIds].sort((left, right) => left - right),
   };

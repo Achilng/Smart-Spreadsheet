@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import type { AppSnapshot } from "./app";
-import type { DedupeMode, RowSelection, SourceType, TagMatchMode } from "./types";
+import type { DedupeMode, LibraryFilter, RowSelection, SourceType, TagMatchMode } from "./types";
 import type { RuleExecutionSummary } from "./automation-rules";
 
 export interface ImageImportResult {
@@ -74,6 +74,7 @@ export interface RowQuery {
   artistFilter: string;
   hasVibe: boolean;
   untaggedOnly: boolean;
+  filters: LibraryFilter[];
   groupView: boolean;
   hideGrouped: boolean;
   search: string;

@@ -10,7 +10,7 @@ use crate::db::{
     AutoArtistPrefixApplyResult, AutomationRule, AutomationRuleDraft, AutomationRuleError,
     AutomationRuleExportResult, AutomationRuleImportInspection, AutomationRuleImportResult,
     AutoArtistPrefixPreview, BatchSummary,
-    DedupeCluster, DedupeMode, GroupSummary, LibrarySummary,
+    DedupeCluster, DedupeMode, GroupSummary, LibraryFilter, LibrarySummary,
     MutableRowState, QuickArtistPrefixApplyResult, QuickArtistPrefixChange,
     QuickArtistPrefixPreview,
     QuickEditCondition, QuickEditError, QuickGroupApplyResult, QuickGroupChange,
@@ -727,6 +727,7 @@ impl AppRuntime {
         single_artist_only: bool,
         has_vibe: bool,
         untagged_only: bool,
+        filters: &[LibraryFilter],
         hide_grouped: bool,
     ) -> Result<Vec<DedupeCluster>, AppRuntimeError> {
         self.with_database(|db| {
@@ -737,6 +738,7 @@ impl AppRuntime {
                 single_artist_only,
                 has_vibe,
                 untagged_only,
+                filters,
                 hide_grouped,
             )
         })
@@ -844,6 +846,7 @@ impl AppRuntime {
         single_artist_only: bool,
         has_vibe: bool,
         untagged_only: bool,
+        filters: &[LibraryFilter],
         hide_grouped: bool,
         offset: u64,
         limit: u32,
@@ -857,6 +860,7 @@ impl AppRuntime {
                 single_artist_only,
                 has_vibe,
                 untagged_only,
+                filters,
                 hide_grouped,
                 offset,
                 limit,
@@ -1416,6 +1420,7 @@ mod tests {
             artist_filter: String::new(),
             has_vibe: false,
             untagged_only: false,
+            filters: vec![],
             search: String::new(),
             excluded_row_ids: vec![2],
         };
@@ -1516,6 +1521,7 @@ mod tests {
             artist_filter: String::new(),
             has_vibe: false,
             untagged_only: false,
+            filters: vec![],
             group_view: false,
             hide_grouped: false,
             search: String::new(),

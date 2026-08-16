@@ -9,6 +9,7 @@ mod history;
 pub mod identity;
 mod image_updates;
 mod images;
+mod library_filters;
 mod metadata_fingerprints;
 mod migrations;
 mod notes;
@@ -30,6 +31,7 @@ pub use hashes::ContentHashCandidate;
 pub use history::MutableRowState;
 pub use image_updates::{ExistingImageTarget, ExistingImageUpdate};
 pub use images::RowImageLocator;
+pub use library_filters::*;
 pub use migrations::CURRENT_SCHEMA_VERSION;
 pub use prompt_edit::{PromptEditResult, SinglePromptEditResult};
 pub use quick_edit::{
@@ -543,6 +545,7 @@ mod tests {
                 artist_filter: String::new(),
                 has_vibe: false,
                 untagged_only: false,
+                filters: vec![],
                 group_view: false,
                 hide_grouped: false,
                 search: String::new(),

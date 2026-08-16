@@ -24,6 +24,9 @@ export function emptyResultText(): { text: string; canClear: boolean } {
   if (rowStore.untaggedOnly) {
     parts.push("无 Tag 筛选");
   }
+  if (rowStore.filters.length > 0) {
+    parts.push(`${rowStore.filters.length} 个自定义过滤条件`);
+  }
   if (rowStore.hideGrouped) {
     parts.push("隐藏已分组");
   }
