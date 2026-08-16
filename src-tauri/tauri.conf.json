@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "智能表格",
-  "version": "0.12.7",
+  "version": "0.12.8",
   "identifier": "com.achilng.smart-spreadsheet",
   "build": {
     "beforeDevCommand": "npm.cmd run dev",
