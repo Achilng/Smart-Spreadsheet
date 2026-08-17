@@ -21,7 +21,8 @@ mod tags;
 
 pub use batches::{AppendOutcome, BatchSummary, LibrarySummary, NewRow, SourceType};
 pub use artist_auto_prefix::{
-    AutoArtistCandidate, AutoArtistPrefixApplyResult, AutoArtistPrefixPreview,
+    ArtistTextPrefixResult, AutoArtistCandidate, AutoArtistPrefixApplyResult,
+    AutoArtistPrefixPreview,
 };
 pub use automation_rules::*;
 pub use delete::DeleteOutcome;

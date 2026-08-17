@@ -111,6 +111,7 @@ pub fn run() {
             app::commands::revert_quick_artist_prefix_changes,
             app::commands::reapply_quick_artist_prefix_changes,
             app::commands::preview_auto_artist_prefix,
+            app::commands::prefix_confirmed_artists_in_text,
             app::commands::apply_auto_artist_prefix,
             app::commands::get_row_thumbnail,
             app::commands::get_row_gallery_preview,

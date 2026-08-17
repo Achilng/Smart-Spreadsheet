@@ -3,11 +3,13 @@
 
   import {
     applyAutoArtistPrefix,
+    prefixConfirmedArtistsInText,
     previewAutoArtistPrefix,
     reapplyQuickArtistPrefixChanges,
     revertQuickArtistPrefixChanges,
     type AutoArtistCandidate,
     type AutoArtistPrefixPreview,
+    type ArtistTextPrefixResult,
   } from "../../api";
   import {
     app,
@@ -25,6 +27,10 @@
   let previewing = $state(false);
   let applying = $state(false);
   let openingRowId = $state<number | null>(null);
+  let textInput = $state("");
+  let textResult = $state<ArtistTextPrefixResult | null>(null);
+  let processingText = $state(false);
+  let copyingText = $state(false);
   let error = $state<string | null>(null);
 
   const filteredCandidates = $derived(
@@ -34,7 +40,41 @@
     }),
   );
   const selectedCount = $derived(selectedNames.length);
-  const busy = $derived(previewing || applying || history.busy || app.busy);
+  const busy = $derived(
+    previewing || applying || processingText || history.busy || app.busy,
+  );
+
+  function updateTextInput(event: Event): void {
+    textInput = (event.target as HTMLTextAreaElement).value;
+    textResult = null;
+  }
+
+  async function processText(): Promise<void> {
+    if (!textInput.trim() || busy) return;
+    processingText = true;
+    error = null;
+    try {
+      textResult = await prefixConfirmedArtistsInText(textInput);
+    } catch (cause) {
+      textResult = null;
+      error = errorText(cause);
+    } finally {
+      processingText = false;
+    }
+  }
+
+  async function copyTextResult(): Promise<void> {
+    if (!textResult || copyingText) return;
+    copyingText = true;
+    try {
+      await navigator.clipboard.writeText(textResult.text);
+      setNotice({ tone: "success", text: "处理后的纯文本已复制到剪贴板。" });
+    } catch (cause) {
+      setNotice({ tone: "error", text: `复制失败：${errorText(cause)}` });
+    } finally {
+      copyingText = false;
+    }
+  }
 
   async function scanLibrary(): Promise<void> {
     if (busy) return;
@@ -139,6 +179,58 @@
     </div>
   </section>
 
+  <section class="text-card tool-card">
+    <div class="text-card-heading">
+      <div>
+        <h3>处理纯文本</h3>
+        <p>粘贴提示词后，只为资料库中已有明确标注的同名裸画师 Tag 补上前缀，不会修改资料库。</p>
+      </div>
+      <button
+        class="btn btn-primary"
+        type="button"
+        disabled={!textInput.trim() || busy}
+        onclick={() => void processText()}
+      >
+        {processingText ? "处理中…" : "添加 artist: 前缀"}
+      </button>
+    </div>
+
+    <div class="text-workspace" class:has-result={textResult !== null}>
+      <label class="text-field">
+        <span class="overline">原始文本</span>
+        <textarea
+          rows="8"
+          placeholder="在这里粘贴 NovelAI 提示词…"
+          value={textInput}
+          oninput={updateTextInput}
+        ></textarea>
+      </label>
+
+      {#if textResult}
+        <label class="text-field result-field">
+          <span class="overline">处理结果</span>
+          <textarea rows="8" readonly value={textResult.text}></textarea>
+        </label>
+      {/if}
+    </div>
+
+    {#if textResult}
+      <div class="text-result-bar">
+        <span>
+          {textResult.matchedArtists.length > 0
+            ? `已识别 ${formatCount(textResult.matchedArtists.length)} 个库内画师，并保留原始格式。`
+            : "没有发现需要补前缀的库内画师，原文保持不变。"}
+        </span>
+        <button
+          type="button"
+          class="btn"
+          disabled={copyingText}
+          onclick={() => void copyTextResult()}
+        >{copyingText ? "复制中…" : "复制结果"}</button>
+      </div>
+    {/if}
+  </section>
+
   <section class="scan-card tool-card">
     <div>
       <h3>扫描资料库</h3>
@@ -237,6 +329,71 @@
     justify-content: space-between;
     gap: 24px;
     padding: 22px;
+  }
+
+  .text-card {
+    display: grid;
+    gap: 16px;
+    padding: 20px 22px;
+  }
+
+  .text-card-heading,
+  .text-result-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+  }
+
+  .text-card-heading > div {
+    min-width: 0;
+  }
+
+  .text-card-heading .btn {
+    flex: 0 0 auto;
+  }
+
+  .text-workspace {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+  }
+
+  .text-workspace.has-result {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .text-field {
+    min-width: 0;
+    display: grid;
+    gap: 7px;
+  }
+
+  .text-field > span {
+    color: var(--text-3);
+  }
+
+  .text-field textarea {
+    width: 100%;
+    min-height: 150px;
+    box-sizing: border-box;
+    resize: vertical;
+    font-family: inherit;
+    line-height: 1.55;
+  }
+
+  .result-field textarea {
+    background: var(--surface-2);
+  }
+
+  .text-result-bar {
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+  }
+
+  .text-result-bar span {
+    color: var(--text-2);
+    font-size: var(--font-sm);
   }
 
   h3,
@@ -424,6 +581,21 @@
   }
 
   @media (max-width: 820px) {
+    .text-card-heading,
+    .text-result-bar {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .text-card-heading .btn,
+    .text-result-bar .btn {
+      align-self: flex-end;
+    }
+
+    .text-workspace.has-result {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
     .candidate-row {
       grid-template-columns: 28px minmax(0, 1fr) 90px;
     }

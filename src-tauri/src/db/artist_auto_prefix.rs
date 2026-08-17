@@ -40,6 +40,13 @@ pub struct AutoArtistPrefixApplyResult {
     pub changes: Vec<QuickArtistPrefixChange>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArtistTextPrefixResult {
+    pub text: String,
+    pub matched_artists: Vec<String>,
+}
+
 #[derive(Debug)]
 struct CandidateAccumulator {
     match_name: String,
@@ -59,6 +66,34 @@ struct PromptRow {
 }
 
 impl Database {
+    pub fn prefix_confirmed_artists_in_text(
+        &self,
+        text: &str,
+    ) -> Result<ArtistTextPrefixResult, QuickEditError> {
+        let rows = {
+            let mut statement = self.connection.prepare(
+                "SELECT id, positive_prompt, character_prompt, negative_prompt, artists
+                 FROM rows ORDER BY id",
+            )?;
+            statement
+                .query_map([], read_prompt_row)?
+                .collect::<Result<Vec<_>, _>>()?
+        };
+        let known_names = library_confirmed_names(&rows);
+        let Some((text, matched_artists)) =
+            prefix_known_artist_tags_in_prompt(text, &known_names)
+        else {
+            return Ok(ArtistTextPrefixResult {
+                text: text.to_owned(),
+                matched_artists: Vec::new(),
+            });
+        };
+        Ok(ArtistTextPrefixResult {
+            text,
+            matched_artists,
+        })
+    }
+
     pub fn preview_auto_artist_prefix(&self) -> Result<AutoArtistPrefixPreview, QuickEditError> {
         let rows = {
             let mut statement = self.connection.prepare(
@@ -613,5 +648,69 @@ mod tests {
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
         assert_eq!(prompts, vec!["xy", "artist:xy"]);
+    }
+
+    #[test]
+    fn plain_text_prefixing_uses_library_evidence_without_mutating_rows() {
+        let mut database = Database::open_in_memory().unwrap();
+        append_rows(
+            &mut database,
+            &[
+                NewRow {
+                    source_ordinal: 1,
+                    identity: "evidence".into(),
+                    positive_prompt: Some("artist:xy, masterpiece".into()),
+                    negative_prompt: Some("artist:zz".into()),
+                    ..NewRow::default()
+                },
+                NewRow {
+                    source_ordinal: 2,
+                    identity: "unchanged".into(),
+                    positive_prompt: Some("xy".into()),
+                    ..NewRow::default()
+                },
+            ],
+        );
+
+        let result = database
+            .prefix_confirmed_artists_in_text(
+                "best quality, XY, (ZZ:1.2), artist:xy, xy_style\r\nunknown",
+            )
+            .unwrap();
+
+        assert_eq!(
+            result.text,
+            "best quality, artist:XY, (artist:ZZ:1.2), artist:xy, xy_style\r\nunknown"
+        );
+        assert_eq!(result.matched_artists, vec!["xy", "zz"]);
+        let stored = database
+            .connection
+            .query_row(
+                "SELECT positive_prompt FROM rows WHERE id = 2",
+                [],
+                |row| row.get::<_, String>(0),
+            )
+            .unwrap();
+        assert_eq!(stored, "xy");
+    }
+
+    #[test]
+    fn plain_text_prefixing_ignores_names_without_explicit_prompt_evidence() {
+        let mut database = Database::open_in_memory().unwrap();
+        append_rows(
+            &mut database,
+            &[NewRow {
+                source_ordinal: 1,
+                identity: "artists-column-only".into(),
+                positive_prompt: Some("masterpiece".into()),
+                artists: Some("artist:xy".into()),
+                ..NewRow::default()
+            }],
+        );
+
+        let result = database.prefix_confirmed_artists_in_text("xy").unwrap();
+
+        assert_eq!(result.text, "xy");
+        assert!(result.matched_artists.is_empty());
     }
 }

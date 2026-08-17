@@ -7,7 +7,8 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::db::{
-    AutoArtistPrefixApplyResult, AutomationRule, AutomationRuleDraft, AutomationRuleError,
+    ArtistTextPrefixResult, AutoArtistPrefixApplyResult, AutomationRule, AutomationRuleDraft,
+    AutomationRuleError,
     AutomationRuleExportResult, AutomationRuleImportInspection, AutomationRuleImportResult,
     AutoArtistPrefixPreview, BatchSummary,
     DedupeCluster, DedupeMode, GroupSummary, LibraryFilter, LibrarySummary,
@@ -558,6 +559,13 @@ impl AppRuntime {
         &self,
     ) -> Result<AutoArtistPrefixPreview, AppRuntimeError> {
         self.with_cloned_database(|db| db.preview_auto_artist_prefix())
+    }
+
+    pub(crate) fn prefix_confirmed_artists_in_text(
+        &self,
+        text: &str,
+    ) -> Result<ArtistTextPrefixResult, AppRuntimeError> {
+        self.with_cloned_database(|db| db.prefix_confirmed_artists_in_text(text))
     }
 
     pub(crate) fn apply_auto_artist_prefix(

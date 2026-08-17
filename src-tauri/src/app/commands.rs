@@ -8,8 +8,9 @@ use tauri::{
 
 use super::runtime::{AppRuntime, RuntimeSnapshot};
 use crate::db::{
-    AutoArtistPrefixApplyResult, AutomationRule, AutomationRuleDraft, AutomationRuleExportResult,
-    AutomationRuleImportInspection, AutomationRuleImportResult, AutoArtistPrefixPreview,
+    ArtistTextPrefixResult, AutoArtistPrefixApplyResult, AutomationRule, AutomationRuleDraft,
+    AutomationRuleExportResult, AutomationRuleImportInspection, AutomationRuleImportResult,
+    AutoArtistPrefixPreview,
     BatchSummary, DedupeCluster, DedupeMode, GroupSummary, ImageExportSettings, LibraryFilter,
     LibrarySummary, MutableRowState, PromptEditResult,
     QuickArtistPrefixApplyResult, QuickArtistPrefixChange, QuickArtistPrefixPreview,
@@ -1168,6 +1169,20 @@ pub(crate) async fn preview_auto_artist_prefix(
     })
     .await
     .map_err(|error| format!("画师 Tag 扫描任务失败: {error}"))?
+}
+
+#[tauri::command]
+pub(crate) async fn prefix_confirmed_artists_in_text(
+    text: String,
+    app: tauri::AppHandle,
+) -> Result<ArtistTextPrefixResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        app.state::<AppRuntime>()
+            .prefix_confirmed_artists_in_text(&text)
+            .map_err(error_text)
+    })
+    .await
+    .map_err(|error| format!("纯文本画师前缀处理任务失败: {error}"))?
 }
 
 #[tauri::command]

@@ -23,8 +23,19 @@ export interface AutoArtistPrefixApplyResult {
   changes: import("./quick-edit").QuickArtistPrefixChange[];
 }
 
+export interface ArtistTextPrefixResult {
+  text: string;
+  matchedArtists: string[];
+}
+
 export function previewAutoArtistPrefix(): Promise<AutoArtistPrefixPreview> {
   return invoke<AutoArtistPrefixPreview>("preview_auto_artist_prefix");
+}
+
+export function prefixConfirmedArtistsInText(
+  text: string,
+): Promise<ArtistTextPrefixResult> {
+  return invoke<ArtistTextPrefixResult>("prefix_confirmed_artists_in_text", { text });
 }
 
 export function applyAutoArtistPrefix(
