@@ -3,6 +3,7 @@ import { open, save } from "@tauri-apps/plugin-dialog";
 
 import {
   exportImageFiles,
+  exportPromptRotationJson,
   exportXlsx,
   exportZhihuijiJson,
   type ExportProgress,
@@ -80,6 +81,22 @@ export function buildExportItems(): {
   ];
 }
 
+/** 仅在底部选择条出现：轮询脚本 JSON 不允许无选区时回退到全部资料。 */
+export function buildSelectionExportItems(): {
+  label: string;
+  hint?: string;
+  action: () => void;
+}[] {
+  return [
+    ...buildExportItems(),
+    {
+      label: "导出为轮询脚本 JSON",
+      hint: `导出${exportScopeLabel()} · 一张图片一个项目`,
+      action: () => void choosePromptRotationJsonExport(),
+    },
+  ];
+}
+
 export async function chooseXlsxExport(): Promise<void> {
   if (!hasRows()) {
     return;
@@ -133,6 +150,28 @@ export async function executeJsonExport(
     setNotice({
       tone: "success",
       text: parts.join("，"),
+    });
+  });
+}
+
+export async function choosePromptRotationJsonExport(): Promise<void> {
+  if (getSelectedCount() <= 0) {
+    setNotice({ tone: "error", text: "请先选择要导出的图片" });
+    return;
+  }
+  const scope = selectionDto();
+  const destination = await save({
+    title: "导出轮询脚本 JSON（已有文件会被替换）",
+    defaultPath: "NovelAI轮询项目.json",
+    filters: [{ name: "JSON 文件", extensions: ["json"] }],
+  });
+  if (typeof destination !== "string") return;
+
+  await runExport(async () => {
+    const result = await exportPromptRotationJson(scope, destination);
+    setNotice({
+      tone: "success",
+      text: `已将 ${formatCount(result.exported)} 张图片导出为轮询项目：${result.path}`,
     });
   });
 }

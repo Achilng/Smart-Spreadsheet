@@ -121,6 +121,7 @@ pub fn run() {
             app::commands::export_xlsx,
             app::commands::inspect_zhihuiji_export_notes,
             app::commands::export_zhihuiji_json,
+            app::commands::export_prompt_rotation_json,
             app::commands::export_image_files,
             app::commands::export_selected_images,
             app::commands::collect_export_images,

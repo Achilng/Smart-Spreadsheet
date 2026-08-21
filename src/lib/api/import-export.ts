@@ -22,6 +22,11 @@ export interface JsonExportResult {
   artistsAdded: number;
 }
 
+export interface PromptRotationJsonExportResult {
+  path: string;
+  exported: number;
+}
+
 export interface JsonExportOptions {
   noteNumberNames: boolean;
   includeArtists: boolean;
@@ -67,6 +72,16 @@ export function exportZhihuijiJson(
     selection,
     path,
     options,
+  });
+}
+
+export function exportPromptRotationJson(
+  selection: RowSelection,
+  path: string,
+): Promise<PromptRotationJsonExportResult> {
+  return invoke<PromptRotationJsonExportResult>("export_prompt_rotation_json", {
+    selection,
+    path,
   });
 }
 

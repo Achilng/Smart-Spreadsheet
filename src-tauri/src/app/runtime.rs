@@ -26,7 +26,7 @@ use crate::storage::{
     ExistingImageUpdateOutcome, ImageFilesExportError, ImageFilesExportOutcome,
     ImageFilesProgress, ImageImportError, ImageImportOutcome, ImageImportProgress, JsonExportError,
     JsonExportOptions, JsonExportOutcome, JsonExportProgress, MigrationProgress,
-    PerceptualHashProgress,
+    PerceptualHashProgress, PromptRotationJsonExportError, PromptRotationJsonExportOutcome,
     PromptDocAsset, PromptDocDetail, PromptDocError, PromptDocSummary, RowDeletionError,
     RowDeletionReport, SimilarImageMatch, StorageError, XlsxExportError, XlsxExportOutcome,
 };
@@ -82,6 +82,8 @@ pub(crate) enum AppRuntimeError {
     XlsxExport(#[from] XlsxExportError),
     #[error("JSON 导出失败: {0}")]
     JsonExport(#[from] JsonExportError),
+    #[error("轮询脚本 JSON 导出失败: {0}")]
+    PromptRotationJsonExport(#[from] PromptRotationJsonExportError),
     #[error("图片文件导出失败: {0}")]
     ImageFilesExport(#[from] ImageFilesExportError),
     #[error("提示词文档操作失败: {0}")]
@@ -937,6 +939,16 @@ impl AppRuntime {
             options,
             progress,
         )?)
+    }
+
+    pub(crate) fn export_prompt_rotation_json(
+        &self,
+        selection: &RowSelection,
+        destination: impl AsRef<Path>,
+        progress: impl Fn(JsonExportProgress) + Sync,
+    ) -> Result<PromptRotationJsonExportOutcome, AppRuntimeError> {
+        let directory = self.active_directory()?;
+        Ok(directory.export_prompt_rotation_json(selection, destination, progress)?)
     }
 
     pub(crate) fn inspect_zhihuiji_export_notes(

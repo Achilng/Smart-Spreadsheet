@@ -160,6 +160,13 @@ pub(crate) struct JsonExportResultDto {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub(crate) struct PromptRotationJsonExportResultDto {
+    path: String,
+    exported: usize,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct JsonExportNoteInspectionDto {
     total: usize,
     empty_notes: usize,
@@ -1377,6 +1384,28 @@ pub(crate) async fn export_zhihuiji_json(
                 exported: outcome.exported,
                 duplicates_removed: outcome.duplicates_removed,
                 artists_added: outcome.artists_added,
+            })
+            .map_err(error_text)
+    })
+    .await
+    .map_err(|error| format!("导出任务异常中止: {error}"))?
+}
+
+#[tauri::command]
+pub(crate) async fn export_prompt_rotation_json(
+    selection: RowSelection,
+    path: String,
+    app: tauri::AppHandle,
+) -> Result<PromptRotationJsonExportResultDto, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let runtime = app.state::<AppRuntime>();
+        runtime
+            .export_prompt_rotation_json(&selection, PathBuf::from(path), |progress| {
+                emit_export_progress(&app, progress.processed, progress.total);
+            })
+            .map(|outcome| PromptRotationJsonExportResultDto {
+                path: outcome.destination.to_string_lossy().into_owned(),
+                exported: outcome.exported,
             })
             .map_err(error_text)
     })

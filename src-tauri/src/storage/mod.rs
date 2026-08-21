@@ -2,6 +2,7 @@ mod content_hash;
 mod delete;
 mod export_images;
 mod export_json;
+mod export_prompt_rotation_json;
 mod export_xlsx;
 mod import_images;
 mod metadata_fingerprint;
@@ -29,6 +30,9 @@ pub use export_images::{
     resolve_locator_source as resolve_image_source, resolve_original_source,
 };
 pub use export_json::{JsonExportError, JsonExportOptions, JsonExportOutcome, JsonExportProgress};
+pub use export_prompt_rotation_json::{
+    PromptRotationJsonExportError, PromptRotationJsonExportOutcome,
+};
 pub use export_xlsx::{ExportProgress, XlsxExportError, XlsxExportOutcome};
 pub use import_images::{
     ExistingImageUpdateOutcome, ImageImportError, ImageImportOutcome, ImageImportProgress,
