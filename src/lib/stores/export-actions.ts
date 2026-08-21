@@ -58,16 +58,24 @@ export function exportScopeLabel(): string {
   return filtered ? "当前筛选结果" : "全部行";
 }
 
-/** 四种导出方式的菜单项工厂（TopBar 导出 / 底部选择条"导出所选"共用）。 */
+/** 五种导出方式的菜单项工厂（TopBar 导出 / 底部选择条"导出所选"共用）。 */
 export function buildExportItems(): {
   label: string;
   hint?: string;
   action: () => void;
 }[] {
   const scopeHint = `导出${exportScopeLabel()}`;
+  const rotationHint = getSelectedCount() > 0
+    ? `${scopeHint} · 一张图片一个项目`
+    : "请先选择要导出的图片";
   return [
     { label: "导出 xlsx", hint: scopeHint, action: () => void chooseXlsxExport() },
     { label: "导出智绘姬 JSON", hint: scopeHint, action: () => void chooseJsonExport() },
+    {
+      label: "导出为轮询脚本 JSON",
+      hint: rotationHint,
+      action: () => void choosePromptRotationJsonExport(),
+    },
     {
       label: "导出图片（复制）",
       hint: scopeHint,
@@ -77,22 +85,6 @@ export function buildExportItems(): {
       label: "导出图片（硬链接）",
       hint: `${scopeHint} · 同盘秒出，失败自动复制`,
       action: () => void chooseImageFilesExport("hardlink"),
-    },
-  ];
-}
-
-/** 仅在底部选择条出现：轮询脚本 JSON 不允许无选区时回退到全部资料。 */
-export function buildSelectionExportItems(): {
-  label: string;
-  hint?: string;
-  action: () => void;
-}[] {
-  return [
-    ...buildExportItems(),
-    {
-      label: "导出为轮询脚本 JSON",
-      hint: `导出${exportScopeLabel()} · 一张图片一个项目`,
-      action: () => void choosePromptRotationJsonExport(),
     },
   ];
 }
