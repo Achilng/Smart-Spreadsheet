@@ -1,6 +1,7 @@
 <script lang="ts">
   import ChevronsRight from "@lucide/svelte/icons/chevrons-right";
   import { rowFileName, rowResolution } from "../../utils/row-display";
+  import { modelVersionBadge } from "../../utils/model-version";
   import X from "@lucide/svelte/icons/x";
   import { untrack } from "svelte";
 
@@ -36,6 +37,9 @@
   const row = $derived(rowStore.activeRow);
   const hasImage = $derived(
     Boolean(row && (row.imagePath?.trim() || row.storedImagePath?.trim())),
+  );
+  const versionBadge = $derived(
+    row ? modelVersionBadge(row.generationModel) : null,
   );
 
   let thumbUrl = $state<string | null>(null);
@@ -469,6 +473,13 @@
               draggable="false"
               onmousedown={(e) => { if (row && hasImage) beginFileDrag(e, row.id); }}
             />
+            {#if versionBadge}
+              <span
+                class="version-badge {versionBadge.className}"
+                title={"作画模型：" + (row?.generationModel ?? "")}
+                transition:softPop={{ duration: 140, y: 0, start: 0.85 }}
+              >{versionBadge.label}</span>
+            {/if}
             {#if vibeRefs}
               <span
                 class="vibe-badge"
@@ -808,6 +819,12 @@
     position: absolute;
     top: 6px;
     right: 6px;
+  }
+
+  .version-badge {
+    position: absolute;
+    top: 6px;
+    left: 6px;
   }
 
   .preview-btn img {

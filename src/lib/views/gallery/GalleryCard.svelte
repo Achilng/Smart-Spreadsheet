@@ -7,6 +7,7 @@
   import Thumbnail from "../../ui/Thumbnail.svelte";
   import CardTagSummary from "../../ui/CardTagSummary.svelte";
   import { rowFileName, rowResolution } from "../../utils/row-display";
+  import { modelVersionBadge } from "../../utils/model-version";
   import { vibeStatuses } from "../../images/vibe-statuses";
 
   let {
@@ -36,6 +37,9 @@
 
   const fileName = $derived(row ? rowFileName(row) : null);
   const resolution = $derived(row ? rowResolution(row) : null);
+  const versionBadge = $derived(
+    row ? modelVersionBadge(row.generationModel) : null,
+  );
 
   let dragging = $state(false);
   let vibeRefs = $state<number | null>(null);
@@ -126,6 +130,12 @@
         {enhance}
         highPriority={isActive}
       />
+      {#if versionBadge}
+        <span
+          class="version-badge {versionBadge.className}"
+          title={"作画模型：" + (row.generationModel ?? "")}
+        >{versionBadge.label}</span>
+      {/if}
       {#if row.tags.length > 0}
         <span class="tag-overlay"><CardTagSummary tags={row.tags} /></span>
       {/if}
@@ -228,6 +238,21 @@
     top: 8px;
     right: 8px;
     z-index: 1;
+  }
+
+  .version-badge {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    z-index: 1;
+    transition: transform var(--motion-fast) var(--ease-responsive);
+  }
+
+  /* 选择框可见（悬停/选中/批量选择中）时徽章下移，让出左上角 */
+  .card:hover .version-badge,
+  .card.is-checked .version-badge,
+  .card.selection-active .version-badge {
+    transform: translateY(26px);
   }
 
   .tag-overlay {

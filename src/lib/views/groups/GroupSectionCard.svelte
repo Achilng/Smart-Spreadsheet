@@ -13,6 +13,7 @@
   import Thumbnail from "../../ui/Thumbnail.svelte";
   import CardTagSummary from "../../ui/CardTagSummary.svelte";
   import { rowFileName, rowResolution } from "../../utils/row-display";
+  import { modelVersionBadge } from "../../utils/model-version";
 
   let {
     row,
@@ -44,6 +45,7 @@
     rowFileName(row) ?? row.artists?.split("\n")[0]?.trim() ?? `#${row.sourceOrdinal}`,
   );
   const resolution = $derived(rowResolution(row));
+  const versionBadge = $derived(modelVersionBadge(row.generationModel));
 
   let dragging = $state(false);
   let vibeRefs = $state<number | null>(null);
@@ -120,6 +122,12 @@
   >
     <div class="thumb">
       <Thumbnail rowId={row.id} {hasImage} alt={label} />
+      {#if versionBadge}
+        <span
+          class="version-badge {versionBadge.className}"
+          title={"作画模型：" + (row.generationModel ?? "")}
+        >{versionBadge.label}</span>
+      {/if}
       {#if row.tags.length > 0}
         <span class="tag-overlay"><CardTagSummary tags={row.tags} /></span>
       {/if}
@@ -192,6 +200,21 @@
     top: 6px;
     right: 6px;
     z-index: 1;
+  }
+
+  .version-badge {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    z-index: 1;
+    transition: transform var(--motion-fast) var(--ease-responsive);
+  }
+
+  /* 选择框可见（悬停/选中/批量选择中）时徽章下移，让出左上角 */
+  .section-card:hover .version-badge,
+  .section-card.is-checked .version-badge,
+  .section-card.selection-active .version-badge {
+    transform: translateY(26px);
   }
 
   .section-card.is-checked:not(.is-active) .thumb {
