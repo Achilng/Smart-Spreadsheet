@@ -550,7 +550,8 @@ textarea:focus-visible {
   white-space: nowrap;
 }
 
-/* ---- 模型版本徽章（左上角标记作画模型，按大版本配色：Full 深底白字，Curated 浅底彩字） ---- */
+/* ---- 模型版本徽章（左上角标记作画模型，按大版本配色：浅底深字不抢画面，
+       Full 底色比 Curated/纯版本号深一档以示区别） ---- */
 .version-badge {
   padding: 2px 8px;
   border-radius: var(--radius-full);
@@ -565,17 +566,17 @@ textarea:focus-visible {
   white-space: nowrap;
 }
 
-.version-badge.v5-full { background: #6d28d9; color: #fff; }
-.version-badge.v5-curated { background: #f3ecff; color: #6b21a8; }
-.version-badge.v5-plain { background: #f5f3ff; color: #6d28d9; }
-.version-badge.v45-full { background: #1d4ed8; color: #fff; }
-.version-badge.v45-curated { background: #e8f0ff; color: #1d4ed8; }
-.version-badge.v45-plain { background: #eff6ff; color: #1d4ed8; }
-.version-badge.v4-full { background: #0f766e; color: #fff; }
-.version-badge.v4-curated { background: #dff6f2; color: #0f766e; }
-.version-badge.v4-plain { background: #f0fdfa; color: #0f766e; }
-.version-badge.v3-anime { background: #15803d; color: #fff; }
-.version-badge.v3-furry { background: #c2410c; color: #fff; }
+.version-badge.v5-full { background: #e9dcf7; color: #6b21a8; }
+.version-badge.v5-curated { background: #f5f0fb; color: #8b5cf6; }
+.version-badge.v5-plain { background: #f7f4fc; color: #8b5cf6; }
+.version-badge.v45-full { background: #d9e4f8; color: #1e40af; }
+.version-badge.v45-curated { background: #eef3fb; color: #3b82f6; }
+.version-badge.v45-plain { background: #f0f5fc; color: #3b82f6; }
+.version-badge.v4-full { background: #d3eeea; color: #0f766e; }
+.version-badge.v4-curated { background: #ecf7f5; color: #14b8a6; }
+.version-badge.v4-plain { background: #eef8f6; color: #14b8a6; }
+.version-badge.v3-anime { background: #dceedd; color: #15803d; }
+.version-badge.v3-furry { background: #f6e2d3; color: #c2410c; }
 
 /* ---- 空状态 / 加载状态容器（居中 + 弱化文字） ---- */
 .empty-state {
