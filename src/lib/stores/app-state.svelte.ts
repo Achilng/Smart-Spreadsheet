@@ -226,7 +226,7 @@ export async function runVibeBackfill(): Promise<void> {
         bumpDataVersion({ preserveScroll: true, preserveSelection: true });
         setNotice({
           tone: "success",
-          text: `已为 ${formatCount(result.total)} 张历史图片建立 VIBE 聚合索引${result.unreadable > 0 ? `（${formatCount(result.unreadable)} 张原图不可读，已跳过）` : ""}，重复视图现在可以按 VIBE 分组了。`,
+          text: `已为 ${formatCount(result.total)} 张历史图片补齐 VIBE 聚合索引与作画模型信息${result.unreadable > 0 ? `（${formatCount(result.unreadable)} 张原图不可读，已跳过）` : ""}，重复视图现在可以按 VIBE 分组，预览图左上角会显示模型版本徽章。`,
         });
       }
     } finally {

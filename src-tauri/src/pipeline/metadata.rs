@@ -74,15 +74,7 @@ pub fn parse_novelai_metadata(text_chunks: &BTreeMap<String, String>) -> NovelAi
         u32::try_from(references.len()).unwrap_or(u32::MAX)
     });
     let vibe_signature = vibe_references.and_then(|references| vibe_signature_of(references));
-    let generation_model = first_non_empty([
-        text_chunks.get("Source").cloned(),
-        comment_json
-            .as_ref()
-            .and_then(|json| string_at_path(json, &["model"])),
-        comment_json
-            .as_ref()
-            .and_then(|json| string_at_path(json, &["source"])),
-    ]);
+    let generation_model = generation_model_of(text_chunks);
     let generation_sampler = comment_json
         .as_ref()
         .and_then(|json| string_at_path(json, &["sampler"]));
@@ -141,6 +133,23 @@ pub fn vibe_status(text_chunks: &BTreeMap<String, String>) -> (u32, Option<Strin
     };
     let count = u32::try_from(references.len()).unwrap_or(u32::MAX);
     (count, vibe_signature_of(references))
+}
+
+/// 读取作画模型名（优先 `Source` 文本块，其次 Comment JSON 的 model/source）；
+/// 供旧资料库索引回填使用。
+pub fn generation_model_of(text_chunks: &BTreeMap<String, String>) -> Option<String> {
+    let comment_json = text_chunks
+        .get("Comment")
+        .and_then(|comment| serde_json::from_str::<Value>(comment).ok());
+    first_non_empty([
+        text_chunks.get("Source").cloned(),
+        comment_json
+            .as_ref()
+            .and_then(|json| string_at_path(json, &["model"])),
+        comment_json
+            .as_ref()
+            .and_then(|json| string_at_path(json, &["source"])),
+    ])
 }
 
 /// 计算 VIBE 引用组合的稳定签名：对每项引用的规范 JSON 序列化分别取

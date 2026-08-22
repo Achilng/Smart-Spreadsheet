@@ -38,6 +38,7 @@ impl Database {
              FROM rows
              WHERE vibe_reference_count IS NULL
                 OR (vibe_reference_count > 0 AND vibe_signature IS NULL)
+                OR generation_model IS NULL
              ORDER BY id",
         )?;
         Ok(statement
@@ -52,23 +53,26 @@ impl Database {
             .collect::<Result<Vec<_>, _>>()?)
     }
 
-    /// 批量写入 VIBE 状态。`count` 为 None 时保留既有数量（文件已不可读的
-    /// 签名回填场景），行内无既有数量则记 0；签名为空字符串表示“已扫描但
-    /// 无法取得”，避免每次启动重复扫描，且不参与聚合。
+    /// 批量写入 VIBE 状态与作画模型。`count` 为 None 时保留既有数量（文件已
+    /// 不可读的签名回填场景），行内无既有数量则记 0；签名为空字符串表示
+    /// “已扫描但无法取得”，避免每次启动重复扫描，且不参与聚合。`model`
+    /// 仅在行内尚无模型名（NULL）时写入，空字符串同样是“已扫描”标记，
+    /// 既有真实模型名不会被覆盖。
     pub fn update_vibe_statuses(
         &mut self,
-        statuses: &[(i64, Option<u32>, Option<String>)],
+        statuses: &[(i64, Option<u32>, Option<String>, String)],
     ) -> Result<(), DatabaseError> {
         let transaction = self.connection.transaction()?;
         {
             let mut update = transaction.prepare(
                 "UPDATE rows SET
                     vibe_reference_count = COALESCE(?2, vibe_reference_count, 0),
-                    vibe_signature = ?3
+                    vibe_signature = ?3,
+                    generation_model = COALESCE(generation_model, ?4)
                  WHERE id = ?1",
             )?;
-            for (row_id, count, signature) in statuses {
-                update.execute(rusqlite::params![row_id, count, signature])?;
+            for (row_id, count, signature, model) in statuses {
+                update.execute(rusqlite::params![row_id, count, signature, model])?;
             }
         }
         transaction.commit()?;

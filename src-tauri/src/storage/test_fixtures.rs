@@ -7,6 +7,28 @@ use std::path::{Path, PathBuf};
 /// 生成一张可被 image crate 正常解码的小尺寸 PNG，并在 IHDR 后插入
 /// 带正确 CRC 的 tEXt 块（`Description` 必有，`Comment` 可选）。
 pub(crate) fn metadata_png_bytes(description: &str, comment: Option<&str>) -> Vec<u8> {
+    let mut chunks = vec![("Description", description.to_string())];
+    if let Some(comment) = comment {
+        chunks.push(("Comment", comment.to_string()));
+    }
+    metadata_png_with_text_chunks(chunks)
+}
+
+/// 与 `metadata_png_bytes` 相同，但额外写入 `Source` 文本块（作画模型名）。
+pub(crate) fn metadata_png_bytes_with_source(
+    description: &str,
+    comment: Option<&str>,
+    source: &str,
+) -> Vec<u8> {
+    let mut chunks = vec![("Description", description.to_string())];
+    if let Some(comment) = comment {
+        chunks.push(("Comment", comment.to_string()));
+    }
+    chunks.push(("Source", source.to_string()));
+    metadata_png_with_text_chunks(chunks)
+}
+
+fn metadata_png_with_text_chunks(chunks: Vec<(&str, String)>) -> Vec<u8> {
     let mut encoded = std::io::Cursor::new(Vec::new());
     image::DynamicImage::new_rgb8(16, 16)
         .write_to(&mut encoded, image::ImageFormat::Png)
@@ -16,9 +38,8 @@ pub(crate) fn metadata_png_bytes(description: &str, comment: Option<&str>) -> Ve
     // IHDR 块结束位置：签名 8 字节 + 长度/类型 8 字节 + 数据 13 字节 + CRC 4 字节。
     let insert_at = 8 + 8 + 13 + 4;
     let mut output = encoded[..insert_at].to_vec();
-    push_text_chunk(&mut output, "Description", description);
-    if let Some(comment) = comment {
-        push_text_chunk(&mut output, "Comment", comment);
+    for (keyword, text) in &chunks {
+        push_text_chunk(&mut output, keyword, text);
     }
     output.extend_from_slice(&encoded[insert_at..]);
     output

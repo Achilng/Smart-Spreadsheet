@@ -1,7 +1,7 @@
 use serde::Serialize;
 
 use super::{resolve_image_source, DataDirectory, StorageError};
-use crate::pipeline::{png_text, vibe_status};
+use crate::pipeline::{generation_model_of, png_text, vibe_status};
 
 /// VIBE 状态回填进度：total 为待扫描行数，unreadable 为原图不可读的行数。
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
@@ -14,13 +14,15 @@ pub struct VibeStatusProgress {
 
 impl DataDirectory {
     /// 为历史资料库建立 VIBE 引用数量与组合签名索引：
-    /// 数量缺失的行（v10 及更早）与有引用但签名缺失的行（v15 及更早）都会补齐。
+    /// 数量缺失的行（v10 及更早）、有引用但签名缺失的行（v15 及更早）
+    /// 与模型名缺失的行（v14 及更早导入）都会补齐。
     ///
     /// 逐行读取原图元数据可能较慢，调用方应放在阻塞线程执行并通过
     /// `progress` 上报；结果分批写库，中途退出后已写入的行不会重扫。
     /// 文件缺失或元数据不可读时保留既有数量并写入空签名标记，
-    /// 避免每次启动重复扫描；后续通过“更新现有图片”重新关联原图时
-    /// 会写入最新的准确数量。
+    /// 避免每次启动重复扫描；模型名读不到时写空串标记，既有真实
+    /// 模型名不会被覆盖。后续通过“更新现有图片”重新关联原图时
+    /// 会写入最新的准确数量与模型名。
     pub fn backfill_vibe_statuses(
         &self,
         progress: impl Fn(VibeStatusProgress),
@@ -41,23 +43,29 @@ impl DataDirectory {
             ..VibeStatusProgress::default()
         });
 
-        let mut batch: Vec<(i64, Option<u32>, Option<String>)> =
+        let mut batch: Vec<(i64, Option<u32>, Option<String>, String)> =
             Vec::with_capacity(WRITE_BATCH_ROWS.min(total));
         let mut unreadable = 0;
         for (index, locator) in candidates.into_iter().enumerate() {
-            let status = resolve_image_source(self, &locator)
+            let scanned = resolve_image_source(self, &locator)
                 .and_then(|path| png_text::read_png_text_chunks(path).ok())
-                .map(|chunks| vibe_status(&chunks));
+                .map(|chunks| {
+                    let (count, signature) = vibe_status(&chunks);
+                    (count, signature, generation_model_of(&chunks))
+                });
             // 文件不可读时保留既有数量（无则记 0），签名写空串标记“已扫描”，
-            // 避免每次启动重复尝试；空串不参与“按 VIBE”聚合。
-            let (count, signature) = match status {
-                Some((count, signature)) => (Some(count), signature),
+            // 避免每次启动重复尝试；空串不参与“按 VIBE”聚合。模型名读不
+            // 到时同样写空串标记，落库时既有真实模型名不会被覆盖。
+            let (count, signature, model) = match scanned {
+                Some((count, signature, model)) => {
+                    (Some(count), signature, model.unwrap_or_default())
+                }
                 None => {
                     unreadable += 1;
-                    (None, Some(String::new()))
+                    (None, Some(String::new()), String::new())
                 }
             };
-            batch.push((locator.row_id, count, signature));
+            batch.push((locator.row_id, count, signature, model));
             if batch.len() >= WRITE_BATCH_ROWS {
                 database.update_vibe_statuses(&batch)?;
                 batch.clear();
@@ -89,7 +97,7 @@ mod tests {
 
     use super::*;
     use crate::db::{NewRow, SourceType};
-    use crate::storage::test_fixtures::metadata_png_bytes;
+    use crate::storage::test_fixtures::{metadata_png_bytes, metadata_png_bytes_with_source};
 
     #[test]
     fn backfills_vibe_counts_and_marks_missing_files_as_zero() {
@@ -105,9 +113,10 @@ mod tests {
         fs::create_dir_all(original.parent().unwrap()).unwrap();
         fs::write(
             &original,
-            metadata_png_bytes(
+            metadata_png_bytes_with_source(
                 "artist:test",
                 Some(r#"{"reference_image_multiple":[{},{}]}"#),
+                "NovelAI Diffusion V4.5 Full",
             ),
         )
         .unwrap();
@@ -163,6 +172,19 @@ mod tests {
             })
             .unwrap();
         assert!(signature.is_some_and(|value| value.len() == 64));
+        // 可读图片补齐真实模型名；不可读图片写空串“已扫描”标记。
+        let model: Option<String> = connection
+            .query_row("SELECT generation_model FROM rows WHERE id = 1", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(model.as_deref(), Some("NovelAI Diffusion V4.5 Full"));
+        let gone_model: Option<String> = connection
+            .query_row("SELECT generation_model FROM rows WHERE id = 2", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(gone_model.as_deref(), Some(""));
         let gone_signature: Option<String> = connection
             .query_row("SELECT vibe_signature FROM rows WHERE id = 2", [], |row| {
                 row.get(0)
@@ -311,7 +333,8 @@ mod tests {
             .query_row(
                 "SELECT COUNT(*) FROM rows
                  WHERE vibe_reference_count IS NULL
-                    OR (vibe_reference_count > 0 AND vibe_signature IS NULL)",
+                    OR (vibe_reference_count > 0 AND vibe_signature IS NULL)
+                    OR generation_model IS NULL",
                 [],
                 |row| row.get(0),
             )
