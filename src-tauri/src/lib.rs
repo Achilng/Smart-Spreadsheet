@@ -23,6 +23,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             app::commands::open_toolbox_window,
+            app::commands::open_compare_window,
             app::commands::focus_main_window,
             app::commands::get_app_snapshot,
             app::commands::reset_configuration,
@@ -51,6 +52,8 @@ pub fn run() {
             app::commands::set_dedupe_alias,
             app::commands::list_distinct_artists,
             app::commands::row_ids_with_artists,
+            app::commands::compare_sample,
+            app::commands::compare_section_rows,
             app::commands::get_custom_artists,
             app::commands::set_custom_artists,
             app::commands::list_prompt_docs,

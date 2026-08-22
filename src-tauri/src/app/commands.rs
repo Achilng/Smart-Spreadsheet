@@ -10,7 +10,7 @@ use super::runtime::{AppRuntime, RuntimeSnapshot};
 use crate::db::{
     ArtistTextPrefixResult, AutoArtistPrefixApplyResult, AutomationRule, AutomationRuleDraft,
     AutomationRuleExportResult, AutomationRuleImportInspection, AutomationRuleImportResult,
-    AutoArtistPrefixPreview,
+    AutoArtistPrefixPreview, CompareSample, CompareSectionKind,
     BatchSummary, DedupeCluster, DedupeMode, GroupSummary, ImageExportSettings, LibraryFilter,
     LibrarySummary, MutableRowState, PromptEditResult,
     QuickArtistPrefixApplyResult, QuickArtistPrefixChange, QuickArtistPrefixPreview,
@@ -592,6 +592,29 @@ pub(crate) fn row_ids_with_artists(
     runtime: State<'_, AppRuntime>,
 ) -> Result<Vec<i64>, String> {
     runtime.row_ids_with_artists(&artists).map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn compare_sample(
+    row_id: i64,
+    runtime: State<'_, AppRuntime>,
+) -> Result<CompareSample, String> {
+    runtime.compare_sample(row_id).map_err(error_text)
+}
+
+#[tauri::command]
+pub(crate) fn compare_section_rows(
+    row_id: i64,
+    kind: CompareSectionKind,
+    model: Option<String>,
+    offset: u64,
+    limit: u32,
+    runtime: State<'_, AppRuntime>,
+) -> Result<RowPageDto, String> {
+    runtime
+        .compare_section_rows(row_id, kind, model, offset, limit)
+        .map(RowPageDto::from)
+        .map_err(error_text)
 }
 
 #[tauri::command]
@@ -1242,6 +1265,36 @@ pub(crate) async fn open_toolbox_window(app: tauri::AppHandle) -> Result<(), Str
     .title("工具箱")
     .inner_size(960.0, 680.0)
     .min_inner_size(760.0, 520.0)
+    .center()
+    .resizable(true)
+    .decorations(false)
+    .skip_taskbar(false)
+    .build()
+    .map_err(error_text)?;
+    Ok(())
+}
+
+/// 打开应用内部的单实例图片对比窗口。
+///
+/// 样本行通过跨窗口事件传递（见前端 `main://compare-sample`），不进 URL，
+/// 已打开的窗口收到事件即可切换样本。
+#[tauri::command]
+pub(crate) async fn open_compare_window(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(compare) = app.get_webview_window("compare") {
+        compare.show().map_err(error_text)?;
+        compare.unminimize().map_err(error_text)?;
+        compare.set_focus().map_err(error_text)?;
+        return Ok(());
+    }
+
+    WebviewWindowBuilder::new(
+        &app,
+        "compare",
+        WebviewUrl::App("index.html?window=compare".into()),
+    )
+    .title("图片对比")
+    .inner_size(1080.0, 760.0)
+    .min_inner_size(860.0, 600.0)
     .center()
     .resizable(true)
     .decorations(false)
