@@ -66,7 +66,7 @@ export function buildExportItems(): {
 }[] {
   const scopeHint = `导出${exportScopeLabel()}`;
   const rotationHint = getSelectedCount() > 0
-    ? `${scopeHint} · 一张图片一个项目`
+    ? `${scopeHint} · 导入轮询脚本后逐张复现`
     : "请先选择要导出的图片";
   return [
     { label: "导出 xlsx", hint: scopeHint, action: () => void chooseXlsxExport() },
