@@ -13,9 +13,6 @@ pub mod png_text;
 pub mod scan;
 pub mod stealth_png;
 
-#[cfg(test)]
-mod v5_manual_check;
-
 pub use artist::extract_artist_tags;
 pub use metadata::{
     NovelAiMetadata, generation_model_of, parse_novelai_metadata, vibe_reference_count,

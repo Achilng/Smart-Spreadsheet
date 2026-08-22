@@ -5,8 +5,22 @@ export interface ModelVersionBadge {
 }
 
 /**
- * 把图片元数据里的完整模型名（如 NovelAI Diffusion V4.5 Full）
- * 映射成简写徽章；无法识别时返回 null（不显示徽章）。
+ * 社区已查明的新版 Source 哈希后缀 → 具体变体。NovelAI 网站现在的出图
+ * 不再写 Full/Curated，而是在模型名后附 8 位十六进制构建哈希（如
+ * "NovelAI Diffusion V4.5 4BDE2A90"），此表按哈希识别已知构建。
+ */
+const KNOWN_MODEL_HASHES: ReadonlyMap<string, { version: string; full: boolean }> = new Map([
+  ["4bde2a90", { version: "v4.5", full: true }], // V4.5 Full
+  ["37442fca", { version: "v4", full: true }], // V4 Full
+  ["4f49ec75", { version: "v4", full: true }], // V4 Full（早期构建）
+  ["f6e18726", { version: "v4", full: false }], // V4 Curated Preview
+  ["79f47848", { version: "v4", full: false }], // V4 Curated
+]);
+
+/**
+ * 把图片元数据里的完整模型名（如 NovelAI Diffusion V4.5 Full 或带哈希
+ * 后缀的 NovelAI Diffusion V4.5 4BDE2A90）映射成简写徽章；无法识别时
+ * 返回 null（不显示徽章）。
  */
 export function modelVersionBadge(
   model: string | null | undefined,
@@ -37,14 +51,29 @@ export function modelVersionBadge(
 function variantBadge(version: string, normalized: string): ModelVersionBadge | null {
   const full = normalized.includes("full");
   const curated = normalized.includes("curated");
+  const stem = version.replace(".", "");
+  // 模型名不带 Full/Curated 后缀时（如首发 V5 的 “NovelAI Diffusion V5”
+  // 或带构建哈希的 “NovelAI Diffusion V4.5 4BDE2A90”），先按末尾哈希查
+  // 已知构建表，查不到再降级为纯版本号徽章
   if (full === curated) {
-    // 既没写 Full 也没写 Curated，或两者同时出现，视为无法识别
-    return null;
+    return hashedVariantBadge(normalized) ?? { label: version, className: `${stem}-plain` };
   }
   const suffix = full ? "F" : "C";
-  const stem = version.replace(".", "");
   return {
     label: `${version} ${suffix}`,
     className: `${stem}-${full ? "full" : "curated"}`,
+  };
+}
+
+function hashedVariantBadge(normalized: string): ModelVersionBadge | null {
+  const hash = /\b([0-9a-f]{8})\s*$/.exec(normalized)?.[1];
+  const known = hash ? KNOWN_MODEL_HASHES.get(hash) : undefined;
+  if (!known) {
+    return null;
+  }
+  const stem = known.version.replace(".", "");
+  return {
+    label: `${known.version} ${known.full ? "F" : "C"}`,
+    className: `${stem}-${known.full ? "full" : "curated"}`,
   };
 }

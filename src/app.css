@@ -567,10 +567,13 @@ textarea:focus-visible {
 
 .version-badge.v5-full { background: #6d28d9; color: #fff; }
 .version-badge.v5-curated { background: #f3ecff; color: #6b21a8; }
+.version-badge.v5-plain { background: #f5f3ff; color: #6d28d9; }
 .version-badge.v45-full { background: #1d4ed8; color: #fff; }
 .version-badge.v45-curated { background: #e8f0ff; color: #1d4ed8; }
+.version-badge.v45-plain { background: #eff6ff; color: #1d4ed8; }
 .version-badge.v4-full { background: #0f766e; color: #fff; }
 .version-badge.v4-curated { background: #dff6f2; color: #0f766e; }
+.version-badge.v4-plain { background: #f0fdfa; color: #0f766e; }
 .version-badge.v3-anime { background: #15803d; color: #fff; }
 .version-badge.v3-furry { background: #c2410c; color: #fff; }
 
