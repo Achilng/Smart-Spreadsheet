@@ -16,7 +16,6 @@
   } from "../../stores/selection-store.svelte";
   import { selectAllCurrentView } from "../../stores/view-selection.svelte";
   import {
-    focusArtistFilter,
     resetRows,
     revealRowInGallery,
     rowStore,
@@ -31,14 +30,6 @@
     ToolboxRowRequest,
     ToolboxSelectionSnapshot,
   } from "../../windows/toolbox";
-  import {
-    COMPARE_OPEN_ARTISTS_EVENT,
-    COMPARE_REQUEST_EVENT,
-    COMPARE_SAMPLE_EVENT,
-    getCurrentCompareSample,
-    type CompareArtistsPayload,
-    type CompareSamplePayload,
-  } from "../../windows/compare";
   import ContextMenu from "./ContextMenu.svelte";
   import CanvasHeader from "./CanvasHeader.svelte";
   import DetailPanel from "./DetailPanel.svelte";
@@ -151,8 +142,6 @@
     let disposed = false;
     let unlistenNavigation: UnlistenFn | null = null;
     let unlistenSelectionRequest: UnlistenFn | null = null;
-    let unlistenCompareSampleRequest: UnlistenFn | null = null;
-    let unlistenCompareArtists: UnlistenFn | null = null;
     void listen<ToolboxRowRequest>("toolbox://open-row", event => {
       void openToolboxRow(event.payload);
     }).then(unlisten => {
@@ -171,45 +160,12 @@
         unlistenSelectionRequest = unlisten;
       }
     });
-    // 对比窗口挂载时拉取当前样本：直接回放最近一次右键“对比”的行
-    void listen(COMPARE_REQUEST_EVENT, () => {
-      const rowId = getCurrentCompareSample();
-      if (rowId != null) {
-        void emitTo("compare", COMPARE_SAMPLE_EVENT, {
-          rowId,
-        } satisfies CompareSamplePayload);
-      }
-    }).then(unlisten => {
-      if (disposed) {
-        unlisten();
-      } else {
-        unlistenCompareSampleRequest = unlisten;
-      }
-    });
-    // 对比窗口“去主画廊看全部”：按样本画师串精确筛选
-    void listen<CompareArtistsPayload>(COMPARE_OPEN_ARTISTS_EVENT, event => {
-      const artists = event.payload.artists.trim();
-      if (!artists) return;
-      clearSelection();
-      focusArtistFilter(artists);
-      if (app.viewMode !== "gallery" && app.viewMode !== "table") {
-        app.viewMode = "gallery";
-      }
-    }).then(unlisten => {
-      if (disposed) {
-        unlisten();
-      } else {
-        unlistenCompareArtists = unlisten;
-      }
-    });
 
     return () => {
       disposed = true;
       stopDragDrop();
       unlistenNavigation?.();
       unlistenSelectionRequest?.();
-      unlistenCompareSampleRequest?.();
-      unlistenCompareArtists?.();
     };
   });
 

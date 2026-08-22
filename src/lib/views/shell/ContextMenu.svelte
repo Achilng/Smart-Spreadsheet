@@ -12,7 +12,6 @@
     setExplicitSelection,
   } from "../../stores/selection-store.svelte";
   import { focusArtistFilter } from "../../stores/row-store.svelte";
-  import { openCompareWindowWithSample } from "../../windows/compare";
 
   const row = $derived(contextMenu.row);
   const hasPrompt = $derived(Boolean(row?.positivePrompt?.trim()));
@@ -100,20 +99,6 @@
     }
   }
 
-  async function compareRow(): Promise<void> {
-    const current = row;
-    if (!current) return;
-    hideContextMenu();
-    try {
-      await openCompareWindowWithSample(current.id);
-    } catch (error) {
-      setNotice({
-        tone: "error",
-        text: `打开对比窗口失败：${error instanceof Error ? error.message : String(error)}`,
-      });
-    }
-  }
-
   function deleteRow(): void {
     if (!row) return;
     hideContextMenu();
@@ -168,13 +153,6 @@
       onclick={() => void selectSameArtists()}
     >
       选中相同画师串
-    </button>
-    <button
-      type="button"
-      role="menuitem"
-      onclick={() => void compareRow()}
-    >
-      对比
     </button>
     <div class="separator"></div>
     <button

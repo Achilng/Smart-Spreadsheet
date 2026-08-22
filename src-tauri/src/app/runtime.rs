@@ -765,26 +765,6 @@ impl AppRuntime {
         self.with_database(|db| db.row_ids_with_artists(artists))
     }
 
-    pub(crate) fn compare_sample(
-        &self,
-        row_id: i64,
-    ) -> Result<crate::db::CompareSample, AppRuntimeError> {
-        self.with_database(|db| db.compare_sample(row_id))
-    }
-
-    pub(crate) fn compare_section_rows(
-        &self,
-        row_id: i64,
-        kind: crate::db::CompareSectionKind,
-        model: Option<String>,
-        offset: u64,
-        limit: u32,
-    ) -> Result<RowPage, AppRuntimeError> {
-        self.with_database(|db| {
-            db.compare_section_rows(row_id, kind, model.as_deref(), offset, limit)
-        })
-    }
-
     pub(crate) fn get_custom_artists(&self) -> Result<String, AppRuntimeError> {
         self.with_database(|db| db.setting("custom-artists").map(Option::unwrap_or_default))
     }

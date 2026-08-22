@@ -1,7 +1,6 @@
 export * from "./types";
 export * from "./app";
 export * from "./rows";
-export * from "./compare";
 export * from "./tags";
 export * from "./groups";
 export * from "./duplicates";

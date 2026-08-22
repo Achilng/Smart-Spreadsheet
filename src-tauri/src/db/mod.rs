@@ -41,10 +41,7 @@ pub use quick_edit::{
     QuickGroupChange, QuickGroupPreview, QuickTagApplyResult, QuickTagAssociation,
     QuickTagPreview,
 };
-pub use query::{
-    CompareModelGroup, CompareSample, CompareSectionKind, CompareSectionSummary, DedupeCluster,
-    DedupeMode, MAX_PAGE_SIZE, RowPage, RowQuery, RowRecord, SortMode, TagMatchMode, TagSummary,
-};
+pub use query::{DedupeCluster, DedupeMode, MAX_PAGE_SIZE, RowPage, RowQuery, RowRecord, SortMode, TagMatchMode, TagSummary};
 pub use settings::{ImageExportRenameMode, ImageExportSettings};
 pub use tags::{RowSelection, TagMutationError, TagMutationResult, TagSelectionSummary};
 
