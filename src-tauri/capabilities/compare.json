@@ -5,6 +5,7 @@
   "windows": ["compare"],
   "permissions": [
     "core:default",
+    "drag:default",
     "core:window:allow-minimize",
     "core:window:allow-toggle-maximize",
     "core:window:allow-close",
