@@ -3,7 +3,10 @@
   import type { RowRecord } from "../../api";
   import type { CompareModelSection } from "../../api/compare";
   import { formatCount } from "../../stores/app-state.svelte";
-  import { modelVersionBadge } from "../../utils/model-version";
+  import {
+    modelComparisonTier,
+    modelVersionBadge,
+  } from "../../utils/model-version";
 
   let {
     section,
@@ -29,8 +32,6 @@
     rows: RowRecord[];
   }
 
-  const sampleBadge = $derived(modelVersionBadge(sampleModel));
-
   /**
    * 按模型档位分组：能识别版本的用徽章档位（同版本 Full/Curated 分开）；
    * 无法识别的退化为 generation_model 原始字符串比较；NULL/空串归入
@@ -41,7 +42,7 @@
     for (const row of section.rows) {
       const badge = modelVersionBadge(row.generationModel);
       const rawModel = row.generationModel?.trim() || null;
-      const tier = badge ? `badge:${badge.label}` : rawModel ? `raw:${rawModel}` : "unknown";
+      const tier = modelComparisonTier(row.generationModel);
       let group = byTier.get(tier);
       if (!group) {
         group = {
@@ -56,11 +57,7 @@
       }
       group.rows.push(row);
     }
-    const sampleTier = sampleBadge
-      ? `badge:${sampleBadge.label}`
-      : sampleModel?.trim()
-        ? `raw:${sampleModel.trim()}`
-        : "unknown";
+    const sampleTier = modelComparisonTier(sampleModel);
     return [...byTier.values()]
       .filter(group => group.tier !== sampleTier)
       .sort((a, b) => b.versionRank - a.versionRank || a.title.localeCompare(b.title));

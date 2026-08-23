@@ -48,6 +48,27 @@ export function modelVersionBadge(
   return null;
 }
 
+/**
+ * 对比分区④使用的模型分组键。能确认 Full/Curated/版本档位时按徽章分组；
+ * 带未知构建哈希、无法确认具体档位时按原始 Source 字符串分组，避免把两个
+ * 尚未收录的不同构建误判成同一模型。NULL/空串统一归入未知模型。
+ */
+export function modelComparisonTier(model: string | null | undefined): string {
+  const raw = model?.trim();
+  if (!raw) {
+    return "unknown";
+  }
+  const badge = modelVersionBadge(raw);
+  if (!badge) {
+    return `raw:${raw}`;
+  }
+  const hash = /\b([0-9a-f]{8})\s*$/i.exec(raw)?.[1]?.toLowerCase();
+  if (hash && !KNOWN_MODEL_HASHES.has(hash)) {
+    return `raw:${raw}`;
+  }
+  return `badge:${badge.label}`;
+}
+
 function variantBadge(version: string, normalized: string): ModelVersionBadge | null {
   const full = normalized.includes("full");
   const curated = normalized.includes("curated");
