@@ -12,3 +12,4 @@ export * from "./search";
 export * from "./prompt-docs";
 export * from "./quick-edit";
 export * from "./automation-rules";
+export * from "./compare";

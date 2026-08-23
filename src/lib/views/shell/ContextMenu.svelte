@@ -12,6 +12,7 @@
     setExplicitSelection,
   } from "../../stores/selection-store.svelte";
   import { focusArtistFilter } from "../../stores/row-store.svelte";
+  import { openCompareWindow } from "../../windows/compare";
 
   const row = $derived(contextMenu.row);
   const hasPrompt = $derived(Boolean(row?.positivePrompt?.trim()));
@@ -88,6 +89,18 @@
     }
   }
 
+  function compareImage(): void {
+    const target = row;
+    if (!target) return;
+    hideContextMenu();
+    openCompareWindow(target.id).catch(error => {
+      setNotice({
+        tone: "error",
+        text: `打开对比窗口失败：${error instanceof Error ? error.message : String(error)}`,
+      });
+    });
+  }
+
   function showSameArtists(): void {
     const artists = row?.artists?.trim();
     if (!artists) return;
@@ -138,6 +151,13 @@
       在文件管理器中打开
     </button>
     <div class="separator"></div>
+    <button
+      type="button"
+      role="menuitem"
+      onclick={compareImage}
+    >
+      对比
+    </button>
     <button
       type="button"
       role="menuitem"

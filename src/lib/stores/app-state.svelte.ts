@@ -173,6 +173,7 @@ export async function resetDataWithConfirmation(): Promise<void> {
     app.snapshot = await apiResetData();
     clearOperationHistory();
     bumpDataVersion();
+    notifyCompareLibraryReset();
     await notifyMainStateChanged("reset");
     setNotice({ tone: "success", text: "表格已重置，请重新导入数据。" });
   });
@@ -204,6 +205,7 @@ export async function chooseDirectory(mode: "initialize" | "open"): Promise<void
       void runVibeBackfill().then(() => runStyleSignatureBackfill());
     }
     clearOperationHistory();
+    notifyCompareLibraryReset();
     setNotice({ tone: "success", text: "数据目录已连接。" });
   });
 }
@@ -341,6 +343,7 @@ export async function chooseMigration(): Promise<void> {
       const result = await migrateDataDirectory(selection);
       app.snapshot = result.snapshot;
       clearOperationHistory();
+      notifyCompareLibraryReset();
       await notifyMainStateChanged("migrated");
       setNotice(
         result.retiredSource
@@ -355,6 +358,14 @@ export async function chooseMigration(): Promise<void> {
 }
 
 export type MainStateChange = "migrated" | "reset" | "libraryEdited";
+
+/**
+ * 通知对比窗口数据目录已被切换/迁移/重置，其样本与查询结果全部失效，
+ * 窗口收到后直接关闭（未打开时静默失败）。
+ */
+function notifyCompareLibraryReset(): void {
+  void emitTo("compare", "main://library-reset").catch(() => {});
+}
 
 export async function notifyMainStateChanged(kind: MainStateChange): Promise<void> {
   try {

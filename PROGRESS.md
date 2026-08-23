@@ -4,6 +4,25 @@
 
 ## 当前状态
 
+- 对比功能重做阶段 3（窗口与分区页骨架）完成：新增后端
+  `open_compare_window(row_id)` 命令——套用工具箱的单实例模式，样本 id
+  直接写进新窗口 URL（`index.html?window=compare&row=<id>`，新窗口自拉数据
+  无竞态）；窗口已存在时由后端 `emit_to` 推送 `compare://set-sample` 并恢复
+  聚焦。新增 `capabilities/compare.json`（含 `core:window:allow-destroy` 及
+  最小权限集），`main.ts` 按 `?window=compare` 路由到 CompareWindow 外壳
+  （52px 标题栏 + WindowControls + 可滚动画布）。前端新增 compare API 封装、
+  `compare-store`（样本 + 三分区独立 items/total/loading/error + ④模型分区
+  + 视图栈 + 过期结果丢弃）、样本卡（渐进大图、关键信息、可折叠提示词+
+  复制、手动刷新）、通用分区（计数徽标、网格、加载更多、如实空态）、④
+  按模型版本分组（复用 model-version 徽章，剔除与样本同档位组，组间版本
+  从新到旧，未知模型单独成组，500 张截断提示）。右键菜单（画廊/表格/分组/
+  重复项成员共用）新增“对比”项。主窗口切换数据目录/迁移/重置时经
+  `main://library-reset` 广播，对比窗口收到后自动销毁。新增开发期 IPC
+  mock（`?mock=1`，生产构建摇树剔除）供浏览器冒烟。验证：`npm run check`
+  0 错误、生产构建通过、Clippy `-D warnings` 通过；浏览器冒烟覆盖四分区
+  渲染与计数、④分组/徽章/同档位剔除/版本排序、加载更多（24+6=30 全量）、
+  四种空态文案、URL 装载与 set-sample 事件切换样本、860px 最小宽度无
+  横向溢出。
 - 对比功能重做阶段 2（查询命令）完成：新模块 `db/compare.rs` 提供五个只读
   命令并已注册进 Tauri——`get_compare_sample`（行摘要 + 画风签名/VIBE 签名
   状态，样本被删时明确报错）、`query_compare_same_artists`（分区①：画师串
