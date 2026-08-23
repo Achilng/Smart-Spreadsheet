@@ -200,6 +200,7 @@ export function installIpcMock(): void {
         case "get_row_thumbnail":
         case "get_row_gallery_preview":
         case "get_row_preview":
+        case "get_row_original":
           return tinyPng();
         case "get_row_vibe_status":
           return 2;

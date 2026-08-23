@@ -1,6 +1,7 @@
 <script lang="ts">
   import ArrowLeft from "@lucide/svelte/icons/arrow-left";
   import Crosshair from "@lucide/svelte/icons/crosshair";
+  import Maximize2 from "@lucide/svelte/icons/maximize-2";
   import { emitTo } from "@tauri-apps/api/event";
   import type { RowRecord } from "../../api";
   import { closeSideBySide } from "../../stores/compare-store.svelte";
@@ -9,6 +10,7 @@
   import { focusMainWindow } from "../../windows/toolbox";
   import { rowFileName, rowResolution } from "../../utils/row-display";
   import PaneImage from "./PaneImage.svelte";
+  import OriginalLightbox from "./OriginalLightbox.svelte";
 
   let {
     sample,
@@ -65,13 +67,23 @@
     { caption: "样本", row: sample },
     { caption: "目标", row: target },
   ]);
+
+  let originalRow = $state<RowRecord | null>(null);
 </script>
 
 {#snippet pane(caption: string, row: RowRecord)}
   {@const hasImage = Boolean(row.imagePath?.trim() || row.storedImagePath?.trim())}
   {@const versionBadge = modelVersionBadge(row.generationModel)}
   <figure class="pane">
-    <div class="pane-media">
+    <button
+      type="button"
+      class="pane-media"
+      class:can-open={hasImage}
+      disabled={!hasImage}
+      onclick={() => (originalRow = row)}
+      title={hasImage ? `查看${caption}原图` : `${caption}没有可查看的图片`}
+      aria-label={hasImage ? `查看${caption}原图` : `${caption}没有可查看的图片`}
+    >
       {#if hasImage}
         <PaneImage rowId={row.id} {hasImage} alt={rowFileName(row) ?? caption} />
       {:else}
@@ -83,7 +95,13 @@
           title={"作画模型：" + (row.generationModel ?? "")}
         >{versionBadge.label}</span>
       {/if}
-    </div>
+      {#if hasImage}
+        <span class="open-original-hint" aria-hidden="true">
+          <Maximize2 size={14} strokeWidth={2} />
+          查看原图
+        </span>
+      {/if}
+    </button>
     <figcaption class="pane-caption">
       <span class="pane-kind">{caption}</span>
       <span class="pane-name" title={row.imagePath ?? undefined}>
@@ -186,6 +204,10 @@
   </section>
 </div>
 
+{#if originalRow}
+  <OriginalLightbox row={originalRow} onclose={() => (originalRow = null)} />
+{/if}
+
 <style>
   .side-by-side {
     display: flex;
@@ -244,6 +266,49 @@
     box-shadow: var(--shadow-1);
     overflow: hidden;
     height: 340px;
+    width: 100%;
+    padding: 0;
+    border: 0;
+    color: inherit;
+    font: inherit;
+  }
+
+  .pane-media.can-open {
+    cursor: zoom-in;
+  }
+
+  .pane-media.can-open:hover .open-original-hint,
+  .pane-media.can-open:focus-visible .open-original-hint {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .pane-media:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  .open-original-hint {
+    position: absolute;
+    right: 10px;
+    bottom: 10px;
+    z-index: 1;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 9px;
+    border-radius: 999px;
+    color: white;
+    background: rgba(18, 20, 27, 0.68);
+    box-shadow: var(--shadow-1);
+    font-size: var(--font-xs);
+    font-weight: 600;
+    opacity: 0;
+    transform: translateY(3px);
+    transition:
+      opacity var(--motion-fast) var(--ease-responsive),
+      transform var(--motion-fast) var(--ease-responsive);
+    pointer-events: none;
   }
 
   .media-note {
