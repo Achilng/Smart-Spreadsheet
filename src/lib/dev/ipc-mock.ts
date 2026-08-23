@@ -69,7 +69,15 @@ const MODEL_ROWS: MockRow[] = [
   { id: 402, generationModel: "NovelAI Diffusion V4.5 Curated", positivePrompt: "same prompt" },
   { id: 403, generationModel: "NovelAI Diffusion V3", positivePrompt: "same prompt" },
   { id: 404, generationModel: null, positivePrompt: "same prompt" },
+  // 与样本同档位：后端会返回，但模型分区必须过滤且不得计入标题数量。
+  { id: 405, generationModel: "NovelAI Diffusion V4.5 Full", positivePrompt: "same prompt" },
 ];
+
+const SAME_MODEL_ROWS: MockRow[] = Array.from({ length: 7 }, (_, index) => ({
+  id: 501 + index,
+  generationModel: "NovelAI Diffusion V4.5 Full",
+  positivePrompt: "same prompt",
+}));
 
 type SectionRow = MockRow[];
 
@@ -176,6 +184,13 @@ export function installIpcMock(): void {
         case "query_compare_same_style_all_models":
           if (Number(payload.rowId) === 2) {
             return { rows: [], totalCount: 0, truncated: false };
+          }
+          if (Number(payload.rowId) === 3) {
+            return {
+              rows: SAME_MODEL_ROWS.map(rowDto),
+              totalCount: SAME_MODEL_ROWS.length,
+              truncated: false,
+            };
           }
           return {
             rows: MODEL_ROWS.map(rowDto),

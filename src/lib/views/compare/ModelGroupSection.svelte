@@ -63,6 +63,11 @@
       .sort((a, b) => b.versionRank - a.versionRank || a.title.localeCompare(b.title));
   });
 
+  /** 标题只显示过滤掉样本同模型组之后，当前真正可见的图片数。 */
+  const visibleCount = $derived(
+    groups.reduce((total, group) => total + group.rows.length, 0),
+  );
+
   function versionRankOf(label: string): number {
     const match = /^v(\d+(?:\.\d+)?)/.exec(label);
     return match ? Number(match[1]) : 0;
@@ -72,8 +77,8 @@
 <section class="compare-section">
   <header class="section-head">
     <h2 class="section-title">相同画风 × 不同模型</h2>
-    {#if section.totalCount > 0}
-      <span class="section-count">{formatCount(section.totalCount)} 张</span>
+    {#if visibleCount > 0}
+      <span class="section-count">{formatCount(visibleCount)} 张</span>
     {/if}
     <span class="section-desc">提示词相同、按作画模型分组；与样本同模型的组不显示</span>
   </header>
@@ -103,6 +108,8 @@
     <div class="section-state">这张图没有可比较的提示词。</div>
   {:else if section.totalCount === 0}
     <div class="section-state">没有找到符合条件的图片。</div>
+  {:else}
+    <div class="section-state">找到的相同画风图片都与样本使用同一模型。</div>
   {/if}
 </section>
 
