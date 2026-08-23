@@ -4,6 +4,20 @@
 
 ## 当前状态
 
+- 对比功能重做阶段 2（查询命令）完成：新模块 `db/compare.rs` 提供五个只读
+  命令并已注册进 Tauri——`get_compare_sample`（行摘要 + 画风签名/VIBE 签名
+  状态，样本被删时明确报错）、`query_compare_same_artists`（分区①：画师串
+  整串精确相同，复用“只看当前画师串”的 TRIM 归一口径）、
+  `query_compare_same_vibe_diff_style`（分区②：同 VIBE 组合且画风签名不同，
+  目标 NULL 签名视为不同、空串“不可读”标记排除）、
+  `query_compare_same_style_diff_vibe`（分区③：同画风签名且 VIBE 组合不同，
+  “无 VIBE”作为一种取值参与比较，空串标记排除）、
+  `query_compare_same_style_all_models`（分区④：同画风全部行，上限 500 张并
+  返回截断标记，模型分组留给前端既有的 model-version 映射）。①②③统一
+  offset/limit 分页 + 总数，行摘要与 Tag 附着复用画廊既有管线（PAGE_ROWS_TABLE
+  物化）。回归测试 10 项：三口径命中/排除矩阵、空白归一画师串、NULL/空串
+  边界、无样本签名时的如实空态、分页与非法页大小、④截断标记。Rust 全量
+  测试 278 项通过、Clippy `-D warnings` 通过。
 - 对比功能重做阶段 1（画风签名地基）完成：新增 `pipeline/style_signature`
   归一化与签名模块——正向提示词按半角逗号/换行切分、空白折叠、剥离
   NovelAI 官方质量词（并集总表：V3/V4 的 `best quality, amazing quality,

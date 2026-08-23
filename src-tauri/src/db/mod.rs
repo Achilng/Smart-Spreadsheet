@@ -1,5 +1,6 @@
 mod batches;
 mod artist_auto_prefix;
+mod compare;
 mod automation_rules;
 mod delete;
 mod export;
@@ -20,6 +21,9 @@ mod settings;
 mod tags;
 
 pub use batches::{AppendOutcome, BatchSummary, LibrarySummary, NewRow, SourceType};
+pub use compare::{
+    COMPARE_MODEL_SECTION_CAP, CompareModelSection, CompareSample, CompareSectionPage,
+};
 pub use artist_auto_prefix::{
     ArtistTextPrefixResult, AutoArtistCandidate, AutoArtistPrefixApplyResult,
     AutoArtistPrefixPreview,

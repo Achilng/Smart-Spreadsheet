@@ -10,7 +10,7 @@ use super::runtime::{AppRuntime, RuntimeSnapshot};
 use crate::db::{
     ArtistTextPrefixResult, AutoArtistPrefixApplyResult, AutomationRule, AutomationRuleDraft,
     AutomationRuleExportResult, AutomationRuleImportInspection, AutomationRuleImportResult,
-    AutoArtistPrefixPreview,
+    AutoArtistPrefixPreview, CompareModelSection, CompareSample, CompareSectionPage,
     BatchSummary, DedupeCluster, DedupeMode, GroupSummary, ImageExportSettings, LibraryFilter,
     LibrarySummary, MutableRowState, PromptEditResult,
     QuickArtistPrefixApplyResult, QuickArtistPrefixChange, QuickArtistPrefixPreview,
@@ -1591,6 +1591,66 @@ pub(crate) async fn backfill_style_signatures(
     })
     .await
     .map_err(|error| format!("画风签名回填任务异常中止: {error}"))?
+}
+
+/// 图片对比窗口：样本完整信息（提示词、画师串、参数与签名状态）。
+/// 样本行不存在（打开期间被删除）时返回明确错误。
+#[tauri::command]
+pub(crate) fn get_compare_sample(
+    row_id: i64,
+    runtime: State<'_, AppRuntime>,
+) -> Result<CompareSample, String> {
+    runtime.get_compare_sample(row_id).map_err(error_text)
+}
+
+/// 对比分区①：画师串整串精确相同的行（时间倒序分页）。
+#[tauri::command]
+pub(crate) fn query_compare_same_artists(
+    row_id: i64,
+    offset: u64,
+    limit: u32,
+    runtime: State<'_, AppRuntime>,
+) -> Result<CompareSectionPage, String> {
+    runtime
+        .query_compare_same_artists(row_id, offset, limit)
+        .map_err(error_text)
+}
+
+/// 对比分区②：相同 VIBE 组合且提示词（画风签名）不同的行。
+#[tauri::command]
+pub(crate) fn query_compare_same_vibe_diff_style(
+    row_id: i64,
+    offset: u64,
+    limit: u32,
+    runtime: State<'_, AppRuntime>,
+) -> Result<CompareSectionPage, String> {
+    runtime
+        .query_compare_same_vibe_diff_style(row_id, offset, limit)
+        .map_err(error_text)
+}
+
+/// 对比分区③：相同提示词（画风签名）且 VIBE 组合不同的行。
+#[tauri::command]
+pub(crate) fn query_compare_same_style_diff_vibe(
+    row_id: i64,
+    offset: u64,
+    limit: u32,
+    runtime: State<'_, AppRuntime>,
+) -> Result<CompareSectionPage, String> {
+    runtime
+        .query_compare_same_style_diff_vibe(row_id, offset, limit)
+        .map_err(error_text)
+}
+
+/// 对比分区④：提示词（画风签名）相同的全部行，前端按模型版本分组。
+#[tauri::command]
+pub(crate) fn query_compare_same_style_all_models(
+    row_id: i64,
+    runtime: State<'_, AppRuntime>,
+) -> Result<CompareModelSection, String> {
+    runtime
+        .query_compare_same_style_all_models(row_id)
+        .map_err(error_text)
 }
 
 /// 以图搜图：选择一张图片，返回库中相似的行。

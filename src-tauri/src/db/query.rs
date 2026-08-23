@@ -14,7 +14,7 @@ pub(super) const FILTER_TAGS_TABLE: &str = "temp.query_filter_tags";
 const FILTERED_ROWS_TABLE: &str = "temp.query_filtered_rows";
 /// 分组成员等一次性查询的物化表，与缓存表分开以免破坏缓存。
 const SCRATCH_ROWS_TABLE: &str = "temp.query_scratch_rows";
-const PAGE_ROWS_TABLE: &str = "temp.query_page_rows";
+pub(super) const PAGE_ROWS_TABLE: &str = "temp.query_page_rows";
 
 /// 已物化筛选结果的标识。key 覆盖全部筛选参数；数据变更通过
 /// `Database::bump_data_version` 直接清空缓存。
@@ -870,7 +870,7 @@ fn format_generation_scale(scale: f64) -> String {
     }
 }
 
-fn query_page_metadata(connection: &Connection) -> Result<Vec<RowRecord>, DatabaseError> {
+pub(super) fn query_page_metadata(connection: &Connection) -> Result<Vec<RowRecord>, DatabaseError> {
     let mut statement = connection.prepare(&format!(
         "SELECT rows.id, rows.batch_id, rows.source_ordinal, rows.time,
                 rows.positive_prompt, rows.character_prompt, rows.negative_prompt, rows.note,
@@ -919,7 +919,7 @@ fn query_page_metadata(connection: &Connection) -> Result<Vec<RowRecord>, Databa
     Ok(rows)
 }
 
-fn attach_page_tags(
+pub(super) fn attach_page_tags(
     connection: &Connection,
     rows: &mut [RowRecord],
 ) -> Result<(), DatabaseError> {
