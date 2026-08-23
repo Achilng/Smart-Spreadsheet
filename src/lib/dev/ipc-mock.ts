@@ -8,6 +8,7 @@ interface MockRow {
   id: number;
   artists?: string;
   positivePrompt?: string | null;
+  characterPrompt?: string | null;
   generationModel?: string | null;
   imagePath?: string;
   imageWidth?: number;
@@ -24,7 +25,7 @@ function rowDto(row: MockRow) {
     sourceOrdinal: row.id,
     time: row.time ?? "2026-08-01 12:00",
     positivePrompt: row.positivePrompt ?? null,
-    characterPrompt: null,
+    characterPrompt: row.characterPrompt ?? null,
     negativePrompt: "lowres, worst quality",
     note: null,
     artists: row.artists ?? null,
@@ -55,7 +56,12 @@ const ARTIST_ROWS: MockRow[] = Array.from({ length: 30 }, (_, index) => ({
 }));
 
 const VIBE_ROWS: MockRow[] = [
-  { id: 201, positivePrompt: "artist:beta, night city", vibeReferenceCount: 3 },
+  {
+    id: 201,
+    positivePrompt: "artist:beta, night city",
+    characterPrompt: "1girl, silver hair\ngreen eyes",
+    vibeReferenceCount: 3,
+  },
   { id: 202, positivePrompt: "artist:gamma, sunset beach", vibeReferenceCount: 3 },
 ];
 
@@ -158,6 +164,7 @@ export function installIpcMock(): void {
                 id: requested,
                 artists: "artist:alpha",
                 positivePrompt: "artist:alpha, blue hair, school uniform, masterpiece",
+                characterPrompt: "1girl, silver hair\nblue eyes",
                 generationModel: "NovelAI Diffusion V4.5 Full",
                 vibeReferenceCount: 3,
                 tags: ["样本"],

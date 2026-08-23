@@ -5,7 +5,7 @@
   import { emitTo } from "@tauri-apps/api/event";
   import type { RowRecord } from "../../api";
   import { closeSideBySide } from "../../stores/compare-store.svelte";
-  import { diffPromptField } from "../../utils/prompt-diff";
+  import { diffPromptField, type PromptFieldDiff } from "../../utils/prompt-diff";
   import { modelVersionBadge } from "../../utils/model-version";
   import { focusMainWindow } from "../../windows/toolbox";
   import { rowFileName, rowResolution } from "../../utils/row-display";
@@ -20,7 +20,8 @@
     target: RowRecord;
   } = $props();
 
-  const diff = $derived(diffPromptField(sample.positivePrompt, target.positivePrompt));
+  const positivePromptDiff = $derived(diffPromptField(sample.positivePrompt, target.positivePrompt));
+  const characterPromptDiff = $derived(diffPromptField(sample.characterPrompt, target.characterPrompt));
 
   interface ParamRow {
     label: string;
@@ -120,6 +121,62 @@
   </figure>
 {/snippet}
 
+{#snippet promptDiffBlock(
+  title: string,
+  diff: PromptFieldDiff,
+  emptyText: string,
+  dimQualityWords: boolean,
+)}
+  <section class="diff-block">
+    <h2 class="block-title">{title}</h2>
+    {#if diff.onlyLeft.length === 0 && diff.shared.length === 0 && diff.onlyRight.length === 0}
+      <div class="block-empty">{emptyText}</div>
+    {:else}
+      <div class="diff-columns">
+        <div class="diff-column">
+          <h3 class="diff-head">仅样本有 <span class="diff-count">{diff.onlyLeft.length}</span></h3>
+          {#if diff.onlyLeft.length}
+            <div class="token-list">
+              {#each diff.onlyLeft as token, index (index)}
+                <span class="token" class:quality={dimQualityWords && token.isQuality}>{token.display}</span>
+              {/each}
+            </div>
+          {:else}
+            <div class="diff-empty">无</div>
+          {/if}
+        </div>
+        <div class="diff-column">
+          <h3 class="diff-head">双方共有 <span class="diff-count">{diff.shared.length}</span></h3>
+          {#if diff.shared.length}
+            <div class="token-list">
+              {#each diff.shared as token, index (index)}
+                <span class="token" class:quality={dimQualityWords && token.isQuality}>{token.display}</span>
+              {/each}
+            </div>
+          {:else}
+            <div class="diff-empty">无</div>
+          {/if}
+        </div>
+        <div class="diff-column">
+          <h3 class="diff-head">仅目标有 <span class="diff-count">{diff.onlyRight.length}</span></h3>
+          {#if diff.onlyRight.length}
+            <div class="token-list">
+              {#each diff.onlyRight as token, index (index)}
+                <span class="token" class:quality={dimQualityWords && token.isQuality}>{token.display}</span>
+              {/each}
+            </div>
+          {:else}
+            <div class="diff-empty">无</div>
+          {/if}
+        </div>
+      </div>
+      {#if dimQualityWords}
+        <p class="diff-note">官方质量词（如 very aesthetic、masterpiece）淡化显示。</p>
+      {/if}
+    {/if}
+  </section>
+{/snippet}
+
 <div class="side-by-side">
   <header class="head">
     <button type="button" class="back" onclick={closeSideBySide}>
@@ -134,52 +191,8 @@
     {/each}
   </div>
 
-  <section class="diff-block">
-    <h2 class="block-title">提示词差异</h2>
-    {#if diff.onlyLeft.length === 0 && diff.shared.length === 0 && diff.onlyRight.length === 0}
-      <div class="block-empty">两侧正向提示词都为空。</div>
-    {:else}
-      <div class="diff-columns">
-        <div class="diff-column">
-          <h3 class="diff-head">仅样本有 <span class="diff-count">{diff.onlyLeft.length}</span></h3>
-          {#if diff.onlyLeft.length}
-            <div class="token-list">
-              {#each diff.onlyLeft as token, index (index)}
-                <span class="token" class:quality={token.isQuality}>{token.display}</span>
-              {/each}
-            </div>
-          {:else}
-            <div class="diff-empty">无</div>
-          {/if}
-        </div>
-        <div class="diff-column">
-          <h3 class="diff-head">双方共有 <span class="diff-count">{diff.shared.length}</span></h3>
-          {#if diff.shared.length}
-            <div class="token-list">
-              {#each diff.shared as token, index (index)}
-                <span class="token" class:quality={token.isQuality}>{token.display}</span>
-              {/each}
-            </div>
-          {:else}
-            <div class="diff-empty">无</div>
-          {/if}
-        </div>
-        <div class="diff-column">
-          <h3 class="diff-head">仅目标有 <span class="diff-count">{diff.onlyRight.length}</span></h3>
-          {#if diff.onlyRight.length}
-            <div class="token-list">
-              {#each diff.onlyRight as token, index (index)}
-                <span class="token" class:quality={token.isQuality}>{token.display}</span>
-              {/each}
-            </div>
-          {:else}
-            <div class="diff-empty">无</div>
-          {/if}
-        </div>
-      </div>
-      <p class="diff-note">官方质量词（如 very aesthetic、masterpiece）淡化显示。</p>
-    {/if}
-  </section>
+  {@render promptDiffBlock("正向提示词差异", positivePromptDiff, "两侧正向提示词都为空。", true)}
+  {@render promptDiffBlock("角色提示词差异", characterPromptDiff, "两侧角色提示词都为空。", false)}
 
   <section class="diff-block">
     <h2 class="block-title">生成参数对照</h2>
