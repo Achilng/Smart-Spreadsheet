@@ -99,6 +99,9 @@ pub struct RowRecord {
     pub generation_seed: Option<String>,
     /// CFG scale；REAL 列在此格式化为文本以保持结构体 Eq
     pub generation_scale: Option<String>,
+    /// CFG Rescale；同样格式化为文本
+    pub generation_cfg_rescale: Option<String>,
+    pub generation_noise_schedule: Option<String>,
     pub metadata_failed: bool,
     pub vibe_reference_count: Option<u32>,
     pub group_id: Option<i64>,
@@ -878,6 +881,7 @@ pub(super) fn query_page_metadata(connection: &Connection) -> Result<Vec<RowReco
                 rows.image_width, rows.image_height,
                 rows.generation_model, rows.generation_sampler, rows.generation_steps,
                 rows.generation_seed, rows.generation_scale,
+                rows.generation_cfg_rescale, rows.generation_noise_schedule,
                 rows.metadata_failed, rows.vibe_reference_count, rows.group_id, groups.name
          FROM {PAGE_ROWS_TABLE} AS page
          JOIN rows ON rows.id = page.id
@@ -908,10 +912,14 @@ pub(super) fn query_page_metadata(connection: &Connection) -> Result<Vec<RowReco
                 generation_scale: row
                     .get::<_, Option<f64>>(18)?
                     .map(format_generation_scale),
-                metadata_failed: row.get(19)?,
-                vibe_reference_count: row.get(20)?,
-                group_id: row.get(21)?,
-                group_name: row.get(22)?,
+                generation_cfg_rescale: row
+                    .get::<_, Option<f64>>(19)?
+                    .map(format_generation_scale),
+                generation_noise_schedule: row.get(20)?,
+                metadata_failed: row.get(21)?,
+                vibe_reference_count: row.get(22)?,
+                group_id: row.get(23)?,
+                group_name: row.get(24)?,
                 tags: Vec::new(),
             })
         })?

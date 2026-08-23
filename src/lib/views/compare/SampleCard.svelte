@@ -34,34 +34,45 @@
     if (!hasImage) {
       return;
     }
+
+    let cancelled = false;
+    let failedLoads = 0;
+    const markFailure = () => {
+      failedLoads += 1;
+      if (!cancelled && failedLoads === 2 && displayUrl === null) {
+        loadFailed = true;
+      }
+    };
     const cachedThumb = thumbnails.cached(rowId);
     if (cachedThumb) {
       displayUrl = cachedThumb;
     } else {
-      let cancelled = false;
       void thumbnails.load(rowId).then(
         loaded => {
-          if (!cancelled) {
+          // 详情图可能先返回；不要让迟到的缩略图把高清层覆盖回去。
+          if (!cancelled && displayUrl === null) {
             displayUrl = loaded;
           }
         },
-        () => {},
+        markFailure,
       );
-      return () => {
-        cancelled = true;
-      };
     }
-    let cancelledLate = false;
+
     void detailPreviews.load(rowId, true).then(
       loaded => {
-        if (!cancelledLate) {
+        if (!cancelled) {
           displayUrl = loaded;
+          loadFailed = false;
         }
       },
-      () => {},
+      () => {
+        // 已有缩略图时仍可正常展示；只有两层都失败才进入失败态。
+        if (cachedThumb) return;
+        markFailure();
+      },
     );
     return () => {
-      cancelledLate = true;
+      cancelled = true;
     };
   });
 

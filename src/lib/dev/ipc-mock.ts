@@ -38,6 +38,8 @@ function rowDto(row: MockRow) {
     generationSteps: 28,
     generationSeed: String(1000 + row.id),
     generationScale: "5",
+    generationCfgRescale: "0.18",
+    generationNoiseSchedule: "karras",
     metadataFailed: false,
     vibeReferenceCount: row.vibeReferenceCount ?? 0,
     groupId: null,

@@ -103,6 +103,8 @@ export interface RowRecord {
   generationSteps: number | null;
   generationSeed: string | null;
   generationScale: string | null;
+  generationCfgRescale: string | null;
+  generationNoiseSchedule: string | null;
   metadataFailed: boolean;
   vibeReferenceCount: number | null;
   tags: string[];
