@@ -38,6 +38,7 @@
       app.phashProgress ||
       app.hashProgress ||
       app.vibeBackfillProgress ||
+      app.styleSignatureProgress ||
       app.migrationProgress
     ) {
       return "还有任务正在进行，请等待任务结束后再更新。";

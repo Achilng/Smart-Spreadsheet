@@ -517,7 +517,8 @@ impl Database {
              SET positive_prompt = ?2,
                  character_prompt = ?3,
                  negative_prompt = ?4,
-                 artists = ?5
+                 artists = ?5,
+                 style_signature = ?6
              WHERE id = ?1",
         )?;
         for change in &changes {
@@ -527,6 +528,7 @@ impl Database {
                 &change.new_character_prompt,
                 &change.new_negative_prompt,
                 &change.new_artists,
+                crate::pipeline::style_signature_of(change.new_positive_prompt.as_deref()),
             ])?;
         }
         drop(update);
@@ -683,7 +685,8 @@ impl Database {
              SET positive_prompt = ?2,
                  character_prompt = ?3,
                  negative_prompt = ?4,
-                 artists = ?5
+                 artists = ?5,
+                 style_signature = ?6
              WHERE id = ?1",
         )?;
         let mut changed = 0_u64;
@@ -709,6 +712,7 @@ impl Database {
                 character,
                 negative,
                 artists,
+                crate::pipeline::style_signature_of(positive.as_deref()),
             ])?;
             if updated == 0 {
                 return Err(QuickEditError::UnknownRow(change.row_id));

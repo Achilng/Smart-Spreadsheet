@@ -226,7 +226,8 @@ impl Database {
                  SET positive_prompt = ?2,
                      character_prompt = ?3,
                      negative_prompt = ?4,
-                     artists = ?5
+                     artists = ?5,
+                     style_signature = ?6
                  WHERE id = ?1",
             )?;
             for change in &changes {
@@ -236,6 +237,7 @@ impl Database {
                     change.new_character_prompt,
                     change.new_negative_prompt,
                     change.new_artists,
+                    crate::pipeline::style_signature_of(change.new_positive_prompt.as_deref()),
                 ])?;
             }
         }
@@ -304,7 +306,8 @@ impl Database {
                  SET positive_prompt = ?2,
                      character_prompt = ?3,
                      negative_prompt = ?4,
-                     artists = ?5
+                     artists = ?5,
+                     style_signature = ?6
                  WHERE id = ?1",
             )?;
             for change in &changes {
@@ -314,6 +317,7 @@ impl Database {
                     change.new_character_prompt,
                     change.new_negative_prompt,
                     change.new_artists,
+                    crate::pipeline::style_signature_of(change.new_positive_prompt.as_deref()),
                 ])?;
             }
         }

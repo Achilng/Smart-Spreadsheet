@@ -2359,7 +2359,8 @@ fn persist_rule_row(
     {
         transaction.execute(
             "UPDATE rows SET positive_prompt = ?2, character_prompt = ?3,
-                    negative_prompt = ?4, artists = ?5, note = ?6, group_id = ?7
+                    negative_prompt = ?4, artists = ?5, note = ?6, group_id = ?7,
+                    style_signature = ?8
              WHERE id = ?1",
             params![
                 updated.id,
@@ -2369,6 +2370,7 @@ fn persist_rule_row(
                 updated.artists,
                 updated.note,
                 updated.group_id,
+                crate::pipeline::style_signature_of(updated.positive_prompt.as_deref()),
             ],
         )?;
     }

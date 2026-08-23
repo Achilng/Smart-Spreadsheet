@@ -49,8 +49,8 @@ use std::path::Path;
 use std::time::Duration;
 
 use migrations::{
-    MIGRATION_9, MIGRATION_10, MIGRATION_11, MIGRATION_12, MIGRATION_14, MIGRATION_15,
-    MIGRATION_16, MINIMUM_UPGRADABLE_SCHEMA_VERSION, SCHEMA_16,
+    MIGRATION_10, MIGRATION_11, MIGRATION_12, MIGRATION_14, MIGRATION_15, MIGRATION_16,
+    MIGRATION_17, MIGRATION_9, MINIMUM_UPGRADABLE_SCHEMA_VERSION, SCHEMA_17,
 };
 use rusqlite::backup::{Backup, StepResult};
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior};
@@ -272,8 +272,8 @@ fn apply_pending_migrations(connection: &mut Connection, from_version: u32) -> R
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let mut version = from_version;
     if version == 0 {
-        transaction.execute_batch(SCHEMA_16)?;
-        version = 16;
+        transaction.execute_batch(SCHEMA_17)?;
+        version = 17;
     }
     if version == 8 {
         transaction.execute_batch(MIGRATION_9)?;
@@ -306,6 +306,10 @@ fn apply_pending_migrations(connection: &mut Connection, from_version: u32) -> R
     if version == 15 {
         transaction.execute_batch(MIGRATION_16)?;
         version = 16;
+    }
+    if version == 16 {
+        transaction.execute_batch(MIGRATION_17)?;
+        version = 17;
     }
     debug_assert_eq!(version, CURRENT_SCHEMA_VERSION);
     transaction.pragma_update(None, "user_version", version)?;
@@ -697,9 +701,226 @@ mod tests {
         );
     }
 
+    #[test]
+    fn upgrading_v16_adds_style_signature_column_and_index() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        connection
+            .execute_batch(&format!("{} PRAGMA user_version = 16;", schema_16_fixture()))
+            .unwrap();
+
+        migrate(&mut connection).unwrap();
+
+        assert_eq!(
+            connection
+                .pragma_query_value::<u32, _>(None, "user_version", |row| row.get(0))
+                .unwrap(),
+            CURRENT_SCHEMA_VERSION
+        );
+        // 既有数据在新列上保持 NULL，等待启动回填。
+        connection
+            .execute_batch(
+                "INSERT INTO import_batches
+                    (id, source_type, source_path, imported_at, added_count, skipped_count)
+                 VALUES (1, 'folder', 'D:\\images', '2026-08-01T00:00:00Z', 1, 0);
+                 INSERT INTO rows (id, batch_id, source_ordinal, identity, positive_prompt)
+                 VALUES (7, 1, 1, 'file:d:\\images\\one.png', 'artist:test, blue hair');",
+            )
+            .unwrap();
+        let signature: Option<String> = connection
+            .query_row("SELECT style_signature FROM rows WHERE id = 7", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(signature, None);
+        let index_exists: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master
+                 WHERE type = 'index' AND name = 'idx_rows_style_signature'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(index_exists, 1);
+    }
+
+    /// 全表重算并断言与存量签名一致：任何写 positive_prompt 后漏刷
+    /// style_signature 的路径都会在此暴露。
+    fn assert_all_style_signatures_consistent(database: &Database) {
+        for (row_id, prompt) in database.all_row_positive_prompts().unwrap() {
+            assert_eq!(
+                database.row_style_signature(row_id).unwrap(),
+                crate::pipeline::style_signature_of(prompt.as_deref()),
+                "row {row_id} 的存量画风签名与按提示词重算的结果不一致"
+            );
+        }
+    }
+
+    #[test]
+    fn style_signatures_stay_consistent_across_all_prompt_write_paths() {
+        let mut database = Database::open_in_memory().unwrap();
+
+        // 1. 导入新图（append_batch 的 INSERT 现算签名）。
+        database
+            .append_batch(
+                SourceType::Folder,
+                r"D:\t",
+                &[
+                    NewRow {
+                        source_ordinal: 1,
+                        identity: "file:a.png".into(),
+                        positive_prompt: Some("artist:one, blue hair, solo".into()),
+                        ..NewRow::default()
+                    },
+                    NewRow {
+                        source_ordinal: 2,
+                        identity: "file:b.png".into(),
+                        positive_prompt: Some("artist:two, solo, red hair, very aesthetic".into()),
+                        ..NewRow::default()
+                    },
+                    NewRow {
+                        source_ordinal: 3,
+                        identity: "file:c.png".into(),
+                        ..NewRow::default()
+                    },
+                ],
+                |_| Ok(()),
+            )
+            .unwrap();
+        assert_all_style_signatures_consistent(&database);
+
+        // 2. 详情面板单行编辑（含质量词剥离后的签名变化）。
+        database
+            .update_positive_prompt(1, "artist:one, azure hair, solo, best quality")
+            .unwrap();
+        assert_all_style_signatures_consistent(&database);
+
+        // 3. 批量查找替换。
+        database
+            .find_replace_prompt(
+                &RowSelection::Explicit {
+                    row_ids: vec![1, 2],
+                },
+                "hair",
+                "eyes",
+            )
+            .unwrap();
+        assert_all_style_signatures_consistent(&database);
+
+        // 4. 批量画师前缀。
+        database
+            .prepend_artist(
+                &RowSelection::Explicit {
+                    row_ids: vec![2],
+                },
+                "solo",
+            )
+            .unwrap();
+        assert_all_style_signatures_consistent(&database);
+
+        // 5. 快速整理画师前缀：应用 → 撤销 → 重做。
+        let applied = database.apply_quick_artist_prefix("solo").unwrap();
+        assert_all_style_signatures_consistent(&database);
+        database
+            .revert_quick_artist_prefix_changes(&applied.changes)
+            .unwrap();
+        assert_all_style_signatures_consistent(&database);
+        database
+            .reapply_quick_artist_prefix_changes(&applied.changes)
+            .unwrap();
+        assert_all_style_signatures_consistent(&database);
+
+        // 6. 画师前缀修正（全库 + 导入后指定行）。
+        database.apply_auto_artist_prefix(&["solo".into()]).unwrap();
+        assert_all_style_signatures_consistent(&database);
+        database
+            .apply_confirmed_artist_prefix_to_rows(&[1, 2, 3])
+            .unwrap();
+        assert_all_style_signatures_consistent(&database);
+
+        // 7. 自动规则的提示词任务。
+        database
+            .create_automation_rule(&AutomationRuleDraft {
+                name: "append tag".into(),
+                description: String::new(),
+                enabled: true,
+                run_on_import: true,
+                run_on_update: false,
+                conditions: RuleConditionSet {
+                    mode: RuleMatchMode::All,
+                    negate: false,
+                    groups: vec![RuleConditionGroup {
+                        mode: RuleMatchMode::All,
+                        conditions: vec![RuleCondition::Prompt {
+                            scope: PromptScope::Positive,
+                            operator: PromptOperator::TextContains,
+                            value: "azure".into(),
+                            case_sensitive: false,
+                        }],
+                    }],
+                },
+                actions: vec![RuleAction::AppendPrompt {
+                    field: PromptActionField::Positive,
+                    value: "smile".into(),
+                }],
+            })
+            .unwrap();
+        database
+            .execute_automation_rules(RuleExecutionTrigger::Manual, &[1])
+            .unwrap();
+        assert_all_style_signatures_consistent(&database);
+
+        // 8. 撤销/重做恢复行状态。
+        let before = database.get_rows_by_ids(&[1]).unwrap().remove(0);
+        database
+            .restore_mutable_row_states(&[MutableRowState {
+                row_id: 1,
+                positive_prompt: Some("artist:one, restored".into()),
+                character_prompt: before.character_prompt.clone(),
+                negative_prompt: before.negative_prompt.clone(),
+                note: before.note.clone(),
+                artists: before.artists.clone(),
+                tags: before.tags.clone(),
+                group_id: before.group_id,
+            }])
+            .unwrap();
+        assert_all_style_signatures_consistent(&database);
+
+        // 9. 更新现有图片。
+        database
+            .update_existing_images(&[ExistingImageUpdate {
+                row_id: 1,
+                identity: "file:a.png".into(),
+                image_path: r"D:\t\a.png".into(),
+                source_size: Some(10),
+                source_mtime: Some(20),
+                positive_prompt: Some("artist:one, updated prompt".into()),
+                character_prompt: None,
+                negative_prompt: None,
+                artists: Some("artist:one".into()),
+                content_hash: Some("hash".into()),
+                perceptual_hash: None,
+                metadata_fingerprint: None,
+                stored_image_path: None,
+                stored_image_is_original: true,
+                vibe_reference_count: 0,
+                vibe_signature: None,
+                image_width: None,
+                image_height: None,
+                generation_model: None,
+                generation_sampler: None,
+                generation_steps: None,
+                generation_seed: None,
+                generation_scale: None,
+                generation_cfg_rescale: None,
+                generation_noise_schedule: None,
+            }])
+            .unwrap();
+        assert_all_style_signatures_consistent(&database);
+    }
+
     /// 从当前 schema 还原 v15 结构，供升级测试构造历史版本数据库。
     fn schema_15_fixture() -> String {
-        SCHEMA_16
+        schema_16_fixture()
             .replace("\n    vibe_signature TEXT,", "")
             .replace(
                 "CREATE INDEX idx_rows_vibe_signature ON rows(vibe_signature)\nWHERE vibe_signature IS NOT NULL;\n",
@@ -708,6 +929,16 @@ mod tests {
             .replace(
                 "('artists', 'positivePrompt', 'vibes')",
                 "('artists', 'positivePrompt')",
+            )
+    }
+
+    /// 从当前 schema 还原 v16 结构，供升级测试构造历史版本数据库。
+    fn schema_16_fixture() -> String {
+        SCHEMA_17
+            .replace("\n    style_signature TEXT,", "")
+            .replace(
+                "CREATE INDEX idx_rows_style_signature ON rows(style_signature)\nWHERE style_signature IS NOT NULL;\n",
+                "",
             )
     }
 

@@ -27,6 +27,16 @@ export function backfillVibeStatuses(): Promise<VibeStatusProgress> {
   return invoke<VibeStatusProgress>("backfill_vibe_statuses");
 }
 
+export interface StyleSignatureProgress {
+  processed: number;
+  total: number;
+}
+
+/** 补齐历史图片的画风签名；算法版本落后时全量重算，已就绪时立即返回。 */
+export function backfillStyleSignatures(): Promise<StyleSignatureProgress> {
+  return invoke<StyleSignatureProgress>("backfill_style_signatures");
+}
+
 export function searchSimilarImages(
   path: string,
   threshold: number,

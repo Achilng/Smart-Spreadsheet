@@ -4,6 +4,25 @@
 
 ## 当前状态
 
+- 对比功能重做阶段 1（画风签名地基）完成：新增 `pipeline/style_signature`
+  归一化与签名模块——正向提示词按半角逗号/换行切分、空白折叠、剥离
+  NovelAI 官方质量词（并集总表：V3/V4 的 `best quality, amazing quality,
+  very aesthetic, absurdres`、V4.5/V5 的 `location, very aesthetic,
+  masterpiece, no text`、Curated 的 `rating:general` 与整串精确的
+  `-0.8::feet::`，来源为官方文档 docs.novelai.net 质量词页 + 真实库
+  130 行按模型版本统计的公共尾部 tag 实证）、保持顺序转小写后取 SHA-256；
+  纯质量词/空提示词签名为 NULL 不参与匹配。数据库升级 schema v17
+  （`rows.style_signature` 列 + 部分索引），七个写 `positive_prompt` 的
+  路径（导入 INSERT、更新现有图片、详情面板单行编辑、批量查找替换、
+  画师前缀、快速整理前缀及其撤销/重做、画师前缀修正全库与指定行、自动
+  规则提示词任务、撤销/重做恢复行状态）全部在同一 UPDATE 内同步重算签名；
+  新增 `backfill_style_signatures` 命令在启动/换库后于 VIBE 回填之后触发，
+  分批 500 行落库并以 `style_signature_version` 设置做幂等与版本升级全量
+  重算，右下角显示“正在建立画风索引”进度。回归测试：归一化边界（权重
+  外壳、全角逗号不切分、大小写、顺序、空与纯质量词）、真实 `feet` tag
+  保留而 Curated 默认加权形式剥离、九类写路径全表重算一致性断言、回填
+  幂等/分批/版本重算、v16→v17 迁移。Rust 全量测试 268 项通过、1 项性能
+  基准忽略，Clippy `-D warnings`、前端检查（0 错误保留 3 条既有警告）通过。
 - 按用户反馈回退图片对比窗口功能：右键“对比”打开的独立对比窗口（样本卡 +
   相同画师串/画师串×模型/相同 VIBE 换提示词/相同提示词换 VIBE/相同提示词换
   模型五个分区 + 并排对比视图）实际使用效果不佳，已用 `git revert` 整体回退，

@@ -194,7 +194,8 @@ impl Database {
                     generation_seed = ?22,
                     generation_scale = ?23,
                     generation_cfg_rescale = ?24,
-                    generation_noise_schedule = ?25
+                    generation_noise_schedule = ?25,
+                    style_signature = ?26
                  WHERE id = ?1",
             )?;
             for update in updates {
@@ -224,6 +225,7 @@ impl Database {
                     update.generation_scale,
                     update.generation_cfg_rescale,
                     update.generation_noise_schedule,
+                    crate::pipeline::style_signature_of(update.positive_prompt.as_deref()),
                 ])? as u64;
             }
         }

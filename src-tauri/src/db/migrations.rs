@@ -1,8 +1,8 @@
-pub const CURRENT_SCHEMA_VERSION: u32 = 16;
+pub const CURRENT_SCHEMA_VERSION: u32 = 17;
 pub const MINIMUM_UPGRADABLE_SCHEMA_VERSION: u32 = 8;
 
 /// 新资料库直接创建当前结构，不再重放早期工作簿/XLSX 导入迁移。
-pub(super) const SCHEMA_16: &str = r#"
+pub(super) const SCHEMA_17: &str = r#"
 CREATE TABLE import_batches (
     id INTEGER PRIMARY KEY,
     source_type TEXT NOT NULL CHECK (source_type IN ('legacy', 'folder', 'archive')),
@@ -44,6 +44,7 @@ CREATE TABLE rows (
     vibe_reference_count INTEGER
         CHECK (vibe_reference_count IS NULL OR vibe_reference_count >= 0),
     vibe_signature TEXT,
+    style_signature TEXT,
     image_width INTEGER CHECK (image_width IS NULL OR image_width > 0),
     image_height INTEGER CHECK (image_height IS NULL OR image_height > 0),
     generation_model TEXT,
@@ -107,6 +108,8 @@ CREATE INDEX idx_rows_metadata_fingerprint ON rows(metadata_fingerprint)
 WHERE metadata_fingerprint IS NOT NULL;
 CREATE INDEX idx_rows_vibe_signature ON rows(vibe_signature)
 WHERE vibe_signature IS NOT NULL;
+CREATE INDEX idx_rows_style_signature ON rows(style_signature)
+WHERE style_signature IS NOT NULL;
 CREATE INDEX idx_rows_updated_at ON rows(updated_at DESC, id DESC);
 CREATE TRIGGER touch_row_after_user_edit
 AFTER UPDATE OF positive_prompt, character_prompt, negative_prompt, note, group_id ON rows
@@ -273,4 +276,13 @@ CREATE TABLE dedupe_aliases_v16 (
 INSERT INTO dedupe_aliases_v16 SELECT mode, key, alias FROM dedupe_aliases;
 DROP TABLE dedupe_aliases;
 ALTER TABLE dedupe_aliases_v16 RENAME TO dedupe_aliases;
+"#;
+
+/// v16 → v17：缓存正向提示词的画风签名（剥离官方质量词后的归一化哈希），
+/// 供图片对比窗口的“相同画风”分区使用。计算只依赖库内 positive_prompt
+/// 文本，历史行由启动回填补齐，不需要读图片文件。
+pub(super) const MIGRATION_17: &str = r#"
+ALTER TABLE rows ADD COLUMN style_signature TEXT;
+CREATE INDEX idx_rows_style_signature ON rows(style_signature)
+WHERE style_signature IS NOT NULL;
 "#;

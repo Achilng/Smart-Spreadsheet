@@ -336,8 +336,13 @@ impl Database {
         )?;
         let artists_str = combined_artists(new_prompt, character_prompt.as_deref());
         let updated = transaction.execute(
-            "UPDATE rows SET positive_prompt = ?2, artists = ?3 WHERE id = ?1",
-            rusqlite::params![row_id, new_prompt, &artists_str],
+            "UPDATE rows SET positive_prompt = ?2, artists = ?3, style_signature = ?4 WHERE id = ?1",
+            rusqlite::params![
+                row_id,
+                new_prompt,
+                &artists_str,
+                crate::pipeline::style_signature_of(Some(new_prompt))
+            ],
         )?;
         transaction.commit()?;
         Ok(SinglePromptEditResult {
@@ -414,12 +419,17 @@ impl Database {
         drop(stmt);
 
         let mut update = transaction
-            .prepare("UPDATE rows SET positive_prompt = ?2, artists = ?3 WHERE id = ?1")?;
+            .prepare("UPDATE rows SET positive_prompt = ?2, artists = ?3, style_signature = ?4 WHERE id = ?1")?;
         let mut count = 0u64;
         for (id, prompt, character_prompt) in &rows_to_update {
             let new_prompt = prompt.replace(find, replace);
             let artists_str = combined_artists(&new_prompt, character_prompt.as_deref());
-            update.execute(rusqlite::params![id, new_prompt, artists_str])?;
+            update.execute(rusqlite::params![
+                id,
+                new_prompt,
+                artists_str,
+                crate::pipeline::style_signature_of(Some(&new_prompt))
+            ])?;
             count += 1;
         }
         drop(update);
@@ -457,7 +467,7 @@ impl Database {
         drop(stmt);
 
         let mut update = transaction
-            .prepare("UPDATE rows SET positive_prompt = ?2, artists = ?3 WHERE id = ?1")?;
+            .prepare("UPDATE rows SET positive_prompt = ?2, artists = ?3, style_signature = ?4 WHERE id = ?1")?;
         let mut count = 0u64;
         for (id, prompt, character_prompt) in &rows_to_update {
             let Some(old) = prompt.as_deref() else {
@@ -467,7 +477,12 @@ impl Database {
                 continue;
             };
             let artists_str = combined_artists(&new_prompt, character_prompt.as_deref());
-            update.execute(rusqlite::params![id, new_prompt, artists_str])?;
+            update.execute(rusqlite::params![
+                id,
+                new_prompt,
+                artists_str,
+                crate::pipeline::style_signature_of(Some(&new_prompt))
+            ])?;
             count += 1;
         }
         drop(update);

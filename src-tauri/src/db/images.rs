@@ -93,7 +93,59 @@ impl Database {
             .optional()?
             .ok_or(DatabaseError::RowNotFound(row_id))
     }
+
+    /// 画风签名回填候选：全库行的 id 与正向提示词（无提示词行为 None）。
+    pub fn all_row_positive_prompts(&self) -> Result<Vec<(i64, Option<String>)>, DatabaseError> {
+        let mut statement = self
+            .connection
+            .prepare("SELECT id, positive_prompt FROM rows ORDER BY id")?;
+        Ok(statement
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+            .collect::<Result<Vec<_>, _>>()?)
+    }
+
+    pub fn row_style_signature(&self, row_id: i64) -> Result<Option<String>, DatabaseError> {
+        self.connection
+            .query_row(
+                "SELECT style_signature FROM rows WHERE id = ?1",
+                [row_id],
+                |row| row.get(0),
+            )
+            .optional()?
+            .ok_or(DatabaseError::RowNotFound(row_id))
+    }
+
+    /// 批量写入画风签名（回填/全量重算使用）。
+    pub fn update_style_signatures(
+        &mut self,
+        signatures: &[(i64, Option<String>)],
+    ) -> Result<(), DatabaseError> {
+        let transaction = self.connection.transaction()?;
+        {
+            let mut update = transaction
+                .prepare("UPDATE rows SET style_signature = ?2 WHERE id = ?1")?;
+            for (row_id, signature) in signatures {
+                update.execute(rusqlite::params![row_id, signature])?;
+            }
+        }
+        transaction.commit()?;
+        self.bump_data_version();
+        Ok(())
+    }
+
+    /// 库内记录的画风签名算法版本；从未回填时为 None。
+    pub fn style_signature_version(&self) -> Result<Option<u32>, DatabaseError> {
+        Ok(self
+            .setting(STYLE_SIGNATURE_VERSION_SETTING)?
+            .and_then(|value| value.parse().ok()))
+    }
+
+    pub fn set_style_signature_version(&mut self, version: u32) -> Result<(), DatabaseError> {
+        self.set_setting(STYLE_SIGNATURE_VERSION_SETTING, &version.to_string())
+    }
 }
+
+const STYLE_SIGNATURE_VERSION_SETTING: &str = "style_signature_version";
 
 #[cfg(test)]
 mod tests {

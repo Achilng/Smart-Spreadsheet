@@ -9,6 +9,7 @@ mod metadata_fingerprint;
 mod migration;
 mod perceptual_hash;
 mod prompt_docs;
+mod style_signatures;
 #[cfg(test)]
 pub(crate) mod test_fixtures;
 mod vibe_status;
@@ -43,6 +44,7 @@ pub use perceptual_hash::{
     PerceptualHashBackfillOutcome, PerceptualHashProgress, SimilarImageMatch,
 };
 pub use prompt_docs::{PromptDocAsset, PromptDocDetail, PromptDocError, PromptDocSummary};
+pub use style_signatures::StyleSignatureProgress;
 pub use vibe_status::VibeStatusProgress;
 
 pub(super) const FORMAT_VERSION: u32 = 1;

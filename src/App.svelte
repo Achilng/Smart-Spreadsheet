@@ -7,6 +7,7 @@
     bumpDataVersion,
     refreshSnapshot,
     resetAndReconfigure,
+    runStyleSignatureBackfill,
     runVibeBackfill,
     setNotice,
     type MainStateChange,
@@ -20,7 +21,7 @@
 
   // 快照就绪后在后台补齐 VIBE 聚合索引（升级后首启的一次性工作，
   // 已就绪的库只做一次空查询）；不阻塞首屏。
-  void refreshSnapshot().then(() => runVibeBackfill());
+  void refreshSnapshot().then(() => runVibeBackfill().then(() => runStyleSignatureBackfill()));
 
   onMount(() => {
     let disposed = false;

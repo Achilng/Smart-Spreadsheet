@@ -103,6 +103,10 @@
     if (vibe) {
       return `正在建立 VIBE 聚合索引 ${formatCount(vibe.processed)} / ${formatCount(vibe.total)}（升级后一次性工作，可继续正常使用）`;
     }
+    const style = app.styleSignatureProgress;
+    if (style) {
+      return `正在建立画风索引 ${formatCount(style.processed)} / ${formatCount(style.total)}（升级后一次性工作，可继续正常使用）`;
+    }
     const exporting = app.exportProgress;
     if (exporting) {
       return `正在导出 ${formatCount(exporting.processed)} / ${formatCount(exporting.total)}`;
@@ -135,6 +139,10 @@
     const vibe = app.vibeBackfillProgress;
     if (vibe && vibe.total > 0) {
       return Math.round((vibe.processed / vibe.total) * 100);
+    }
+    const style = app.styleSignatureProgress;
+    if (style && style.total > 0) {
+      return Math.round((style.processed / style.total) * 100);
     }
     const exporting = app.exportProgress;
     if (exporting && exporting.total > 0) {

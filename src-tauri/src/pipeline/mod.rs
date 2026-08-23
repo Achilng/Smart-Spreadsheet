@@ -12,6 +12,7 @@ pub mod parallel;
 pub mod png_text;
 pub mod scan;
 pub mod stealth_png;
+pub mod style_signature;
 
 pub use artist::extract_artist_tags;
 pub use metadata::{
@@ -19,3 +20,4 @@ pub use metadata::{
     vibe_status,
 };
 pub use metadata_fingerprint::metadata_fingerprint;
+pub use style_signature::{STYLE_SIGNATURE_VERSION, style_signature_of};

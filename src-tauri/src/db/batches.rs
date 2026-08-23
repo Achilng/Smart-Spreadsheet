@@ -151,6 +151,7 @@ impl Database {
                     image_folder, image_path, stored_image_path, metadata_failed,
                     content_hash, perceptual_hash, metadata_fingerprint,
                     stored_image_is_original, vibe_reference_count, vibe_signature,
+                    style_signature,
                     image_width, image_height, generation_model, generation_sampler,
                     generation_steps, generation_seed, generation_scale,
                     generation_cfg_rescale, generation_noise_schedule, updated_at
@@ -158,6 +159,7 @@ impl Database {
                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
                     ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20,
                     ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30,
+                    ?31,
                     strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
                  )",
             )?;
@@ -215,6 +217,7 @@ impl Database {
                     stored_image_path.is_some() && source_type != SourceType::Legacy,
                     row.vibe_reference_count,
                     row.vibe_signature,
+                    crate::pipeline::style_signature_of(row.positive_prompt.as_deref()),
                     row.image_width,
                     row.image_height,
                     row.generation_model,

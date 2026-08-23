@@ -43,7 +43,8 @@ impl Database {
                     negative_prompt = ?4,
                     note = ?5,
                     artists = ?6,
-                    group_id = ?7
+                    group_id = ?7,
+                    style_signature = ?8
                  WHERE id = ?1",
                 params![
                     state.row_id,
@@ -53,6 +54,7 @@ impl Database {
                     state.note,
                     state.artists,
                     state.group_id,
+                    crate::pipeline::style_signature_of(state.positive_prompt.as_deref()),
                 ],
             )?;
             if updated == 0 {

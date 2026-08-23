@@ -3,6 +3,7 @@ import { confirm as confirmDialog, open } from "@tauri-apps/plugin-dialog";
 
 import {
   backfillPerceptualHashes,
+  backfillStyleSignatures,
   backfillVibeStatuses,
   getAppSnapshot,
   initializeDataDirectory,
@@ -16,6 +17,7 @@ import {
   type ImageImportProgress,
   type MigrationProgress,
   type PerceptualHashProgress,
+  type StyleSignatureProgress,
   type VibeStatusProgress,
 } from "../api";
 
@@ -60,6 +62,8 @@ export const app = $state({
   phashProgress: null as PerceptualHashProgress | null,
   /** 升级后首启的 VIBE 索引回填进度，空闲时为 null */
   vibeBackfillProgress: null as VibeStatusProgress | null,
+  /** 画风签名回填进度，空闲时为 null */
+  styleSignatureProgress: null as StyleSignatureProgress | null,
   /** 数据目录迁移的分阶段进度，空闲时为 null */
   migrationProgress: null as MigrationProgress | null,
   /** 分组管理视图是否打开 */
@@ -197,7 +201,7 @@ export async function chooseDirectory(mode: "initialize" | "open"): Promise<void
         app.hashProgress = null;
       }
       // 换到的旧库可能还没有 VIBE 聚合索引，后台补齐（已就绪时立即返回）。
-      void runVibeBackfill();
+      void runVibeBackfill().then(() => runStyleSignatureBackfill());
     }
     clearOperationHistory();
     setNotice({ tone: "success", text: "数据目录已连接。" });
@@ -237,6 +241,44 @@ export async function runVibeBackfill(): Promise<void> {
     setNotice({ tone: "error", text: `VIBE 聚合索引建立失败：${errorText(error)}` });
   } finally {
     vibeBackfillActive = false;
+  }
+}
+
+let styleSignatureBackfillActive = false;
+
+/**
+ * 在后台补齐历史图片的画风签名（对比窗口“相同画风”分区的依据）。
+ * 纯 SQL 读算写、数万行秒级完成；已就绪（版本一致）时后端立即返回。
+ * 失败不阻塞使用，下次启动自动续跑。
+ */
+export async function runStyleSignatureBackfill(): Promise<void> {
+  if (styleSignatureBackfillActive) return;
+  if (!app.snapshot?.dataDirectory || app.snapshot.startupError) return;
+  styleSignatureBackfillActive = true;
+  try {
+    const unlisten = await listen<StyleSignatureProgress>(
+      "style-signature://progress",
+      event => {
+        app.styleSignatureProgress = event.payload;
+      },
+    );
+    try {
+      const result = await backfillStyleSignatures();
+      if (result.total > 0) {
+        bumpDataVersion({ preserveScroll: true, preserveSelection: true });
+        setNotice({
+          tone: "success",
+          text: `已为 ${formatCount(result.total)} 张历史图片补齐画风签名，图片对比窗口现在可以按“相同画风”找图。`,
+        });
+      }
+    } finally {
+      unlisten();
+      app.styleSignatureProgress = null;
+    }
+  } catch (error) {
+    setNotice({ tone: "error", text: `画风签名建立失败：${errorText(error)}` });
+  } finally {
+    styleSignatureBackfillActive = false;
   }
 }
 

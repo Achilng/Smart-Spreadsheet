@@ -1031,6 +1031,20 @@ impl AppRuntime {
         Ok(outcome)
     }
 
+    /// 为历史图片补齐画风签名；算法版本落后时全量重算。写库走独立连接，
+    /// 完成后失效常驻连接的查询缓存。
+    pub(crate) fn backfill_style_signatures(
+        &self,
+        progress: impl Fn(crate::storage::StyleSignatureProgress),
+    ) -> Result<crate::storage::StyleSignatureProgress, AppRuntimeError> {
+        let directory = self.active_directory()?;
+        let outcome = directory.backfill_style_signatures(progress)?;
+        if outcome.total > 0 {
+            self.lock_state()?.invalidate_query_cache();
+        }
+        Ok(outcome)
+    }
+
     pub(crate) fn search_similar_images(
         &self,
         query_path: impl AsRef<Path>,
