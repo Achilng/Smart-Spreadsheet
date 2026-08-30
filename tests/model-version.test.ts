@@ -8,6 +8,14 @@ import {
 
 test("known build hashes share their confirmed Full or Curated tier", () => {
   assert.equal(
+    modelComparisonTier("NovelAI Diffusion V5 0ADF9AB7"),
+    "badge:v5 F",
+  );
+  assert.equal(
+    modelComparisonTier("NovelAI Diffusion V5 DB276663"),
+    "badge:v5 C",
+  );
+  assert.equal(
     modelComparisonTier("NovelAI Diffusion V4.5 4BDE2A90"),
     "badge:v4.5 F",
   );

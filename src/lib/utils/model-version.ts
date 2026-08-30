@@ -10,6 +10,8 @@ export interface ModelVersionBadge {
  * "NovelAI Diffusion V4.5 4BDE2A90"），此表按哈希识别已知构建。
  */
 const KNOWN_MODEL_HASHES: ReadonlyMap<string, { version: string; full: boolean }> = new Map([
+  ["0adf9ab7", { version: "v5", full: true }], // V5 Full
+  ["db276663", { version: "v5", full: false }], // V5 Curated
   ["4bde2a90", { version: "v4.5", full: true }], // V4.5 Full
   ["37442fca", { version: "v4", full: true }], // V4 Full
   ["4f49ec75", { version: "v4", full: true }], // V4 Full（早期构建）
