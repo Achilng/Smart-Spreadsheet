@@ -619,16 +619,17 @@ fn query_cache_key(query: &RowQuery, normalized_tags: &[String]) -> String {
     )
 }
 
-fn search_without_line_breaks(search: &str) -> String {
-    search.trim().to_lowercase().replace(['\r', '\n'], "")
+// Unicode White_Space plus prompt/name separators. Shared by SQL and query text.
+const SEARCH_SEPARATORS: &str = " \t\n\r\u{000B}\u{000C}\u{0085}\u{00A0}\u{1680}\u{2000}\u{2001}\u{2002}\u{2003}\u{2004}\u{2005}\u{2006}\u{2007}\u{2008}\u{2009}\u{200A}\u{2028}\u{2029}\u{202F}\u{205F}\u{3000},，_-";
+
+fn normalize_search(search: &str) -> String {
+    search.to_lowercase().chars().filter(|c| !SEARCH_SEPARATORS.contains(*c)).collect()
 }
 
-fn search_with_spaced_line_breaks(search: &str) -> String {
-    search
-        .trim()
-        .to_lowercase()
-        .replace("\r\n", " ")
-        .replace(['\r', '\n'], " ")
+fn normalized_search_column(column: &str) -> String {
+    SEARCH_SEPARATORS.chars().fold(format!("LOWER(COALESCE({column}, ''))"), |sql, c| {
+        format!("REPLACE({sql}, CHAR({}), '')", c as u32)
+    })
 }
 
 pub(super) fn create_filter_tags(
@@ -725,48 +726,37 @@ pub(super) fn populate_filtered_rows(
     let has_search = !search_lower.is_empty();
     if has_search {
         let columns = [
-            "rows.image_path",
-            "rows.positive_prompt",
-            "rows.character_prompt",
-            "rows.negative_prompt",
-            "rows.note",
-            "rows.artists",
+            "rows.image_path", "rows.positive_prompt", "rows.character_prompt",
+            "rows.negative_prompt", "rows.note", "rows.artists",
         ];
-        // Chromium/WebView 把粘贴进单行输入框的换行替换为空格；部分环境会直接
-        // 删除换行。仅对长文本或逗号分隔的提示词启用双重兼容，普通短关键词继续
-        // 使用原来的轻量 INSTR 全扫。
-        let prompt_like = search_lower.len() >= 64
-            || search_lower.contains([',', '，', '\r', '\n']);
-        let search_predicate = if prompt_like {
-            let compact_parameter = filter_params.len() + 1;
-            let spaced_parameter = compact_parameter + 1;
-            let compiled = columns
-                .iter()
-                .map(|column| {
-                    format!(
-                        "(INSTR(LOWER(REPLACE(REPLACE(COALESCE({column}, ''), CHAR(13), ''), CHAR(10), '')), ?{compact_parameter}) > 0
-                         OR INSTR(LOWER(REPLACE(REPLACE(REPLACE(COALESCE({column}, ''), CHAR(13) || CHAR(10), ' '), CHAR(13), ' '), CHAR(10), ' ')), ?{spaced_parameter}) > 0)"
-                    )
-                })
-                .collect::<Vec<_>>()
-                .join(" OR ");
-            filter_params.push(Value::Text(search_without_line_breaks(search)));
-            filter_params.push(Value::Text(search_with_spaced_line_breaks(search)));
-            compiled
-        } else {
-            let parameter = filter_params.len() + 1;
-            let compiled = columns
-                .iter()
-                .map(|column| {
-                    format!(
-                        "INSTR(LOWER(COALESCE({column}, '')), ?{parameter}) > 0"
-                    )
-                })
-                .collect::<Vec<_>>()
-                .join(" OR ");
-            filter_params.push(Value::Text(search_lower));
-            compiled
-        };
+        // 分隔符等价：空白、逗号、下划线、连字符均视为同一处连接符。
+        // 先尝试完整归一化串；若用户输入包含多个词，同时允许 token AND
+        // 回退，避免粘贴格式差异导致完全无结果。
+        let normalize = normalized_search_column;
+        let compact_parameter = filter_params.len() + 1;
+        let full = columns.iter().map(|c| format!("INSTR({}, ?{compact_parameter}) > 0", normalize(c))).collect::<Vec<_>>().join(" OR ");
+        let tokens: Vec<String> = search_lower
+            .split(|c: char| c.is_whitespace() || matches!(c, ',' | '，' | '_' | '-'))
+            .filter(|token| !token.is_empty())
+            .map(|token| token.to_string())
+            .collect();
+        filter_params.push(Value::Text(normalize_search(search)));
+        // Decide against the entire filtered library, before pagination/grouping/dedupe.
+        let has_full: bool = connection.query_row(
+            &format!("SELECT EXISTS(SELECT 1 FROM rows WHERE ({predicate}) AND ({full}))"),
+            params_from_iter(filter_params.iter()),
+            |row| row.get(0),
+        )?;
+        let search_predicate = if !has_full && tokens.len() > 1 {
+            filter_params.pop();
+            let mut parts = Vec::new();
+            for token in &tokens {
+                let parameter = filter_params.len() + 1;
+                parts.push(format!("({})", columns.iter().map(|c| format!("INSTR({}, ?{parameter}) > 0", normalize(c))).collect::<Vec<_>>().join(" OR ")));
+                filter_params.push(Value::Text(token.clone()));
+            }
+            parts.join(" AND ")
+        } else { full };
         predicate = format!("({predicate}) AND ({search_predicate})");
     }
 
@@ -1450,6 +1440,33 @@ mod tests {
             assert_eq!(result.rows[0].id, 2);
             assert_eq!(result.rows[0].positive_prompt.as_deref(), Some(prompt));
         }
+    }
+
+    #[test]
+    fn search_normalizes_separators_and_falls_back_only_without_full_matches() {
+        let mut database = database_with_rows(3);
+        database.update_note(1, "alpha，\r\n\t\u{3000}_-beta").unwrap();
+        database.update_note(2, "beta elsewhere alpha").unwrap();
+        database.update_note(3, "alpha only").unwrap();
+        let mut query = RowQuery {
+            offset: 0, limit: 1, tags: vec![], tag_mode: TagMatchMode::And,
+            dedupe: DedupeMode::None, single_artist_only: false,
+            artist_filter: String::new(), has_vibe: false, untagged_only: false,
+            filters: vec![], group_view: false, hide_grouped: false,
+            search: "alpha beta".into(),
+        };
+        for separator in super::SEARCH_SEPARATORS.chars() {
+            query.search = format!("alpha{separator}beta");
+            let page = database.query_rows(&query).unwrap();
+            assert_eq!(page.total_count, 1);
+            assert_eq!(page.rows[0].id, 1);
+        }
+        query.offset = 1;
+        assert!(database.query_rows(&query).unwrap().rows.is_empty());
+        database.update_note(1, "unrelated").unwrap();
+        query.offset = 0;
+        let page = database.query_rows(&query).unwrap();
+        assert_eq!(page.total_count, 1);
     }
 
     #[test]
