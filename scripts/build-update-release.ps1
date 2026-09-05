@@ -171,13 +171,19 @@ if (-not $SkipBuild) {
                 }
                 $signerPrivateKey = [Environment]::GetEnvironmentVariable('TAURI_SIGNING_PRIVATE_KEY', 'Process')
                 try {
-                    [Environment]::SetEnvironmentVariable('TAURI_SIGNING_PRIVATE_KEY', $null, 'Process')
+                    # Tauri CLI rejects receiving both the environment variable and --private-key-path.
+                    # Remove the process variable entirely; an empty value is still treated as present.
+                    Remove-Item -LiteralPath 'Env:TAURI_SIGNING_PRIVATE_KEY' -ErrorAction SilentlyContinue
                     & npm.cmd run tauri -- signer sign --private-key-path $PrivateKeyPath '--password=' $bundleInstaller.FullName
                     if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $rebuiltSignaturePath -PathType Leaf)) {
                         throw "校正后的 NSIS 安装器签名失败。"
                     }
                 } finally {
-                    [Environment]::SetEnvironmentVariable('TAURI_SIGNING_PRIVATE_KEY', $signerPrivateKey, 'Process')
+                    if ($null -eq $signerPrivateKey) {
+                        Remove-Item -LiteralPath 'Env:TAURI_SIGNING_PRIVATE_KEY' -ErrorAction SilentlyContinue
+                    } else {
+                        [Environment]::SetEnvironmentVariable('TAURI_SIGNING_PRIVATE_KEY', $signerPrivateKey, 'Process')
+                    }
                 }
             } finally {
                 Move-Item -LiteralPath $mainBinaryBackupPath -Destination $mainBinaryPath -Force
