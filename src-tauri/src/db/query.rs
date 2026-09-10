@@ -6,6 +6,9 @@ use serde::{Deserialize, Serialize};
 
 use super::library_filters::{LibraryFilter, append_library_filters};
 use super::tags::normalize_tags;
+use super::search::{SEARCH_COLUMNS, is_search_separator, normalize_search, prepare_search_text};
+#[cfg(test)]
+use super::search::SEARCH_SEPARATORS;
 use super::{Database, DatabaseError};
 
 pub const MAX_PAGE_SIZE: u32 = 500;
@@ -619,19 +622,6 @@ fn query_cache_key(query: &RowQuery, normalized_tags: &[String]) -> String {
     )
 }
 
-// Unicode White_Space plus prompt/name separators. Shared by SQL and query text.
-const SEARCH_SEPARATORS: &str = " \t\n\r\u{000B}\u{000C}\u{0085}\u{00A0}\u{1680}\u{2000}\u{2001}\u{2002}\u{2003}\u{2004}\u{2005}\u{2006}\u{2007}\u{2008}\u{2009}\u{200A}\u{2028}\u{2029}\u{202F}\u{205F}\u{3000},，_-";
-
-fn normalize_search(search: &str) -> String {
-    search.to_lowercase().chars().filter(|c| !SEARCH_SEPARATORS.contains(*c)).collect()
-}
-
-fn normalized_search_column(column: &str) -> String {
-    SEARCH_SEPARATORS.chars().fold(format!("LOWER(COALESCE({column}, ''))"), |sql, c| {
-        format!("REPLACE({sql}, CHAR({}), '')", c as u32)
-    })
-}
-
 pub(super) fn create_filter_tags(
     connection: &Connection,
     tags: &[String],
@@ -725,39 +715,44 @@ pub(super) fn populate_filtered_rows(
     let search_lower = search.trim().to_lowercase();
     let has_search = !search_lower.is_empty();
     if has_search {
-        let columns = [
-            "rows.image_path", "rows.positive_prompt", "rows.character_prompt",
-            "rows.negative_prompt", "rows.note", "rows.artists",
-        ];
-        // 分隔符等价：空白、逗号、下划线、连字符均视为同一处连接符。
-        // 先尝试完整归一化串；若用户输入包含多个词，同时允许 token AND
-        // 回退，避免粘贴格式差异导致完全无结果。
-        let normalize = normalized_search_column;
+        prepare_search_text(connection)?;
+        create_filtered_rows_table(connection, "temp.query_search_matches")?;
         let compact_parameter = filter_params.len() + 1;
-        let full = columns.iter().map(|c| format!("INSTR({}, ?{compact_parameter}) > 0", normalize(c))).collect::<Vec<_>>().join(" OR ");
-        let tokens: Vec<String> = search_lower
-            .split(|c: char| c.is_whitespace() || matches!(c, ',' | '，' | '_' | '-'))
+        let match_parameter = |parameter| SEARCH_COLUMNS.iter()
+            .map(|c| format!("INSTR(search_text.{c}, ?{parameter}) > 0"))
+            .collect::<Vec<_>>().join(" OR ");
+        let full = match_parameter(compact_parameter);
+        let mut tokens: Vec<&str> = search_lower
+            .split(is_search_separator)
             .filter(|token| !token.is_empty())
-            .map(|token| token.to_string())
             .collect();
+        let can_fallback = tokens.len() > 1;
+        tokens.sort_unstable();
+        tokens.dedup();
         filter_params.push(Value::Text(normalize_search(search)));
-        // Decide against the entire filtered library, before pagination/grouping/dedupe.
-        let has_full: bool = connection.query_row(
-            &format!("SELECT EXISTS(SELECT 1 FROM rows WHERE ({predicate}) AND ({full}))"),
-            params_from_iter(filter_params.iter()),
-            |row| row.get(0),
-        )?;
-        let search_predicate = if !has_full && tokens.len() > 1 {
+        // Materialize full matches once, before pagination/grouping/dedupe. No
+        // EXISTS probe followed by a second full scan (especially costly on misses).
+        let insert_matches = |search_predicate: &str, values: &[Value]| connection.execute(
+            &format!("INSERT INTO temp.query_search_matches(id)
+                SELECT rows.id FROM temp.query_search_text AS search_text
+                JOIN rows ON rows.id = search_text.id
+                WHERE ({predicate}) AND ({search_predicate})"),
+            params_from_iter(values.iter()),
+        );
+        let full_count = insert_matches(&full, &filter_params)?;
+        if full_count == 0 && can_fallback {
             filter_params.pop();
             let mut parts = Vec::new();
             for token in &tokens {
                 let parameter = filter_params.len() + 1;
-                parts.push(format!("({})", columns.iter().map(|c| format!("INSTR({}, ?{parameter}) > 0", normalize(c))).collect::<Vec<_>>().join(" OR ")));
-                filter_params.push(Value::Text(token.clone()));
+                parts.push(format!("({})", match_parameter(parameter)));
+                filter_params.push(Value::Text((*token).to_owned()));
             }
-            parts.join(" AND ")
-        } else { full };
-        predicate = format!("({predicate}) AND ({search_predicate})");
+            insert_matches(&parts.join(" AND "), &filter_params)?;
+        }
+        // All filters are already applied to the materialized IDs.
+        predicate = "rows.id IN (SELECT id FROM temp.query_search_matches)".to_owned();
+        filter_params.clear();
     }
 
     if group_view {
@@ -1470,6 +1465,44 @@ mod tests {
     }
 
     #[test]
+    fn cached_search_preserves_filtered_fallback_and_field_boundaries() {
+        let mut database = database_with_rows(5);
+        database.connection.execute_batch(
+            "UPDATE rows SET positive_prompt = NULL, character_prompt = NULL, negative_prompt = NULL, artists = NULL;
+             UPDATE rows SET note = 'alpha beta' WHERE id = 1;
+             UPDATE rows SET note = 'alpha', artists = 'beta' WHERE id = 2;
+             UPDATE rows SET note = 'beta elsewhere alpha', artists = 'beta' WHERE id = 3;
+             UPDATE rows SET note = 'alpha only' WHERE id = 4;
+             UPDATE rows SET note = 'literal %_ marker' WHERE id = 5;",
+        ).unwrap();
+        database.add_tags_to_rows(&[2, 3], &["scope".into()]).unwrap();
+        let mut query = RowQuery {
+            offset: 0, limit: 200, tags: vec![], tag_mode: TagMatchMode::And,
+            dedupe: DedupeMode::None, single_artist_only: false,
+            artist_filter: String::new(), has_vibe: false, untagged_only: false,
+            filters: vec![], group_view: false, hide_grouped: false,
+            search: "alpha beta".into(),
+        };
+        let ids = |db: &mut Database, query: &RowQuery| db.query_rows(query).unwrap().rows.iter().map(|row| row.id).collect::<Vec<_>>();
+        assert_eq!(ids(&mut database, &query), vec![1]);
+        query.tags = vec!["scope".into()];
+        assert_eq!(ids(&mut database, &query), vec![2, 3], "full match outside filters must not suppress fallback");
+        query.dedupe = DedupeMode::Artists;
+        assert_eq!(ids(&mut database, &query), vec![2]);
+        query.dedupe = DedupeMode::None;
+        query.search = "alphabeta".into();
+        assert!(ids(&mut database, &query).is_empty(), "full match must not cross field boundaries");
+        query.search = "alpha alpha".into();
+        assert_eq!(ids(&mut database, &query), vec![2, 3]);
+        query.tags.clear();
+        query.search = "%".into();
+        assert_eq!(ids(&mut database, &query), vec![5], "SQL wildcards remain literal text");
+        database.update_note(5, "changed").unwrap();
+        database.bump_data_version();
+        assert!(ids(&mut database, &query).is_empty(), "edits must invalidate search text as well as result IDs");
+    }
+
+    #[test]
     fn search_matches_note() {
         let mut database = database_with_rows(3);
         database.update_note(2, "夏日海边预设").unwrap();
@@ -1991,6 +2024,47 @@ mod tests {
             ..base.clone()
         };
         bench("画师串去重 首查", &deduped);
+    }
+
+    /// Same fixture and queries before/after search changes; no original images needed.
+    #[test]
+    #[ignore = "60k-row search performance benchmark, run manually"]
+    fn bench_sixty_thousand_row_search() {
+        use std::time::Instant;
+        let filler = "masterpiece, best quality, cinematic lighting, 1girl, solo, long hair, detailed background, 海边, soft shadows, ".repeat(12);
+        let rows: Vec<super::super::batches::NewRow> = (1..=60_000)
+            .map(|index| super::super::batches::NewRow {
+                source_ordinal: index,
+                identity: format!("file:d:/bench/{index}.png"),
+                image_path: Some(format!("d:/bench/{index}.png")),
+                positive_prompt: Some(format!("artist:painter{}, {filler}", index % 97)),
+                character_prompt: Some("1girl, blue eyes, white dress".repeat(8)),
+                negative_prompt: Some("lowres, bad anatomy, blurry".repeat(8)),
+                artists: Some(format!("artist:painter{}", index % 97)),
+                ..super::super::batches::NewRow::default()
+            }).collect();
+        let mut database = Database::open_in_memory().unwrap();
+        super::super::test_support::append_rows(&mut database, &rows);
+        drop(rows);
+        for (search, expected) in [("painter42", 619), ("notfound", 0), ("white dress", 60_000), ("dress girl", 60_000), ("海边", 60_000)] {
+            let query = RowQuery {
+                offset: 0, limit: 200, tags: vec![], tag_mode: TagMatchMode::And,
+                dedupe: DedupeMode::None, single_artist_only: false,
+                artist_filter: String::new(), has_vibe: false, untagged_only: false,
+                filters: vec![], group_view: false, hide_grouped: false,
+                search: search.into(),
+            };
+            let start = Instant::now();
+            let page = database.query_rows(&query).unwrap();
+            println!("60k search {search:?}: {:?}, {} hits", start.elapsed(), page.total_count);
+            assert_eq!(page.total_count, expected);
+            let start = Instant::now();
+            database.query_rows(&RowQuery { offset: 200, ..query }).unwrap();
+            println!("60k cached next page: {:?}", start.elapsed());
+        }
+        let pages: i64 = database.connection.query_row("PRAGMA temp.page_count", [], |r| r.get(0)).unwrap();
+        let page_size: i64 = database.connection.query_row("PRAGMA temp.page_size", [], |r| r.get(0)).unwrap();
+        println!("60k temporary tables: {:.1} MiB", (pages * page_size) as f64 / 1_048_576.0);
     }
 
     fn query(database: &mut Database, tags: &[&str], mode: TagMatchMode) -> RowPage {

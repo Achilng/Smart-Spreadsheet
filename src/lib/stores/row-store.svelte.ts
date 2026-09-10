@@ -2,6 +2,7 @@ import { queryRows, type DedupeMode, type LibraryFilter, type RowRecord, type So
 import { errorText } from "./app-state.svelte";
 import { clearScrollPositions } from "./view-state";
 import { cloneLibraryFilters } from "../utils/library-filters";
+import { createRequestQueue } from "../utils/request-queue";
 
 export const PAGE_SIZE = 200;
 
@@ -47,6 +48,7 @@ let pages = new Map<number, RowRecord[]>();
 let incoming: Map<number, RowRecord[]> | null = null;
 let pendingPages = new Set<number>();
 let generation = 0;
+const enqueueQuery = createRequestQueue();
 /** 本轮刷新完成时是否要求视图回到顶部 */
 let resetScrollOnSwap = true;
 /** 最近更新排序下的单行编辑刷新期间保留详情面板，若刷新后仍命中则继续显示。 */
@@ -67,7 +69,7 @@ export function ensurePage(pageIndex: number): void {
   const requestGeneration = generation;
   void (async () => {
     try {
-      const page = await queryRows({
+      const page = await enqueueQuery(() => requestGeneration === generation, () => queryRows({
         offset: pageIndex * PAGE_SIZE,
         limit: PAGE_SIZE,
         tags: [...rowStore.tags],
@@ -82,8 +84,8 @@ export function ensurePage(pageIndex: number): void {
         hideGrouped: rowStore.hideGrouped,
         search: rowStore.search,
         sort: rowStore.sort,
-      });
-      if (requestGeneration !== generation) {
+      }));
+      if (!page || requestGeneration !== generation) {
         return;
       }
       if (incoming) {

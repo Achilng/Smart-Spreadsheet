@@ -1,4 +1,5 @@
 mod batches;
+mod search;
 mod artist_auto_prefix;
 mod compare;
 mod automation_rules;

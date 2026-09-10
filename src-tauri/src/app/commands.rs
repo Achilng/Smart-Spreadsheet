@@ -721,15 +721,19 @@ pub(crate) fn set_dedupe_alias(
 }
 
 #[tauri::command]
-pub(crate) fn query_rows(
+pub(crate) async fn query_rows(
     query: RowQuery,
     sort: Option<SortMode>,
-    runtime: State<'_, AppRuntime>,
+    app: tauri::AppHandle,
 ) -> Result<RowPageDto, String> {
-    runtime
-        .query_rows_sorted(&query, sort.unwrap_or_default())
-        .map(RowPageDto::from)
-        .map_err(error_text)
+    tauri::async_runtime::spawn_blocking(move || {
+        app.state::<AppRuntime>()
+            .query_rows_sorted(&query, sort.unwrap_or_default())
+            .map(RowPageDto::from)
+            .map_err(error_text)
+    })
+    .await
+    .map_err(|error| format!("搜索任务异常中止: {error}"))?
 }
 
 #[tauri::command]
