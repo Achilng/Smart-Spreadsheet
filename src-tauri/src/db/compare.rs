@@ -277,11 +277,11 @@ impl Database {
         transaction.execute(
             &format!(
                 "INSERT INTO {PAGE_ROWS_TABLE}(ordinal, id)
-                 SELECT ROW_NUMBER() OVER (ORDER BY rows.id DESC), rows.id
-                 FROM rows
-                 WHERE {predicate}
-                 ORDER BY rows.id DESC
-                 LIMIT ?{} OFFSET ?{}",
+                 SELECT ROW_NUMBER() OVER (ORDER BY page.id DESC), page.id
+                 FROM (
+                     SELECT rows.id FROM rows WHERE {predicate}
+                     ORDER BY rows.id DESC LIMIT ?{} OFFSET ?{}
+                 ) AS page",
                 params.len() + 1,
                 params.len() + 2,
             ),
@@ -304,6 +304,61 @@ impl Database {
 mod tests {
     use super::*;
     use crate::db::{NewRow, test_support::append_rows};
+
+    #[test]
+    fn v17_upgrade_adds_artist_index_and_preserves_trimmed_matching() {
+        let connection = rusqlite::Connection::open_in_memory().unwrap();
+        connection.execute_batch(super::super::migrations::SCHEMA_17).unwrap();
+        connection.execute_batch("PRAGMA user_version = 17;
+            INSERT INTO import_batches(id, source_type, source_path, imported_at, added_count, skipped_count)
+            VALUES (1, 'folder', 'test', '2026-09-10', 2, 0);
+            INSERT INTO rows(id, batch_id, source_ordinal, identity, artists)
+            VALUES (1, 1, 1, 'a', 'artist:test'), (2, 1, 2, 'b', '  artist:test  ');").unwrap();
+        let mut database = Database::initialize(connection).unwrap();
+        assert_eq!(database.schema_version().unwrap(), 18);
+        let page = database.query_compare_same_artists(1, 0, 24).unwrap();
+        assert_eq!(page.total_count, 1);
+        assert_eq!(page.rows[0].id, 2);
+        let mut plan = database.connection.prepare("EXPLAIN QUERY PLAN SELECT id FROM rows
+            WHERE NULLIF(TRIM(COALESCE(artists, '')), '') = ?1 AND id != ?2
+            ORDER BY id DESC LIMIT 24").unwrap();
+        let details = plan.query_map(rusqlite::params!["artist:test", 1], |row| row.get::<_, String>(3)).unwrap().collect::<Result<Vec<_>, _>>().unwrap();
+        assert!(details.iter().any(|detail| detail.contains("idx_rows_artists_trimmed")), "{details:?}");
+        assert!(!details.iter().any(|detail| detail.contains("TEMP B-TREE")), "{details:?}");
+    }
+
+    #[test]
+    #[ignore = "60k comparison SQL benchmark, run manually"]
+    fn bench_sixty_thousand_compare() {
+        use std::time::Instant;
+        let mut database = Database::open_in_memory().unwrap();
+        let rows: Vec<NewRow> = (1..=60_000).map(|id| NewRow {
+            source_ordinal: id, identity: format!("compare-bench:{id}"),
+            artists: Some("artist:example".into()),
+            positive_prompt: Some("masterpiece, cinematic lighting, blue hair, detailed background, ".repeat(20)),
+            ..NewRow::default()
+        }).collect();
+        append_rows(&mut database, &rows);
+        drop(rows);
+        let predicate = "id != 1 AND NULLIF(TRIM(COALESCE(artists, '')), '') = 'artist:example'";
+        let old_sql = format!("SELECT ROW_NUMBER() OVER (ORDER BY id DESC), id FROM rows WHERE {predicate} ORDER BY id DESC LIMIT 24 OFFSET 24000");
+        let new_sql = format!("SELECT ROW_NUMBER() OVER (ORDER BY id DESC), id FROM (SELECT id FROM rows WHERE {predicate} ORDER BY id DESC LIMIT 24 OFFSET 24000)");
+        database.connection.execute_batch("DROP INDEX idx_rows_artists_trimmed").unwrap();
+        let mut reference = Vec::new();
+        for (label, sql) in [("before: scan + number all matches", old_sql), ("after: index + number page only", new_sql)] {
+            if label.starts_with("after") { database.connection.execute_batch(super::super::migrations::MIGRATION_18).unwrap(); }
+            let start = Instant::now();
+            let count = database.count_compare_rows(predicate, &[]).unwrap();
+            let ids = database.connection.prepare(&sql).unwrap().query_map([], |row| row.get::<_, i64>(1)).unwrap().collect::<Result<Vec<_>, _>>().unwrap();
+            println!("60k compare {label}: {:?}, {count} matches, {} page IDs", start.elapsed(), ids.len());
+            assert_eq!(count, 59_999);
+            if reference.is_empty() { reference = ids; } else { assert_eq!(ids, reference); }
+        }
+        let start = Instant::now();
+        let page = database.query_compare_same_artists(1, 24000, 24).unwrap();
+        println!("60k compare full API including metadata and tags: {:?}", start.elapsed());
+        assert_eq!(page.rows.iter().map(|row| row.id).collect::<Vec<_>>(), reference);
+    }
 
     fn row(identity: &str, positive: Option<&str>, artists: Option<&str>) -> NewRow {
         NewRow {

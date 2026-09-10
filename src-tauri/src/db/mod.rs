@@ -55,7 +55,7 @@ use std::time::Duration;
 
 use migrations::{
     MIGRATION_10, MIGRATION_11, MIGRATION_12, MIGRATION_14, MIGRATION_15, MIGRATION_16,
-    MIGRATION_17, MIGRATION_9, MINIMUM_UPGRADABLE_SCHEMA_VERSION, SCHEMA_17,
+    MIGRATION_17, MIGRATION_18, MIGRATION_9, MINIMUM_UPGRADABLE_SCHEMA_VERSION, SCHEMA_17,
 };
 use rusqlite::backup::{Backup, StepResult};
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior};
@@ -315,6 +315,10 @@ fn apply_pending_migrations(connection: &mut Connection, from_version: u32) -> R
     if version == 16 {
         transaction.execute_batch(MIGRATION_17)?;
         version = 17;
+    }
+    if version == 17 {
+        transaction.execute_batch(MIGRATION_18)?;
+        version = 18;
     }
     debug_assert_eq!(version, CURRENT_SCHEMA_VERSION);
     transaction.pragma_update(None, "user_version", version)?;

@@ -1,15 +1,17 @@
 <script lang="ts">
-  import { detailPreviews } from "../../images/progressive-images";
+  import { detailPreviews, galleryPreviews } from "../../images/progressive-images";
   import { thumbnails } from "../../images/thumbnails";
 
   let {
     rowId,
     hasImage,
     alt,
+    tier = "detail",
   }: {
     rowId: number;
     hasImage: boolean;
     alt: string;
+    tier?: "gallery" | "detail";
   } = $props();
 
   let displayUrl = $state<string | null>(null);
@@ -47,7 +49,8 @@
       );
     }
 
-    void detailPreviews.load(id, true).then(
+    const previews = tier === "gallery" ? galleryPreviews : detailPreviews;
+    void previews.load(id, true).then(
       loaded => {
         if (!cancelled) {
           displayUrl = loaded;
@@ -67,7 +70,7 @@
 </script>
 
 {#if displayUrl}
-  <img src={displayUrl} {alt} draggable="false" />
+  <img src={displayUrl} {alt} draggable="false" decoding="async" />
 {:else if loadFailed}
   <span class="media-failed">图片加载失败</span>
 {:else}
@@ -101,4 +104,5 @@
       transform: rotate(360deg);
     }
   }
+  @media (prefers-reduced-motion: reduce) { .media-loading { animation: none; } }
 </style>

@@ -118,6 +118,30 @@ function tinyPng(): ArrayBuffer {
   return new Uint8Array(bytes).buffer;
 }
 
+/** Browser-only generated scenery, so visual QA can inspect actual image framing. */
+async function previewPng(rowId: number): Promise<ArrayBuffer> {
+  const canvas = document.createElement("canvas");
+  canvas.width = 320;
+  canvas.height = 400;
+  const context = canvas.getContext("2d");
+  if (!context) return tinyPng();
+  const palettes = [["#dedfcf", "#81969e", "#4d6d78"], ["#f5dcbf", "#c19487", "#816f80"], ["#d6e8df", "#83a5a1", "#496f78"]];
+  const colors = palettes[rowId % palettes.length];
+  const gradient = context.createLinearGradient(0, 0, 0, 400);
+  gradient.addColorStop(0, colors[0]); gradient.addColorStop(1, colors[1]);
+  context.fillStyle = gradient; context.fillRect(0, 0, 320, 400);
+  context.fillStyle = "#fff9e5"; context.beginPath(); context.arc(220, 93, 30, 0, Math.PI * 2); context.fill();
+  for (let layer = 0; layer < 3; layer++) {
+    context.fillStyle = colors[2]; context.globalAlpha = .2 + layer * .2;
+    context.beginPath(); context.moveTo(0, 215 + layer * 50);
+    context.bezierCurveTo(80, 110 + layer * 60, 160, 320 + layer * 10, 320, 180 + layer * 50);
+    context.lineTo(320, 400); context.lineTo(0, 400); context.closePath(); context.fill();
+  }
+  context.globalAlpha = .7; context.fillStyle = "white"; context.font = "11px sans-serif"; context.fillText("PREVIEW  /  " + rowId, 20, 375);
+  const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, "image/png"));
+  return blob ? blob.arrayBuffer() : tinyPng();
+}
+
 const eventListeners = new Map<number, { event: string; handler: (payload: unknown) => void }>();
 let callbackCounter = 0;
 
@@ -126,10 +150,15 @@ declare global {
     __TAURI_INTERNALS__?: unknown;
     /** 冒烟测试辅助：模拟后端向本窗口推送事件。 */
     __mockEmit?: (event: string, payload: unknown) => void;
+    __mockCalls?: { command: string; payload: Record<string, unknown> }[];
+    __mockDelayMs?: number;
+    __mockFailNext?: string;
   }
 }
 
 export function installIpcMock(): void {
+  window.__mockCalls = [];
+  window.__mockDelayMs = Number(new URLSearchParams(location.search).get("mockDelay") ?? 0);
   const internals = {
     metadata: { currentWindow: { label: "compare" }, currentWebview: { label: "compare" } },
     transformCallback(callback: (payload: unknown) => void): number {
@@ -142,6 +171,14 @@ export function installIpcMock(): void {
     },
     async invoke(command: string, args: Record<string, unknown> | undefined): Promise<unknown> {
       const payload = args ?? {};
+      window.__mockCalls?.push({ command, payload });
+      if (command.includes("compare")) {
+        if (window.__mockDelayMs) await new Promise(resolve => setTimeout(resolve, window.__mockDelayMs));
+        if (window.__mockFailNext === command) {
+          window.__mockFailNext = undefined;
+          throw new Error("模拟查询失败，请重试");
+        }
+      }
       switch (command) {
         case "plugin:event|listen": {
           const id = Number(payload.handler);
@@ -181,6 +218,11 @@ export function installIpcMock(): void {
           if (Number(payload.rowId) === 2) {
             return sectionPage([], 0, Number(payload.limit));
           }
+          if (new URLSearchParams(location.search).has("large")) {
+            const offset = Number(payload.offset);
+            const limit = Number(payload.limit);
+            return { rows: Array.from({ length: Math.min(limit, 60_000 - offset) }, (_, index) => rowDto({ id: 101 + offset + index, artists: "artist:alpha", positivePrompt: "artist:alpha, blue hair, sunlight", generationModel: "NovelAI Diffusion V4.5 Full" })), totalCount: 60_000, offset, limit };
+          }
           const rows = command === "query_compare_same_artists"
             ? SECTIONS.sameArtists
             : command === "query_compare_same_vibe_diff_style"
@@ -199,6 +241,9 @@ export function installIpcMock(): void {
               truncated: false,
             };
           }
+          if (new URLSearchParams(location.search).has("large")) {
+            return { rows: Array.from({ length: 500 }, (_, index) => rowDto({ id: 1001 + index, generationModel: index % 2 ? "NovelAI Diffusion V4 Full" : "NovelAI Diffusion V3" })), totalCount: 60_000, truncated: true };
+          }
           return {
             rows: MODEL_ROWS.map(rowDto),
             totalCount: MODEL_ROWS.length,
@@ -208,7 +253,7 @@ export function installIpcMock(): void {
         case "get_row_gallery_preview":
         case "get_row_preview":
         case "get_row_original":
-          return tinyPng();
+          return previewPng(Number(payload.rowId));
         case "get_row_vibe_status":
           return 2;
         case "plugin:window|destroy":

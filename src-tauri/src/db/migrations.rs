@@ -1,5 +1,10 @@
-pub const CURRENT_SCHEMA_VERSION: u32 = 17;
+pub const CURRENT_SCHEMA_VERSION: u32 = 18;
 pub const MINIMUM_UPGRADABLE_SCHEMA_VERSION: u32 = 8;
+
+/// 精确画师串检索直接走磁盘索引，避免对全库提示词行逐行 TRIM。
+pub(super) const MIGRATION_18: &str = r#"
+CREATE INDEX idx_rows_artists_trimmed ON rows(NULLIF(TRIM(COALESCE(artists, '')), ''), id DESC);
+"#;
 
 /// 新资料库直接创建当前结构，不再重放早期工作簿/XLSX 导入迁移。
 pub(super) const SCHEMA_17: &str = r#"
