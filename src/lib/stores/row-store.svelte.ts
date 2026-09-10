@@ -1,10 +1,25 @@
 import { queryRows, type DedupeMode, type LibraryFilter, type RowRecord, type SortMode, type TagMatchMode } from "../api";
-import { errorText } from "./app-state.svelte";
+import { errorText, setNotice } from "./app-state.svelte";
 import { clearScrollPositions } from "./view-state";
 import { cloneLibraryFilters } from "../utils/library-filters";
 import { createRequestQueue } from "../utils/request-queue";
 
 export const PAGE_SIZE = 200;
+
+const SORT_STORAGE_KEY = "smart-spreadsheet.image-sort";
+
+/** 首次查询前恢复排序；旧版本没有记录或记录无效时沿用时间正序。 */
+function readSavedSort(): SortMode {
+  try {
+    const saved = window.localStorage.getItem(SORT_STORAGE_KEY);
+    if (saved === "timeAsc" || saved === "timeDesc" || saved === "recentlyUpdated") {
+      return saved;
+    }
+  } catch {
+    // 本机存储不可用时仍允许正常浏览和排序。
+  }
+  return "timeAsc";
+}
 
 /**
  * 行数据的分页缓存。页内容保存在非响应式 Map 中，
@@ -27,7 +42,7 @@ export const rowStore = $state({
   groupView: false,
   hideGrouped: false,
   search: "",
-  sort: "timeAsc" as SortMode,
+  sort: readSavedSort(),
   totalCount: 0,
   /** 首次加载 / 数据集整体更换，期间没有可显示的旧内容 */
   initialLoading: true,
@@ -301,6 +316,11 @@ export function clearAllFilters(): void {
 }
 
 export function setSort(sort: SortMode): void {
+  try {
+    window.localStorage.setItem(SORT_STORAGE_KEY, sort);
+  } catch (error) {
+    setNotice({ tone: "error", text: `无法记住图片顺序，下次打开可能恢复默认：${errorText(error)}` });
+  }
   if (rowStore.sort !== sort) {
     rowStore.sort = sort;
     resetRows({ keepStale: true, resetScroll: true });
