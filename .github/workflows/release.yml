@@ -1,0 +1,90 @@
+name: Build and publish Windows release
+
+on:
+  push:
+    tags: ['v_*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing release tag, for example v_40'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+      CARGO_INCREMENTAL: '0'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          persist-credentials: false
+
+      - name: Validate release inputs
+        shell: pwsh
+        run: |
+          if ($env:RELEASE_TAG -notmatch '^v_\d+$') { throw 'Invalid release tag' }
+          $config = Get-Content src-tauri/tauri.conf.json -Encoding UTF8 -Raw | ConvertFrom-Json
+          $package = Get-Content package.json -Encoding UTF8 -Raw | ConvertFrom-Json
+          $lock = Get-Content package-lock.json -Encoding UTF8 -Raw | ConvertFrom-Json
+          if ($config.version -ne $package.version -or $config.version -ne $lock.version) { throw 'Version mismatch' }
+          if (!(Test-Path ".github/release-notes/${env:RELEASE_TAG}.md")) { throw 'Missing release notes' }
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24.14.0'
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
+        with:
+          toolchain: '1.94.1'
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          workspaces: '. -> target'
+
+      - name: Install locked frontend dependencies
+        run: npm ci
+
+      - name: Test frontend and backend
+        shell: pwsh
+        run: |
+          npm.cmd run test:unit
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test --workspace --lib --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build signed Windows installer and updater manifest
+        shell: pwsh
+        env:
+          RELEASE_SIGNING_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:RELEASE_SIGNING_KEY)) { throw 'Configure TAURI_SIGNING_PRIVATE_KEY in repository Actions secrets first' }
+          $keyPath = Join-Path $env:RUNNER_TEMP 'smart-spreadsheet-updater.key'
+          [IO.File]::WriteAllText($keyPath, $env:RELEASE_SIGNING_KEY, [Text.UTF8Encoding]::new($false))
+          Remove-Item Env:RELEASE_SIGNING_KEY
+          & ./scripts/build-update-release.ps1 -ReleaseTag $env:RELEASE_TAG -PrivateKeyPath $keyPath -NotesPath ".github/release-notes/${env:RELEASE_TAG}.md" -OutputDirectory (Join-Path $env:RUNNER_TEMP "release/$env:RELEASE_TAG")
+
+      - name: Publish verified release assets
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        with:
+          script: |
+            await require('./.github/scripts/publish-release.cjs')({ github, context, core });
+
+      - name: Remove temporary signing key
+        if: always()
+        shell: pwsh
+        run: |
+          $keyPath = Join-Path $env:RUNNER_TEMP 'smart-spreadsheet-updater.key'
+          if (Test-Path -LiteralPath $keyPath) { Remove-Item -LiteralPath $keyPath -Force }
