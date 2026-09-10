@@ -45,6 +45,12 @@ function Set-TauriNsisBundleMarker {
         $binaryText = [System.Text.Encoding]::ASCII.GetString($bytes)
         $markerIndex = $binaryText.IndexOf($unknownToken, [System.StringComparison]::Ordinal)
         if ($markerIndex -lt 0) {
+            # 云端 Tauri 若已成功写入 NSIS 标记，保留官方结果。
+            $existingNsisIndex = $binaryText.IndexOf($nsisToken, [System.StringComparison]::Ordinal)
+            if ($existingNsisIndex -ge 0 -and
+                $binaryText.IndexOf($nsisToken, $existingNsisIndex + 1, [System.StringComparison]::Ordinal) -lt 0) {
+                return
+            }
             throw "主程序中没有找到待写入的 Tauri 安装包类型标记：$BinaryPath"
         }
         if ($binaryText.IndexOf($unknownToken, $markerIndex + 1, [System.StringComparison]::Ordinal) -ge 0) {

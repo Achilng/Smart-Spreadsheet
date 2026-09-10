@@ -1543,12 +1543,27 @@ mod tests {
         let outcome = runtime.migrate_directory(&destination).unwrap();
         let reloaded = AppRuntime::load(temporary.locator.clone(), temporary.data.clone());
 
-        assert_eq!(outcome.snapshot.data_directory, Some(destination.clone()));
+        let expected_directory = destination.canonicalize().unwrap();
+        assert_eq!(
+            outcome
+                .snapshot
+                .data_directory
+                .unwrap()
+                .canonicalize()
+                .unwrap(),
+            expected_directory
+        );
         assert!(outcome.retired_source.is_none());
         assert!(!temporary.data.exists());
         assert_eq!(
-            reloaded.snapshot().unwrap().data_directory,
-            Some(destination.clone())
+            reloaded
+                .snapshot()
+                .unwrap()
+                .data_directory
+                .unwrap()
+                .canonicalize()
+                .unwrap(),
+            expected_directory
         );
         assert_eq!(reloaded.list_tags().unwrap()[0].name, "migrated");
     }
