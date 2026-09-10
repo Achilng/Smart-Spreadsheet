@@ -36,7 +36,7 @@ jobs:
           if ($env:RELEASE_TAG -notmatch '^v_\d+$') { throw 'Invalid release tag' }
           $config = Get-Content src-tauri/tauri.conf.json -Encoding UTF8 -Raw | ConvertFrom-Json
           $package = Get-Content package.json -Encoding UTF8 -Raw | ConvertFrom-Json
-          $lock = Get-Content package-lock.json -Encoding UTF8 -Raw | ConvertFrom-Json
+          $lock = Get-Content package-lock.json -Encoding UTF8 -Raw | ConvertFrom-Json -AsHashtable
           if ($config.version -ne $package.version -or $config.version -ne $lock.version) { throw 'Version mismatch' }
           if (!(Test-Path ".github/release-notes/${env:RELEASE_TAG}.md")) { throw 'Missing release notes' }
 
