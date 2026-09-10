@@ -81,9 +81,9 @@
   // 挂载和每次切回激活时恢复滚动位置。spacer 高度依赖 totalCount，必须等
   // 数据就绪；刷新在途时 totalCount 还是旧语义的值，提前恢复会被钳制。
   // 保活后浏览器通常能自行保留位置，这里作为钳制后的兜底按帧重试恢复。
-  let restored = false;
+  let restored = $state(false);
   let restoring = false;
-  let pendingReset = false;
+  let seenReset = rowStore.resetToken;
 
   $effect(() => {
     if (!active) {
@@ -92,28 +92,23 @@
   });
 
   $effect(() => {
+    if (rowStore.resetToken !== seenReset) {
+      seenReset = rowStore.resetToken;
+      restored = false;
+    }
     if (
       restored ||
       !active ||
       !viewport ||
       rowStore.initialLoading ||
       rowStore.refreshing ||
-      viewportHeight <= 0 ||
-      spacerHeight <= 0
+      viewportHeight <= 0
     ) {
       return;
     }
     void rowStore.totalCount;
     void spacerHeight;
     restored = true;
-    if (pendingReset) {
-      // 隐藏期间发生过结果集重置：对 display:none 元素设置 scrollTop 会被
-      // 浏览器忽略，只能等到重新显示后在这里执行回顶。
-      pendingReset = false;
-      scrollTop = 0;
-      viewport.scrollTop = 0;
-      return;
-    }
     restoring = true;
     restoreScrollPosition(
       viewport,
@@ -124,19 +119,6 @@
     );
   });
 
-  // 筛选/搜索/数据变更导致结果集语义变化时回到顶部；隐藏期间挂起到激活时执行
-  let seenReset = rowStore.resetToken;
-  $effect(() => {
-    if (rowStore.resetToken !== seenReset) {
-      seenReset = rowStore.resetToken;
-      if (active && viewport) {
-        scrollTop = 0;
-        viewport.scrollTop = 0;
-      } else {
-        pendingReset = true;
-      }
-    }
-  });
 
   function onScroll(): void {
     scrollTop = viewport?.scrollTop ?? 0;
@@ -216,6 +198,8 @@
     flex: 1;
     min-height: 0;
     overflow-y: auto;
+    /* 虚拟列表由应用恢复位置，避免空态退场时浏览器再次自动偏移。 */
+    overflow-anchor: none;
     position: relative;
     background: var(--surface);
     /* 底部选择条（52px 通栏）出现时不遮住最后一行 */

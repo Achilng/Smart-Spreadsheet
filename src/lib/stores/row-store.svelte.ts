@@ -1,6 +1,6 @@
 import { queryRows, type DedupeMode, type LibraryFilter, type RowRecord, type SortMode, type TagMatchMode } from "../api";
 import { errorText, setNotice } from "./app-state.svelte";
-import { clearScrollPositions } from "./view-state";
+import { clearScrollPositions, prepareFilterScrollPositions } from "./view-state";
 import { cloneLibraryFilters } from "../utils/library-filters";
 import { createRequestQueue } from "../utils/request-queue";
 
@@ -50,7 +50,7 @@ export const rowStore = $state({
   refreshing: false,
   error: null as string | null,
   pagesVersion: 0,
-  /** 结果集语义变化（筛选/搜索/数据变更）完成时 +1，视图据此回到顶部 */
+  /** 结果集切换完成时 +1，视图据此应用该结果集的滚动位置 */
   resetToken: 0,
   activeRow: null as RowRecord | null,
   /** 工具箱等外部入口请求画廊定位的真实行序号。 */
@@ -64,8 +64,9 @@ let incoming: Map<number, RowRecord[]> | null = null;
 let pendingPages = new Set<number>();
 let generation = 0;
 const enqueueQuery = createRequestQueue();
-/** 本轮刷新完成时是否要求视图回到顶部 */
+/** 本轮刷新完成时是否要求视图应用结果集的位置 */
 let resetScrollOnSwap = true;
+let applyScrollOnSwap: (() => void) | null = null;
 /** 最近更新排序下的单行编辑刷新期间保留详情面板，若刷新后仍命中则继续显示。 */
 let keepActiveOnSwap = false;
 
@@ -118,6 +119,8 @@ export function ensurePage(pageIndex: number): void {
         incoming = null;
         rowStore.refreshing = false;
         if (resetScrollOnSwap) {
+          applyScrollOnSwap?.();
+          applyScrollOnSwap = null;
           rowStore.resetToken += 1;
         }
       } else {
@@ -145,8 +148,10 @@ export function ensurePage(pageIndex: number): void {
 interface ResetOptions {
   /** false = 数据集整体更换（无可信旧内容），true = 保留旧内容直到新结果到达 */
   keepStale?: boolean;
-  /** true = 筛选语义变化，各视图清位置回顶部；false = 就地刷新保留位置 */
+  /** true = 应用新的结果集位置；false = 就地刷新保留位置 */
   resetScroll?: boolean;
+  /** 搜索/筛选变化：保留筛选前位置，清除最后一个条件时恢复。 */
+  filterChange?: boolean;
   /** 刷新后目标仍在首页时保留当前详情。仅用于最近更新排序下的单行编辑。 */
   keepActive?: boolean;
 }
@@ -154,10 +159,11 @@ interface ResetOptions {
 /**
  * 清空缓存并重新加载第一页。
  * 默认（无参）= 批量操作后的就地刷新：保留旧内容与滚动位置，新结果到达后原位替换。
- * 筛选/搜索变化传 resetScroll: true；导入/删除/换库传 keepStale: false。
+ * 筛选/搜索变化传 resetScroll + filterChange；导入/删除/换库传 keepStale: false。
  */
 export function resetRows(options: ResetOptions = {}): void {
-  const { keepStale = true, resetScroll = false, keepActive = false } = options;
+  const { keepStale = true, resetScroll = false, keepActive = false, filterChange = false } = options;
+  const continuingReset = keepStale && !resetScroll && applyScrollOnSwap !== null;
   generation += 1;
   pendingPages = new Set();
   rowStore.error = null;
@@ -165,9 +171,14 @@ export function resetRows(options: ResetOptions = {}): void {
   if (!keepActive) {
     rowStore.activeRow = null;
   }
-  resetScrollOnSwap = resetScroll;
-  if (resetScroll) {
-    clearScrollPositions();
+  if (!continuingReset) {
+    resetScrollOnSwap = resetScroll;
+    if (filterChange) {
+      applyScrollOnSwap = prepareFilterScrollPositions(hasActiveFilters());
+    } else {
+      applyScrollOnSwap = resetScroll ? () => clearScrollPositions(hasActiveFilters()) : null;
+      if (!keepStale || resetScroll) clearScrollPositions(hasActiveFilters());
+    }
   }
   if (keepStale && pages.size > 0) {
     incoming = new Map();
@@ -179,6 +190,8 @@ export function resetRows(options: ResetOptions = {}): void {
     rowStore.initialLoading = true;
     rowStore.refreshing = false;
     if (resetScroll) {
+      applyScrollOnSwap?.();
+      applyScrollOnSwap = null;
       rowStore.resetToken += 1;
     }
     rowStore.pagesVersion += 1;
@@ -192,20 +205,20 @@ export function setFilter(tags: string[], tagMode: TagMatchMode): void {
   if (tags.length > 0) {
     rowStore.untaggedOnly = false;
   }
-  resetRows({ keepStale: true, resetScroll: true });
+  resetRows({ keepStale: true, resetScroll: true, filterChange: true });
 }
 
 export function setDedupe(dedupe: DedupeMode): void {
   if (rowStore.dedupe !== dedupe) {
     rowStore.dedupe = dedupe;
-    resetRows({ keepStale: true, resetScroll: true });
+    resetRows({ keepStale: true, resetScroll: true, filterChange: true });
   }
 }
 
 export function setSingleArtistOnly(value: boolean): void {
   if (rowStore.singleArtistOnly !== value) {
     rowStore.singleArtistOnly = value;
-    resetRows({ keepStale: true, resetScroll: true });
+    resetRows({ keepStale: true, resetScroll: true, filterChange: true });
   }
 }
 
@@ -223,21 +236,21 @@ export function focusArtistFilter(artists: string): void {
   rowStore.groupView = false;
   rowStore.hideGrouped = false;
   rowStore.search = "";
-  resetRows({ keepStale: true, resetScroll: true });
+  resetRows({ keepStale: true, resetScroll: true, filterChange: true });
 }
 
 export function setArtistFilter(value: string): void {
   const normalized = value.trim();
   if (rowStore.artistFilter !== normalized) {
     rowStore.artistFilter = normalized;
-    resetRows({ keepStale: true, resetScroll: true });
+    resetRows({ keepStale: true, resetScroll: true, filterChange: true });
   }
 }
 
 export function setHasVibe(value: boolean): void {
   if (rowStore.hasVibe !== value) {
     rowStore.hasVibe = value;
-    resetRows({ keepStale: true, resetScroll: true });
+    resetRows({ keepStale: true, resetScroll: true, filterChange: true });
   }
 }
 
@@ -247,7 +260,7 @@ export function setUntaggedOnly(value: boolean): void {
     if (value) {
       rowStore.tags = [];
     }
-    resetRows({ keepStale: true, resetScroll: true });
+    resetRows({ keepStale: true, resetScroll: true, filterChange: true });
   }
 }
 
@@ -255,7 +268,7 @@ export function setLibraryFilters(filters: LibraryFilter[]): void {
   const next = cloneLibraryFilters(filters);
   if (JSON.stringify(rowStore.filters) !== JSON.stringify(next)) {
     rowStore.filters = next;
-    resetRows({ keepStale: true, resetScroll: true });
+    resetRows({ keepStale: true, resetScroll: true, filterChange: true });
   }
 }
 
@@ -279,20 +292,19 @@ export function setGroupView(value: boolean): void {
 export function setHideGrouped(value: boolean): void {
   if (rowStore.hideGrouped !== value) {
     rowStore.hideGrouped = value;
-    resetRows({ keepStale: true, resetScroll: true });
+    resetRows({ keepStale: true, resetScroll: true, filterChange: true });
   }
 }
 
 export function setSearch(value: string): void {
   if (rowStore.search !== value) {
     rowStore.search = value;
-    resetRows({ keepStale: true, resetScroll: true });
+    resetRows({ keepStale: true, resetScroll: true, filterChange: true });
   }
 }
 
-/** 一次性清空全部筛选条件（Tag/开关/搜索），只触发一次刷新；不动 tagMode 与排序。 */
-export function clearAllFilters(): void {
-  const dirty =
+function hasActiveFilters(): boolean {
+  return (
     rowStore.tags.length > 0 ||
     rowStore.dedupe !== "none" ||
     rowStore.singleArtistOnly ||
@@ -301,8 +313,13 @@ export function clearAllFilters(): void {
     rowStore.untaggedOnly ||
     rowStore.filters.length > 0 ||
     rowStore.hideGrouped ||
-    rowStore.search !== "";
-  if (!dirty) return;
+    rowStore.search !== ""
+  );
+}
+
+/** 一次性清空全部筛选条件，只触发一次刷新；不动 tagMode 与排序。 */
+export function clearAllFilters(): void {
+  if (!hasActiveFilters()) return;
   rowStore.tags = [];
   rowStore.dedupe = "none";
   rowStore.singleArtistOnly = false;
@@ -312,7 +329,7 @@ export function clearAllFilters(): void {
   rowStore.filters = [];
   rowStore.hideGrouped = false;
   rowStore.search = "";
-  resetRows({ keepStale: true, resetScroll: true });
+  resetRows({ keepStale: true, resetScroll: true, filterChange: true });
 }
 
 export function setSort(sort: SortMode): void {

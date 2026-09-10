@@ -55,8 +55,9 @@
   // 挂载和每次切回激活时恢复滚动位置。成员网格是异步加载 + content-visibility
   // 按需渲染，切回第一帧总高度可能不足、scrollTop 被浏览器钳制，
   // restoreScrollPosition 内部会按帧重试推回原位。
-  let restored = false;
+  let restored = $state(false);
   let restoring = false;
+  let seenReset = rowStore.resetToken;
 
   $effect(() => {
     if (!active) {
@@ -65,7 +66,11 @@
   });
 
   $effect(() => {
-    if (restored || !active || !listEl) {
+    if (rowStore.resetToken !== seenReset) {
+      seenReset = rowStore.resetToken;
+      restored = false;
+    }
+    if (restored || !active || !listEl || rowStore.refreshing || rowStore.initialLoading) {
       return;
     }
     if (groupStore.loading && groupStore.list.length === 0) {

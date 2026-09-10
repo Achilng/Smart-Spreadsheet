@@ -39,8 +39,9 @@
 
   // 挂载和每次切回激活时恢复滚动位置（展开的成员网格异步加载，切回第一帧
   // 高度可能不足被钳制，内部按帧重试推回原位）
-  let restored = false;
+  let restored = $state(false);
   let restoring = false;
+  let seenReset = rowStore.resetToken;
 
   $effect(() => {
     if (!active) {
@@ -49,7 +50,11 @@
   });
 
   $effect(() => {
-    if (restored || !active || !listEl || duplicateBrowse.loading) {
+    if (rowStore.resetToken !== seenReset) {
+      seenReset = rowStore.resetToken;
+      restored = false;
+    }
+    if (restored || !active || !listEl || duplicateBrowse.loading || rowStore.refreshing || rowStore.initialLoading) {
       return;
     }
     restored = true;

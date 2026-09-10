@@ -1,10 +1,13 @@
 /**
  * 各主视图的滚动位置记忆：切走再切回时恢复上次浏览位置。
- * 筛选条件或数据集发生实质变化时统一清空（旧位置对新结果没有意义）；
+ * 筛选期间单独保存未筛选时的位置，清除最后一个条件后恢复；
+ * 排序或数据集更换时清空，避免恢复到已经失效的位置。
  * 仅视图切换（如 画廊 ↔ 分组）不清空。
  */
 const scrollPositions = new Map<string, number>();
 let scrollPositionsVersion = 0;
+let unfilteredPositions: Map<string, number> | null = null;
+let showingFilteredRows = false;
 
 export function saveScrollPosition(key: string, top: number): void {
   scrollPositions.set(key, top);
@@ -14,9 +17,28 @@ export function savedScrollPosition(key: string): number {
   return scrollPositions.get(key) ?? 0;
 }
 
-export function clearScrollPositions(): void {
+export function clearScrollPositions(filtered = false): void {
+  unfilteredPositions = null;
+  showingFilteredRows = filtered;
   scrollPositions.clear();
   scrollPositionsVersion += 1;
+}
+
+/** 请求开始时记录原位置，成功换入结果时才切换位置，失败/过时请求不消费记忆。 */
+export function prepareFilterScrollPositions(filtered: boolean): () => void {
+  if (filtered && !showingFilteredRows && unfilteredPositions === null) {
+    unfilteredPositions = new Map(scrollPositions);
+  }
+  const target = !filtered && unfilteredPositions !== null
+    ? new Map(unfilteredPositions)
+    : new Map<string, number>();
+  return () => {
+    scrollPositions.clear();
+    for (const [key, top] of target) scrollPositions.set(key, top);
+    scrollPositionsVersion += 1;
+    showingFilteredRows = filtered;
+    if (!filtered) unfilteredPositions = null;
+  };
 }
 
 export function scrollPositionVersion(): number {
@@ -38,13 +60,18 @@ export function restoreScrollPosition(
   onSettled?: () => void,
 ): void {
   const target = savedScrollPosition(key);
+  const version = scrollPositionsVersion;
   if (target <= 0) {
+    el.scrollTop = 0;
+    onApplied?.(0);
     onSettled?.();
     return;
   }
   let applied = -1;
   let frames = 0;
   const attempt = (): void => {
+    // 新结果已切换：旧恢复任务不能再把新列表拉回旧坐标。
+    if (version !== scrollPositionsVersion) return;
     if (!el.isConnected || (applied >= 0 && Math.abs(el.scrollTop - applied) > 1)) {
       onSettled?.();
       return;
