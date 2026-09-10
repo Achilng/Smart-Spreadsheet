@@ -22,6 +22,42 @@ function responsiveEase(t: number): number {
   return 1 - Math.pow(1 - t, 4);
 }
 
+/** 稳定外壳跟随内部自然高度，支持条件增删、换行和动画中途反向。 */
+export function animateHeight(node: HTMLElement): { destroy: () => void } {
+  const content = node.firstElementChild as HTMLElement;
+  const preference = window.matchMedia("(prefers-reduced-motion: reduce)");
+  let target = content.getBoundingClientRect().height;
+  let animation: Animation | null = null;
+  node.style.height = `${target}px`;
+
+  const observer = new ResizeObserver(() => {
+    const next = content.getBoundingClientRect().height;
+    if (Math.abs(next - target) < 0.5) return;
+    // 从当前动画中间帧续接，快速增删时不跳回上一轮起点。
+    const current = node.getBoundingClientRect().height;
+    animation?.cancel();
+    target = next;
+    node.style.height = `${target}px`;
+    if (preference.matches || Math.abs(current - target) < 0.5) return;
+    animation = node.animate(
+      [{ height: `${current}px` }, { height: `${target}px` }],
+      { duration: 220, easing: "cubic-bezier(0.22, 1, 0.36, 1)" },
+    );
+  });
+  const onPreferenceChange = (): void => {
+    if (preference.matches) animation?.cancel();
+  };
+  observer.observe(content);
+  preference.addEventListener("change", onPreferenceChange);
+  return {
+    destroy: () => {
+      observer.disconnect();
+      animation?.cancel();
+      preference.removeEventListener("change", onPreferenceChange);
+    },
+  };
+}
+
 function baseStyle(node: Element): { opacity: number; transform: string } {
   const style = getComputedStyle(node);
   const parsedOpacity = Number.parseFloat(style.opacity);

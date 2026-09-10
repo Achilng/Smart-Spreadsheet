@@ -19,7 +19,7 @@
     setUntaggedOnly,
   } from "../../stores/row-store.svelte";
   import { clearSelection, resetSelectionAnchor } from "../../stores/selection-store.svelte";
-  import { softFade, softPop } from "../../ui/motion";
+  import { animateHeight, softFade, softPop } from "../../ui/motion";
   import type { DedupeMode } from "../../api";
   import SizeSlider from "./SizeSlider.svelte";
   import SortControl from "./SortControl.svelte";
@@ -160,10 +160,12 @@
   </div>
 </div>
 
+<div class="chips-shell" use:animateHeight>
+  <div class="chips-content">
 {#if hasAnyFilter}
   <div class="chips">
     {#if searchTerm !== ""}
-      <span class="chip-f" transition:softPop={{ duration: 150, y: 0, start: 0.92 }}>
+      <span class="chip-f" in:softPop={{ duration: 150, y: 0, start: 0.92 }}>
         <span class="chip-text">“{searchTerm}”</span>
         <button type="button" class="x" title="清除搜索" onclick={() => { setSearch(""); clearSelection(); }}>
           <X size={11} strokeWidth={2.2} />
@@ -171,7 +173,7 @@
       </span>
     {/if}
     {#each rowStore.tags as tag (tag)}
-      <span class="chip-f" transition:softPop={{ duration: 150, y: 0, start: 0.92 }}>
+      <span class="chip-f" in:softPop={{ duration: 150, y: 0, start: 0.92 }}>
         <b class="chip-text">{tag}</b>
         <button type="button" class="x" title="移除 Tag 筛选" onclick={() => removeTag(tag)}>
           <X size={11} strokeWidth={2.2} />
@@ -179,27 +181,27 @@
       </span>
     {/each}
     {#if rowStore.dedupe === "positivePrompt"}
-      <span class="chip-f" transition:softPop={{ duration: 150, y: 0, start: 0.92 }}>按正向去重
+      <span class="chip-f" in:softPop={{ duration: 150, y: 0, start: 0.92 }}>按正向去重
         <button type="button" class="x" title="取消去重" onclick={() => { setDedupe("none"); clearSelection(); }}>
           <X size={11} strokeWidth={2.2} />
         </button>
       </span>
     {:else if rowStore.dedupe === "artists"}
-      <span class="chip-f" transition:softPop={{ duration: 150, y: 0, start: 0.92 }}>按画师串去重
+      <span class="chip-f" in:softPop={{ duration: 150, y: 0, start: 0.92 }}>按画师串去重
         <button type="button" class="x" title="取消去重" onclick={() => { setDedupe("none"); clearSelection(); }}>
           <X size={11} strokeWidth={2.2} />
         </button>
       </span>
     {/if}
     {#if rowStore.singleArtistOnly}
-      <span class="chip-f" transition:softPop={{ duration: 150, y: 0, start: 0.92 }}>单画师串
+      <span class="chip-f" in:softPop={{ duration: 150, y: 0, start: 0.92 }}>单画师串
         <button type="button" class="x" title="取消筛选" onclick={() => { setSingleArtistOnly(false); clearSelection(); }}>
           <X size={11} strokeWidth={2.2} />
         </button>
       </span>
     {/if}
     {#if rowStore.artistFilter !== ""}
-      <span class="chip-f" transition:softPop={{ duration: 150, y: 0, start: 0.92 }} title={rowStore.artistFilter}>
+      <span class="chip-f" in:softPop={{ duration: 150, y: 0, start: 0.92 }} title={rowStore.artistFilter}>
         <span class="chip-text">画师串：{rowStore.artistFilter}</span>
         <button type="button" class="x" title="取消画师串筛选" onclick={() => { setArtistFilter(""); clearSelection(); }}>
           <X size={11} strokeWidth={2.2} />
@@ -207,37 +209,39 @@
       </span>
     {/if}
     {#if rowStore.hasVibe}
-      <span class="chip-f" transition:softPop={{ duration: 150, y: 0, start: 0.92 }}>VIBE
+      <span class="chip-f" in:softPop={{ duration: 150, y: 0, start: 0.92 }}>VIBE
         <button type="button" class="x" title="取消筛选" onclick={() => { setHasVibe(false); clearSelection(); }}>
           <X size={11} strokeWidth={2.2} />
         </button>
       </span>
     {/if}
     {#if rowStore.untaggedOnly}
-      <span class="chip-f" transition:softPop={{ duration: 150, y: 0, start: 0.92 }}>无 Tag
+      <span class="chip-f" in:softPop={{ duration: 150, y: 0, start: 0.92 }}>无 Tag
         <button type="button" class="x" title="取消筛选" onclick={() => { setUntaggedOnly(false); clearSelection(); }}>
           <X size={11} strokeWidth={2.2} />
         </button>
       </span>
     {/if}
     {#if rowStore.hideGrouped}
-      <span class="chip-f" transition:softPop={{ duration: 150, y: 0, start: 0.92 }}>隐藏已分组
+      <span class="chip-f" in:softPop={{ duration: 150, y: 0, start: 0.92 }}>隐藏已分组
         <button type="button" class="x" title="取消筛选" onclick={() => { setHideGrouped(false); clearSelection(); }}>
           <X size={11} strokeWidth={2.2} />
         </button>
       </span>
     {/if}
     {#each rowStore.filters as filter, index (`${filter.type}-${index}`)}
-      <span class="chip-f" transition:softPop={{ duration: 150, y: 0, start: 0.92 }} title={libraryFilterLabel(filter, groupStore.list)}>
+      <span class="chip-f" in:softPop={{ duration: 150, y: 0, start: 0.92 }} title={libraryFilterLabel(filter, groupStore.list)}>
         <span class="chip-text">{libraryFilterLabel(filter, groupStore.list)}</span>
         <button type="button" class="x" title="移除此过滤条件" onclick={() => { removeLibraryFilter(index); clearSelection(); }}>
           <X size={11} strokeWidth={2.2} />
         </button>
       </span>
     {/each}
-    <button type="button" class="chip-clear" transition:softFade={{ duration: 130 }} onclick={clearAll}>清除全部</button>
+    <button type="button" class="chip-clear" in:softFade={{ duration: 130 }} onclick={clearAll}>清除全部</button>
   </div>
 {/if}
+  </div>
+</div>
 
 <style>
   .canvas-head {
@@ -332,6 +336,15 @@
   }
 
   /* ---- 筛选 chips 行 ---- */
+  .chips-shell {
+    flex: none;
+    overflow: clip;
+  }
+
+  .chips-content {
+    display: flow-root;
+  }
+
   .chips {
     flex: none;
     display: flex;
