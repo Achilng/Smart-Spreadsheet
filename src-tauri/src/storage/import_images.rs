@@ -20,7 +20,7 @@ use crate::fsx::{replace_output_file, unique_sibling_path};
 use crate::pipeline::archive::{ArchiveError, archive_extension, extract_archive};
 use crate::pipeline::scan::{ScanError, SourceImage, collect_png_files};
 use crate::pipeline::{
-    cancel, metadata_fingerprint, parallel, parse_novelai_metadata, png_text, stealth_png,
+    artist_string, cancel, metadata_fingerprint, parallel, parse_novelai_metadata, png_text, stealth_png,
 };
 
 const PROGRESS_INTERVAL: Duration = Duration::from_millis(100);
@@ -872,6 +872,7 @@ fn inspect_metadata(image: SourceImage) -> MetadataInspection {
         }
     }
     let metadata_fingerprint = metadata_fingerprint(&chunks);
+    let artists = artist_string(&metadata.positive_prompt, Some(&metadata.character_prompt));
     let positive_prompt = nonempty_string(metadata.positive_prompt);
     let character_prompt = nonempty_string(metadata.character_prompt);
     let negative_prompt = nonempty_string(metadata.negative_prompt);
@@ -883,7 +884,7 @@ fn inspect_metadata(image: SourceImage) -> MetadataInspection {
         positive_prompt,
         character_prompt,
         negative_prompt,
-        artists: nonempty_string(metadata.artist_tags.join("\n")),
+        artists,
         metadata_fingerprint,
         vibe_reference_count: metadata.vibe_reference_count,
         vibe_signature: metadata.vibe_signature,
@@ -1284,6 +1285,7 @@ mod tests {
             Some("best quality, artist:alpha")
         );
         assert_eq!(first.artists.as_deref(), Some("artist:alpha"));
+        assert_eq!(page.rows[1].artists.as_deref(), Some("scenery"));
         assert!(!first.metadata_failed);
         assert!(first.image_path.as_deref().unwrap().ends_with("a.png"));
         assert!(first.time.is_some());

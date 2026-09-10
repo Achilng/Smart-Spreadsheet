@@ -5,7 +5,7 @@ use serde::Serialize;
 
 use super::Database;
 use super::tags::{RowSelection, TagMutationError, create_selection_rows, drop_selection_tables};
-use crate::pipeline::extract_artist_tags;
+use crate::pipeline::artist_string;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -499,12 +499,7 @@ pub(super) fn combined_artists(
     positive_prompt: &str,
     character_prompt: Option<&str>,
 ) -> Option<String> {
-    let combined = match character_prompt.filter(|value| !value.trim().is_empty()) {
-        Some(character) => format!("{positive_prompt}\n{character}"),
-        None => positive_prompt.to_owned(),
-    };
-    let artists = extract_artist_tags(&combined);
-    (!artists.is_empty()).then(|| artists.join("\n"))
+    artist_string(positive_prompt, character_prompt)
 }
 
 #[cfg(test)]
@@ -573,7 +568,7 @@ mod tests {
     }
 
     #[test]
-    fn update_prompt_clears_artists_when_none_present() {
+    fn update_prompt_falls_back_when_last_explicit_artist_is_removed() {
         let mut db = database_with_rows(1);
         db.update_positive_prompt(1, "artist:x").unwrap();
         db.update_positive_prompt(1, "best quality, 1girl").unwrap();
@@ -584,7 +579,9 @@ mod tests {
                 row.get(0)
             })
             .unwrap();
-        assert_eq!(artists, None);
+        assert_eq!(artists.as_deref(), Some("best quality, 1girl"));
+        let empty = db.update_positive_prompt(1, "  ").unwrap();
+        assert_eq!(empty.new_artists, None);
     }
 
     #[test]

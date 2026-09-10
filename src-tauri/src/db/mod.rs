@@ -181,6 +181,7 @@ impl Database {
         )?;
         migrate(&mut connection)?;
         repair_legacy_artist_strings(&mut connection)?;
+        backfill_missing_artist_strings(&mut connection)?;
         Ok(Self {
             connection,
             query_cache: None,
@@ -224,13 +225,14 @@ fn repair_legacy_artist_strings(connection: &mut Connection) -> Result<(), Datab
     {
         let mut update = transaction.prepare("UPDATE rows SET artists = ?2 WHERE id = ?1")?;
         for (row_id, positive_prompt, character_prompt) in candidates {
-            let Some(artists) = prompt_edit::combined_artists(
-                positive_prompt.as_deref().unwrap_or(""),
-                character_prompt.as_deref(),
-            ) else {
+            let combined = format!(
+                "{}\n{}", positive_prompt.unwrap_or_default(), character_prompt.unwrap_or_default()
+            );
+            let artists = crate::pipeline::extract_artist_tags(&combined);
+            if artists.is_empty() {
                 continue;
-            };
-            update.execute(rusqlite::params![row_id, artists])?;
+            }
+            update.execute(rusqlite::params![row_id, artists.join("\n")])?;
         }
     }
     transaction.execute(
@@ -241,6 +243,51 @@ fn repair_legacy_artist_strings(connection: &mut Connection) -> Result<(), Datab
             CURRENT_ARTIST_STRING_FORMAT_VERSION,
         ],
     )?;
+    transaction.commit()?;
+    Ok(())
+}
+
+/// 一次性补齐旧图库，按 ID 分批读取，避免把大图库的全部提示词同时装入内存。
+fn backfill_missing_artist_strings(connection: &mut Connection) -> Result<(), DatabaseError> {
+    const KEY: &str = "artist_string_fallback_version";
+    let version: Option<String> = connection
+        .query_row("SELECT value FROM settings WHERE key = ?1", [KEY], |row| row.get(0))
+        .optional()?;
+    if version.as_deref() == Some("1") {
+        return Ok(());
+    }
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    {
+        let mut select = transaction.prepare(
+            "SELECT id, positive_prompt, character_prompt FROM rows
+             WHERE id > ?1 AND NULLIF(TRIM(COALESCE(artists, '')), '') IS NULL
+             ORDER BY id LIMIT 256",
+        )?;
+        let mut update = transaction.prepare("UPDATE rows SET artists = ?2 WHERE id = ?1")?;
+        let mut last_id = 0i64;
+        loop {
+            let batch = select.query_map([last_id], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                ))
+            })?.collect::<Result<Vec<_>, _>>()?;
+            if batch.is_empty() {
+                break;
+            }
+            for (id, positive, character) in batch {
+                last_id = id;
+                if let Some(artists) = crate::pipeline::artist_string(
+                    positive.as_deref().unwrap_or_default(), character.as_deref(),
+                ) {
+                    update.execute(rusqlite::params![id, artists])?;
+                }
+            }
+        }
+    }
+    transaction.execute("INSERT INTO settings(key, value) VALUES (?1, '1')
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value", [KEY])?;
     transaction.commit()?;
     Ok(())
 }
@@ -379,6 +426,36 @@ mod tests {
     use rusqlite::{Connection, ErrorCode, params};
 
     use super::*;
+
+    #[test]
+    fn reopening_backfills_missing_artists_once_and_compare_uses_the_fallback() {
+        let mut database = Database::open_in_memory().unwrap();
+        let rows: Vec<NewRow> = (0..300).map(|index| NewRow {
+            identity: format!("fallback-{index}"), source_ordinal: index + 1,
+            positive_prompt: Some("  painter, scenery\n{blue sky}  ".into()),
+            ..NewRow::default()
+        }).collect();
+        test_support::append_rows(&mut database, &rows);
+        database.connection.execute_batch(
+            "DELETE FROM settings WHERE key = 'artist_string_fallback_version';
+             UPDATE rows SET artists = 'artist:keep' WHERE id = 3;
+             UPDATE rows SET positive_prompt = '   ', character_prompt = '1girl' WHERE id = 4;
+             UPDATE rows SET positive_prompt = NULL, character_prompt = 'artist:character' WHERE id = 5;"
+        ).unwrap();
+        let mut database = Database::initialize(database.connection).unwrap();
+        let sample = database.get_compare_sample(1).unwrap();
+        assert_eq!(sample.row.artists.as_deref(), Some("painter, scenery\n{blue sky}"));
+        let page = database.query_compare_same_artists(1, 0, 24).unwrap();
+        assert_eq!(page.total_count, 296);
+        assert_eq!(page.rows.len(), 24);
+        let stored: Vec<Option<String>> = database.connection.prepare(
+            "SELECT artists FROM rows WHERE id IN (3, 4, 5) ORDER BY id"
+        ).unwrap().query_map([], |row| row.get(0)).unwrap().collect::<Result<_, _>>().unwrap();
+        assert_eq!(stored, vec![Some("artist:keep".into()), None, Some("artist:character".into())]);
+        database.connection.execute("UPDATE rows SET artists = NULL WHERE id = 2", []).unwrap();
+        backfill_missing_artist_strings(&mut database.connection).unwrap();
+        assert_eq!(database.get_compare_sample(2).unwrap().row.artists, None);
+    }
 
     #[test]
     fn initializes_current_schema_without_legacy_tables() {
