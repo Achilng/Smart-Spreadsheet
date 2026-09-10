@@ -17,4 +17,6 @@ GitHub Actions 使用 Windows 云端机器完成测试、编译、NSIS 打包、
 
 也可以在 Actions 页面手动运行工作流，填写已有标签进行构建。已经公开的 Release 不会被覆盖；如果上传中途失败留下草稿，先检查草稿资产，不能用不同构建产物覆盖已公开版本。
 
-构建固定 Node 24.14.0、Rust 1.94.1，与当前项目环境一致；依赖由锁文件安装，npm 和 Rust 依赖使用云端缓存。工作流不会更新本机环境。`latest.json` 与安装包上传到同一个 Release，保留应用内更新入口。
+构建固定 Node 24.14.0、Rust 1.94.1，与当前项目环境一致；依赖由锁文件安装，npm 和 Rust 依赖使用云端缓存，Rust 缓存在失败时也尝试保存，方便修复后重试。工作流不会更新本机环境。`latest.json` 与安装包上传到同一个 Release，保留应用内更新入口。
+
+首次云端发布 `v_40` 已完成：[构建记录](https://github.com/Achilng/Smart-Spreadsheet/actions/runs/34487023700)、[下载页面](https://github.com/Achilng/Smart-Spreadsheet/releases/tag/v_40)。
