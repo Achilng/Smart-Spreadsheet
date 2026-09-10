@@ -1,6 +1,6 @@
 import { queryRows, type DedupeMode, type LibraryFilter, type RowRecord, type SortMode, type TagMatchMode } from "../api";
-import { errorText, setNotice } from "./app-state.svelte";
-import { clearScrollPositions, prepareFilterScrollPositions } from "./view-state";
+import { app, errorText, setNotice } from "./app-state.svelte";
+import { clearScrollPositions, filterReturnRange, prepareFilterScrollPositions } from "./view-state";
 import { cloneLibraryFilters } from "../utils/library-filters";
 import { createRequestQueue } from "../utils/request-queue";
 
@@ -67,6 +67,7 @@ const enqueueQuery = createRequestQueue();
 /** 本轮刷新完成时是否要求视图应用结果集的位置 */
 let resetScrollOnSwap = true;
 let applyScrollOnSwap: (() => void) | null = null;
+let requiredSwapPages = new Set([0]);
 /** 最近更新排序下的单行编辑刷新期间保留详情面板，若刷新后仍命中则继续显示。 */
 let keepActiveOnSwap = false;
 
@@ -75,6 +76,8 @@ export function getRow(index: number): RowRecord | undefined {
 }
 
 export function ensurePage(pageIndex: number): void {
+  // 目标区跨页时任一页失败都等待用户重试，不能被另一页的迟到响应消除错误。
+  if (incoming && rowStore.error !== null) return;
   if (pageIndex < 0 || pendingPages.has(pageIndex)) {
     return;
   }
@@ -85,7 +88,9 @@ export function ensurePage(pageIndex: number): void {
   const requestGeneration = generation;
   void (async () => {
     try {
-      const page = await enqueueQuery(() => requestGeneration === generation, () => queryRows({
+      const page = await enqueueQuery(
+        () => requestGeneration === generation && !(incoming && rowStore.error !== null),
+        () => queryRows({
         offset: pageIndex * PAGE_SIZE,
         limit: PAGE_SIZE,
         tags: [...rowStore.tags],
@@ -101,11 +106,19 @@ export function ensurePage(pageIndex: number): void {
         search: rowStore.search,
         sort: rowStore.sort,
       }));
-      if (!page || requestGeneration !== generation) {
+      if (!page || requestGeneration !== generation || (incoming && rowStore.error !== null)) {
         return;
       }
       if (incoming) {
         incoming.set(pageIndex, page.rows);
+        // 返回深处时先备齐整个可见区，再一次换入，避免先显示首页/占位卡片。
+        const lastPage = Math.max(0, Math.ceil(page.totalCount / PAGE_SIZE) - 1);
+        requiredSwapPages = new Set([...requiredSwapPages].map(index => Math.min(index, lastPage)));
+        const missing = [...requiredSwapPages].filter(index => !incoming!.has(index));
+        if (missing.length > 0) {
+          for (const index of missing) ensurePage(index);
+          return;
+        }
         if (
           keepActiveOnSwap &&
           rowStore.activeRow &&
@@ -114,7 +127,7 @@ export function ensurePage(pageIndex: number): void {
           rowStore.activeRow = null;
         }
         keepActiveOnSwap = false;
-        // 新结果首页到达：原子替换旧内容
+        // 新结果的目标页已备齐：原子替换旧内容
         pages = incoming;
         incoming = null;
         rowStore.refreshing = false;
@@ -173,8 +186,15 @@ export function resetRows(options: ResetOptions = {}): void {
   }
   if (!continuingReset) {
     resetScrollOnSwap = resetScroll;
+    requiredSwapPages = new Set([0]);
     if (filterChange) {
       applyScrollOnSwap = prepareFilterScrollPositions(hasActiveFilters());
+      const range = !hasActiveFilters() ? filterReturnRange(app.viewMode) : undefined;
+      if (range && (app.viewMode === "gallery" || app.viewMode === "table")) {
+        const first = Math.floor(range.first / PAGE_SIZE);
+        const last = Math.floor(range.last / PAGE_SIZE);
+        requiredSwapPages = new Set(Array.from({ length: last - first + 1 }, (_, index) => first + index));
+      }
     } else {
       applyScrollOnSwap = resetScroll ? () => clearScrollPositions(hasActiveFilters()) : null;
       if (!keepStale || resetScroll) clearScrollPositions(hasActiveFilters());
@@ -196,7 +216,7 @@ export function resetRows(options: ResetOptions = {}): void {
     }
     rowStore.pagesVersion += 1;
   }
-  ensurePage(0);
+  for (const pageIndex of requiredSwapPages) ensurePage(pageIndex);
 }
 
 export function setFilter(tags: string[], tagMode: TagMatchMode): void {

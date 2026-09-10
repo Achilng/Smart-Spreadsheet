@@ -3,7 +3,23 @@ import test from "node:test";
 import {
   clearScrollPositions, prepareFilterScrollPositions, restoreScrollPosition,
   savedScrollPosition, saveScrollPosition,
+  filterReturnRange, rememberVisibleRange,
 } from "../src/lib/stores/view-state.ts";
+
+test("return range keeps the original viewport across searches and invalidates with its position", () => {
+  clearScrollPositions();
+  saveScrollPosition("gallery", 32000);
+  rememberVisibleRange("gallery", 390, 421);
+  prepareFilterScrollPositions(true)();
+  rememberVisibleRange("gallery", 0, 31);
+  prepareFilterScrollPositions(true)();
+  assert.deepEqual(filterReturnRange("gallery"), { first: 390, last: 421 });
+  prepareFilterScrollPositions(false)();
+  prepareFilterScrollPositions(true)();
+  assert.deepEqual(filterReturnRange("gallery"), { first: 390, last: 421 });
+  clearScrollPositions();
+  assert.equal(filterReturnRange("gallery"), undefined);
+});
 
 test("clearing the last filter restores each view's original position across repeated conditions", () => {
   clearScrollPositions();

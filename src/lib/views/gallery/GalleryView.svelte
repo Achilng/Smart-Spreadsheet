@@ -8,9 +8,8 @@
   import { thumbnails } from "../../images/thumbnails";
   import { galleryPreviews } from "../../images/progressive-images";
   import { vibeStatuses } from "../../images/vibe-statuses";
-  import { restoreScrollPosition, saveScrollPosition, scrollPositionVersion } from "../../stores/view-state";
+  import { restoreScrollPosition, savedScrollPosition, rememberVisibleRange, saveScrollPosition, scrollPositionVersion } from "../../stores/view-state";
   import GalleryCard from "./GalleryCard.svelte";
-  import { softFade } from "../../ui/motion";
 
 
   let { active = true }: { active?: boolean } = $props();
@@ -173,6 +172,9 @@
         missingPages.add(Math.floor(cell.index / PAGE_SIZE));
       }
     }
+    if (!rowStore.refreshing && !rowStore.initialLoading && cells.length > 0) {
+      rememberVisibleRange("gallery", cells[0].index, cells[cells.length - 1].index);
+    }
     thumbnails.retain(visibleRowIds);
     vibeStatuses.retain(visibleRowIds);
     for (const pageIndex of missingPages) {
@@ -187,17 +189,20 @@
   let restoring = false;
   let seenReset = rowStore.resetToken;
 
-  $effect(() => {
-    if (!active) {
-      restored = false;
-    }
-  });
-
-  $effect(() => {
+  // 先更新虚拟可见区，再由下方 effect 在绘制前同步 DOM 滚动位置。
+  $effect.pre(() => {
     if (rowStore.resetToken !== seenReset) {
       seenReset = rowStore.resetToken;
       restored = false;
     }
+    if (!active) {
+      restored = false;
+    } else if (!restored && !rowStore.initialLoading && !rowStore.refreshing) {
+      scrollTop = savedScrollPosition("gallery");
+    }
+  });
+
+  $effect(() => {
     if (
       restored ||
       !active ||
@@ -296,17 +301,17 @@
     onscroll={onScroll}
   >
     {#if rowStore.error}
-      <div class="gallery-status empty-state" transition:softFade={{ duration: 140 }}>
+      <div class="gallery-status empty-state">
         <p class="muted">加载失败：{rowStore.error}</p>
         <button type="button" class="btn" onclick={() => resetRows()}>重试</button>
       </div>
     {:else if rowStore.initialLoading}
-      <div class="gallery-status empty-state" transition:softFade={{ duration: 140 }}>
+      <div class="gallery-status empty-state">
         <p class="muted">正在加载…</p>
       </div>
     {:else if rowStore.totalCount === 0}
       {@const empty = emptyResultText()}
-      <div class="gallery-status empty-state" transition:softFade={{ duration: 140 }}>
+      <div class="gallery-status empty-state">
         <p class="muted">{empty.text}</p>
         {#if empty.canClear}
           <button type="button" class="btn" onclick={() => clearAllFilters()}>清除全部筛选</button>

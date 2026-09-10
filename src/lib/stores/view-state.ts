@@ -5,6 +5,9 @@
  * 仅视图切换（如 画廊 ↔ 分组）不清空。
  */
 const scrollPositions = new Map<string, number>();
+interface VisibleRange { first: number; last: number }
+const visibleRanges = new Map<string, VisibleRange>();
+let unfilteredRanges: Map<string, VisibleRange> | null = null;
 let scrollPositionsVersion = 0;
 let unfilteredPositions: Map<string, number> | null = null;
 let showingFilteredRows = false;
@@ -17,8 +20,19 @@ export function savedScrollPosition(key: string): number {
   return scrollPositions.get(key) ?? 0;
 }
 
+/** 仅记录可见区的首尾序号，恢复时直接加载对应页，不保留额外行数据。 */
+export function rememberVisibleRange(key: string, first: number, last: number): void {
+  visibleRanges.set(key, { first, last });
+}
+
+export function filterReturnRange(key: string): VisibleRange | undefined {
+  return unfilteredRanges?.get(key);
+}
+
 export function clearScrollPositions(filtered = false): void {
   unfilteredPositions = null;
+  unfilteredRanges = null;
+  visibleRanges.clear();
   showingFilteredRows = filtered;
   scrollPositions.clear();
   scrollPositionsVersion += 1;
@@ -28,6 +42,7 @@ export function clearScrollPositions(filtered = false): void {
 export function prepareFilterScrollPositions(filtered: boolean): () => void {
   if (filtered && !showingFilteredRows && unfilteredPositions === null) {
     unfilteredPositions = new Map(scrollPositions);
+    unfilteredRanges = new Map(visibleRanges);
   }
   const target = !filtered && unfilteredPositions !== null
     ? new Map(unfilteredPositions)
@@ -35,9 +50,16 @@ export function prepareFilterScrollPositions(filtered: boolean): () => void {
   return () => {
     scrollPositions.clear();
     for (const [key, top] of target) scrollPositions.set(key, top);
+    visibleRanges.clear();
+    if (!filtered && unfilteredRanges) {
+      for (const [key, range] of unfilteredRanges) visibleRanges.set(key, range);
+    }
     scrollPositionsVersion += 1;
     showingFilteredRows = filtered;
-    if (!filtered) unfilteredPositions = null;
+    if (!filtered) {
+      unfilteredPositions = null;
+      unfilteredRanges = null;
+    }
   };
 }
 

@@ -6,9 +6,8 @@
   import { PAGE_SIZE, clearAllFilters, ensurePage, getRow, resetRows, rowStore } from "../../stores/row-store.svelte";
   import { emptyResultText } from "../../utils/empty-state";
   import { thumbnails } from "../../images/thumbnails";
-  import { restoreScrollPosition, saveScrollPosition, scrollPositionVersion } from "../../stores/view-state";
+  import { restoreScrollPosition, savedScrollPosition, rememberVisibleRange, saveScrollPosition, scrollPositionVersion } from "../../stores/view-state";
   import TableRow from "./TableRow.svelte";
-  import { softFade } from "../../ui/motion";
 
   let { active = true }: { active?: boolean } = $props();
 
@@ -72,6 +71,9 @@
         missingPages.add(Math.floor(item.index / PAGE_SIZE));
       }
     }
+    if (!rowStore.refreshing && !rowStore.initialLoading && items.length > 0) {
+      rememberVisibleRange("table", items[0].index, items[items.length - 1].index);
+    }
     thumbnails.retain(visibleRowIds);
     for (const pageIndex of missingPages) {
       ensurePage(pageIndex);
@@ -85,17 +87,20 @@
   let restoring = false;
   let seenReset = rowStore.resetToken;
 
-  $effect(() => {
-    if (!active) {
-      restored = false;
-    }
-  });
-
-  $effect(() => {
+  // 先更新虚拟可见区，再由下方 effect 在绘制前同步 DOM 滚动位置。
+  $effect.pre(() => {
     if (rowStore.resetToken !== seenReset) {
       seenReset = rowStore.resetToken;
       restored = false;
     }
+    if (!active) {
+      restored = false;
+    } else if (!restored && !rowStore.initialLoading && !rowStore.refreshing) {
+      scrollTop = savedScrollPosition("table");
+    }
+  });
+
+  $effect(() => {
     if (
       restored ||
       !active ||
@@ -149,17 +154,17 @@
     onscroll={onScroll}
   >
     {#if rowStore.error}
-      <div class="table-status empty-state" transition:softFade={{ duration: 140 }}>
+      <div class="table-status empty-state">
         <p class="muted">加载失败：{rowStore.error}</p>
         <button type="button" class="btn" onclick={() => resetRows()}>重试</button>
       </div>
     {:else if rowStore.initialLoading}
-      <div class="table-status empty-state" transition:softFade={{ duration: 140 }}>
+      <div class="table-status empty-state">
         <p class="muted">正在加载…</p>
       </div>
     {:else if rowStore.totalCount === 0}
       {@const empty = emptyResultText()}
-      <div class="table-status empty-state" transition:softFade={{ duration: 140 }}>
+      <div class="table-status empty-state">
         <p class="muted">{empty.text}</p>
         {#if empty.canClear}
           <button type="button" class="btn" onclick={() => clearAllFilters()}>清除全部筛选</button>
