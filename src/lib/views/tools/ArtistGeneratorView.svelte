@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import Dices from "@lucide/svelte/icons/dices";
 
   import {
     getCustomArtists,
@@ -17,10 +18,36 @@
   let cleanOnly = $state(true);
   let count = $state(3);
   let result = $state("");
+  let drawVersion = $state(0);
+  let resultField = $state<HTMLTextAreaElement>();
+  let diceIcon = $state<HTMLSpanElement>();
   let loading = $state(true);
   let loadError = $state<string | null>(null);
 
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
+
+  // 复用输出框，只动画文字透明度和图标；相同结果也能重播，连点时取消上一轮。
+  $effect(() => {
+    if (drawVersion === 0 || !resultField || !diceIcon) return;
+    const preference = window.matchMedia("(prefers-reduced-motion: reduce)");
+    if (preference.matches) return;
+    const animations = [
+      resultField.animate([{ opacity: 0.55 }, { opacity: 1 }], {
+        duration: 280,
+        easing: "ease-out",
+      }),
+      diceIcon.animate([{ transform: "rotate(0deg)" }, { transform: "rotate(360deg)" }], {
+        duration: 420,
+        easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+      }),
+    ];
+    const cancel = (): void => animations.forEach(animation => animation.cancel());
+    preference.addEventListener("change", cancel);
+    return () => {
+      cancel();
+      preference.removeEventListener("change", cancel);
+    };
+  });
 
   onMount(() => {
     void load();
@@ -85,6 +112,7 @@
       [arr[i], arr[j]] = [arr[j], arr[i]];
     }
     result = arr.slice(0, n).join(", ");
+    drawVersion += 1;
   }
 
   async function copyResult(): Promise<void> {
@@ -165,22 +193,26 @@
           <span class="faint">当前池 {formatCount(pool.length)} 个画师</span>
           <button
             type="button"
-            class="btn btn-primary"
+            class="btn btn-primary generate-btn"
             disabled={pool.length === 0}
             onclick={generate}
           >
+            <span class="dice-icon" bind:this={diceIcon} aria-hidden="true"><Dices size={16} /></span>
             {result ? "再来一个" : "生成"}
           </button>
         </div>
 
-        {#if result}
-          {#key result}
-            <div class="result-box" transition:softFly={{ duration: 160, y: 4 }}>
-              <textarea readonly rows="3" value={result}></textarea>
-              <button type="button" class="btn" onclick={() => void copyResult()}>复制</button>
-            </div>
-          {/key}
-        {/if}
+        <div class="result-box">
+          <textarea
+            bind:this={resultField}
+            aria-label="随机画师串结果"
+            readonly
+            rows="3"
+            placeholder="点击生成，随机画师串会显示在这里"
+            value={result}
+          ></textarea>
+          <button type="button" class="btn" disabled={!result} onclick={() => void copyResult()}>复制</button>
+        </div>
       {/if}
     </div>
   </div>
@@ -256,6 +288,17 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
+  }
+
+  .generate-btn {
+    min-width: 112px;
+  }
+
+  .dice-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
   }
 
   .result-box .btn {
