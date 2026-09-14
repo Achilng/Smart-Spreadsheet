@@ -514,6 +514,24 @@ mod tests {
     };
 
     #[test]
+    fn xml_prompt_edits_refresh_artist_comparison_and_keep_legacy_fallback() {
+        let mut db = database_with_rows(2);
+        let body = "0.8::a, b::, a";
+        db.update_positive_prompt(1, &format!("<artist>{body}</artist><style>year_2025</style> girl")).unwrap();
+        db.update_positive_prompt(2, &format!("<artist> {body} </artist><style>year_2026</style> boy")).unwrap();
+        let page = db.query_compare_same_artists(1, 0, 24).unwrap();
+        assert_eq!(page.total_count, 1);
+        assert_eq!(page.rows[0].id, 2);
+        assert_eq!(db.row_ids_with_artists(body).unwrap(), vec![1, 2]);
+        let changed = db.update_character_prompt(1, "girl <artist>0.5::c::</artist>").unwrap();
+        assert_eq!(changed.new_artists.as_deref(), Some("0.8::a, b::, a\n0.5::c::"));
+        assert_eq!(db.query_compare_same_artists(1, 0, 24).unwrap().total_count, 0);
+        db.update_character_prompt(1, "girl").unwrap();
+        db.update_positive_prompt(1, "artist:legacy, quality").unwrap();
+        assert_eq!(db.row_ids_with_artists("artist:legacy").unwrap(), vec![1]);
+    }
+
+    #[test]
     fn update_single_row_prompt_and_reextracts_artists() {
         let mut db = database_with_rows(3);
         let result = db

@@ -1,6 +1,7 @@
 mod batches;
 mod search;
 mod artist_auto_prefix;
+mod artist_xml;
 mod compare;
 mod automation_rules;
 mod delete;
@@ -182,6 +183,7 @@ impl Database {
         migrate(&mut connection)?;
         repair_legacy_artist_strings(&mut connection)?;
         backfill_missing_artist_strings(&mut connection)?;
+        artist_xml::repair_xml_artist_strings(&mut connection)?;
         Ok(Self {
             connection,
             query_cache: None,

@@ -9,7 +9,7 @@ use thiserror::Error;
 use super::{DataDirectory, StorageError};
 use crate::db::{ExportRow, RowSelection, TagMutationError};
 use crate::fsx::{TemporaryFile, has_extension, replace_output_file, unique_sibling_path};
-use crate::pipeline::extract_artist_tags;
+use crate::pipeline::{extract_artist_blocks, extract_artist_tags};
 
 const PROGRESS_EVERY_ROWS: usize = 250;
 
@@ -189,7 +189,8 @@ fn prepare_presets(rows: Vec<ExportRow>, options: JsonExportOptions) -> Vec<Prep
     for row in rows {
         let positive_prompt = row.positive_prompt.as_deref().unwrap_or("");
         let (fixed_prompt, artists_added) = if options.include_artists {
-            merge_missing_artists(positive_prompt, row.artists.as_deref())
+            merge_xml_artists(positive_prompt, row.character_prompt.as_deref())
+                .unwrap_or_else(|| merge_missing_artists(positive_prompt, row.artists.as_deref()))
         } else {
             (positive_prompt.to_owned(), false)
         };
@@ -222,6 +223,32 @@ fn prepare_presets(rows: Vec<ExportRow>, options: JsonExportOptions) -> Vec<Prep
     }
 
     retained
+}
+
+/// XML blocks already in the positive prompt must never be re-appended as bare
+/// artist_collaboration fragments. Missing character blocks retain their delimiters.
+fn merge_xml_artists(positive: &str, character: Option<&str>) -> Option<(String, bool)> {
+    let positive_blocks = extract_artist_blocks(positive);
+    let character_blocks = extract_artist_blocks(character.unwrap_or_default());
+    if positive_blocks.is_none() && character_blocks.is_none() {
+        return None;
+    }
+    let present = positive_blocks.unwrap_or_default();
+    let missing: Vec<_> = character_blocks.unwrap_or_default().into_iter()
+        .filter(|block| !present.contains(block))
+        .map(|block| format!("<artist>{block}</artist>"))
+        .collect();
+    if missing.is_empty() {
+        Some((positive.to_owned(), false))
+    } else {
+        let suffix = missing.join("\n");
+        let merged = if positive.trim().is_empty() {
+            suffix
+        } else {
+            format!("{}\n{suffix}", positive.trim_end())
+        };
+        Some((merged, true))
+    }
 }
 
 fn merge_missing_artists(positive_prompt: &str, artists: Option<&str>) -> (String, bool) {
@@ -258,6 +285,20 @@ mod tests {
     use serde_json::Value;
 
     use super::*;
+
+    #[test]
+    fn xml_export_preserves_positive_and_only_appends_missing_character_blocks() {
+        let positive = "<artist>0.8::a, b::, -5::artist_collaboration ::,</artist> <style>year_2025</style> no text";
+        assert_eq!(merge_xml_artists(positive, None), Some((positive.into(), false)));
+        assert_eq!(merge_xml_artists(positive, Some(positive)), Some((positive.into(), false)));
+        let character = "girl <artist>0.5::c, d::, c</artist>";
+        let (merged, changed) = merge_xml_artists(positive, Some(character)).unwrap();
+        assert!(changed);
+        assert_eq!(merged, format!("{positive}\n<artist>0.5::c, d::, c</artist>"));
+        assert_eq!(crate::pipeline::artist_string(&merged, None),
+            crate::pipeline::artist_string(positive, Some(character)));
+        assert_eq!(merge_xml_artists("artist:legacy", None), None);
+    }
     use crate::db::{NewRow, SourceType, TagMatchMode};
 
     #[test]
