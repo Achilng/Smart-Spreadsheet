@@ -3,6 +3,7 @@
   import { showContextMenu } from "../../stores/context-menu.svelte";
   import { beginFileDrag } from "../../stores/file-drag";
   import { rowStore } from "../../stores/row-store.svelte";
+  import { materialGalleryPicker } from "../../stores/material-gallery-picker.svelte";
   import { getSelectedCount, isRowSelected, modifierSelect, toggleRow } from "../../stores/selection-store.svelte";
   import Thumbnail from "../../ui/Thumbnail.svelte";
   import CardTagSummary from "../../ui/CardTagSummary.svelte";
@@ -31,9 +32,9 @@
   const hasImage = $derived(
     Boolean(row && (row.imagePath?.trim() || row.storedImagePath?.trim())),
   );
-  const isActive = $derived(row != null && rowStore.activeRow?.id === row.id);
-  const isChecked = $derived(row != null && isRowSelected(row.id));
-  const selectionActive = $derived(getSelectedCount() > 0);
+  const isActive = $derived(row != null && (materialGalleryPicker.active ? materialGalleryPicker.selected?.id : rowStore.activeRow?.id) === row.id);
+  const isChecked = $derived(!materialGalleryPicker.active && row != null && isRowSelected(row.id));
+  const selectionActive = $derived(!materialGalleryPicker.active && getSelectedCount() > 0);
 
   const fileName = $derived(row ? rowFileName(row) : null);
   const resolution = $derived(row ? rowResolution(row) : null);
@@ -72,7 +73,7 @@
   }
 
   function onThumbMouseDown(event: MouseEvent): void {
-    if (!row || !hasImage) return;
+    if (!row || !hasImage || materialGalleryPicker.active) return;
     beginFileDrag(
       event,
       row.id,
@@ -96,6 +97,7 @@
   oncontextmenu={onContextMenu}
 >
   {#if row}
+    {#if !materialGalleryPicker.active}
     <input
       type="checkbox"
       class="select-box"
@@ -108,16 +110,23 @@
         }
       }}
     />
+    {/if}
     <button
       type="button"
       class="thumb"
       style:height="{imageHeight}px"
       aria-label="查看第 {row.sourceOrdinal} 行详情"
+      onmousedowncapture={event => { if (materialGalleryPicker.active) event.stopPropagation(); }}
       onmousedown={onThumbMouseDown}
       onclick={event => {
         if (dragging) { dragging = false; return; }
         const current = row;
         if (!current) return;
+        if (materialGalleryPicker.active) {
+          materialGalleryPicker.selected = current;
+          rowStore.activeRow = current;
+          return;
+        }
         // Ctrl+单击 = 加选/取消，Shift+单击 = 范围选；普通单击查看详情
         if (modifierSelect(current.id, index, event)) return;
         rowStore.activeRow = current;

@@ -9,6 +9,8 @@
 
   import { getRowIndex, getRowsByIds } from "../../api";
   import { app, errorText, setNotice, type ViewMode } from "../../stores/app-state.svelte";
+  import { materialGalleryPicker, finishMaterialGalleryPick } from "../../stores/material-gallery-picker.svelte";
+  import { rowFileName } from "../../utils/row-display";
   import { deletion, requestDelete } from "../../stores/delete-actions.svelte";
   import { dropState, listenDragDrop } from "../../stores/drop-import.svelte";
   import { redoLastAction, undoLastAction } from "../../stores/history.svelte";
@@ -200,6 +202,10 @@
     if (anyModalOpen()) {
       return;
     }
+    if (materialGalleryPicker.active) {
+      if (event.key === "Escape") { event.preventDefault(); finishMaterialGalleryPick(false); }
+      return;
+    }
     // 素材拥有独立文本与记录，不能触发画廊的删除、全选或撤销。
     if (app.viewMode === "materials") return;
     const target = event.target;
@@ -272,6 +278,16 @@
 
 <div class="workspace">
   <TopBar />
+  {#if materialGalleryPicker.active}
+    <div class="material-pick-bar" role="region" aria-label="选择素材展示图">
+      <div><strong>为素材选择展示图</strong><span>{materialGalleryPicker.selected ? `已选：${rowFileName(materialGalleryPicker.selected) ?? `图片 #${materialGalleryPicker.selected.id}`}` : "在画廊中单击一张图片，可使用搜索和 Tag 筛选。"}</span></div>
+      <div class="material-pick-actions">
+        {#if app.viewMode !== "gallery"}<button class="btn" onclick={() => app.viewMode = "gallery"}>回到画廊</button>{/if}
+        <button class="btn" onclick={() => finishMaterialGalleryPick(false)}>取消选图，返回编辑</button>
+        <button class="btn btn-primary" disabled={!materialGalleryPicker.selected || app.busy || anyModalOpen()} onclick={() => finishMaterialGalleryPick(true)}>使用这张图片</button>
+      </div>
+    </div>
+  {/if}
   {#if visitedViews.materials}
     {#key app.snapshot?.dataDirectory}
       <div class="workspace-body prompt-docs-body" class:is-active={app.viewMode === "materials"} aria-hidden={app.viewMode !== "materials"}>
@@ -327,7 +343,7 @@
             </section>
           {/if}
         </div>
-        <SelectionBar />
+        {#if !materialGalleryPicker.active}<SelectionBar />{/if}
       </main>
 
       {#if app.detailOpen}
@@ -370,6 +386,10 @@
 {/if}
 
 <style>
+  .material-pick-bar { display: flex; flex: none; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 20px; border-bottom: 1px solid var(--border); background: var(--accent-soft); }
+  .material-pick-bar > div:first-child { display: grid; gap: 5px; min-width: 0; flex: 1; }
+  .material-pick-bar span { font-size: var(--font-sm); color: var(--text-2); overflow-wrap: anywhere; }
+  .material-pick-actions { display: flex; flex-wrap: wrap; gap: 8px; }
   .workspace {
     height: 100%;
     display: flex;

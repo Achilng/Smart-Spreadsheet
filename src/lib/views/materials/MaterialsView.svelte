@@ -109,7 +109,7 @@
   onDestroy(() => { request++; thumbnails.dispose(); covers.dispose(); });
 </script>
 
-<section class="materials">
+<section class="materials" inert={editorOpen}>
   <aside class="tag-sidebar">
     <h3>素材 Tag</h3>
     <input aria-label="搜索素材 Tag" bind:value={tagSearch} placeholder="搜索 Tag…" />
