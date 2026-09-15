@@ -14,7 +14,8 @@
   import { galleryLayout, galleryCellPosition } from "../gallery/gallery-layout";
   import SizeSlider from "../shell/SizeSlider.svelte";
   import Thumbnail from "../../ui/Thumbnail.svelte";
-  import MaterialImage from "./MaterialImage.svelte";
+  import MaterialDetailPanel from "./MaterialDetailPanel.svelte";
+  import DetailSidebar from "../../ui/DetailSidebar.svelte";
   import MaterialEditor from "./MaterialEditor.svelte";
 
   let { active }: { active: boolean } = $props();
@@ -23,6 +24,7 @@
   let items = $state<Material[]>([]);
   let tags = $state<TagSummary[]>([]);
   let selected = $state<Material | null>(null);
+  let detailOpen = $state(true);
   let search = $state("");
   let tagSearch = $state("");
   let selectedTags = $state<string[]>([]);
@@ -151,35 +153,27 @@
     {/if}
     <footer><span>{loading ? "读取中…" : `${total} 份素材`}</span><div class="actions"><button class="btn" disabled={offset === 0 || loading} onclick={() => offset = Math.max(0, offset - 48)}>上一页</button><span>{Math.floor(offset / 48) + 1} / {Math.max(1, Math.ceil(total / 48))}</span><button class="btn" disabled={offset + 48 >= total || loading} onclick={() => offset += 48}>下一页</button></div></footer>
   </main>
-  <aside class="detail">
-    {#if selected}
-      {#key `${selected.id}-${revision}`}<div class="detail-cover"><MaterialImage id={selected.id} loader={covers} alt={selected.title} /></div>{/key}
-      <h2>{selected.title}</h2><div class="card-tags">{#each selected.tags as tag}{@const color = tagColorFor(tag, tagStore.list)}<span style:background={color.background} style:color={color.text}>{tag}</span>{/each}</div>
-      <div class="actions"><button class="btn btn-primary" onclick={() => selected && void copy(selected)}>复制文本</button><button class="btn" onclick={edit}>编辑</button><button class="btn btn-danger" onclick={() => void remove()}>删除</button></div>
-      <h3>文本内容</h3><pre>{selected.text || "尚未填写文本"}</pre>
-    {:else}<div class="detail-empty"><h3>素材详情</h3><p>单击卡片查看和编辑<br />双击卡片复制文本</p></div>{/if}
-  </aside>
+  <DetailSidebar open={detailOpen} onopen={() => detailOpen = true}>
+    <MaterialDetailPanel material={selected} {revision} active={active && !editorOpen} loader={covers}
+      onedit={edit} ondelete={() => void remove()} oncollapse={() => detailOpen = false} />
+  </DetailSidebar>
 </section>
 {#if editorOpen}{#key editorKey}<MaterialEditor material={editing} path={pendingPaths[0] ?? null} remaining={Math.max(0, pendingPaths.length - 1)} loader={covers} onsaved={saved} onclose={closeEditor} />{/key}{/if}
 
 <style>
-  .materials { width: 100%; height: 100%; display: grid; grid-template-columns: 190px minmax(0,1fr) 330px; min-height: 0; color: var(--text); }
-  .tag-sidebar { padding: 22px 12px; display: flex; flex-direction: column; gap: 10px; border-right: 1px solid var(--border); min-height: 0; }
+  .materials { width: 100%; height: 100%; display: flex; min-height: 0; color: var(--text); }
+  .tag-sidebar { width: 190px; flex: none; padding: 22px 12px; display: flex; flex-direction: column; gap: 10px; border-right: 1px solid var(--border); min-height: 0; }
   h1,h2,h3,p { margin: 0; } h1 { font-size: 25px; } h1 small { font-size: 14px; color: var(--text-3); font-weight: 400; } h3 { font-size: var(--font-sm); }
   input { width: 100%; min-width: 0; padding: 9px 10px; border: 1px solid var(--border); background: var(--surface); border-radius: 8px; color: var(--text); box-sizing: border-box; }
   .tag-sidebar button { display: flex; align-items: center; gap: 8px; padding: 9px; background: transparent; border: 0; border-radius: 7px; color: var(--text-2); text-align: left; }
   .tag-sidebar button.current { background: var(--accent-soft); color: var(--accent); } .tag-sidebar button:hover { background: var(--surface-2); }
   .tag-list { overflow-y: auto; min-height: 0; } .tag-list button { width: 100%; } .tag-list i { width: 9px; height: 9px; border-radius: 3px; flex: none; } .tag-list span { flex: 1; overflow: hidden; text-overflow: ellipsis; }
   .tag-sidebar p { margin-top: auto; font-size: 11px; color: var(--text-3); line-height: 1.7; }
-  main { display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; }
+  main { flex: 1; display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; }
   header { display: flex; justify-content: space-between; gap: 14px; align-items: center; padding: 16px; }
   .actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; } .search-line { display: flex; gap: 8px; padding: 0 16px 12px; } .filter-summary { padding: 0 16px 8px; color: var(--accent); font-size: var(--font-sm); }
-  .card-tags { display: flex; flex-wrap: wrap; gap: 5px; } .card-tags span { border-radius: 5px; padding: 3px 6px; font-size: 11px; max-width: 100%; overflow-wrap: anywhere; }
   .empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 15px; color: var(--text-3); text-align: center; } .empty h2 { font-size: 20px; color: var(--text-2); }
   footer { padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; color: var(--text-3); font-size: var(--font-sm); }
-  .detail { padding: 22px 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 17px; border-left: 1px solid var(--border); background: var(--surface); }
-  .detail-cover { height: 270px; min-height: 180px; flex: none; border-radius: 9px; overflow: hidden; background: var(--surface-2); } .detail h2 { font-size: 19px; overflow-wrap: anywhere; }
-  pre { white-space: pre-wrap; overflow-wrap: anywhere; font-family: inherit; font-size: var(--font-sm); line-height: 1.75; margin: 0; user-select: text; } .detail-empty { color: var(--text-3); text-align: center; margin-top: 80px; line-height: 2; }
-  @media (max-width: 1150px) { .materials { grid-template-columns: 155px minmax(0,1fr) 275px; } header { align-items: start; flex-direction: column; } }
-  @media (max-width: 850px) { .materials { grid-template-columns: minmax(0,1fr) 255px; } .tag-sidebar { display: none; } }
+  @media (max-width: 1150px) { .tag-sidebar { width: 155px; } header { align-items: start; flex-direction: column; } }
+  @media (max-width: 850px) { .tag-sidebar { display: none; } }
 </style>

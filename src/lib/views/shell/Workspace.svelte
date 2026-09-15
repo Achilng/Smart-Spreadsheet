@@ -1,6 +1,6 @@
 <script lang="ts">
   import { emitTo, listen, type UnlistenFn } from "@tauri-apps/api/event";
-  import ChevronsLeft from "@lucide/svelte/icons/chevrons-left";
+  import DetailSidebar from "../../ui/DetailSidebar.svelte";
   import { onDestroy, onMount, untrack } from "svelte";
   import {
     finishNavigationRestore, installNavigation, navigateHistory, navigation,
@@ -56,7 +56,7 @@
   import TagSidebar from "./TagSidebar.svelte";
   import TopBar from "./TopBar.svelte";
   import UpdateImportDialog from "./UpdateImportDialog.svelte";
-  import { panelSlide, softFade, softPop } from "../../ui/motion";
+  import { softFade, softPop } from "../../ui/motion";
 
   type DataViewMode = Exclude<ViewMode, "promptDocs" | "materials">;
 
@@ -346,23 +346,9 @@
         {#if !materialGalleryPicker.active}<SelectionBar />{/if}
       </main>
 
-      {#if app.detailOpen}
-        <aside class="detail" transition:panelSlide={{ duration: 200 }}>
-          <div class="detail-inner">
-            <DetailPanel />
-          </div>
-        </aside>
-      {:else}
-        <button
-          type="button"
-          class="detail-strip"
-          title="展开详情面板"
-          onclick={() => (app.detailOpen = true)}
-          transition:softFade={{ duration: 120 }}
-        >
-          <ChevronsLeft size={13} strokeWidth={1.8} />
-        </button>
-      {/if}
+      <DetailSidebar open={app.detailOpen} onopen={() => app.detailOpen = true}>
+        <DetailPanel />
+      </DetailSidebar>
     </div>
 </div>
 
@@ -502,37 +488,12 @@
     display: flex;
   }
 
-  .detail {
-    --detail-width: 340px;
-    width: var(--detail-width);
-    flex: none;
-    background: var(--surface);
-    border-left: 1px solid var(--border);
-    display: flex;
-    flex-direction: row;
-    justify-content: flex-end;
-    min-height: 0;
-    overflow: hidden;
-  }
-
-  /* 内衬层固定为目标宽度：宽度动画期间内容不被挤压，右锚定呈现从右滑入 */
-  .detail-inner {
-    width: var(--detail-width);
-    flex: none;
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-  }
-
   /* 窄窗口：侧栏与详情面板分档收窄，保住画布最小可用宽度 */
   @media (max-width: 1240px) {
     .sidebar {
       width: 210px;
     }
 
-    .detail {
-      --detail-width: 300px;
-    }
   }
 
   @media (max-width: 1080px) {
@@ -540,29 +501,6 @@
       width: 190px;
     }
 
-    .detail {
-      --detail-width: 270px;
-    }
-  }
-
-  .detail-strip {
-    width: 22px;
-    flex: none;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: none;
-    border-left: 1px solid var(--border);
-    background: var(--surface);
-    color: var(--text-3);
-    transition:
-      background var(--motion-fast) var(--ease-responsive),
-      color var(--motion-fast) var(--ease-responsive);
-  }
-
-  .detail-strip:hover {
-    background: var(--surface-2);
-    color: var(--text);
   }
 
   .drop-overlay {
