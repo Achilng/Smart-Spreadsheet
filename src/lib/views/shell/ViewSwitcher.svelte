@@ -153,4 +153,8 @@
       display: none;
     }
   }
+
+  @media (max-width: 850px) {
+    .seg { padding: 0 6px; }
+  }
 </style>

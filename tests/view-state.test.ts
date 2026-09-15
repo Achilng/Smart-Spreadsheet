@@ -4,7 +4,42 @@ import {
   clearScrollPositions, prepareFilterScrollPositions, restoreScrollPosition,
   savedScrollPosition, saveScrollPosition,
   filterReturnRange, rememberVisibleRange,
+  captureScrollSnapshot, applyScrollSnapshot,
+  prepareFilterScrollSnapshot,
 } from "../src/lib/stores/view-state.ts";
+
+test("pending filter destinations do not inherit stale visible positions", () => {
+  clearScrollPositions();
+  saveScrollPosition("gallery", 32000);
+  const destination = prepareFilterScrollSnapshot(true);
+  assert.deepEqual(destination.positions, []);
+  assert.equal(savedScrollPosition("gallery"), 32000);
+  assert.deepEqual(destination.unfilteredPositions, [["gallery", 32000]]);
+  applyScrollSnapshot(destination);
+  assert.equal(savedScrollPosition("gallery"), 0);
+  prepareFilterScrollPositions(false)();
+  assert.equal(savedScrollPosition("gallery"), 32000);
+});
+
+test("history snapshots independently restore filtered positions and their original clear-filter destination", () => {
+  clearScrollPositions();
+  saveScrollPosition("gallery", 32000);
+  rememberVisibleRange("gallery", 390, 421);
+  prepareFilterScrollPositions(true)();
+  saveScrollPosition("gallery", 2400);
+  rememberVisibleRange("gallery", 50, 61);
+  const snapshot = captureScrollSnapshot();
+  clearScrollPositions();
+  saveScrollPosition("gallery", 5);
+  applyScrollSnapshot(snapshot);
+  assert.equal(savedScrollPosition("gallery"), 2400);
+  assert.deepEqual(captureScrollSnapshot().ranges, [["gallery", { first: 50, last: 61 }]]);
+  assert.deepEqual(filterReturnRange("gallery"), { first: 390, last: 421 });
+  prepareFilterScrollPositions(false)();
+  assert.equal(savedScrollPosition("gallery"), 32000);
+  applyScrollSnapshot(snapshot);
+  assert.equal(savedScrollPosition("gallery"), 2400);
+});
 
 test("return range keeps the original viewport across searches and invalidates with its position", () => {
   clearScrollPositions();

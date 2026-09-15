@@ -12,6 +12,36 @@ let scrollPositionsVersion = 0;
 let unfilteredPositions: Map<string, number> | null = null;
 let showingFilteredRows = false;
 
+export interface ScrollSnapshot {
+  positions: [string, number][];
+  ranges: [string, VisibleRange][];
+  unfilteredPositions: [string, number][] | null;
+  unfilteredRanges: [string, VisibleRange][] | null;
+  filtered: boolean;
+}
+
+/** Independent snapshots also retain the original position used by “clear filters”. */
+export function captureScrollSnapshot(): ScrollSnapshot {
+  return structuredClone({
+    positions: [...scrollPositions], ranges: [...visibleRanges],
+    unfilteredPositions: unfilteredPositions ? [...unfilteredPositions] : null,
+    unfilteredRanges: unfilteredRanges ? [...unfilteredRanges] : null,
+    filtered: showingFilteredRows,
+  });
+}
+
+export function applyScrollSnapshot(snapshot: ScrollSnapshot): void {
+  const copy = structuredClone(snapshot);
+  scrollPositions.clear();
+  visibleRanges.clear();
+  for (const [key, top] of copy.positions) scrollPositions.set(key, top);
+  for (const [key, range] of copy.ranges) visibleRanges.set(key, range);
+  unfilteredPositions = copy.unfilteredPositions ? new Map(copy.unfilteredPositions) : null;
+  unfilteredRanges = copy.unfilteredRanges ? new Map(copy.unfilteredRanges) : null;
+  showingFilteredRows = copy.filtered;
+  scrollPositionsVersion += 1;
+}
+
 export function saveScrollPosition(key: string, top: number): void {
   scrollPositions.set(key, top);
 }
@@ -40,6 +70,12 @@ export function clearScrollPositions(filtered = false): void {
 
 /** 请求开始时记录原位置，成功换入结果时才切换位置，失败/过时请求不消费记忆。 */
 export function prepareFilterScrollPositions(filtered: boolean): () => void {
+  const snapshot = prepareFilterScrollSnapshot(filtered);
+  return () => applyScrollSnapshot(snapshot);
+}
+
+/** The requested destination is also available while its rows are still loading. */
+export function prepareFilterScrollSnapshot(filtered: boolean): ScrollSnapshot {
   if (filtered && !showingFilteredRows && unfilteredPositions === null) {
     unfilteredPositions = new Map(scrollPositions);
     unfilteredRanges = new Map(visibleRanges);
@@ -47,20 +83,13 @@ export function prepareFilterScrollPositions(filtered: boolean): () => void {
   const target = !filtered && unfilteredPositions !== null
     ? new Map(unfilteredPositions)
     : new Map<string, number>();
-  return () => {
-    scrollPositions.clear();
-    for (const [key, top] of target) scrollPositions.set(key, top);
-    visibleRanges.clear();
-    if (!filtered && unfilteredRanges) {
-      for (const [key, range] of unfilteredRanges) visibleRanges.set(key, range);
-    }
-    scrollPositionsVersion += 1;
-    showingFilteredRows = filtered;
-    if (!filtered) {
-      unfilteredPositions = null;
-      unfilteredRanges = null;
-    }
-  };
+  return structuredClone({
+    positions: [...target],
+    ranges: !filtered && unfilteredRanges ? [...unfilteredRanges] : [],
+    unfilteredPositions: filtered && unfilteredPositions ? [...unfilteredPositions] : null,
+    unfilteredRanges: filtered && unfilteredRanges ? [...unfilteredRanges] : null,
+    filtered,
+  });
 }
 
 export function scrollPositionVersion(): number {

@@ -1,6 +1,8 @@
 <script lang="ts">
   import X from "@lucide/svelte/icons/x";
-  import { untrack } from "svelte";
+  import { onDestroy, untrack } from "svelte";
+  import NavigationButtons from "./NavigationButtons.svelte";
+  import { navigation } from "../../stores/navigation.svelte";
 
   import { app, errorText, formatCount, setNotice } from "../../stores/app-state.svelte";
   import {
@@ -19,21 +21,36 @@
 
   let searchInput = $state("");
   let debounceTimer: ReturnType<typeof setTimeout> | undefined;
+  let searchSession = 0;
+  let lastInputAt = 0;
+
+  function flushSearch(): void {
+    clearTimeout(debounceTimer);
+    if (rowStore.search !== searchInput) {
+      setSearch(searchInput, searchSession);
+      clearSelection();
+    }
+  }
+
+  function finishSearch(): void {
+    flushSearch();
+    searchSession += 1;
+  }
+
+  onDestroy(() => clearTimeout(debounceTimer));
 
   function onSearchInput(event: Event): void {
     const value = (event.target as HTMLInputElement).value;
     searchInput = value;
     clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => {
-      // 只有搜索词真正变化才清选区；打字后又退格回原词不应破坏已有选择。
-      if (rowStore.search !== value) {
-        setSearch(value);
-        clearSelection();
-      }
-    }, 300);
+    if (event instanceof InputEvent && event.isComposing) return;
+    if (Date.now() - lastInputAt > 1500) searchSession += 1;
+    lastInputAt = Date.now();
+    debounceTimer = setTimeout(flushSearch, 300);
   }
 
   function clearSearch(): void {
+    searchSession += 1;
     searchInput = "";
     clearTimeout(debounceTimer);
     if (rowStore.search !== "") {
@@ -45,11 +62,10 @@
   // 搜索词的权威 state 在 rowStore；外部（筛选 chip 删除等）改动时回流输入框
   $effect(() => {
     const external = rowStore.search;
+    void navigation.token;
     untrack(() => {
-      if (external !== searchInput) {
-        searchInput = external;
-        clearTimeout(debounceTimer);
-      }
+      searchInput = external;
+      clearTimeout(debounceTimer);
     });
   });
 
@@ -94,6 +110,7 @@
     {/if}
   </div>
 
+  <NavigationButtons />
   <ViewSwitcher />
 
   <div class="title-spacer" data-tauri-drag-region></div>
@@ -105,6 +122,9 @@
         placeholder="搜索文件名 / 提示词 / 画师…"
         value={searchInput}
         oninput={onSearchInput}
+        oncompositionend={onSearchInput}
+        onblur={finishSearch}
+        onkeydown={event => { if (event.key === "Enter" && !event.isComposing) finishSearch(); }}
         class:has-value={searchInput.length > 0}
       />
       {#if searchInput.length > 0}
@@ -178,6 +198,12 @@
     .topbar {
       gap: 8px;
     }
+  }
+
+  @media (max-width: 950px) {
+    .brand { display: none; }
+    .topbar { padding-left: 10px; gap: 6px; }
+    .title-spacer { min-width: 0; }
   }
 
   .title-spacer {
@@ -267,5 +293,14 @@
     .search-box {
       flex-basis: 180px;
     }
+  }
+
+  @media (max-width: 950px) {
+    .title-spacer { min-width: 0; }
+  }
+
+  @media (max-width: 850px) {
+    .topbar { gap: 4px; padding-left: 6px; }
+    .actions :global(.btn) { padding-left: 6px; padding-right: 6px; }
   }
 </style>

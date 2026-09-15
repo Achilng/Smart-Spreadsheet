@@ -1,7 +1,11 @@
 <script lang="ts">
   import { emitTo, listen, type UnlistenFn } from "@tauri-apps/api/event";
   import ChevronsLeft from "@lucide/svelte/icons/chevrons-left";
-  import { onMount, untrack } from "svelte";
+  import { onDestroy, onMount, untrack } from "svelte";
+  import {
+    finishNavigationRestore, installNavigation, navigateHistory, navigation,
+    navigationRoute, observeNavigation,
+  } from "../../stores/navigation.svelte";
 
   import { getRowIndex, getRowsByIds } from "../../api";
   import { app, errorText, setNotice, type ViewMode } from "../../stores/app-state.svelte";
@@ -52,6 +56,19 @@
   import { panelSlide, softFade, softPop } from "../../ui/motion";
 
   type DataViewMode = Exclude<ViewMode, "promptDocs">;
+
+  onDestroy(installNavigation());
+  $effect.pre(() => {
+    const route = navigationRoute();
+    const directory = app.snapshot?.dataDirectory;
+    untrack(() => observeNavigation(route, directory));
+  });
+  $effect(() => {
+    void navigation.restoring;
+    void rowStore.initialLoading;
+    void rowStore.refreshing;
+    untrack(finishNavigationRestore);
+  });
 
   const visitedViews = $state<Record<ViewMode, boolean>>({
     group: false,
@@ -170,6 +187,12 @@
   });
 
   function onKeydown(event: KeyboardEvent): void {
+    if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey &&
+      (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
+      event.preventDefault();
+      if (!event.isComposing && !event.repeat) navigateHistory(event.key === "ArrowLeft" ? -1 : 1);
+      return;
+    }
     // 任何模态浮层（管理分组、批量编辑、删除确认、灯箱等）打开时，
     // 资料库级快捷键一律短路，避免在对话框里按 Delete/Ctrl+Z 误操作底层数据。
     if (anyModalOpen()) {
@@ -233,9 +256,15 @@
       }
     }
   }
+
+  function onHistoryMouse(event: MouseEvent): void {
+    if (event.button !== 3 && event.button !== 4) return;
+    event.preventDefault();
+    if (event.type === "mouseup") navigateHistory(event.button === 3 ? -1 : 1);
+  }
 </script>
 
-<svelte:window onkeydown={onKeydown} />
+<svelte:window onkeydown={onKeydown} onmousedown={onHistoryMouse} onmouseup={onHistoryMouse} onauxclick={onHistoryMouse} />
 
 <div class="workspace">
   <TopBar />

@@ -1,12 +1,26 @@
 import { queryRows, type DedupeMode, type LibraryFilter, type RowRecord, type SortMode, type TagMatchMode } from "../api";
 import { app, errorText, setNotice } from "./app-state.svelte";
-import { clearScrollPositions, filterReturnRange, prepareFilterScrollPositions } from "./view-state";
+import { applyScrollSnapshot, captureScrollSnapshot, clearScrollPositions, filterReturnRange, prepareFilterScrollSnapshot, type ScrollSnapshot } from "./view-state";
 import { cloneLibraryFilters } from "../utils/library-filters";
 import { createRequestQueue } from "../utils/request-queue";
 
 export const PAGE_SIZE = 200;
 
 const SORT_STORAGE_KEY = "smart-spreadsheet.image-sort";
+
+let beforeBrowseReset: (searchSession?: number) => void = () => {};
+export function registerBrowseResetListener(listener: typeof beforeBrowseReset): () => void {
+  beforeBrowseReset = listener;
+  return () => { beforeBrowseReset = () => {}; };
+}
+
+export function persistSort(sort: SortMode): void {
+  try {
+    window.localStorage.setItem(SORT_STORAGE_KEY, sort);
+  } catch (error) {
+    setNotice({ tone: "error", text: `无法记住图片顺序，下次打开可能恢复默认：${errorText(error)}` });
+  }
+}
 
 /** 首次查询前恢复排序；旧版本没有记录或记录无效时沿用时间正序。 */
 function readSavedSort(): SortMode {
@@ -67,6 +81,11 @@ const enqueueQuery = createRequestQueue();
 /** 本轮刷新完成时是否要求视图应用结果集的位置 */
 let resetScrollOnSwap = true;
 let applyScrollOnSwap: (() => void) | null = null;
+let pendingScrollSnapshot: ScrollSnapshot | null = null;
+/** A pending search belongs to its destination, not to the stale page still on screen. */
+export function browsingScrollSnapshot(): ScrollSnapshot {
+  return pendingScrollSnapshot ? structuredClone(pendingScrollSnapshot) : captureScrollSnapshot();
+}
 let requiredSwapPages = new Set([0]);
 /** 最近更新排序下的单行编辑刷新期间保留详情面板，若刷新后仍命中则继续显示。 */
 let keepActiveOnSwap = false;
@@ -140,6 +159,7 @@ export function ensurePage(pageIndex: number): void {
         pages.set(pageIndex, page.rows);
       }
       rowStore.totalCount = page.totalCount;
+      pendingScrollSnapshot = null;
       rowStore.initialLoading = false;
       rowStore.error = null;
       rowStore.pagesVersion += 1;
@@ -159,6 +179,8 @@ export function ensurePage(pageIndex: number): void {
 }
 
 interface ResetOptions {
+  navigation?: ScrollSnapshot;
+  searchSession?: number;
   /** false = 数据集整体更换（无可信旧内容），true = 保留旧内容直到新结果到达 */
   keepStale?: boolean;
   /** true = 应用新的结果集位置；false = 就地刷新保留位置 */
@@ -175,6 +197,7 @@ interface ResetOptions {
  * 筛选/搜索变化传 resetScroll + filterChange；导入/删除/换库传 keepStale: false。
  */
 export function resetRows(options: ResetOptions = {}): void {
+  if (!options.navigation) beforeBrowseReset(options.searchSession);
   const { keepStale = true, resetScroll = false, keepActive = false, filterChange = false } = options;
   const continuingReset = keepStale && !resetScroll && applyScrollOnSwap !== null;
   generation += 1;
@@ -185,10 +208,23 @@ export function resetRows(options: ResetOptions = {}): void {
     rowStore.activeRow = null;
   }
   if (!continuingReset) {
+    pendingScrollSnapshot = null;
     resetScrollOnSwap = resetScroll;
     requiredSwapPages = new Set([0]);
-    if (filterChange) {
-      applyScrollOnSwap = prepareFilterScrollPositions(hasActiveFilters());
+    if (options.navigation) {
+      const snapshot = options.navigation;
+      pendingScrollSnapshot = snapshot;
+      applyScrollOnSwap = () => applyScrollSnapshot(snapshot);
+      const range = snapshot.ranges.find(([key]) => key === app.viewMode)?.[1];
+      if (range && (app.viewMode === "gallery" || app.viewMode === "table")) {
+        const first = Math.max(0, Math.floor(range.first / PAGE_SIZE));
+        const last = Math.max(first, Math.floor(range.last / PAGE_SIZE));
+        requiredSwapPages = new Set(Array.from({ length: last - first + 1 }, (_, index) => first + index));
+      }
+    } else if (filterChange) {
+      const snapshot = prepareFilterScrollSnapshot(hasActiveFilters());
+      pendingScrollSnapshot = snapshot;
+      applyScrollOnSwap = () => applyScrollSnapshot(snapshot);
       const range = !hasActiveFilters() ? filterReturnRange(app.viewMode) : undefined;
       if (range && (app.viewMode === "gallery" || app.viewMode === "table")) {
         const first = Math.floor(range.first / PAGE_SIZE);
@@ -198,6 +234,7 @@ export function resetRows(options: ResetOptions = {}): void {
     } else {
       applyScrollOnSwap = resetScroll ? () => clearScrollPositions(hasActiveFilters()) : null;
       if (!keepStale || resetScroll) clearScrollPositions(hasActiveFilters());
+      if (resetScroll) pendingScrollSnapshot = captureScrollSnapshot();
     }
   }
   if (keepStale && pages.size > 0) {
@@ -316,10 +353,10 @@ export function setHideGrouped(value: boolean): void {
   }
 }
 
-export function setSearch(value: string): void {
+export function setSearch(value: string, searchSession?: number): void {
   if (rowStore.search !== value) {
     rowStore.search = value;
-    resetRows({ keepStale: true, resetScroll: true, filterChange: true });
+    resetRows({ keepStale: true, resetScroll: true, filterChange: true, searchSession });
   }
 }
 
@@ -353,11 +390,7 @@ export function clearAllFilters(): void {
 }
 
 export function setSort(sort: SortMode): void {
-  try {
-    window.localStorage.setItem(SORT_STORAGE_KEY, sort);
-  } catch (error) {
-    setNotice({ tone: "error", text: `无法记住图片顺序，下次打开可能恢复默认：${errorText(error)}` });
-  }
+  persistSort(sort);
   if (rowStore.sort !== sort) {
     rowStore.sort = sort;
     resetRows({ keepStale: true, resetScroll: true });
@@ -366,6 +399,7 @@ export function setSort(sort: SortMode): void {
 
 /** 清除可能隐藏目标行的筛选，并请求画廊在数据就绪后滚动到指定图片。 */
 export function revealRowInGallery(row: RowRecord, index: number): void {
+  rowStore.revealToken += 1;
   rowStore.tags = [];
   rowStore.tagMode = "and";
   rowStore.dedupe = "none";
@@ -380,7 +414,6 @@ export function revealRowInGallery(row: RowRecord, index: number): void {
   resetRows({ keepStale: true, resetScroll: true });
   rowStore.activeRow = row;
   rowStore.revealIndex = index;
-  rowStore.revealToken += 1;
 }
 
 /** 单行字段编辑后原位更新缓存，避免整表重载丢失滚动位置和活动行。 */
