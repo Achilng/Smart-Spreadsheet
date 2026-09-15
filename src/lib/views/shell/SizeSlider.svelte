@@ -7,7 +7,7 @@
   const TABLE_MIN = 40;
   const TABLE_MAX = 128;
 
-  const isGallery = $derived(app.viewMode === "gallery");
+  const isGallery = $derived(app.viewMode === "gallery" || app.viewMode === "materials");
 
   const min = $derived(isGallery ? GALLERY_MIN : TABLE_MIN);
   const max = $derived(isGallery ? GALLERY_MAX : TABLE_MAX);
@@ -32,6 +32,7 @@
     </span>
     <input
       type="range"
+      aria-label={isGallery ? "卡片大小" : "行高"}
       {min}
       {max}
       {value}

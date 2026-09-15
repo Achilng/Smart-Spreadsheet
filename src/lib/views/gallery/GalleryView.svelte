@@ -10,13 +10,12 @@
   import { vibeStatuses } from "../../images/vibe-statuses";
   import { restoreScrollPosition, savedScrollPosition, rememberVisibleRange, saveScrollPosition, scrollPositionVersion } from "../../stores/view-state";
   import GalleryCard from "./GalleryCard.svelte";
+  import GalleryViewport from "./GalleryViewport.svelte";
+  import { galleryLayout, galleryCellPosition, GALLERY_GAP as GAP, GALLERY_PADDING as PADDING } from "./gallery-layout";
 
 
   let { active = true }: { active?: boolean } = $props();
 
-  const GAP = 12;
-  const PADDING = 16;
-  const FOOTER_HEIGHT = 42;
   const OVERSCAN_ROWS = 2;
   const PROGRESSIVE_DELAY_MS = 400;
 
@@ -44,18 +43,13 @@
     }
   });
 
-  const columns = $derived(
-    Math.max(1, Math.floor((viewportWidth - PADDING * 2 + GAP) / (minCardWidth + GAP))),
-  );
-  const cardWidth = $derived(
-    Math.max(1, Math.floor((viewportWidth - PADDING * 2 - GAP * (columns - 1)) / columns)),
-  );
-  const imageHeight = $derived(cardWidth);
-  const cellHeight = $derived(imageHeight + FOOTER_HEIGHT + GAP);
-  const gridRows = $derived(Math.ceil(rowStore.totalCount / columns));
-  const spacerHeight = $derived(
-    gridRows === 0 ? 0 : PADDING * 2 + gridRows * cellHeight - GAP,
-  );
+  const layout = $derived(galleryLayout(viewportWidth, minCardWidth, rowStore.totalCount));
+  const columns = $derived(layout.columns);
+  const cardWidth = $derived(layout.cardWidth);
+  const imageHeight = $derived(layout.imageHeight);
+  const cellHeight = $derived(layout.cellHeight);
+  const gridRows = $derived(layout.gridRows);
+  const spacerHeight = $derived(layout.spacerHeight);
 
   interface Cell {
     index: number;
@@ -84,8 +78,7 @@
         result.push({
           index,
           row: getRow(index),
-          x: PADDING + column * (cardWidth + GAP),
-          y: PADDING + gridRow * cellHeight,
+          ...galleryCellPosition(index, layout),
         });
       }
     }
@@ -292,14 +285,8 @@
   });
 </script>
 
-<div class="gallery-view">
-  <div
-    class="gallery-viewport"
-    bind:this={viewport}
-    bind:clientWidth={measuredWidth}
-    bind:clientHeight={measuredHeight}
-    onscroll={onScroll}
-  >
+<GalleryViewport bind:viewport bind:measuredWidth bind:measuredHeight onscroll={onScroll}
+  spacerHeight={!rowStore.error && !rowStore.initialLoading && rowStore.totalCount > 0 ? spacerHeight : undefined}>
     {#if rowStore.error}
       <div class="gallery-status empty-state">
         <p class="muted">加载失败：{rowStore.error}</p>
@@ -318,7 +305,6 @@
         {/if}
       </div>
     {:else}
-      <div class="gallery-spacer" style:height="{spacerHeight}px">
         {#each cells as cell (cell.index)}
           <GalleryCard
             row={cell.row}
@@ -330,36 +316,9 @@
             enhance={progressiveReady && Boolean(cell.row && progressiveRowIds.has(cell.row.id))}
           />
         {/each}
-      </div>
     {/if}
-  </div>
-</div>
+</GalleryViewport>
 
 <style>
-  .gallery-view {
-    flex: 1;
-    min-width: 0;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-  }
-
-  .gallery-viewport {
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
-    /* 虚拟列表由应用恢复位置，避免空态退场时浏览器再次自动偏移。 */
-    overflow-anchor: none;
-    position: relative;
-    /* 底部选择条（52px 通栏）出现时不遮住最后一行 */
-    padding-bottom: 64px;
-  }
-
-  .gallery-spacer {
-    position: relative;
-  }
-
-  .gallery-status {
-    height: 100%;
-  }
+  .gallery-status { height: 100%; }
 </style>

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { beginFileDrag } from "../stores/file-drag";
-  import { isImageLoadCancelled } from "../images/image-loader";
+  import { isImageLoadCancelled, type ImageLoader } from "../images/image-loader";
   import { galleryPreviews } from "../images/progressive-images";
   import { thumbnails } from "../images/thumbnails";
 
@@ -10,12 +10,18 @@
     alt,
     enhance = false,
     highPriority = false,
+    loader = thumbnails,
+    previewLoader = galleryPreviews,
+    allowFileDrag = true,
   }: {
     rowId: number;
     hasImage: boolean;
     alt: string;
     enhance?: boolean;
     highPriority?: boolean;
+    loader?: ImageLoader;
+    previewLoader?: ImageLoader | null;
+    allowFileDrag?: boolean;
   } = $props();
 
   let url = $state<string | null>(null);
@@ -55,17 +61,17 @@
       return;
     }
     // 命中缓存时同步取值，避免已缓存的图闪一帧灰块
-    const cachedThumb = thumbnails.cached(id);
+    const cachedThumb = loader.cached(id);
     if (cachedThumb) {
       animateIn = false;
       url = cachedThumb;
     }
-    enhancedUrl = galleryPreviews.cached(id);
+    enhancedUrl = previewLoader?.cached(id) ?? null;
     if (cachedThumb) {
       return;
     }
     let cancelled = false;
-    thumbnails.load(id).then(
+    loader.load(id).then(
       loaded => {
         if (!cancelled) {
           animateIn = true;
@@ -87,11 +93,11 @@
 
   $effect(() => {
     const id = rowId;
-    if (!hasImage || !enhance || enhancedUrl) {
+    if (!hasImage || !enhance || enhancedUrl || !previewLoader) {
       return;
     }
     let cancelled = false;
-    galleryPreviews.load(id, highPriority).then(
+    previewLoader.load(id, highPriority).then(
       loaded => {
         if (!cancelled) {
           enhancedReady = false;
@@ -115,7 +121,7 @@
       {alt}
       loading="lazy"
       draggable="false"
-      onmousedown={(e) => { if (hasImage) beginFileDrag(e, rowId); }}
+      onmousedown={(e) => { if (hasImage && allowFileDrag) beginFileDrag(e, rowId); }}
     />
     {#if enhancedUrl}
       <img
@@ -127,7 +133,7 @@
         decoding="async"
         draggable="false"
         onload={revealEnhancedImage}
-        onmousedown={(e) => { if (hasImage) beginFileDrag(e, rowId); }}
+        onmousedown={(e) => { if (hasImage && allowFileDrag) beginFileDrag(e, rowId); }}
       />
     {/if}
   </span>
