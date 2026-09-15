@@ -83,6 +83,14 @@ export function listenDragDrop(): () => void {
     .onDragDropEvent((event) => {
       if (!app.snapshot?.dataDirectory) return;
 
+      if (app.viewMode === "materials") {
+        dropState.dragging = (event.payload.type === "enter" || event.payload.type === "over") && !app.busy && !outboundDrag;
+        if (event.payload.type === "drop" && !app.busy && !outboundDrag) {
+          window.dispatchEvent(new CustomEvent<string[]>("material-path-drop", { detail: event.payload.paths }));
+        }
+        return;
+      }
+
       if (app.viewMode === "promptDocs") {
         dropState.dragging = false;
         if (event.payload.type === "drop" && !app.busy) {

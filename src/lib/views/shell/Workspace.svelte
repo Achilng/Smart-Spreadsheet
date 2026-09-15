@@ -47,6 +47,7 @@
   import GroupManageView from "../groups/GroupManageView.svelte";
   import JsonExportDialog from "./JsonExportDialog.svelte";
   import PromptDocsView from "../prompt-docs/PromptDocsView.svelte";
+  import MaterialsView from "../materials/MaterialsView.svelte";
   import SectionContextMenu from "./SectionContextMenu.svelte";
   import SelectionBar from "./SelectionBar.svelte";
   import TableView from "../table/TableView.svelte";
@@ -55,7 +56,7 @@
   import UpdateImportDialog from "./UpdateImportDialog.svelte";
   import { panelSlide, softFade, softPop } from "../../ui/motion";
 
-  type DataViewMode = Exclude<ViewMode, "promptDocs">;
+  type DataViewMode = Exclude<ViewMode, "promptDocs" | "materials">;
 
   onDestroy(installNavigation());
   $effect.pre(() => {
@@ -76,10 +77,11 @@
     table: false,
     duplicates: false,
     promptDocs: false,
+    materials: false,
   });
 
   function isDataViewMode(mode: ViewMode): mode is DataViewMode {
-    return mode !== "promptDocs";
+    return mode !== "promptDocs" && mode !== "materials";
   }
 
   function rememberVisitedView(mode: ViewMode): void {
@@ -198,6 +200,8 @@
     if (anyModalOpen()) {
       return;
     }
+    // 素材拥有独立文本与记录，不能触发画廊的删除、全选或撤销。
+    if (app.viewMode === "materials") return;
     const target = event.target;
     const isTextEditing =
       target instanceof HTMLInputElement ||
@@ -268,6 +272,13 @@
 
 <div class="workspace">
   <TopBar />
+  {#if visitedViews.materials}
+    {#key app.snapshot?.dataDirectory}
+      <div class="workspace-body prompt-docs-body" class:is-active={app.viewMode === "materials"} aria-hidden={app.viewMode !== "materials"}>
+        <main class="prompt-docs-main"><MaterialsView active={app.viewMode === "materials"} /></main>
+      </div>
+    {/key}
+  {/if}
   {#if visitedViews.promptDocs}
       <div
         class="workspace-body prompt-docs-body"
@@ -353,7 +364,7 @@
 {#if dropState.dragging && app.viewMode !== "promptDocs"}
   <div class="drop-overlay" transition:softFade={{ duration: 120 }}>
     <div class="drop-hint" transition:softPop={{ duration: 150, y: 4, start: 0.98 }}>
-      松开鼠标以导入图片
+      {app.viewMode === "materials" ? "松开鼠标，预览并确认素材" : "松开鼠标以导入图片"}
     </div>
   </div>
 {/if}

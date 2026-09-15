@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { materialIdsForTag, restoreMaterialTag } from "../../api/materials";
   import {
     createTag,
     deleteTag,
@@ -161,6 +162,7 @@
         search: "",
         excludedRowIds: [],
       });
+      const materialIds = await materialIdsForTag(name);
       const deleted = await deleteTag(name);
       if (deleted) {
         if (activeTags.includes(name)) {
@@ -177,6 +179,7 @@
           label: `删除 Tag「${name}」`,
           undo: async () => {
             await createTag(name);
+            await restoreMaterialTag(name, materialIds);
             if (before.length > 0) {
               await restoreRowStates(before);
             } else {
@@ -324,7 +327,7 @@
   width="400px"
 >
   <div class="confirm-dialog" aria-label="重命名 Tag">
-    <p>重命名 Tag「{renamingFrom}」：所有关联图片会自动跟随，可用 Ctrl+Z 撤销。自动规则里引用的旧名称不会随之更新。</p>
+    <p>重命名 Tag「{renamingFrom}」：所有关联图片和素材会自动跟随，可用 Ctrl+Z 撤销。自动规则里引用的旧名称不会随之更新。</p>
     <input
       type="text"
       class="rename-input"
@@ -358,7 +361,7 @@
       确定删除 Tag「{confirmingDelete}」吗？
       {#if confirmingDelete}
         {@const affected = entries.find(e => e.name === confirmingDelete)?.rowCount ?? 0}
-        将从 {formatCount(affected)} 行上移除该 Tag 关联。可用 Ctrl+Z 撤销。
+        将从 {formatCount(affected)} 行以及使用此 Tag 的素材上移除关联。可用 Ctrl+Z 撤销。
       {/if}
     </p>
     <div class="confirm-actions">

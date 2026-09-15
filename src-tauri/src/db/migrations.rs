@@ -1,4 +1,21 @@
-pub const CURRENT_SCHEMA_VERSION: u32 = 18;
+pub const CURRENT_SCHEMA_VERSION: u32 = 19;
+
+pub const MIGRATION_19: &str = r#"
+CREATE TABLE materials (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    text TEXT NOT NULL,
+    cover BLOB NOT NULL,
+    thumbnail BLOB NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+) STRICT;
+CREATE TABLE material_tags (
+    material_id INTEGER NOT NULL REFERENCES materials(id) ON DELETE CASCADE,
+    tag_id INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+    PRIMARY KEY (material_id, tag_id)
+) STRICT, WITHOUT ROWID;
+CREATE INDEX material_tags_by_tag ON material_tags(tag_id, material_id);
+"#;
 pub const MINIMUM_UPGRADABLE_SCHEMA_VERSION: u32 = 8;
 
 /// 精确画师串检索直接走磁盘索引，避免对全库提示词行逐行 TRIM。

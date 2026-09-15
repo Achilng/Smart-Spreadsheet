@@ -315,7 +315,7 @@ mod tests {
             INSERT INTO rows(id, batch_id, source_ordinal, identity, artists)
             VALUES (1, 1, 1, 'a', 'artist:test'), (2, 1, 2, 'b', '  artist:test  ');").unwrap();
         let mut database = Database::initialize(connection).unwrap();
-        assert_eq!(database.schema_version().unwrap(), 18);
+        assert_eq!(database.schema_version().unwrap(), crate::db::CURRENT_SCHEMA_VERSION);
         let page = database.query_compare_same_artists(1, 0, 24).unwrap();
         assert_eq!(page.total_count, 1);
         assert_eq!(page.rows[0].id, 2);

@@ -21,6 +21,7 @@ mod quick_edit;
 mod query;
 mod settings;
 mod tags;
+pub mod materials;
 
 pub use batches::{AppendOutcome, BatchSummary, LibrarySummary, NewRow, SourceType};
 pub use compare::{
@@ -369,6 +370,10 @@ fn apply_pending_migrations(connection: &mut Connection, from_version: u32) -> R
         transaction.execute_batch(MIGRATION_18)?;
         version = 18;
     }
+    if version == 18 {
+        transaction.execute_batch(migrations::MIGRATION_19)?;
+        version = 19;
+    }
     debug_assert_eq!(version, CURRENT_SCHEMA_VERSION);
     transaction.pragma_update(None, "user_version", version)?;
     transaction.commit()?;
@@ -485,9 +490,12 @@ mod tests {
                 "dedupe_aliases",
                 "groups",
                 "import_batches",
+                "material_tags",
+                "materials",
                 "row_tags",
                 "rows",
                 "settings",
+                "sqlite_sequence",
                 "tags"
             ]
         );

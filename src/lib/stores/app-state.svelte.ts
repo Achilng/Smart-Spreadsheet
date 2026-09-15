@@ -21,7 +21,7 @@ import {
   type VibeStatusProgress,
 } from "../api";
 
-export type ViewMode = "group" | "gallery" | "table" | "duplicates" | "promptDocs";
+export type ViewMode = "group" | "gallery" | "table" | "duplicates" | "promptDocs" | "materials";
 
 export interface Notice {
   tone: "error" | "success";

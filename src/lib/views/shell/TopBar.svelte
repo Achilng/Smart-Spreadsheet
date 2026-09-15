@@ -115,7 +115,7 @@
 
   <div class="title-spacer" data-tauri-drag-region></div>
 
-  {#if app.viewMode !== "promptDocs"}
+  {#if app.viewMode !== "promptDocs" && app.viewMode !== "materials"}
     <div class="search-box" data-tauri-drag-region>
       <input
         type="text"
@@ -148,8 +148,10 @@
     >
       工具箱
     </button>
-    <Dropdown label="导入" items={importItems} disabled={app.busy} ghost />
-    <Dropdown label="导出" items={exportItems} disabled={exportDisabled} primary />
+    {#if app.viewMode !== "materials"}
+      <Dropdown label="导入" items={importItems} disabled={app.busy} ghost />
+      <Dropdown label="导出" items={exportItems} disabled={exportDisabled} primary />
+    {/if}
   </div>
   <WindowControls />
 </header>
