@@ -126,7 +126,7 @@
     <div class="search-line"><input aria-label="搜索素材名称和文本" value={search} placeholder="搜索素材名称或文本内容…" oninput={e => { search = e.currentTarget.value; offset = 0; }} />{#if selectedTags.length || untagged}<button class="btn" onclick={clearFilter}>清除筛选</button>{/if}</div>
     {#if selectedTags.length}<p class="filter-summary">Tag：{selectedTags.join("、")}</p>{/if}
     {#if error}<div class="empty" role="alert">{error}<button class="btn" onclick={() => revision++}>重试</button></div>
-    {:else if !items.length}<div class="empty"><h2>{loading ? "正在读取素材…" : search || selectedTags.length || untagged ? "没有匹配的素材" : "收藏你的第一份素材"}</h2><p>将图片拖到这里，填写文本后确认导入。</p></div>
+    {:else if !items.length}<div class="empty"><h2>{loading ? "正在读取素材…" : search || selectedTags.length || untagged ? "没有匹配的素材" : "收藏你的第一份素材"}</h2><p>新建素材可从图库选图，也可以将本地图片拖到这里导入。</p></div>
     {:else}<div class="grid" aria-busy={loading}>
       {#each items as item (`${item.id}-${revision}`)}
         <button class="card" class:is-selected={selected?.id === item.id} aria-pressed={selected?.id === item.id} title="单击查看详情，双击复制文本" onclick={() => selected = item} ondblclick={() => void copy(item)}>

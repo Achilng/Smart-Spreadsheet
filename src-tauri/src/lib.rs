@@ -60,6 +60,7 @@ pub fn run() {
             app::materials::material_ids_for_tag,
             app::materials::restore_material_tag,
             app::materials::inspect_material_image,
+            app::materials::inspect_material_library_image,
             app::materials::save_material,
             app::materials::delete_material,
             app::materials::material_image,

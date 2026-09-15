@@ -171,6 +171,49 @@ pub(crate) async fn inspect_material_image(path: String) -> Result<MaterialInspe
         .map_err(text)?
 }
 
+#[derive(Serialize)]
+pub(crate) struct LibraryMaterialInspection {
+    path: String,
+    inspection: MaterialInspection,
+}
+
+fn inspect_library_image(
+    directory: &crate::storage::DataDirectory,
+    row_id: i64,
+) -> Result<LibraryMaterialInspection, String> {
+    let locator = directory
+        .open_database()
+        .map_err(text)?
+        .row_image_locator(row_id)
+        .map_err(text)?;
+    let path = crate::storage::resolve_image_source(directory, &locator)
+        .ok_or_else(|| "这张图片的原文件和库内副本均不可用，请选择其他图片。".to_string())?;
+    let mut inspection = inspect(&path)?;
+    if let Some(name) = locator
+        .image_path
+        .as_deref()
+        .and_then(|value| Path::new(value).file_stem())
+        .filter(|name| !name.is_empty())
+    {
+        inspection.title = name.to_string_lossy().into_owned();
+    }
+    Ok(LibraryMaterialInspection {
+        path: path.to_string_lossy().into_owned(),
+        inspection,
+    })
+}
+
+#[tauri::command]
+pub(crate) async fn inspect_material_library_image(
+    runtime: State<'_, AppRuntime>,
+    row_id: i64,
+) -> Result<LibraryMaterialInspection, String> {
+    let directory = runtime.active_directory().map_err(text)?;
+    tauri::async_runtime::spawn_blocking(move || inspect_library_image(&directory, row_id))
+        .await
+        .map_err(text)?
+}
+
 #[tauri::command]
 pub(crate) async fn list_materials(
     runtime: State<'_, AppRuntime>,
@@ -309,6 +352,69 @@ pub(crate) async fn material_image(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn library_selection_reads_metadata_and_falls_back_to_stored_copy_without_saving() {
+        let folder = std::env::temp_dir().join(format!(
+            "materials-library-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let directory = crate::storage::DataDirectory::initialize(&folder).unwrap();
+        let original = folder.join("original.png");
+        let stored = folder.join("files/1/stored.png");
+        std::fs::create_dir_all(stored.parent().unwrap()).unwrap();
+        let bytes = crate::storage::test_fixtures::metadata_png_bytes(
+            "gold dress",
+            Some(r#"{"v4_prompt":{"caption":{"char_captions":[{"char_caption":"silver hair"}]}}}"#),
+        );
+        std::fs::write(&original, &bytes).unwrap();
+        std::fs::write(&stored, &bytes).unwrap();
+        let mut db = directory.open_database().unwrap();
+        db.append_batch(
+            crate::db::SourceType::Folder,
+            "fixture",
+            &[crate::db::NewRow {
+                source_ordinal: 1,
+                identity: "material-library".into(),
+                image_path: Some(original.to_string_lossy().into_owned()),
+                stored_image_rel: Some("stored.png".into()),
+                ..crate::db::NewRow::default()
+            }],
+            |_| Ok(()),
+        )
+        .unwrap();
+        let result = inspect_library_image(&directory, 1).unwrap();
+        assert_eq!(Path::new(&result.path), original);
+        assert!(
+            result
+                .inspection
+                .sections
+                .iter()
+                .any(|s| s.id == "v4_prompt-0" && s.text == "silver hair")
+        );
+        std::fs::rename(&original, folder.join("moved.png")).unwrap();
+        let fallback = inspect_library_image(&directory, 1).unwrap();
+        assert_eq!(Path::new(&fallback.path), stored);
+        assert!(
+            fallback
+                .inspection
+                .sections
+                .iter()
+                .any(|s| s.id == "positive" && s.text == "gold dress")
+        );
+        assert!(image::load_from_memory(&fallback.inspection.preview).is_ok());
+        assert_eq!(db.list_materials("", &[], false, 0).unwrap().total, 0);
+        assert_eq!(std::fs::read(&stored).unwrap(), bytes);
+        assert!(inspect_library_image(&directory, 999).is_err());
+        std::fs::rename(&stored, folder.join("moved-copy.png")).unwrap();
+        assert!(inspect_library_image(&directory, 1).is_err());
+        drop(db);
+        std::fs::remove_dir_all(folder).unwrap();
+    }
+
     #[test]
     fn metadata_exposes_individual_characters_and_preserves_prompt_text() {
         let chunks = BTreeMap::from([

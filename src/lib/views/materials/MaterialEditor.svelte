@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
   import { confirm, open } from "@tauri-apps/plugin-dialog";
-  import { inspectMaterialImage, saveMaterial, type Material, type MaterialDraft, type MaterialInspection } from "../../api/materials";
+  import { inspectMaterialImage, inspectMaterialLibraryImage, saveMaterial, type Material, type MaterialDraft, type MaterialInspection } from "../../api/materials";
   import { errorText } from "../../stores/app-state.svelte";
   import { tagStore } from "../../stores/tag-store.svelte";
   import { tagColorFor } from "../../utils/tag-colors";
@@ -9,6 +9,7 @@
   import { registerCloseGuard } from "../../stores/close-guard";
   import Modal from "../../ui/Modal.svelte";
   import MaterialImage from "./MaterialImage.svelte";
+  import LibraryImagePicker from "./LibraryImagePicker.svelte";
   import type { ImageLoader } from "../../images/image-loader";
 
   let { material = null, path = null, remaining = 0, loader, onsaved, onclose }: {
@@ -24,6 +25,7 @@
   let busy = $state(false);
   let error = $state("");
   let tagQuery = $state("");
+  let libraryOpen = $state(false);
   const availableTags = $derived([...new Set([...tagStore.list.map(t => t.name), ...draft.tags])].filter(name => name.toLowerCase().includes(tagQuery.trim().toLowerCase())));
   const combined = $derived(mergeMaterialMetadata(inspection?.sections ?? [], selectedSections));
   const dirty = $derived(JSON.stringify(draft) !== initial);
@@ -40,12 +42,24 @@
     busy = true; error = "";
     try {
       const result = await inspectMaterialImage(imagePath);
-      if (preview) URL.revokeObjectURL(preview);
-      preview = URL.createObjectURL(new Blob([new Uint8Array(result.preview)], { type: "image/png" }));
-      inspection = result;
-      draft.imagePath = imagePath;
-      if (!draft.title.trim()) draft.title = result.title;
-      metadataMode = false; selectedSections = [];
+      applyImage(imagePath, result);
+    } catch (cause) { error = `无法读取图片：${errorText(cause)}`; }
+    finally { busy = false; }
+  }
+  function applyImage(imagePath: string, result: MaterialInspection) {
+    if (preview) URL.revokeObjectURL(preview);
+    preview = URL.createObjectURL(new Blob([new Uint8Array(result.preview)], { type: "image/png" }));
+    inspection = result;
+    draft.imagePath = imagePath;
+    if (!draft.title.trim()) draft.title = result.title;
+    metadataMode = false; selectedSections = [];
+  }
+  async function chooseLibraryImage(rowId: number) {
+    busy = true; error = "";
+    try {
+      const result = await inspectMaterialLibraryImage(rowId);
+      applyImage(result.path, result.inspection);
+      libraryOpen = false;
     } catch (cause) { error = `无法读取图片：${errorText(cause)}`; }
     finally { busy = false; }
   }
@@ -57,6 +71,7 @@
   }
   async function close() {
     if (busy) return;
+    if (libraryOpen) { libraryOpen = false; error = ""; return; }
     if (dirty && !(await confirm("放弃尚未保存的素材内容？", { title: "取消编辑", kind: "warning", okLabel: "放弃", cancelLabel: "继续编辑" }))) return;
     onclose();
   }
@@ -78,10 +93,14 @@
 <Modal open={true} onclose={() => void close()} {busy} width="900px" labelledby="material-editor-title">
   <div class="editor">
     <header><h2 id="material-editor-title">{material ? "编辑素材" : "确认导入素材"}</h2><span>{remaining > 0 ? `之后还有 ${remaining} 张待确认` : material ? "保存后修改才会生效" : "确认保存后才会添加到素材库"}</span></header>
+    {#if libraryOpen}
+      <LibraryImagePicker {busy} {error} onchoose={id => void chooseLibraryImage(id)} oncancel={() => { libraryOpen = false; error = ""; }} />
+    {:else}
     <div class="editor-body">
       <div class="cover-column">
         <div class="cover">{#if preview}<img src={preview} alt="待保存的素材展示图" />{:else if material}<MaterialImage id={material.id} {loader} alt={material.title} />{:else}<span>选择一张展示图</span>{/if}</div>
-        <button class="btn" disabled={busy} onclick={() => void chooseImage()}>{busy ? "处理中…" : "选择 / 更换展示图"}</button>
+        <button class="btn btn-primary" disabled={busy} onclick={() => { error = ""; libraryOpen = true; }}>从图库选择</button>
+        <button class="btn" disabled={busy} onclick={() => void chooseImage()}>{busy ? "处理中…" : "从本地文件选择"}</button>
         <p>支持 PNG、JPG、WebP 等图片。展示图随素材保存。</p>
       </div>
       <fieldset disabled={busy}>
@@ -115,6 +134,7 @@
     </div>
     {#if error}<p class="error" role="alert">{error}</p>{/if}
     <footer><button class="btn" disabled={busy} onclick={() => void close()}>{remaining ? "取消剩余导入" : "取消"}</button><button class="btn btn-primary" disabled={busy || (!draft.id && !draft.imagePath)} onclick={() => void save()}>{busy ? "处理中…" : material ? "保存修改" : remaining ? "确认导入，继续下一张" : "确认导入"}</button></footer>
+    {/if}
   </div>
 </Modal>
 
