@@ -1,5 +1,7 @@
 <script lang="ts">
   import { onDestroy, onMount, untrack } from "svelte";
+  import Check from "@lucide/svelte/icons/check";
+  import Copy from "@lucide/svelte/icons/copy";
   import { confirm, open } from "@tauri-apps/plugin-dialog";
   import { listMaterials, materialTagCounts, deleteMaterial, materialImage, type Material } from "../../api/materials";
   import type { TagSummary } from "../../api/tags";
@@ -130,8 +132,15 @@
     {:else}<div class="grid" aria-busy={loading}>
       {#each items as item (`${item.id}-${revision}`)}
         <button class="card" class:is-selected={selected?.id === item.id} aria-pressed={selected?.id === item.id} title="单击查看详情，双击复制文本" onclick={() => selected = item} ondblclick={() => void copy(item)}>
-          <div class="card-cover"><MaterialImage id={item.id} loader={thumbnails} alt={item.title} /></div>
-          <strong>{item.title}</strong><div class="card-tags">{#each item.tags.slice(0, 3) as tag}{@const color = tagColorFor(tag, tagStore.list)}<span style:background={color.background} style:color={color.text}>{tag}</span>{/each}{#if item.tags.length > 3}<small>+{item.tags.length - 3}</small>{/if}</div>
+          <div class="card-cover">
+            <MaterialImage id={item.id} loader={thumbnails} alt={item.title} fit="cover" />
+            <span class="selection-mark" aria-hidden="true">{#if selected?.id === item.id}<Check size={15} strokeWidth={3} />{/if}</span>
+          </div>
+          <div class="card-body">
+            <strong title={item.title}>{item.title}</strong>
+            <div class="card-tags">{#each item.tags.slice(0, 3) as tag}{@const color = tagColorFor(tag, tagStore.list)}<span style:--chip-color={color.background}>{tag}</span>{/each}{#if item.tags.length > 3}<small>+{item.tags.length - 3}</small>{/if}</div>
+            <div class="card-footer"><span class="selection-label">{selected?.id === item.id ? "已选中" : "点击选择"}</span><span class="copy-hint"><Copy size={12} />双击复制</span></div>
+          </div>
         </button>
       {/each}
     </div>{/if}
@@ -160,11 +169,26 @@
   main { display: flex; flex-direction: column; min-height: 0; padding: 24px; gap: 17px; overflow: hidden; }
   header { display: flex; justify-content: space-between; gap: 14px; align-items: center; } header p { margin-top: 8px; color: var(--text-3); font-size: var(--font-sm); }
   .actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; } .search-line { display: flex; gap: 8px; } .filter-summary { color: var(--accent); font-size: var(--font-sm); }
-  .grid { flex: 1; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(165px,1fr)); grid-auto-rows: max-content; gap: 17px; align-content: start; padding: 3px; min-height: 0; }
-  .card { min-width: 0; min-height: 270px; padding: 0 0 12px; text-align: left; border: 1px solid var(--border); border-radius: 11px; background: var(--surface); overflow: hidden; color: var(--text); transition: border-color .15s, box-shadow .15s; }
-  .card:hover { border-color: var(--accent); } .card.is-selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
-  .card-cover { height: 200px; background: var(--surface-2); } .card strong { display: block; padding: 11px 12px 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--font-sm); }
-  .card-tags { display: flex; flex-wrap: wrap; gap: 5px; } .card .card-tags { padding: 0 12px; min-height: 20px; } .card-tags span { border-radius: 5px; padding: 3px 6px; font-size: 11px; max-width: 100%; overflow-wrap: anywhere; }
+  .grid { flex: 1; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(170px,1fr)); grid-auto-rows: max-content; gap: 18px; align-content: start; padding: 6px; min-height: 0; }
+  .card { display: flex; flex-direction: column; position: relative; min-width: 0; padding: 7px; text-align: left; border: 1px solid var(--border); border-radius: 16px; background: var(--surface); color: var(--text); box-shadow: 0 2px 5px rgb(0 0 0 / 3%); cursor: pointer; transition: border-color .18s, box-shadow .18s, background .18s, transform .18s; }
+  .card:hover { transform: translateY(-3px); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); box-shadow: 0 8px 20px rgb(0 0 0 / 9%); }
+  .card:active { transform: translateY(-1px); }
+  .card.is-selected { border-color: var(--accent); background: color-mix(in srgb, var(--accent-soft) 55%, var(--surface)); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent), 0 6px 18px rgb(0 0 0 / 6%); }
+  .card:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  .card-cover { position: relative; width: 100%; aspect-ratio: 4 / 5; flex: none; overflow: hidden; border-radius: 10px; background: var(--surface-2); }
+  .selection-mark { position: absolute; top: 9px; right: 9px; width: 23px; height: 23px; box-sizing: border-box; display: grid; place-items: center; border-radius: 7px; background: rgb(255 255 255 / 90%); border: 1.5px solid rgb(0 0 0 / 20%); box-shadow: 0 1px 5px rgb(0 0 0 / 12%); color: white; transition: background .18s, border-color .18s; }
+  .card:hover .selection-mark { border-color: var(--accent); }
+  .card.is-selected .selection-mark { background: var(--accent); border-color: var(--accent); }
+  .card-body { display: flex; flex-direction: column; gap: 9px; flex: 1; min-width: 0; padding: 12px 6px 4px; }
+  .card strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; line-height: 1.4; }
+  .card-tags { display: flex; flex-wrap: wrap; gap: 5px; } .card-tags span { border-radius: 5px; padding: 3px 6px; font-size: 11px; max-width: 100%; overflow-wrap: anywhere; }
+  .card .card-tags { min-height: 22px; align-items: center; }
+  .card .card-tags span { display: inline-flex; align-items: center; gap: 5px; padding: 3px 7px; border-radius: 6px; background: color-mix(in srgb, var(--chip-color) 14%, var(--surface)); color: var(--text-2); }
+  .card .card-tags span::before { content: ""; width: 5px; height: 5px; flex: none; border-radius: 50%; background: var(--chip-color); }
+  .card-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 5px; margin-top: auto; padding-top: 10px; border-top: 1px solid color-mix(in srgb, var(--border) 65%, transparent); color: var(--text-3); font-size: 11px; }
+  .copy-hint { display: inline-flex; align-items: center; gap: 4px; }
+  .card.is-selected .selection-label { color: var(--accent); font-weight: 600; }
+  @media (prefers-reduced-motion: reduce) { .card, .selection-mark { transition: none; } .card:hover, .card:active { transform: none; } }
   .empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 15px; color: var(--text-3); text-align: center; } .empty h2 { font-size: 20px; color: var(--text-2); }
   footer { display: flex; align-items: center; justify-content: space-between; color: var(--text-3); font-size: var(--font-sm); }
   .detail { padding: 22px 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 17px; border-left: 1px solid var(--border); background: var(--surface); }
