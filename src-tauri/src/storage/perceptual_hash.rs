@@ -1,11 +1,11 @@
+use super::image_paths::resolve_hash_candidate_path;
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use image::imageops::FilterType;
 use serde::Serialize;
 
 use super::{DataDirectory, StorageError};
-use crate::db::ContentHashCandidate;
 use crate::pipeline::parallel;
 
 const HASH_SIZE: usize = 8;
@@ -55,7 +55,7 @@ impl DataDirectory {
             candidates,
             parallel::worker_count(total),
             |_, candidate| {
-                let hash = resolve_image_path(self, &candidate)
+                let hash = resolve_hash_candidate_path(self, &candidate)
                     .and_then(|path| compute_phash(&path))
                     .ok();
                 (candidate.row_id, hash)
@@ -186,34 +186,10 @@ fn hamming_distance(a: u64, b: u64) -> u32 {
     (a ^ b).count_ones()
 }
 
-fn resolve_image_path(
-    directory: &DataDirectory,
-    candidate: &ContentHashCandidate,
-) -> Result<PathBuf, io::Error> {
-    if let Some(path) = nonempty(candidate.image_path.as_deref()).map(PathBuf::from)
-        && path.is_file()
-    {
-        return Ok(path);
-    }
-    if let Some(relative) = nonempty(candidate.stored_image_path.as_deref()) {
-        let path = directory.root().join(relative);
-        if path.is_file() {
-            return Ok(path);
-        }
-    }
-    Err(io::Error::new(
-        io::ErrorKind::NotFound,
-        format!("第 {} 行没有可读图片", candidate.row_id),
-    ))
-}
-
-fn nonempty(value: Option<&str>) -> Option<&str> {
-    value.map(str::trim).filter(|value| !value.is_empty())
-}
-
 #[cfg(test)]
 mod tests {
     use std::fs;
+    use std::path::PathBuf;
     use std::sync::Mutex;
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -239,8 +215,7 @@ mod tests {
         let temporary = TemporaryPhashDirectory::new();
         let original = create_test_png(&temporary.root, "original.png", 128, 128, [200, 100, 50]);
         let similar = create_test_png(&temporary.root, "similar.png", 64, 64, [200, 100, 50]);
-        let different =
-            create_test_png(&temporary.root, "different.png", 128, 128, [10, 220, 180]);
+        let different = create_test_png(&temporary.root, "different.png", 128, 128, [10, 220, 180]);
 
         let hash_orig = compute_phash(&original).unwrap();
         let hash_sim = compute_phash(&similar).unwrap();

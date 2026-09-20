@@ -4,11 +4,11 @@ use rusqlite::TransactionBehavior;
 use serde::Serialize;
 
 use super::Database;
-use super::prompt_edit::{
+use super::quick_edit::{QuickArtistPrefixChange, QuickEditError};
+use crate::pipeline::prompt_text::{
     combined_artists, normalized_bare_tag_in_fragment, normalized_explicit_artist_tag_in_fragment,
     prefix_known_artist_tags_in_prompt,
 };
-use super::quick_edit::{QuickArtistPrefixChange, QuickEditError};
 
 const PREVIEW_SAMPLE_LIMIT: usize = 12;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -80,8 +80,7 @@ impl Database {
                 .collect::<Result<Vec<_>, _>>()?
         };
         let known_names = library_confirmed_names(&rows);
-        let Some((text, matched_artists)) =
-            prefix_known_artist_tags_in_prompt(text, &known_names)
+        let Some((text, matched_artists)) = prefix_known_artist_tags_in_prompt(text, &known_names)
         else {
             return Ok(ArtistTextPrefixResult {
                 text: text.to_owned(),
@@ -459,8 +458,8 @@ fn normalize_selected_name(name: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::test_support::append_rows;
     use crate::db::NewRow;
+    use crate::db::test_support::append_rows;
 
     #[test]
     fn apply_updates_all_prompt_fields_and_reuses_existing_undo() {
@@ -689,11 +688,9 @@ mod tests {
         assert_eq!(result.matched_artists, vec!["xy", "zz"]);
         let stored = database
             .connection
-            .query_row(
-                "SELECT positive_prompt FROM rows WHERE id = 2",
-                [],
-                |row| row.get::<_, String>(0),
-            )
+            .query_row("SELECT positive_prompt FROM rows WHERE id = 2", [], |row| {
+                row.get::<_, String>(0)
+            })
             .unwrap();
         assert_eq!(stored, "xy");
     }

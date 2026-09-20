@@ -1,12 +1,12 @@
+use super::image_paths::resolve_hash_candidate_path;
 use std::fs::File;
 use std::io::{self, Read};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
 use super::{DataDirectory, StorageError};
-use crate::db::ContentHashCandidate;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -44,7 +44,7 @@ impl DataDirectory {
         });
 
         for (index, candidate) in candidates.iter().enumerate() {
-            match resolve_image_path(self, candidate).and_then(|path| sha256_file(&path)) {
+            match resolve_hash_candidate_path(self, candidate).and_then(|path| sha256_file(&path)) {
                 Ok(hash) => hashes.push((candidate.row_id, hash)),
                 Err(_) => unreadable += 1,
             }
@@ -79,34 +79,10 @@ pub(crate) fn sha256_file(path: &Path) -> Result<String, io::Error> {
     Ok(format!("{:x}", hasher.finalize()))
 }
 
-fn resolve_image_path(
-    directory: &DataDirectory,
-    candidate: &ContentHashCandidate,
-) -> Result<PathBuf, io::Error> {
-    if let Some(path) = nonempty(candidate.image_path.as_deref()).map(PathBuf::from)
-        && path.is_file()
-    {
-        return Ok(path);
-    }
-    if let Some(relative) = nonempty(candidate.stored_image_path.as_deref()) {
-        let path = directory.root().join(relative);
-        if path.is_file() {
-            return Ok(path);
-        }
-    }
-    Err(io::Error::new(
-        io::ErrorKind::NotFound,
-        format!("第 {} 行没有可读图片", candidate.row_id),
-    ))
-}
-
-fn nonempty(value: Option<&str>) -> Option<&str> {
-    value.map(str::trim).filter(|value| !value.is_empty())
-}
-
 #[cfg(test)]
 mod tests {
     use std::fs;
+    use std::path::PathBuf;
     use std::sync::Mutex;
     use std::time::{SystemTime, UNIX_EPOCH};
 

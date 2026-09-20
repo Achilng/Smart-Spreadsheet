@@ -1,4 +1,5 @@
 mod app;
+pub mod automation;
 mod images;
 
 pub mod db;

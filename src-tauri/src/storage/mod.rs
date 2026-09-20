@@ -1,4 +1,6 @@
+pub mod rule_files;
 mod content_hash;
+mod image_paths;
 mod delete;
 mod export_images;
 mod export_json;

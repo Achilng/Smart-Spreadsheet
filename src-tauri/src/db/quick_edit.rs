@@ -4,11 +4,11 @@ use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use super::prompt_edit::{
-    combined_artists, normalize_artist_name, prefix_artist_tag_in_prompt,
-};
 use super::tags::normalize_tags;
 use super::{Database, DatabaseError};
+use crate::pipeline::prompt_text::{
+    combined_artists, normalize_artist_name, prefix_artist_tag_in_prompt,
+};
 
 const PREVIEW_SAMPLE_LIMIT: usize = 12;
 
@@ -447,8 +447,7 @@ impl Database {
             scanned_rows,
             matched_rows: u64::try_from(matched_rows.len())
                 .map_err(|_| DatabaseError::CountOverflow)?,
-            changed_rows: u64::try_from(changes.len())
-                .map_err(|_| DatabaseError::CountOverflow)?,
+            changed_rows: u64::try_from(changes.len()).map_err(|_| DatabaseError::CountOverflow)?,
             skipped_grouped_rows,
             only_ungrouped,
             changes,
@@ -478,10 +477,8 @@ impl Database {
         let changes = artist_prefix_changes(&self.connection, &artist_name)?;
         let changed_rows =
             u64::try_from(changes.len()).map_err(|_| DatabaseError::CountOverflow)?;
-        let prompt_fields_needing_changes = changes
-            .iter()
-            .map(changed_prompt_field_count)
-            .sum::<u64>();
+        let prompt_fields_needing_changes =
+            changes.iter().map(changed_prompt_field_count).sum::<u64>();
 
         Ok(QuickArtistPrefixPreview {
             scanned_rows,
@@ -507,10 +504,7 @@ impl Database {
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         let scanned_rows = row_count(&transaction)?;
         let changes = artist_prefix_changes(&transaction, &artist_name)?;
-        let prompt_fields_changed = changes
-            .iter()
-            .map(changed_prompt_field_count)
-            .sum::<u64>();
+        let prompt_fields_changed = changes.iter().map(changed_prompt_field_count).sum::<u64>();
 
         let mut update = transaction.prepare(
             "UPDATE rows
@@ -717,8 +711,7 @@ impl Database {
             if updated == 0 {
                 return Err(QuickEditError::UnknownRow(change.row_id));
             }
-            changed +=
-                u64::try_from(updated).map_err(|_| DatabaseError::CountOverflow)?;
+            changed += u64::try_from(updated).map_err(|_| DatabaseError::CountOverflow)?;
         }
         drop(update);
         transaction.commit()?;
@@ -788,12 +781,9 @@ fn artist_prefix_change(
         return None;
     }
 
-    let new_positive_prompt = positive_rewrite
-        .or_else(|| row.positive_prompt.clone());
-    let new_character_prompt = character_rewrite
-        .or_else(|| row.character_prompt.clone());
-    let new_negative_prompt = negative_rewrite
-        .or_else(|| row.negative_prompt.clone());
+    let new_positive_prompt = positive_rewrite.or_else(|| row.positive_prompt.clone());
+    let new_character_prompt = character_rewrite.or_else(|| row.character_prompt.clone());
+    let new_negative_prompt = negative_rewrite.or_else(|| row.negative_prompt.clone());
     let new_artists = if artist_source_changed {
         combined_artists(
             new_positive_prompt.as_deref().unwrap_or(""),
@@ -891,19 +881,14 @@ fn validated_tags(connection: &Connection, tags: &[String]) -> Result<Vec<String
     Ok(tags)
 }
 
-fn validated_group_name(
-    connection: &Connection,
-    group_id: i64,
-) -> Result<String, QuickEditError> {
+fn validated_group_name(connection: &Connection, group_id: i64) -> Result<String, QuickEditError> {
     if group_id <= 0 {
         return Err(QuickEditError::InvalidGroupId(group_id));
     }
     connection
-        .query_row(
-            "SELECT name FROM groups WHERE id = ?1",
-            [group_id],
-            |row| row.get(0),
-        )
+        .query_row("SELECT name FROM groups WHERE id = ?1", [group_id], |row| {
+            row.get(0)
+        })
         .optional()?
         .ok_or_else(|| DatabaseError::GroupNotFound(group_id).into())
 }
@@ -971,7 +956,10 @@ fn normalize_group_changes(
         if change.target_group_id <= 0 {
             return Err(QuickEditError::InvalidGroupId(change.target_group_id));
         }
-        if change.previous_group_id.is_some_and(|group_id| group_id <= 0) {
+        if change
+            .previous_group_id
+            .is_some_and(|group_id| group_id <= 0)
+        {
             return Err(QuickEditError::InvalidGroupId(
                 change.previous_group_id.unwrap_or_default(),
             ));
@@ -1014,41 +1002,7 @@ fn collect_prompt_tokens(prompt: Option<&str>, output: &mut HashSet<String>) {
 /// 严格提示词匹配会规范化大小写、常见 NovelAI 权重外壳和少量明确的泛用别名。
 /// 除别名表外，内部空格、下划线及其它字符保持不变。
 fn normalize_prompt_token(raw: &str) -> String {
-    let mut token = raw.trim();
-    loop {
-        let before = token;
-
-        if let Some(stripped) = token.strip_suffix("::") {
-            token = stripped.trim();
-        }
-
-        if let Some(index) = token.find("::") {
-            let prefix = token[..index].trim();
-            if prefix.is_empty() || prefix.parse::<f32>().is_ok() {
-                token = token[index + 2..].trim();
-            }
-        }
-
-        if let Some((open, close)) = token.chars().next().zip(token.chars().next_back())
-            && matches!((open, close), ('(', ')') | ('{', '}') | ('[', ']'))
-        {
-            let start = open.len_utf8();
-            let end = token.len() - close.len_utf8();
-            token = token[start..end].trim();
-        }
-
-        if let Some(index) = token.rfind(':') {
-            let weight = token[index + 1..].trim();
-            if !weight.is_empty() && weight.parse::<f32>().is_ok() {
-                token = token[..index].trim();
-            }
-        }
-
-        if token == before {
-            break;
-        }
-    }
-    let normalized = token.to_lowercase();
+    let normalized = crate::pipeline::prompt_text::normalize_prompt_token(raw);
     match normalized.as_str() {
         "girl" | "1girl" | "1 girl" => "girl".to_owned(),
         _ => normalized,

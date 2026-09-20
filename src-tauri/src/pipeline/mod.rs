@@ -10,6 +10,7 @@ mod metadata;
 mod metadata_fingerprint;
 pub mod parallel;
 pub mod png_text;
+pub(crate) mod prompt_text;
 pub mod scan;
 pub mod stealth_png;
 pub mod style_signature;
