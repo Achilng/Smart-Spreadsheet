@@ -193,7 +193,7 @@
         {#each cells as cell (`${cell.index}-${revision}`)}
           {@const item = cell.item}
           <GalleryTile x={cell.x} y={cell.y} width={layout.cardWidth} imageHeight={layout.imageHeight}
-            skeleton={!item} title={item?.title ?? ""} tags={item?.tags ?? []} isActive={!!item && selected?.id === item.id}
+            skeleton={!item} title={item?.title ?? ""} titleAlign="center" tags={item?.tags ?? []} isActive={!!item && selected?.id === item.id}
             onclick={() => { if (item) selected = item; }} ondblclick={() => { if (item) void copy(item); }}>
             {#snippet image()}{#if item}<Thumbnail rowId={item.id} loader={thumbnails} previewLoader={null} allowFileDrag={false} hasImage={true} alt={item.title} />{/if}{/snippet}
           </GalleryTile>

@@ -3,13 +3,13 @@
   import CardTagSummary from "../../ui/CardTagSummary.svelte";
 
   let {
-    x, y, width, imageHeight, title = "", subtitle, label = title,
+    x, y, width, imageHeight, title = "", subtitle, label = title, titleAlign = "left",
     isActive = false, isChecked = false, selectionActive = false, skeleton = false,
     showCheckbox = false, selectionLabel = "选择图片", tags = [], image, upperLeft, upperRight,
     onclick, ondblclick, oncontextmenu, onmousedown, onmousedowncapture, oncheck,
   }: {
     x: number; y: number; width: number; imageHeight: number;
-    title?: string; subtitle?: string; label?: string;
+    title?: string; subtitle?: string; label?: string; titleAlign?: "left" | "center";
     isActive?: boolean; isChecked?: boolean; selectionActive?: boolean; skeleton?: boolean;
     showCheckbox?: boolean; selectionLabel?: string; tags?: string[];
     image?: Snippet; upperLeft?: Snippet; upperRight?: Snippet;
@@ -34,7 +34,7 @@
       {#if upperRight}<span class="upper-right">{@render upperRight()}</span>{/if}
     </button>
     <div class="meta">
-      <div class="meta-name" title={title}>{title}</div>
+      <div class="meta-name" title={title} style:text-align={titleAlign}>{title}</div>
       {#if subtitle}<div class="meta-sub tabular">{subtitle}</div>{/if}
     </div>
   {:else}
