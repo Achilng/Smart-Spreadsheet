@@ -5,14 +5,14 @@
   let {
     x, y, width, imageHeight, title = "", subtitle, label = title, titleAlign = "left",
     isActive = false, isChecked = false, selectionActive = false, skeleton = false,
-    showCheckbox = false, selectionLabel = "选择图片", tags = [], image, upperLeft, upperRight,
+    showCheckbox = false, selectionLabel = "选择图片", tags = [], image, upperLeft, upperRight, overlayControls,
     onclick, ondblclick, oncontextmenu, onmousedown, onmousedowncapture, oncheck,
   }: {
     x: number; y: number; width: number; imageHeight: number;
     title?: string; subtitle?: string; label?: string; titleAlign?: "left" | "center";
     isActive?: boolean; isChecked?: boolean; selectionActive?: boolean; skeleton?: boolean;
     showCheckbox?: boolean; selectionLabel?: string; tags?: string[];
-    image?: Snippet; upperLeft?: Snippet; upperRight?: Snippet;
+    image?: Snippet; upperLeft?: Snippet; upperRight?: Snippet; overlayControls?: Snippet;
     onclick?: (event: MouseEvent) => void; ondblclick?: (event: MouseEvent) => void;
     oncontextmenu?: (event: MouseEvent) => void; onmousedown?: (event: MouseEvent) => void;
     onmousedowncapture?: (event: MouseEvent) => void; oncheck?: (event: MouseEvent) => void;
@@ -33,6 +33,7 @@
       {#if tags.length}<span class="tag-overlay"><CardTagSummary {tags} /></span>{/if}
       {#if upperRight}<span class="upper-right">{@render upperRight()}</span>{/if}
     </button>
+    {#if overlayControls}<div class="overlay-controls">{@render overlayControls()}</div>{/if}
     <div class="meta">
       <div class="meta-name" title={title} style:text-align={titleAlign}>{title}</div>
       {#if subtitle}<div class="meta-sub tabular">{subtitle}</div>{/if}
@@ -124,6 +125,8 @@
     right: 8px;
     z-index: 1;
   }
+
+  .overlay-controls { position: absolute; top: 8px; right: 8px; }
 
   .upper-left {
     position: absolute;

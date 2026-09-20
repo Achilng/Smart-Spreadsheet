@@ -1,5 +1,8 @@
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
+  import { flip } from "svelte/animate";
+  import { flipDuration } from "../../ui/motion";
+  import { newMaterialVersion, materialVersionDrafts, moveMaterialVersion, duplicateMaterialVersion } from "../../utils/material-versions";
   import { confirm, open } from "@tauri-apps/plugin-dialog";
   import { inspectMaterialImage, inspectMaterialLibraryImage, saveMaterial, type Material, type MaterialDraft, type MaterialInspection } from "../../api/materials";
   import { app, errorText } from "../../stores/app-state.svelte";
@@ -12,14 +15,38 @@
   import { startMaterialGalleryPick } from "../../stores/material-gallery-picker.svelte";
   import type { ImageLoader } from "../../images/image-loader";
 
-  let { material = null, path = null, remaining = 0, loader, onsaved, onclose }: {
-    material?: Material | null; path?: string | null; remaining?: number; loader: ImageLoader;
+  let { material = null, versionId, path = null, remaining = 0, loader, versionLoader, onsaved, onclose }: {
+    material?: Material | null; versionId?: number; path?: string | null; remaining?: number; loader: ImageLoader; versionLoader: ImageLoader;
     onsaved: (item: Material) => void; onclose: () => void;
   } = $props();
-  let draft = $state<MaterialDraft>({ id: null, title: "", text: "", tags: [], imagePath: null });
+  let draft = $state<MaterialDraft>({ id: null, title: "", text: "", tags: [], imagePath: null, versions: [newMaterialVersion("默认版本")] });
   let initial = $state("");
   let inspection = $state<MaterialInspection | null>(null);
-  let preview = $state("");
+  let previews = $state<Record<string,string>>({});
+  const previewUrls = new Set<string>();
+  let imageTarget = $state<"cover" | "version">("cover");
+  let activeKey = $state("");
+  let draggedKey = $state<string | null>(null);
+  const current = $derived(draft.versions.find(v => v.key === activeKey) ?? draft.versions[0]);
+  const activeIndex = $derived(draft.versions.indexOf(current));
+  const imageKey = $derived(imageTarget === "cover" ? "cover" : current.key);
+  const preview = $derived(previews[imageKey] ?? "");
+  function selectVersion(key: string) { activeKey = key; inspection = null; metadataMode = false; selectedSections = []; }
+  function selectImageTarget(target: "cover" | "version") { imageTarget = target; inspection = null; metadataMode = false; selectedSections = []; }
+  function moveVersion(from: number, to: number) { draft.versions = moveMaterialVersion(draft.versions, from, to); }
+  function addVersion(duplicate = false) {
+    const version = duplicate ? duplicateMaterialVersion(current) : newMaterialVersion(`版本 ${draft.versions.length + 1}`);
+    if (duplicate && previews[current.key]) previews[version.key] = previews[current.key];
+    draft.versions = [...draft.versions, version]; selectVersion(version.key); imageTarget = "version";
+  }
+  async function removeVersion() {
+    if (draft.versions.length <= 1) return;
+    const target = current;
+    if (!(await confirm(`删除版本「${target.name}」？保存素材后生效。`, { title: "删除版本", kind: "warning", okLabel: "删除", cancelLabel: "取消" }))) return;
+    if (draft.versions.length <= 1) return;
+    draft.versions = draft.versions.filter(v => v.key !== target.key); selectVersion(draft.versions[0].key);
+  }
+  function useCover() { current.imagePath = null; current.imageSourceId = null; delete previews[current.key]; inspection = null; metadataMode = false; }
   let metadataMode = $state(false);
   let selectedSections = $state<string[]>([]);
   let busy = $state(false);
@@ -32,12 +59,13 @@
   const dirty = $derived(JSON.stringify(draft) !== initial);
 
   onMount(() => {
-    draft = { id: material?.id ?? null, title: material?.title ?? "", text: material?.text ?? "", tags: [...(material?.tags ?? [])], imagePath: null };
+    draft = { id: material?.id ?? null, title: material?.title ?? "", text: material?.text ?? "", tags: [...(material?.tags ?? [])], imagePath: null, versions: materialVersionDrafts(material) };
+    activeKey = (draft.versions.find(v => v.id === versionId) ?? draft.versions[0]).key;
     initial = JSON.stringify(draft);
     if (path) void inspectImage(path);
     return registerCloseGuard(() => busy ? "素材正在读取或保存" : dirty ? "素材有尚未确认保存的内容" : null);
   });
-  onDestroy(() => { stopGalleryPick?.(); if (preview) URL.revokeObjectURL(preview); });
+  onDestroy(() => { stopGalleryPick?.(); for (const url of previewUrls) URL.revokeObjectURL(url); });
 
   function chooseFromGallery() {
     error = ""; libraryOpen = true;
@@ -56,10 +84,11 @@
     finally { busy = false; }
   }
   function applyImage(imagePath: string, result: MaterialInspection) {
-    if (preview) URL.revokeObjectURL(preview);
-    preview = URL.createObjectURL(new Blob([new Uint8Array(result.preview)], { type: "image/png" }));
+    previews[imageKey] = URL.createObjectURL(new Blob([new Uint8Array(result.preview)], { type: "image/png" }));
+    previewUrls.add(previews[imageKey]);
     inspection = result;
-    draft.imagePath = imagePath;
+    if (imageTarget === "cover") draft.imagePath = imagePath;
+    else { current.imagePath = imagePath; current.imageSourceId = null; }
     if (!draft.title.trim()) draft.title = result.title;
     metadataMode = false; selectedSections = [];
   }
@@ -87,11 +116,13 @@
   function toggleTag(name: string) { draft.tags = draft.tags.includes(name) ? draft.tags.filter(t => t !== name) : [...draft.tags, name]; }
   function addTags() { draft.tags = [...new Set([...draft.tags, ...splitMaterialTags(tagQuery)])]; tagQuery = ""; }
   async function applyMetadata() {
-    if (draft.text && draft.text !== combined && !(await confirm("用所选元数据替换当前文本内容？", { title: "填入元数据", okLabel: "替换", cancelLabel: "取消" }))) return;
-    draft.text = combined;
+    const target = current, text = combined;
+    if (target.text && target.text !== text && !(await confirm("用所选元数据替换当前文本内容？", { title: "填入元数据", okLabel: "替换", cancelLabel: "取消" }))) return;
+    target.text = text;
   }
   async function save() {
     if (busy || (!draft.id && !draft.imagePath)) return;
+    draft.text = draft.versions[0].text;
     busy = true; error = "";
     try { const item = await saveMaterial($state.snapshot(draft)); initial = JSON.stringify(draft); onsaved(item); }
     catch (cause) { error = `保存失败，内容已保留：${errorText(cause)}`; }
@@ -104,7 +135,19 @@
     <header><h2 id="material-editor-title">{material ? "编辑素材" : "确认导入素材"}</h2><span>{remaining > 0 ? `之后还有 ${remaining} 张待确认` : material ? "保存后修改才会生效" : "确认保存后才会添加到素材库"}</span></header>
     <div class="editor-body">
       <div class="cover-column">
-        <div class="cover">{#if preview}<img src={preview} alt="待保存的素材展示图" />{:else if material}<MaterialImage id={material.id} {loader} alt={material.title} />{:else}<span>选择一张展示图</span>{/if}</div>
+        <div class="image-switch" role="group" aria-label="要编辑的图片">
+          <button class:active={imageTarget === "cover"} disabled={busy} onclick={() => selectImageTarget("cover")}>固定封面</button>
+          <button class:active={imageTarget === "version"} disabled={busy} onclick={() => selectImageTarget("version")}>版本图片</button>
+        </div>
+        <div class="cover">
+          {#if preview}<img src={preview} alt="待保存的图片" />
+          {:else if imageTarget === "version" && current.imageSourceId}<MaterialImage id={current.imageSourceId} loader={versionLoader} alt={current.name} />
+          {:else if previews.cover}<img src={previews.cover} alt="固定封面" />
+          {:else if material}<MaterialImage id={material.id} {loader} alt={material.title} />
+          {:else}<span>选择一张展示图</span>{/if}
+        </div>
+        <small>{imageTarget === "cover" ? "列表卡片始终显示此封面" : `${current.name} · ${current.imagePath || current.imageSourceId ? "独立图片" : "沿用固定封面"}`}</small>
+        {#if imageTarget === "version" && (current.imagePath || current.imageSourceId)}<button class="btn" disabled={busy} onclick={useCover}>改用固定封面</button>{/if}
         <button class="btn btn-primary" disabled={busy} onclick={chooseFromGallery}>去画廊选择</button>
         <button class="btn" disabled={busy} onclick={() => void chooseImage()}>{busy ? "处理中…" : "从本地文件选择"}</button>
         <p>支持 PNG、JPG、WebP 等图片。展示图随素材保存。</p>
@@ -121,6 +164,27 @@
           </div>
           <small>{draft.tags.length ? `已选：${draft.tags.join("、")}` : "未选择 Tag"}</small>
         </div>
+        <div class="version-heading"><strong>版本 <small>{draft.versions.length}</small></strong><span>拖动排序 · 第一项默认复制</span></div>
+        <div class="version-list" role="list" aria-label="素材版本">
+          {#each draft.versions as version, index (version.key)}
+            <div class="version-row" class:active={current.key === version.key} role="listitem" draggable={!busy}
+              animate:flip={{ duration: flipDuration(180) }}
+              ondragstart={event => { draggedKey = version.key; event.dataTransfer?.setData("text/plain", version.key); }}
+              ondragend={() => draggedKey = null} ondragover={event => { if (draggedKey) event.preventDefault(); }}
+              ondrop={event => { event.preventDefault(); if (draggedKey) moveVersion(draft.versions.findIndex(v => v.key === draggedKey), index); draggedKey = null; }}>
+              <button class="version-select" aria-pressed={current.key === version.key} onclick={() => selectVersion(version.key)}><span class="grip" aria-hidden="true">⠿</span><span>{version.name || "未命名版本"}</span>{#if index === 0}<small>默认</small>{/if}</button>
+              <button class="move" aria-label={`上移 ${version.name}`} disabled={index === 0} onclick={() => moveVersion(index,index-1)}>↑</button>
+              <button class="move" aria-label={`下移 ${version.name}`} disabled={index === draft.versions.length-1} onclick={() => moveVersion(index,index+1)}>↓</button>
+            </div>
+          {/each}
+        </div>
+        <div class="version-actions">
+          <button class="btn" disabled={draft.versions.length >= 128} onclick={() => addVersion()}>新增版本</button>
+          <button class="btn" disabled={draft.versions.length >= 128} onclick={() => addVersion(true)}>复制为新版本</button>
+          {#if activeIndex > 0}<button class="text-action" onclick={() => moveVersion(activeIndex,0)}>设为默认</button>{/if}
+          <button class="text-action danger" disabled={draft.versions.length <= 1} onclick={() => void removeVersion()}>删除版本</button>
+        </div>
+        <label>版本名称<input bind:value={current.name} placeholder="例如：无服设、原服设、JK 制服" /></label>
         {#if inspection}
           {#if inspection.warning}<p class="hint">{inspection.warning}</p>{/if}
           {#if inspection.sections.length}
@@ -135,7 +199,7 @@
             </div>
           {:else}<p class="hint">未发现可提取的提示词文本，可在下方手动填写。</p>{/if}
         {/if}
-        <label>文本内容<textarea class="content" bind:value={draft.text} placeholder="粘贴提示词或其他文本；双击素材卡片会复制这里的全部内容。"></textarea></label>
+        <label>文本内容<textarea class="content" bind:value={current.text} placeholder="此版本的提示词或其他文本。"></textarea></label>
       </fieldset>
     </div>
     {#if error}<p class="error" role="alert">{error}</p>{/if}
@@ -161,6 +225,24 @@
   .tags button.selected { border-color: var(--tag-color); background: var(--accent-soft); color: var(--text); }
   .metadata-options { max-height: 140px; overflow-y: auto; display: grid; gap: 7px; }
   .inline { flex-direction: row; align-items: center; } .hint { margin: 0; line-height: 1.5; }
+  .image-switch { display: flex; padding: 3px; gap: 3px; border-radius: 9px; background: var(--surface-2); }
+  .image-switch button { flex: 1; border: 0; border-radius: 7px; background: transparent; padding: 7px; font-size: var(--font-sm); color: var(--text-3); transition: background 180ms var(--ease-responsive), color 180ms var(--ease-responsive); }
+  .image-switch button.active { color: var(--text); background: var(--surface); box-shadow: var(--shadow-1); }
+  .version-heading { display: flex; align-items: center; justify-content: space-between; font-size: var(--font-sm); }
+  .version-heading span { font-size: 11px; color: var(--text-3); }
+  .version-list { display: grid; gap: 4px; max-height: 180px; overflow-y: auto; }
+  .version-row { display: flex; align-items: center; border: 1px solid transparent; border-radius: 8px; transition: background 180ms var(--ease-responsive), border-color 180ms var(--ease-responsive); }
+  .version-row.active { background: var(--accent-soft); border-color: var(--accent-soft-border); }
+  .version-select { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; padding: 8px; border: 0; background: transparent; text-align: left; font-size: var(--font-sm); }
+  .version-select > span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .version-select small { flex: none; margin-left: auto; color: var(--accent); font-size: 10px; }
+  .grip { color: var(--text-3); cursor: grab; }
+  .move { border: 0; background: transparent; color: var(--text-3); padding: 5px 7px; }
+  .version-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .version-actions .btn { font-size: var(--font-sm); padding: 4px 8px; }
+  .text-action { border: 0; background: transparent; color: var(--accent); font-size: var(--font-sm); padding: 4px; }
+  .text-action.danger { color: var(--danger); }
   .error { color: var(--danger); } footer { justify-content: flex-end; }
+  @media (prefers-reduced-motion: reduce) { .image-switch button, .version-row { transition: none; } }
   @media (max-width: 720px) { .editor-body { grid-template-columns: 1fr; } .cover { height: 190px; } header { align-items: start; flex-direction: column; } }
 </style>

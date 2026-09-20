@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onDestroy, onMount, untrack } from "svelte";
   import { confirm, open } from "@tauri-apps/plugin-dialog";
-  import { listMaterials, materialTagCounts, deleteMaterial, materialImage, type Material } from "../../api/materials";
+  import { listMaterials, materialTagCounts, deleteMaterial, materialImage, materialVersionImage, type Material } from "../../api/materials";
   import type { TagSummary } from "../../api/tags";
   import { app, errorText, setNotice } from "../../stores/app-state.svelte";
   import { loadTags, tagStore } from "../../stores/tag-store.svelte";
@@ -18,10 +18,12 @@
   import Thumbnail from "../../ui/Thumbnail.svelte";
   import MaterialDetailPanel from "./MaterialDetailPanel.svelte";
   import DetailSidebar from "../../ui/DetailSidebar.svelte";
+  import MaterialVersionMenu from "./MaterialVersionMenu.svelte";
   import MaterialEditor from "./MaterialEditor.svelte";
 
   let { active }: { active: boolean } = $props();
   const thumbnails = new ImageLoader(id => materialImage(id, true), 4, 144, "image/png");
+  const versionCovers = new ImageLoader(materialVersionImage, 2, 16, "image/png");
   const covers = new ImageLoader(id => materialImage(id, false), 2, 8, "image/png");
   const PAGE_SIZE = 48;
   let pagesVersion = $state(0);
@@ -39,6 +41,7 @@
   let revision = $state(0);
   let editorOpen = $state(false);
   let editing = $state<Material | null>(null);
+  let editingVersion = $state<number | undefined>();
   let pendingPaths = $state<string[]>([]);
   let editorKey = $state(0);
   let request = 0;
@@ -72,7 +75,7 @@
       lastDirectory = directory;
       untrack(() => {
         selected = null; materialBrowser.search = ""; selectedTags = []; untagged = false;
-        editorOpen = false; pendingPaths = []; thumbnails.clear(); covers.clear(); revision++;
+        editorOpen = false; pendingPaths = []; thumbnails.clear(); covers.clear(); versionCovers.clear(); revision++;
       });
     }
   });
@@ -133,11 +136,12 @@
       if (result) beginImport(typeof result === "string" ? [result] : result);
     } catch (cause) { setNotice({ tone: "error", text: errorText(cause) }); }
   }
-  function create() { editing = null; pendingPaths = []; editorKey++; editorOpen = true; }
-  function edit() { if (selected) { editing = selected; pendingPaths = []; editorKey++; editorOpen = true; } }
+  function create() { editing = null; editingVersion = undefined; pendingPaths = []; editorKey++; editorOpen = true; }
+  function editItem(item: Material) { selected = item; edit(); }
+  function edit(versionId?: number) { if (selected) { editing = selected; editingVersion = versionId; pendingPaths = []; editorKey++; editorOpen = true; } }
   function closeEditor() { editorOpen = false; editing = null; pendingPaths = []; }
   function saved(item: Material) {
-    thumbnails.clear(); covers.clear(); revision++;
+    thumbnails.clear(); covers.clear(); versionCovers.clear(); revision++;
     keepSavedSelection = true; selected = item; clearFilter();
     void loadTags();
     setNotice({ tone: "success", text: `素材「${item.title}」已保存。` });
@@ -145,14 +149,15 @@
     else closeEditor();
   }
   async function copy(item: Material) {
-    if (!item.text) { setNotice({ tone: "error", text: "这份素材还没有文本，请先编辑内容。" }); return; }
-    try { await navigator.clipboard.writeText(item.text); setNotice({ tone: "success", text: `已复制「${item.title}」的文本。` }); }
+    const text = item.versions[0]?.text ?? item.text;
+    if (!text) { setNotice({ tone: "error", text: "这份素材还没有文本，请先编辑内容。" }); return; }
+    try { await navigator.clipboard.writeText(text); setNotice({ tone: "success", text: `已复制「${item.title}」的文本。` }); }
     catch (cause) { setNotice({ tone: "error", text: `复制失败：${errorText(cause)}` }); }
   }
   async function remove() {
     const item = selected;
     if (!item || !(await confirm(`删除素材「${item.title}」及其展示图和文本？原始图片不会被修改。`, { title: "删除素材", kind: "warning", okLabel: "删除", cancelLabel: "取消" }))) return;
-    try { await deleteMaterial(item.id); selected = null; thumbnails.clear(); covers.clear(); revision++; setNotice({ tone: "success", text: "素材已删除。" }); }
+    try { await deleteMaterial(item.id); selected = null; thumbnails.clear(); covers.clear(); versionCovers.clear(); revision++; setNotice({ tone: "success", text: "素材已删除。" }); }
     catch (cause) { setNotice({ tone: "error", text: errorText(cause) }); }
   }
   onMount(() => {
@@ -160,7 +165,7 @@
     window.addEventListener("material-path-drop", handler);
     return () => window.removeEventListener("material-path-drop", handler);
   });
-  onDestroy(() => { request++; pages.dispose(); thumbnails.dispose(); covers.dispose(); });
+  onDestroy(() => { request++; pages.dispose(); thumbnails.dispose(); covers.dispose(); versionCovers.dispose(); });
 </script>
 
 <section class="materials" inert={editorOpen}>
@@ -195,6 +200,7 @@
           <GalleryTile x={cell.x} y={cell.y} width={layout.cardWidth} imageHeight={layout.imageHeight}
             skeleton={!item} title={item?.title ?? ""} titleAlign="center" tags={item?.tags ?? []} isActive={!!item && selected?.id === item.id}
             onclick={() => { if (item) selected = item; }} ondblclick={() => { if (item) void copy(item); }}>
+            {#snippet overlayControls()}{#if item && item.versions.length > 1}<MaterialVersionMenu material={item} onmanage={() => editItem(item)} />{/if}{/snippet}
             {#snippet image()}{#if item}<Thumbnail rowId={item.id} loader={thumbnails} previewLoader={null} allowFileDrag={false} hasImage={true} alt={item.title} />{/if}{/snippet}
           </GalleryTile>
         {/each}
@@ -202,11 +208,11 @@
     </GalleryViewport>
   </main>
   <DetailSidebar open={detailOpen} onopen={() => detailOpen = true}>
-    <MaterialDetailPanel material={selected} {revision} active={active && !editorOpen} loader={covers}
+    <MaterialDetailPanel material={selected} {revision} active={active && !editorOpen} loader={covers} versionLoader={versionCovers}
       onedit={edit} ondelete={() => void remove()} oncollapse={() => detailOpen = false} />
   </DetailSidebar>
 </section>
-{#if editorOpen}{#key editorKey}<MaterialEditor material={editing} path={pendingPaths[0] ?? null} remaining={Math.max(0, pendingPaths.length - 1)} loader={covers} onsaved={saved} onclose={closeEditor} />{/key}{/if}
+{#if editorOpen}{#key editorKey}<MaterialEditor material={editing} versionId={editingVersion} path={pendingPaths[0] ?? null} remaining={Math.max(0, pendingPaths.length - 1)} loader={covers} versionLoader={versionCovers} onsaved={saved} onclose={closeEditor} />{/key}{/if}
 
 <style>
   .materials { width: 100%; height: 100%; display: flex; min-height: 0; color: var(--text); }

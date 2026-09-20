@@ -374,6 +374,10 @@ fn apply_pending_migrations(connection: &mut Connection, from_version: u32) -> R
         transaction.execute_batch(migrations::MIGRATION_19)?;
         version = 19;
     }
+    if version == 19 {
+        transaction.execute_batch(migrations::MIGRATION_20)?;
+        version = 20;
+    }
     debug_assert_eq!(version, CURRENT_SCHEMA_VERSION);
     transaction.pragma_update(None, "user_version", version)?;
     transaction.commit()?;
@@ -491,6 +495,7 @@ mod tests {
                 "groups",
                 "import_batches",
                 "material_tags",
+                "material_versions",
                 "materials",
                 "row_tags",
                 "rows",

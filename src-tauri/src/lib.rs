@@ -64,6 +64,7 @@ pub fn run() {
             app::materials::save_material,
             app::materials::delete_material,
             app::materials::material_image,
+            app::materials::material_version_image,
             app::commands::create_prompt_doc,
             app::commands::load_prompt_doc,
             app::commands::save_prompt_doc,

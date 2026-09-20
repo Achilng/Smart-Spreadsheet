@@ -1,4 +1,20 @@
-pub const CURRENT_SCHEMA_VERSION: u32 = 19;
+pub const CURRENT_SCHEMA_VERSION: u32 = 20;
+
+pub const MIGRATION_20: &str = r#"
+CREATE TABLE material_versions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    material_id INTEGER NOT NULL REFERENCES materials(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    text TEXT NOT NULL DEFAULT '',
+    position INTEGER NOT NULL CHECK(position >= 0),
+    cover BLOB,
+    thumbnail BLOB,
+    CHECK ((cover IS NULL) = (thumbnail IS NULL))
+) STRICT;
+CREATE INDEX idx_material_versions_order ON material_versions(material_id, position, id);
+INSERT INTO material_versions(material_id,name,text,position)
+    SELECT id,'默认版本',text,0 FROM materials;
+"#;
 
 pub const MIGRATION_19: &str = r#"
 CREATE TABLE materials (

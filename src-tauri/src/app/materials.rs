@@ -2,7 +2,7 @@ use super::AppRuntime;
 use crate::{
     db::{
         TagSummary,
-        materials::{Material, MaterialDraft, MaterialPage},
+        materials::{Material, MaterialDraft, MaterialPage, VersionImages},
     },
     pipeline,
 };
@@ -303,12 +303,36 @@ pub(crate) async fn save_material(
                 Ok((encode(&image, 1600)?, encode(&image, 360)?))
             })
             .transpose()?;
+        if draft
+            .versions
+            .as_ref()
+            .is_some_and(|v| v.is_empty() || v.len() > 128)
+        {
+            return Err("请保留 1 至 128 个版本".into());
+        }
+        let version_images: VersionImages = draft
+            .versions
+            .as_deref()
+            .unwrap_or_default()
+            .iter()
+            .map(|version| {
+                version
+                    .image_path
+                    .as_ref()
+                    .map(|path| -> Result<_, String> {
+                        let image = decode(Path::new(path))?;
+                        Ok((encode(&image, 1600)?, encode(&image, 360)?))
+                    })
+                    .transpose()
+            })
+            .collect::<Result<_, _>>()?;
         directory
             .open_database()
             .map_err(text)?
-            .save_material(
+            .save_material_versions(
                 &draft,
                 images.as_ref().map(|(a, b)| (a.as_slice(), b.as_slice())),
+                &version_images,
             )
             .map_err(text)
     })
@@ -342,6 +366,24 @@ pub(crate) async fn material_image(
             .open_database()
             .map_err(text)?
             .material_image(id, thumbnail)
+            .map(Response::new)
+            .map_err(text)
+    })
+    .await
+    .map_err(text)?
+}
+
+#[tauri::command]
+pub(crate) async fn material_version_image(
+    runtime: State<'_, AppRuntime>,
+    id: i64,
+) -> Result<Response, String> {
+    let directory = runtime.active_directory().map_err(text)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        directory
+            .open_database()
+            .map_err(text)?
+            .material_version_image(id)
             .map(Response::new)
             .map_err(text)
     })

@@ -1,8 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { TagSummary } from "./tags";
 
-export interface Material { id: number; title: string; text: string; tags: string[]; updatedAt: string }
-export interface MaterialDraft { id: number | null; title: string; text: string; tags: string[]; imagePath: string | null }
+export interface MaterialVersion { id: number; name: string; text: string; hasImage: boolean }
+export interface Material { id: number; title: string; text: string; tags: string[]; updatedAt: string; versions: MaterialVersion[] }
+export interface MaterialVersionDraft { key: string; id: number | null; name: string; text: string; imagePath: string | null; imageSourceId: number | null }
+export interface MaterialDraft { id: number | null; title: string; text: string; tags: string[]; imagePath: string | null; versions: MaterialVersionDraft[] }
 export interface MetadataSection { id: string; label: string; text: string }
 export interface MaterialInspection { title: string; preview: number[]; sections: MetadataSection[]; warning: string | null }
 export const listMaterials = (search: string, tags: string[], untagged: boolean, offset: number) =>
@@ -15,3 +17,4 @@ export const inspectMaterialLibraryImage = (rowId: number) => invoke<{ path: str
 export const saveMaterial = (draft: MaterialDraft) => invoke<Material>("save_material", { draft });
 export const deleteMaterial = (id: number) => invoke<void>("delete_material", { id });
 export const materialImage = (id: number, thumbnail: boolean) => invoke<ArrayBuffer>("material_image", { id, thumbnail });
+export const materialVersionImage = (id: number) => invoke<ArrayBuffer>("material_version_image", { id });
