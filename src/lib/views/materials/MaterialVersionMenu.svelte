@@ -11,10 +11,19 @@
   let open = $state(false), x = $state(0), y = $state(0);
   let copiedId = $state<number | null>(null), busy = $state(false);
   let session = 0;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  function close() { session++; clearTimeout(timer); open = false; copiedId = null; busy = false; }
+  let feedbackTimer: ReturnType<typeof setTimeout> | undefined;
+  let leaveTimer: ReturnType<typeof setTimeout> | undefined;
+  function keepOpen() { clearTimeout(leaveTimer); }
+  function leave(event: PointerEvent) {
+    if (!open || event.pointerType === "touch") return;
+    keepOpen();
+    // Allow crossing the small gap between the image corner and the floating menu.
+    leaveTimer = setTimeout(close, 180);
+  }
+  function close() { session++; keepOpen(); clearTimeout(feedbackTimer); open = false; copiedId = null; busy = false; }
   function show(event: MouseEvent) {
-    if (open) { close(); return; }
+    keepOpen();
+    if (open) return;
     const rect = (event.currentTarget as HTMLButtonElement).getBoundingClientRect();
     close(); x = Math.max(8, rect.right - 200); y = rect.bottom + 6; open = true;
   }
@@ -27,10 +36,11 @@
       await navigator.clipboard.writeText(version.text);
       if (token !== session) return;
       copiedId = version.id;
-      timer = setTimeout(close, 550);
+      clearTimeout(feedbackTimer);
+      feedbackTimer = setTimeout(() => copiedId = null, 1200);
     } catch {
-      if (token === session) { busy = false; setNotice({ tone: "error", text: "复制失败，请检查剪贴板权限。" }); }
-    }
+      if (token === session) setNotice({ tone: "error", text: "复制失败，请检查剪贴板权限。" });
+    } finally { if (token === session) busy = false; }
   }
   onDestroy(close);
   $effect(() => {
@@ -44,6 +54,7 @@
   });
 </script>
 
+<div class="version-control" role="group" aria-label="素材版本快捷复制" onpointerenter={keepOpen} onpointerleave={leave}>
 <button class="version-count" title={`${material.versions.length} 个版本 · 快速复制`} aria-label={`${material.title}：选择版本复制`} aria-haspopup="menu" aria-expanded={open} onclick={show} onpointerdown={event => { if (open) event.stopPropagation(); }}>
   <Layers size={13} strokeWidth={1.6} /><span>{material.versions.length}</span>
 </button>
@@ -63,10 +74,15 @@
   <div class="separator"></div>
   <button type="button" role="menuitem" onclick={() => { close(); onmanage(); }}>管理版本…</button>
 </ContextMenuShell>
+</div>
 
 <style>
-  .version-count { position: relative; z-index: 1; display: flex; align-items: center; justify-content: center; gap: 6px; min-width: 40px; height: 26px; padding: 0 7px; border: 1px solid rgb(255 255 255 / 20%); border-radius: 6px; background: rgb(25 29 36 / 48%); color: #fff; backdrop-filter: blur(10px); box-shadow: 0 1px 4px rgb(0 0 0 / 10%); font-size: 11px; font-weight: 500; font-variant-numeric: tabular-nums; line-height: 1; transition: background var(--motion-fast) var(--ease-responsive), border-color var(--motion-fast) var(--ease-responsive); }
-  .version-count:hover, .version-count[aria-expanded="true"] { background: rgb(25 29 36 / 68%); border-color: rgb(255 255 255 / 35%); }
+  .version-control { line-height: 1; }
+  .version-count { position: relative; z-index: 1; display: flex; align-items: center; justify-content: center; gap: 5px; min-width: 34px; height: 26px; padding: 0 3px; border: 0; border-radius: 3px; background: transparent; color: rgb(255 255 255 / 92%); font-size: 11px; font-weight: 500; font-variant-numeric: tabular-nums; line-height: 1; text-shadow: 0 1px 3px rgb(0 0 0 / 55%); transition: color var(--motion-fast) var(--ease-responsive); }
+  .version-count::before { content: ""; position: absolute; z-index: -1; inset: -8px -8px -20px -28px; border-radius: 0 var(--radius-m) 0 0; background: radial-gradient(ellipse at top right, rgb(0 0 0 / 42%), rgb(0 0 0 / 12%) 42%, transparent 74%); opacity: 0.75; pointer-events: none; transition: opacity var(--motion-fast) var(--ease-responsive); }
+  .version-count :global(svg) { filter: drop-shadow(0 1px 2px rgb(0 0 0 / 45%)); }
+  .version-count:hover, .version-count[aria-expanded="true"] { color: #fff; }
+  .version-count:hover::before, .version-count[aria-expanded="true"]::before { opacity: 1; }
   .version-count:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .version-options { width: 200px; max-height: min(320px, 60vh); overflow-y: auto; }
   .menu-heading { padding: 7px 10px 5px; color: var(--text-3); font-size: 10px; }
