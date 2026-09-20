@@ -78,17 +78,14 @@
 
 <style>
   .version-control { line-height: 1; }
-  .version-count { position: relative; z-index: 1; display: flex; align-items: center; justify-content: center; gap: 5px; min-width: 34px; height: 26px; padding: 0 3px; border: 0; border-radius: 3px; background: transparent; color: rgb(255 255 255 / 92%); font-size: 11px; font-weight: 500; font-variant-numeric: tabular-nums; line-height: 1; text-shadow: 0 1px 3px rgb(0 0 0 / 55%); transition: color var(--motion-fast) var(--ease-responsive); }
+  .version-count { position: relative; z-index: 1; display: flex; align-items: center; justify-content: center; gap: 5px; min-width: 34px; height: 26px; padding: 0 8px; border: 1px solid rgb(255 255 255 / 48%); border-radius: 8px; background: rgb(255 255 255 / 68%); color: rgb(35 42 52 / 90%); backdrop-filter: blur(8px); box-shadow: 0 1px 5px rgb(0 0 0 / 10%); font-size: 11px; font-weight: 500; font-variant-numeric: tabular-nums; line-height: 1; }
   /* Use the image's center and motion for the trigger only; its fixed menu stays viewport-relative. */
   .version-count {
     transform: var(--gallery-image-transform);
     transform-origin: calc(100% + 8px - var(--gallery-image-width) / 2) calc(var(--gallery-image-height) / 2 - 8px);
-    transition: transform var(--gallery-image-duration) var(--ease-responsive), color var(--motion-fast) var(--ease-responsive);
+    transition: transform var(--gallery-image-duration) var(--ease-responsive), background-color var(--motion-fast) var(--ease-responsive), color var(--motion-fast) var(--ease-responsive);
   }
-  .version-count::before { content: ""; position: absolute; z-index: -1; inset: -8px -8px -20px -28px; border-radius: 0 var(--radius-m) 0 0; background: radial-gradient(ellipse at top right, rgb(0 0 0 / 48%), rgb(0 0 0 / 16%) 42%, transparent 74%); opacity: 0.8; pointer-events: none; transition: opacity var(--motion-fast) var(--ease-responsive); }
-  .version-count :global(svg) { filter: drop-shadow(0 1px 2px rgb(0 0 0 / 45%)); }
-  .version-count:hover, .version-count[aria-expanded="true"] { color: #fff; }
-  .version-count:hover::before, .version-count[aria-expanded="true"]::before { opacity: 1; }
+  .version-count:hover, .version-count[aria-expanded="true"] { background: rgb(255 255 255 / 84%); color: rgb(35 42 52); }
   .version-count:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .version-options { width: 200px; max-height: min(320px, 60vh); overflow-y: auto; }
   .menu-heading { padding: 7px 10px 5px; color: var(--text-3); font-size: 10px; }
