@@ -2,6 +2,9 @@ import { create } from "zustand";
 import { getAppSnapshot, listTags, queryRows, type AppSnapshot, type RowQuery, type RowRecord, type TagSummary } from "../../lib/api";
 import { createRequestQueue } from "../../lib/utils/request-queue";
 import { errorText } from "../../lib/utils/format";
+import { applyScrollSnapshot, captureScrollSnapshot, clearScrollPositions, prepareFilterScrollSnapshot, type ScrollSnapshot } from "../../lib/stores/view-state";
+import { useWorkspace } from "./workspace";
+import { notify } from "./notices";
 
 interface LibraryState {
   snapshot: AppSnapshot | null;
@@ -45,7 +48,25 @@ let generation = 0;
 let initialized: Promise<void> | null = null;
 let pending = new Set<number>();
 let replacing = false;
+let incoming = new Map<number, RowRecord[]>();
+let requiredPages = new Set([0]);
+let pendingScroll: ScrollSnapshot | null = null;
+let keepActive = false;
+let beforeQueryChange: (searchSession?: number) => void = () => {};
 const enqueue = createRequestQueue();
+
+export function registerQueryNavigation(listener: typeof beforeQueryChange): () => void {
+  beforeQueryChange = listener;
+  return () => { if (beforeQueryChange === listener) beforeQueryChange = () => {}; };
+}
+
+export function browsingScrollSnapshot(): ScrollSnapshot {
+  return pendingScroll ? structuredClone(pendingScroll) : captureScrollSnapshot();
+}
+
+export function hasActiveFilters(query = useRows.getState().query): boolean {
+  return Boolean(query.tags.length || query.dedupe !== "none" || query.singleArtistOnly || query.artistFilter || query.hasVibe || query.untaggedOnly || query.filters.length || query.hideGrouped || query.search);
+}
 
 export function initializeLibrary(): Promise<void> {
   // A window owns one boot operation. StrictMode remounts subscribe to it without
@@ -55,6 +76,7 @@ export function initializeLibrary(): Promise<void> {
     try {
       const snapshot = await getAppSnapshot();
       useLibrary.setState({ snapshot, loaded: true, error: null });
+      if (snapshot.startupError) initialized = null;
       if (snapshot.dataDirectory && !snapshot.startupError) {
         await Promise.all([reloadRows(), refreshTags()]);
       }
@@ -66,49 +88,88 @@ export function initializeLibrary(): Promise<void> {
   return initialized;
 }
 
+/** Invalidate pending page requests before reconnecting to a different library. */
+export function resetLibraryRows(): void {
+  generation++; pending = new Set(); incoming = new Map(); replacing = false; pendingScroll = null;
+  clearScrollPositions();
+  useRows.setState(state => ({ query: { ...defaultFilters, sort: state.query.sort }, pages: new Map(), total: 0, loading: false, refreshing: false, error: null, activeRow: null, resetToken: state.resetToken + 1 }));
+}
+
 export async function refreshTags(): Promise<void> {
   try { useLibrary.setState({ tags: await listTags(), tagError: null }); }
   catch (error) { useLibrary.setState({ tagError: errorText(error) }); }
 }
 
-export function setQuery(patch: Partial<Filters>): void {
+export function setQuery(patch: Partial<Filters>, searchSession?: number): void {
   const before = useRows.getState().query;
   const next = { ...before, ...patch };
+  if (patch.tags?.length) next.untaggedOnly = false;
+  if (patch.untaggedOnly) next.tags = [];
   if (JSON.stringify(before) === JSON.stringify(next)) return;
   useRows.setState({ query: next });
   if (patch.sort) {
-    try { localStorage.setItem("smart-spreadsheet.image-sort", patch.sort); } catch { /* Optional preference. */ }
+    try { localStorage.setItem("smart-spreadsheet.image-sort", patch.sort); } catch (error) { notify(`无法记住图片顺序：${errorText(error)}`, "error"); }
   }
-  void reloadRows();
+  void reloadRows({ resetScroll: true, filterChange: before.sort === next.sort, searchSession });
 }
 
 export function clearFilters(): void {
-  setQuery({ ...defaultFilters, sort: useRows.getState().query.sort });
+  const query = useRows.getState().query;
+  setQuery({ ...defaultFilters, sort: query.sort, tagMode: query.tagMode, groupView: query.groupView });
 }
 
-export async function reloadRows(): Promise<void> {
+interface ReloadOptions {
+  resetScroll?: boolean;
+  filterChange?: boolean;
+  navigation?: ScrollSnapshot;
+  keepActive?: boolean;
+  searchSession?: number;
+}
+
+export async function reloadRows(options: ReloadOptions = {}): Promise<void> {
+  if (!options.navigation) beforeQueryChange(options.searchSession);
   generation += 1;
   pending = new Set();
   replacing = true;
+  incoming = new Map();
+  keepActive = options.keepActive ?? false;
+  if (options.navigation) pendingScroll = structuredClone(options.navigation);
+  else if (options.filterChange) pendingScroll = prepareFilterScrollSnapshot(hasActiveFilters());
+  else if (options.resetScroll) { clearScrollPositions(hasActiveFilters()); pendingScroll = captureScrollSnapshot(); }
+  else pendingScroll ??= captureScrollSnapshot();
+  const range = pendingScroll.ranges.find(([key]) => key === useWorkspace.getState().viewMode)?.[1];
+  const first = range ? Math.max(0, Math.floor(range.first / PAGE_SIZE)) : 0;
+  const last = range ? Math.max(first, Math.floor(range.last / PAGE_SIZE)) : 0;
+  requiredPages = new Set(Array.from({ length: last - first + 1 }, (_, index) => first + index));
   const state = useRows.getState();
   useRows.setState({ loading: state.pages.size === 0, refreshing: state.pages.size > 0, error: null });
-  await ensurePage(0);
+  await Promise.all([...requiredPages].map(ensurePage));
 }
 
 export async function ensurePage(page: number): Promise<void> {
   const state = useRows.getState();
-  if (pending.has(page) || state.error || (replacing && page !== 0) || (!replacing && state.pages.has(page))) return;
+  if (pending.has(page) || state.error || (replacing ? incoming.has(page) : state.pages.has(page))) return;
   pending.add(page);
   const requestGeneration = generation;
   const query = { ...state.query, tags: [...state.query.tags], filters: structuredClone(state.query.filters) };
   try {
     const result = await enqueue(() => requestGeneration === generation, () => queryRows({ ...query, offset: page * PAGE_SIZE, limit: PAGE_SIZE }));
-    if (!result || requestGeneration !== generation) return;
+    if (!result || requestGeneration !== generation || useRows.getState().error) return;
     const current = useRows.getState();
-    const pages = new Map(replacing ? undefined : current.pages);
-    pages.set(page, result.rows);
+    let pages: Map<number, RowRecord[]>;
+    if (replacing) {
+      incoming.set(page, result.rows);
+      const lastPage = Math.max(0, Math.ceil(result.totalCount / PAGE_SIZE) - 1);
+      requiredPages = new Set([...requiredPages].map(value => Math.min(value, lastPage)));
+      const missing = [...requiredPages].filter(value => !incoming.has(value));
+      if (missing.length) { await Promise.all(missing.map(ensurePage)); return; }
+      pages = new Map(incoming);
+      if (pendingScroll) applyScrollSnapshot(pendingScroll);
+      pendingScroll = null;
+    } else { pages = new Map(current.pages); pages.set(page, result.rows); }
+    const activeRow = replacing && !keepActive ? null : current.activeRow;
     useRows.setState({ pages, total: result.totalCount, loading: false, refreshing: false, error: null,
-      resetToken: current.resetToken + (replacing ? 1 : 0), activeRow: replacing ? null : current.activeRow });
+      resetToken: current.resetToken + (replacing ? 1 : 0), activeRow });
     replacing = false;
   } catch (error) {
     if (requestGeneration === generation) useRows.setState({ loading: false, refreshing: false, error: errorText(error) });
@@ -119,4 +180,15 @@ export async function ensurePage(page: number): Promise<void> {
 
 export function rowAt(index: number): RowRecord | undefined {
   return useRows.getState().pages.get(Math.floor(index / PAGE_SIZE))?.[index % PAGE_SIZE];
+}
+
+export function patchRowFields(rowId: number, fields: Partial<RowRecord>): void {
+  const state = useRows.getState();
+  const pages = new Map(state.pages);
+  for (const [key, rows] of pages) {
+    if (rows.some(row => row.id === rowId)) pages.set(key, rows.map(row => row.id === rowId ? { ...row, ...fields } : row));
+  }
+  useRows.setState({ pages, activeRow: state.activeRow?.id === rowId ? { ...state.activeRow, ...fields } : state.activeRow });
+  // Prompt, tag and note edits can change filter membership and duplicate groups.
+  void reloadRows({ resetScroll: state.query.sort === "recentlyUpdated", keepActive: true });
 }

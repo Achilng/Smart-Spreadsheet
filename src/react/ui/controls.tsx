@@ -1,6 +1,6 @@
 import { useId, useLayoutEffect, useRef, type ComponentProps, type ReactNode } from "react";
-import { Checkbox as CheckboxPrimitive, Dialog, DropdownMenu, Slider as SliderPrimitive, Slot, Tooltip } from "radix-ui";
-import { Check, ChevronDown, X } from "lucide-react";
+import { Checkbox as CheckboxPrimitive, Dialog, DropdownMenu, Select as SelectPrimitive, Slider as SliderPrimitive, Slot, Tooltip } from "radix-ui";
+import { Check, ChevronDown, Minus, X } from "lucide-react";
 import { cn } from "./cn";
 
 // Project controls follow shadcn's composition model: Radix owns behavior,
@@ -24,8 +24,17 @@ export function Textarea({ className, ...props }: ComponentProps<"textarea">) {
 
 export function Checkbox({ className, ...props }: ComponentProps<typeof CheckboxPrimitive.Root>) {
   return <CheckboxPrimitive.Root className={cn("r-checkbox", className)} {...props}>
-    <CheckboxPrimitive.Indicator className="r-checkbox-indicator"><Check size={12} strokeWidth={2.4} /></CheckboxPrimitive.Indicator>
+    <CheckboxPrimitive.Indicator className="r-checkbox-indicator">{props.checked === "indeterminate" ? <Minus size={12} strokeWidth={2.4} /> : <Check size={12} strokeWidth={2.4} />}</CheckboxPrimitive.Indicator>
   </CheckboxPrimitive.Root>;
+}
+
+export function Select<T extends string>({ value, onChange, options, label, disabled }: { value: T; onChange: (value: T) => void; options: readonly (readonly [T, string])[]; label: string; disabled?: boolean }) {
+  return <SelectPrimitive.Root value={value} onValueChange={next => onChange(next as T)} disabled={disabled}>
+    <SelectPrimitive.Trigger className="r-input r-select" aria-label={label}><SelectPrimitive.Value /><SelectPrimitive.Icon><ChevronDown size={14} /></SelectPrimitive.Icon></SelectPrimitive.Trigger>
+    <SelectPrimitive.Portal><SelectPrimitive.Content position="popper" sideOffset={5} collisionPadding={8} className="r-select-menu"><SelectPrimitive.Viewport>
+      {options.map(([key, text]) => <SelectPrimitive.Item value={key} key={key} className="r-menu-item"><SelectPrimitive.ItemText>{text}</SelectPrimitive.ItemText><SelectPrimitive.ItemIndicator><Check size={13} /></SelectPrimitive.ItemIndicator></SelectPrimitive.Item>)}
+    </SelectPrimitive.Viewport></SelectPrimitive.Content></SelectPrimitive.Portal>
+  </SelectPrimitive.Root>;
 }
 
 export function Slider({ className, ...props }: ComponentProps<typeof SliderPrimitive.Root>) {
@@ -84,7 +93,7 @@ function MenuEntry({ item }: { item: MenuItem }) {
   </>;
 }
 
-export function Modal({ open, onClose, title, description, busy = false, width = 440, children, footer }: {
+export function Modal({ open, onClose, title, description, busy = false, width = 440, children, footer, onEscapeKeyDown }: {
   open: boolean;
   onClose: () => void;
   title: string;
@@ -93,6 +102,7 @@ export function Modal({ open, onClose, title, description, busy = false, width =
   width?: number;
   children: ReactNode;
   footer?: ReactNode;
+  onEscapeKeyDown?: (event: KeyboardEvent) => void;
 }) {
   const descriptionId = useId();
   const opener = useRef<HTMLElement | null>(null);
@@ -106,7 +116,7 @@ export function Modal({ open, onClose, title, description, busy = false, width =
         if (firstInput) { event.preventDefault(); firstInput.focus(); }
       }}
       onCloseAutoFocus={event => { event.preventDefault(); opener.current?.focus(); }}
-      onEscapeKeyDown={event => { if (busy) event.preventDefault(); }}
+      onEscapeKeyDown={event => { onEscapeKeyDown?.(event); event.stopPropagation(); if (busy) event.preventDefault(); }}
       onPointerDownOutside={event => { if (busy) event.preventDefault(); }}>
       <header className="r-dialog-header"><div><Dialog.Title className="r-dialog-title">{title}</Dialog.Title>
         {description && <Dialog.Description id={descriptionId} className="r-dialog-description">{description}</Dialog.Description>}</div>

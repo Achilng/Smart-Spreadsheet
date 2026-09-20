@@ -8,7 +8,10 @@ async function start(): Promise<void> {
     const { installIpcMock } = await import("../lib/dev/ipc-mock");
     installIpcMock();
   }
-  const { App } = await import("./App");
+  const windowType = new URLSearchParams(location.search).get("window");
+  const App = windowType === "compare" ? (await import("./views/compare/CompareWindow")).CompareWindow
+    : windowType === "toolbox" ? (await import("./views/tools/ToolboxWindow")).ToolboxWindow
+    : (await import("./App")).App;
   const root = document.getElementById("app");
   if (!root) throw new Error("Missing #app root element");
   createRoot(root).render(<StrictMode><App /></StrictMode>);
