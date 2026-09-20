@@ -79,7 +79,13 @@
 <style>
   .version-control { line-height: 1; }
   .version-count { position: relative; z-index: 1; display: flex; align-items: center; justify-content: center; gap: 5px; min-width: 34px; height: 26px; padding: 0 3px; border: 0; border-radius: 3px; background: transparent; color: rgb(255 255 255 / 92%); font-size: 11px; font-weight: 500; font-variant-numeric: tabular-nums; line-height: 1; text-shadow: 0 1px 3px rgb(0 0 0 / 55%); transition: color var(--motion-fast) var(--ease-responsive); }
-  .version-count::before { content: ""; position: absolute; z-index: -1; inset: -8px -8px -20px -28px; border-radius: 0 var(--radius-m) 0 0; background: radial-gradient(ellipse at top right, rgb(0 0 0 / 42%), rgb(0 0 0 / 12%) 42%, transparent 74%); opacity: 0.75; pointer-events: none; transition: opacity var(--motion-fast) var(--ease-responsive); }
+  /* Use the image's center and motion for the trigger only; its fixed menu stays viewport-relative. */
+  .version-count {
+    transform: var(--gallery-image-transform);
+    transform-origin: calc(100% + 8px - var(--gallery-image-width) / 2) calc(var(--gallery-image-height) / 2 - 8px);
+    transition: transform var(--gallery-image-duration) var(--ease-responsive), color var(--motion-fast) var(--ease-responsive);
+  }
+  .version-count::before { content: ""; position: absolute; z-index: -1; inset: -8px -8px -20px -28px; border-radius: 0 var(--radius-m) 0 0; background: radial-gradient(ellipse at top right, rgb(0 0 0 / 48%), rgb(0 0 0 / 16%) 42%, transparent 74%); opacity: 0.8; pointer-events: none; transition: opacity var(--motion-fast) var(--ease-responsive); }
   .version-count :global(svg) { filter: drop-shadow(0 1px 2px rgb(0 0 0 / 45%)); }
   .version-count:hover, .version-count[aria-expanded="true"] { color: #fff; }
   .version-count:hover::before, .version-count[aria-expanded="true"]::before { opacity: 1; }

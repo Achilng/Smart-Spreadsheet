@@ -21,6 +21,7 @@
 
 <div class="card" class:is-active={isActive} class:is-checked={isChecked}
   class:is-skeleton={skeleton} class:selection-active={selectionActive}
+  style:--gallery-image-width="{width}px" style:--gallery-image-height="{imageHeight}px"
   style:left="{x}px" style:top="{y}px" style:width="{width}px" role="listitem" {oncontextmenu}>
   {#if !skeleton}
     {#if showCheckbox}
@@ -46,6 +47,8 @@
 
 <style>
   .card {
+    --gallery-image-transform: translateY(0) scale(1);
+    --gallery-image-duration: var(--motion-fast);
     position: absolute;
     display: flex;
     flex-direction: column;
@@ -65,18 +68,20 @@
     box-shadow: var(--shadow-1);
     overflow: hidden;
     transition:
-      transform var(--motion-fast) var(--ease-responsive),
-      box-shadow var(--motion-fast) var(--ease-responsive);
+      transform var(--gallery-image-duration) var(--ease-responsive),
+      box-shadow var(--gallery-image-duration) var(--ease-responsive);
+    transform: var(--gallery-image-transform);
   }
 
+  .card:hover:not(.is-skeleton) { --gallery-image-transform: translateY(-2px) scale(1); }
+
   .card:hover:not(.is-skeleton) .thumb {
-    transform: translateY(-2px);
     box-shadow: var(--shadow-hover);
   }
 
-  .card:active:not(.is-skeleton) .thumb {
-    transform: translateY(-2px) scale(0.99);
-    transition-duration: var(--motion-press);
+  .card:active:not(.is-skeleton) {
+    --gallery-image-transform: translateY(-2px) scale(0.99);
+    --gallery-image-duration: var(--motion-press);
   }
 
   .card.is-active .thumb {
