@@ -4,8 +4,8 @@
 
 智能表格是面向 NovelAI 图片的本地资料库，核心流程是：导入图片 → 检索与整理 → 对比与导出。
 
-- 技术栈：Tauri 2、Svelte 5、TypeScript、Rust、SQLite。
-- 前端方向：已确定迁移到 React，配合 shadcn/ui 精修细节；保留当前结构、功能位置和白色配色。React 三个窗口已实现并进入集成验收；默认运行版本暂保留 Svelte，范围、阶段和验收见 [React 重写计划](docs/REACT-REWRITE.md)。
+- 技术栈：Tauri 2、React 19、TypeScript、Rust、SQLite。
+- 前端方向：已确定迁移到 React，配合 shadcn/ui 精修细节；保留当前结构、功能位置和白色配色。React 三个窗口已实现，默认开发与生产入口已切换；用户要求停止后续测试并收尾，范围与已验证边界见 [React 重写计划](docs/REACT-REWRITE.md)。
 - 输入：PNG、文件夹和 ZIP / 7Z / RAR 压缩包，解析图片中的生成元数据。
 - 整理：画廊、表格、分组、Tag、筛选、重复项、提示词编辑和图片对比。
 - 素材：独立图片卡片库，固定封面与共享 Tag；同一素材可保存多个命名版本，每个版本一段文本和可选图片。双击复制第一项，导入时确认并选择 PNG 元数据区域。
