@@ -22,7 +22,7 @@
   import { clearSelection } from "../../stores/selection-store.svelte";
   import { loadTags, tagStore } from "../../stores/tag-store.svelte";
   import { softFade } from "../../ui/motion";
-  import { tagColorFor } from "../../utils/tag-colors";
+  import TagFilterSidebar from "../../ui/TagFilterSidebar.svelte";
 
   let status = $state<{ text: string; isError: boolean } | null>(null);
 
@@ -217,14 +217,10 @@
   );
 </script>
 
-<div class="tag-sidebar">
-  <header class="sidebar-header">
-    <div class="header-copy">
-      <h3>筛选</h3>
-      <p class="header-sub tabular">{filterSummary}</p>
-    </div>
-  </header>
-
+<TagFilterSidebar {entries} {activeTags} summary={filterSummary} ontoggle={toggleFilterTag}
+  oncontextmenu={onTagContextMenu} modeLabel={rowStore.tagMode === "and" ? "AND 模式 ⌄" : "OR 模式 ⌄"}
+  onmode={() => setMode(rowStore.tagMode === "and" ? "or" : "and")} error={tagStore.error}>
+  {#snippet filters()}
   <div class="f-group" role="group" aria-label="去重与筛选">
     <div class="f-head">显示</div>
     <label class="check-row" class:on={rowStore.dedupe === "positivePrompt"} class:is-disabled={app.viewMode === "group"}>
@@ -263,53 +259,13 @@
     </button>
   </div>
 
-  <div class="f-head tag-head">
-    Tag
-    <button
-      type="button"
-      class="mode-link"
-      title="切换 Tag 筛选的组合方式"
-      onclick={() => setMode(rowStore.tagMode === "and" ? "or" : "and")}
-    >
-      {rowStore.tagMode === "and" ? "AND 模式 ⌄" : "OR 模式 ⌄"}
-    </button>
-  </div>
-
-  <div class="tag-list">
-    {#if tagStore.error}
-      <p class="list-note">Tag 列表加载失败：{tagStore.error}</p>
-    {:else if entries.length === 0}
-      <p class="list-note faint">还没有 Tag。选中图片后点“编辑 Tag”即可创建。</p>
-    {:else}
-      {#each entries as entry (entry.name)}
-        {@const filterOn = activeTags.includes(entry.name)}
-        {@const tone = tagColorFor(entry.name, tagStore.list)}
-        <button
-          type="button"
-          class="tag-row check-row"
-          class:on={filterOn}
-          aria-pressed={filterOn}
-          onclick={() => toggleFilterTag(entry.name)}
-          oncontextmenu={(e) => onTagContextMenu(e, entry.name)}
-        >
-          <span class="cbox" aria-hidden="true"></span>
-          <span
-            class="tag-color-swatch"
-            style:--tag-color={tone.background}
-            title="画廊胶囊颜色 {tone.background}"
-            aria-hidden="true"
-          ></span>
-          <span class="tag-name" title={entry.name}>{entry.name}</span>
-          <span class="tag-count">{formatCount(entry.rowCount)}</span>
-        </button>
-      {/each}
-    {/if}
-  </div>
-
+  {/snippet}
+  {#snippet statusContent()}
   {#if status}
     <p class="form-status" class:is-error={status.isError} role="status" transition:softFade={{ duration: 140 }}>{status.text}</p>
   {/if}
-</div>
+  {/snippet}
+</TagFilterSidebar>
 
 <ContextMenuShell open={tagMenu.open} x={tagMenu.x} y={tagMenu.y} onclose={closeTagMenu}>
   <button type="button" role="menuitem" onclick={requestRenameTag}>
@@ -374,245 +330,6 @@
 </Modal>
 
 <style>
-  .tag-sidebar {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    min-height: 0;
-  }
-
-  .sidebar-header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    padding: 20px 16px 14px;
-    flex: none;
-  }
-
-  .header-copy {
-    min-width: 0;
-  }
-
-  .sidebar-header h3 {
-    font-size: 19px;
-    font-weight: 700;
-    letter-spacing: -0.02em;
-    color: var(--text);
-  }
-
-  .header-sub {
-    margin-top: 3px;
-    font-size: var(--font-sm);
-    color: var(--text-3);
-  }
-
-  /* ---- 小节头（显示 / Tag） ---- */
-  .f-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 4px;
-    font-size: var(--font-xs);
-    font-weight: 700;
-    color: var(--text);
-    margin-bottom: 6px;
-  }
-
-  .f-group {
-    padding: 0 12px 14px;
-    flex: none;
-  }
-
-  .tag-head {
-    padding: 0 16px;
-    margin-bottom: 2px;
-    flex: none;
-  }
-
-  .filter-launch {
-    width: 100%;
-    min-height: 36px;
-    margin-top: 8px;
-    padding: 0 9px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-s);
-    background: var(--surface-2);
-    color: var(--text-2);
-    font: inherit;
-    text-align: left;
-  }
-
-  .filter-launch:hover,
-  .filter-launch.on {
-    border-color: color-mix(in srgb, var(--primary) 45%, var(--border-strong));
-    color: var(--text);
-  }
-
-  .filter-launch.on {
-    background: var(--primary-soft);
-  }
-
-  .filter-launch > span:nth-child(2) {
-    font-weight: 650;
-  }
-
-  .filter-hint {
-    margin-left: auto;
-    color: var(--text-4);
-    font-size: var(--font-xs);
-  }
-
-  .filter-badge {
-    min-width: 20px;
-    height: 20px;
-    margin-left: auto;
-    padding: 0 6px;
-    display: grid;
-    place-items: center;
-    border-radius: var(--radius-full);
-    background: var(--primary);
-    color: white;
-    font-size: 11px;
-    font-weight: 700;
-  }
-
-  .mode-link {
-    border: none;
-    background: none;
-    font-size: 11px;
-    font-weight: 400;
-    color: var(--accent);
-    padding: 0;
-  }
-
-  .mode-link:hover {
-    text-decoration: underline;
-  }
-
-  /* ---- check-row（显示开关 + Tag 行共用） ---- */
-  .check-row {
-    display: flex;
-    align-items: center;
-    gap: 9px;
-    min-height: 30px;
-    width: 100%;
-    border: none;
-    background: none;
-    border-radius: var(--radius-s);
-    padding: 0 4px;
-    font-size: var(--font-md);
-    color: var(--text-2);
-    text-align: left;
-    cursor: pointer;
-    transition:
-      background var(--motion-fast) var(--ease-responsive),
-      color var(--motion-fast) var(--ease-responsive),
-      transform var(--motion-press) var(--ease-responsive);
-  }
-
-  .check-row:hover:not(:disabled):not(.is-disabled) {
-    color: var(--text);
-  }
-
-  .check-row.on {
-    color: var(--text);
-    font-weight: 600;
-  }
-
-  .check-row.is-disabled {
-    opacity: 0.5;
-    cursor: default;
-  }
-
-  /* label 内的原生 checkbox 隐藏，语义保留，视觉走自绘 cbox */
-  .check-row input[type="checkbox"] {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    opacity: 0;
-    pointer-events: none;
-  }
-
-  .cbox {
-    width: 16px;
-    height: 16px;
-    border-radius: 5px;
-    flex: none;
-    border: 1.5px solid var(--border-strong);
-    background: var(--surface);
-    transition:
-      background var(--motion-fast) var(--ease-responsive),
-      border-color var(--motion-fast) var(--ease-responsive);
-  }
-
-  .check-row.on .cbox {
-    background-color: var(--primary);
-    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M4 8.5 6.8 11 12 5.5" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>');
-    background-position: center;
-    background-size: 12px;
-    background-repeat: no-repeat;
-    border-color: var(--primary);
-  }
-
-  .tag-list {
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
-    padding: 0 12px 8px;
-    display: flex;
-    flex-direction: column;
-    gap: 0;
-  }
-
-  .list-note {
-    padding: 8px 6px;
-    font-size: var(--font-sm);
-  }
-
-  .tag-row:active:not(:disabled) {
-    transform: scale(0.995);
-  }
-
-  .tag-row:disabled {
-    cursor: default;
-    opacity: 0.6;
-  }
-
-  .tag-row {
-    gap: 7px;
-  }
-
-  .tag-color-swatch {
-    width: 11px;
-    height: 11px;
-    border-radius: 3px;
-    background: var(--tag-color);
-    box-shadow: inset 0 0 0 1px rgb(0 0 0 / 16%);
-    flex: none;
-  }
-
-  .tag-name {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .tag-count {
-    font-size: 11.5px;
-    color: var(--text-4);
-    font-variant-numeric: tabular-nums;
-    flex: none;
-  }
-
-  .check-row.on .tag-count {
-    color: var(--text-3);
-  }
-
   .form-status {
     padding: 2px 12px 8px;
     font-size: var(--font-sm);

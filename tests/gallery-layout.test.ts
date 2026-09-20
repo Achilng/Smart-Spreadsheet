@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { galleryLayout, galleryCellPosition, GALLERY_PADDING, GALLERY_GAP } from "../src/lib/views/gallery/gallery-layout.ts";
+import { galleryLayout, galleryCellPosition, galleryVisibleIndices, GALLERY_PADDING, GALLERY_GAP } from "../src/lib/views/gallery/gallery-layout.ts";
 
 test("gallery cards fit their viewport across slider sizes and narrow windows", () => {
   for (const width of [80, 255, 500, 900, 1600]) {
@@ -17,6 +17,19 @@ test("gallery cards fit their viewport across slider sizes and narrow windows", 
       assert.ok(lastCard.y + layout.imageHeight < layout.spacerHeight);
     }
   }
+});
+
+test("virtual scrolling crosses page boundaries while keeping rendered cards bounded", () => {
+  const layout = galleryLayout(1000, 200, 10000);
+  const first = galleryVisibleIndices(layout, 0, 700, 10000);
+  const middle = galleryVisibleIndices(layout, galleryCellPosition(48, layout).y, 700, 10000);
+  const last = galleryVisibleIndices(layout, layout.spacerHeight - 700, 700, 10000);
+  assert.ok(first.includes(0));
+  assert.ok(middle.includes(47) && middle.includes(48));
+  assert.ok(middle[0] > 0);
+  assert.ok(first.length < 60 && middle.length < 60 && last.length < 60);
+  assert.equal(last.at(-1), 9999);
+  assert.deepEqual(galleryVisibleIndices(layout, 0, 0, 10000), []);
 });
 
 test("empty and partial final rows have bounded space; restoring width restores positions", () => {

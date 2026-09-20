@@ -21,3 +21,13 @@ export function galleryCellPosition(index: number, layout: ReturnType<typeof gal
     y: GALLERY_PADDING + Math.floor(index / layout.columns) * layout.cellHeight,
   };
 }
+
+/** The visible rows plus a small buffer, shared by both scrolling libraries. */
+export function galleryVisibleIndices(layout: ReturnType<typeof galleryLayout>, scrollTop: number, viewportHeight: number, count: number, overscanRows = 2): number[] {
+  if (viewportHeight <= 0 || count <= 0) return [];
+  const firstRow = Math.max(0, Math.floor((scrollTop - GALLERY_PADDING) / layout.cellHeight) - overscanRows);
+  const lastRow = Math.min(layout.gridRows, Math.ceil((scrollTop - GALLERY_PADDING + viewportHeight) / layout.cellHeight) + overscanRows);
+  const first = Math.min(count, firstRow * layout.columns);
+  const end = Math.min(count, lastRow * layout.columns);
+  return Array.from({ length: Math.max(0, end - first) }, (_, index) => first + index);
+}

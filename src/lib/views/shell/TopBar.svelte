@@ -13,6 +13,7 @@
   import { buildExportItems } from "../../stores/export-actions";
   import { clearSelection } from "../../stores/selection-store.svelte";
   import { rowStore, setSearch } from "../../stores/row-store.svelte";
+  import { materialBrowser } from "../../stores/material-browser.svelte";
   import Dropdown, { type DropdownItem } from "../../ui/Dropdown.svelte";
   import { openToolboxWindow } from "../../windows/toolbox";
   import ViewSwitcher from "./ViewSwitcher.svelte";
@@ -23,9 +24,13 @@
   let debounceTimer: ReturnType<typeof setTimeout> | undefined;
   let searchSession = 0;
   let lastInputAt = 0;
+  let searchScope: "materials" | "rows" = "rows";
+  const isMaterials = $derived(app.viewMode === "materials");
 
   function flushSearch(): void {
     clearTimeout(debounceTimer);
+    if ((isMaterials ? "materials" : "rows") !== searchScope) return;
+    if (isMaterials) { materialBrowser.search = searchInput; return; }
     if (rowStore.search !== searchInput) {
       setSearch(searchInput, searchSession);
       clearSelection();
@@ -42,6 +47,7 @@
   function onSearchInput(event: Event): void {
     const value = (event.target as HTMLInputElement).value;
     searchInput = value;
+    searchScope = isMaterials ? "materials" : "rows";
     clearTimeout(debounceTimer);
     if (event instanceof InputEvent && event.isComposing) return;
     if (Date.now() - lastInputAt > 1500) searchSession += 1;
@@ -53,18 +59,21 @@
     searchSession += 1;
     searchInput = "";
     clearTimeout(debounceTimer);
+    if (isMaterials) { materialBrowser.search = ""; return; }
     if (rowStore.search !== "") {
       setSearch("");
       clearSelection();
     }
   }
 
-  // 搜索词的权威 state 在 rowStore；外部（筛选 chip 删除等）改动时回流输入框
+  // Each library owns its search; switching views cancels any uncommitted debounce.
   $effect(() => {
-    const external = rowStore.search;
+    const scope = isMaterials ? "materials" : "rows";
+    const external = isMaterials ? materialBrowser.search : rowStore.search;
     void navigation.token;
     untrack(() => {
       searchInput = external;
+      searchScope = scope;
       clearTimeout(debounceTimer);
     });
   });
@@ -115,11 +124,12 @@
 
   <div class="title-spacer" data-tauri-drag-region></div>
 
-  {#if app.viewMode !== "promptDocs" && app.viewMode !== "materials"}
+  {#if app.viewMode !== "promptDocs"}
     <div class="search-box" data-tauri-drag-region>
       <input
         type="text"
-        placeholder="搜索文件名 / 提示词 / 画师…"
+        placeholder={isMaterials ? "搜索素材名称 / 文本内容…" : "搜索文件名 / 提示词 / 画师…"}
+        aria-label={isMaterials ? "搜索素材名称和文本" : "搜索文件名、提示词和画师"}
         value={searchInput}
         oninput={onSearchInput}
         oncompositionend={onSearchInput}

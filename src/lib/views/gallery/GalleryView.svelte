@@ -11,12 +11,11 @@
   import { restoreScrollPosition, savedScrollPosition, rememberVisibleRange, saveScrollPosition, scrollPositionVersion } from "../../stores/view-state";
   import GalleryCard from "./GalleryCard.svelte";
   import GalleryViewport from "./GalleryViewport.svelte";
-  import { galleryLayout, galleryCellPosition, GALLERY_GAP as GAP, GALLERY_PADDING as PADDING } from "./gallery-layout";
+  import { galleryLayout, galleryCellPosition, galleryVisibleIndices, GALLERY_GAP as GAP, GALLERY_PADDING as PADDING } from "./gallery-layout";
 
 
   let { active = true }: { active?: boolean } = $props();
 
-  const OVERSCAN_ROWS = 2;
   const PROGRESSIVE_DELAY_MS = 400;
 
   const minCardWidth = $derived(app.galleryCardSize);
@@ -48,7 +47,6 @@
   const cardWidth = $derived(layout.cardWidth);
   const imageHeight = $derived(layout.imageHeight);
   const cellHeight = $derived(layout.cellHeight);
-  const gridRows = $derived(layout.gridRows);
   const spacerHeight = $derived(layout.spacerHeight);
 
   interface Cell {
@@ -63,50 +61,18 @@
     if (!active || rowStore.totalCount === 0 || viewportWidth <= 0 || viewportHeight <= 0) {
       return [] as Cell[];
     }
-    const firstRow = Math.max(0, Math.floor((scrollTop - PADDING) / cellHeight) - OVERSCAN_ROWS);
-    const lastRow = Math.min(
-      gridRows,
-      Math.ceil((scrollTop - PADDING + viewportHeight) / cellHeight) + OVERSCAN_ROWS,
-    );
-    const result: Cell[] = [];
-    for (let gridRow = firstRow; gridRow < lastRow; gridRow += 1) {
-      for (let column = 0; column < columns; column += 1) {
-        const index = gridRow * columns + column;
-        if (index >= rowStore.totalCount) {
-          break;
-        }
-        result.push({
-          index,
-          row: getRow(index),
-          ...galleryCellPosition(index, layout),
-        });
-      }
-    }
-    return result;
+    return galleryVisibleIndices(layout, scrollTop, viewportHeight, rowStore.totalCount).map(index => ({
+      index, row: getRow(index), ...galleryCellPosition(index, layout),
+    }));
   });
 
   const progressiveRowIds = $derived.by(() => {
     void rowStore.pagesVersion;
     const rowIds = new Set<number>();
-    if (!active || viewportWidth <= 0 || viewportHeight <= 0 || rowStore.totalCount === 0) {
-      return rowIds;
-    }
-    const firstRow = Math.max(0, Math.floor((scrollTop - PADDING) / cellHeight));
-    const lastRow = Math.min(
-      gridRows,
-      Math.ceil((scrollTop - PADDING + viewportHeight) / cellHeight),
-    );
-    for (let gridRow = firstRow; gridRow < lastRow; gridRow += 1) {
-      for (let column = 0; column < columns; column += 1) {
-        const index = gridRow * columns + column;
-        if (index >= rowStore.totalCount) {
-          break;
-        }
-        const row = getRow(index);
-        if (row) {
-          rowIds.add(row.id);
-        }
-      }
+    if (!active || viewportWidth <= 0 || viewportHeight <= 0) return rowIds;
+    for (const index of galleryVisibleIndices(layout, scrollTop, viewportHeight, rowStore.totalCount, 0)) {
+      const row = getRow(index);
+      if (row) rowIds.add(row.id);
     }
     return rowIds;
   });
