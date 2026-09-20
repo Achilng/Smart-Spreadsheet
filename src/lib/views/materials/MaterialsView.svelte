@@ -35,7 +35,6 @@
   let tags = $state<TagSummary[]>([]);
   let selected = $state<Material | null>(null);
   let detailOpen = $state(true);
-  let tagSearch = $state("");
   let selectedTags = $state<string[]>([]);
   let untagged = $state(false);
   let revision = $state(0);
@@ -170,7 +169,7 @@
 
 <section class="materials" inert={editorOpen}>
   <aside class="filter-sidebar">
-    <TagFilterSidebar {entries} activeTags={selectedTags} ontoggle={filterTag} searchable bind:query={tagSearch}
+    <TagFilterSidebar {entries} activeTags={selectedTags} ontoggle={filterTag}
       summary={selectedTags.length || untagged ? `${selectedTags.length} 个 Tag · ${Number(untagged)} 个条件生效` : "未启用筛选"}
       modeLabel="同时匹配" error={tagError} emptyText="还没有 Tag。编辑素材时可以添加。">
       {#snippet filters()}
