@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount, untrack } from "svelte";
-  import { confirm, open } from "@tauri-apps/plugin-dialog";
+  import { open } from "@tauri-apps/plugin-dialog";
   import { listMaterials, materialTagCounts, deleteMaterial, materialImage, materialVersionImage, type Material } from "../../api/materials";
   import type { TagSummary } from "../../api/tags";
   import { app, errorText, setNotice } from "../../stores/app-state.svelte";
@@ -21,6 +21,7 @@
   import MaterialVersionMenu from "./MaterialVersionMenu.svelte";
   import MaterialEditor from "./MaterialEditor.svelte";
   import ContextMenuShell from "../../ui/ContextMenuShell.svelte";
+  import DeleteConfirmation from "../../ui/DeleteConfirmation.svelte";
   import Trash2 from "@lucide/svelte/icons/trash-2";
 
   let { active }: { active: boolean } = $props();
@@ -38,6 +39,8 @@
   let selected = $state<Material | null>(null);
   let contextMenu = $state<{ item: Material; x: number; y: number } | null>(null);
   let deleting = $state(false);
+  let pendingDelete = $state<{ item: Material; directory: string | null | undefined } | null>(null);
+  let deleteError = $state<string | null>(null);
   let detailOpen = $state(true);
   let selectedTags = $state<string[]>([]);
   let untagged = $state(false);
@@ -78,6 +81,7 @@
       lastDirectory = directory;
       untrack(() => {
         selected = null; materialBrowser.search = ""; selectedTags = []; untagged = false;
+        pendingDelete = null; deleteError = null;
         editorOpen = false; pendingPaths = []; thumbnails.clear(); covers.clear(); versionCovers.clear(); revision++;
       });
     }
@@ -137,7 +141,7 @@
   function deleteFromMenu() {
     const item = contextMenu?.item;
     contextMenu = null;
-    if (item) void remove(item);
+    if (item) requestRemove(item);
   }
   function onScroll() { contextMenu = null; if (active) scrollTop = viewport?.scrollTop ?? 0; }
   function filterTag(name: string) { selectedTags = selectedTags.includes(name) ? selectedTags.filter(t => t !== name) : [...selectedTags, name]; untagged = false; }
@@ -173,20 +177,32 @@
     try { await navigator.clipboard.writeText(text); setNotice({ tone: "success", text: `已复制「${item.title}」的文本。` }); }
     catch (cause) { setNotice({ tone: "error", text: `复制失败：${errorText(cause)}` }); }
   }
-  async function remove(item: Material | null = selected) {
+  function requestRemove(item: Material | null = selected) {
     if (!item || deleting) return;
-    const directory = app.snapshot?.dataDirectory;
+    contextMenu = null;
+    deleteError = null;
+    pendingDelete = { item, directory: app.snapshot?.dataDirectory };
+  }
+  function cancelRemove() {
+    if (deleting) return;
+    pendingDelete = null; deleteError = null;
+  }
+  async function confirmRemove() {
+    const target = pendingDelete;
+    if (!target || deleting) return;
+    const { item, directory } = target;
+    if (directory !== app.snapshot?.dataDirectory) { cancelRemove(); return; }
     deleting = true;
+    deleteError = null;
     try {
-      if (!(await confirm(`删除素材「${item.title}」及其全部 ${item.versions.length} 个版本、展示图和文本？原始图片不会被修改。`, { title: "删除素材", kind: "warning", okLabel: "删除", cancelLabel: "取消" }))) return;
-      if (directory !== app.snapshot?.dataDirectory) return;
       await deleteMaterial(item.id);
-      if (directory !== app.snapshot?.dataDirectory) return;
+      if (directory !== app.snapshot?.dataDirectory || pendingDelete !== target) return;
+      pendingDelete = null;
       if (selected?.id === item.id) selected = null;
       thumbnails.clear(); covers.clear(); versionCovers.clear(); revision++;
       setNotice({ tone: "success", text: "素材已删除。" });
     }
-    catch (cause) { setNotice({ tone: "error", text: errorText(cause) }); }
+    catch (cause) { if (pendingDelete === target) deleteError = `删除失败：${errorText(cause)}`; }
     finally { deleting = false; }
   }
   onMount(() => {
@@ -199,7 +215,7 @@
 
 <svelte:window onresize={() => contextMenu = null} />
 
-<section class="materials" inert={editorOpen}>
+<section class="materials" inert={editorOpen || pendingDelete !== null}>
   <aside class="filter-sidebar">
     <TagFilterSidebar {entries} activeTags={selectedTags} ontoggle={filterTag}
       summary={selectedTags.length || untagged ? `${selectedTags.length} 个 Tag · ${Number(untagged)} 个条件生效` : "未启用筛选"}
@@ -240,13 +256,17 @@
     </GalleryViewport>
   </main>
   <DetailSidebar open={detailOpen} onopen={() => detailOpen = true}>
-    <MaterialDetailPanel material={selected} {revision} active={active && !editorOpen} loader={covers} versionLoader={versionCovers}
-      onedit={edit} ondelete={() => void remove()} oncollapse={() => detailOpen = false} />
+    <MaterialDetailPanel material={selected} {revision} active={active && !editorOpen && !pendingDelete} loader={covers} versionLoader={versionCovers}
+      onedit={edit} ondelete={() => requestRemove()} oncollapse={() => detailOpen = false} />
   </DetailSidebar>
 </section>
 <ContextMenuShell open={contextMenu !== null} x={contextMenu?.x ?? 0} y={contextMenu?.y ?? 0} onclose={() => contextMenu = null}>
   <button type="button" role="menuitem" class="danger menu-delete" disabled={deleting} onclick={deleteFromMenu}><Trash2 size={14} strokeWidth={1.6} />删除素材</button>
 </ContextMenuShell>
+<DeleteConfirmation open={pendingDelete !== null} title={`删除素材「${pendingDelete?.item.title ?? ""}」？`}
+  warning="删除后无法通过 Ctrl+Z 恢复。"
+  description={`该素材的全部 ${pendingDelete?.item.versions.length ?? 0} 个版本、文本及展示图将一并删除，原始图片不会被修改。`}
+  busy={deleting} error={deleteError} oncancel={cancelRemove} onconfirm={() => void confirmRemove()} />
 {#if editorOpen}{#key editorKey}<MaterialEditor material={editing} versionId={editingVersion} path={pendingPaths[0] ?? null} remaining={Math.max(0, pendingPaths.length - 1)} loader={covers} versionLoader={versionCovers} onsaved={saved} onclose={closeEditor} />{/key}{/if}
 
 <style>

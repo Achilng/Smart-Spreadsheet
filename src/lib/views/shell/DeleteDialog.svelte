@@ -1,19 +1,13 @@
 <script lang="ts">
-  import Modal from "../../ui/Modal.svelte";
+  import DeleteConfirmation from "../../ui/DeleteConfirmation.svelte";
   import { formatCount } from "../../stores/app-state.svelte";
   import { cancelDelete, confirmDelete, deletion } from "../../stores/delete-actions.svelte";
 </script>
 
-<Modal open={deletion.open} onclose={cancelDelete} busy={deletion.busy} labelledby="delete-title" width="440px">
-  <div class="delete-dialog">
-    <header>
-      <h2 id="delete-title">删除 {formatCount(deletion.count)} 行？</h2>
-      <p class="irreversible-warning">
-        此操作不会加入撤销记录，删除后无法通过 Ctrl+Z 恢复，并会清空当前撤销/重做记录。
-      </p>
-      <p>对应的 Tag 关联、分组关系、受管图片副本和缩略图缓存也会永久清理。</p>
-    </header>
-
+<DeleteConfirmation open={deletion.open} oncancel={cancelDelete} onconfirm={() => void confirmDelete()}
+  busy={deletion.busy} error={deletion.error} title={`删除 ${formatCount(deletion.count)} 行？`}
+  warning="此操作不会加入撤销记录，删除后无法通过 Ctrl+Z 恢复，并会清空当前撤销/重做记录。"
+  description="对应的 Tag 关联、分组关系、受管图片副本和缩略图缓存也会永久清理。">
     <label class="trash-option">
       <input type="checkbox" bind:checked={deletion.trashOriginals} disabled={deletion.busy} />
       <span>
@@ -22,46 +16,9 @@
       </span>
     </label>
 
-    {#if deletion.error}
-      <p class="dialog-error" role="alert">{deletion.error}</p>
-    {/if}
-
-    <footer>
-      <button type="button" class="btn" disabled={deletion.busy} onclick={cancelDelete}>取消</button>
-      <button
-        type="button"
-        class="btn btn-danger"
-        disabled={deletion.busy}
-        onclick={() => void confirmDelete()}
-      >
-        {deletion.busy ? "正在删除…" : "确认删除"}
-      </button>
-    </footer>
-  </div>
-</Modal>
+</DeleteConfirmation>
 
 <style>
-  .delete-dialog {
-    padding: 18px;
-  }
-
-  header h2 {
-    font-size: var(--font-lg);
-    margin-bottom: 6px;
-  }
-
-  header p {
-    color: var(--text-2);
-    font-size: var(--font-md);
-    line-height: 1.55;
-  }
-
-  header .irreversible-warning {
-    margin-bottom: 4px;
-    color: var(--danger);
-    font-weight: 600;
-  }
-
   .trash-option {
     display: flex;
     align-items: flex-start;
@@ -94,15 +51,4 @@
     line-height: 1.5;
   }
 
-  .dialog-error {
-    margin-bottom: 12px;
-    color: var(--danger);
-    font-size: var(--font-sm);
-  }
-
-  footer {
-    display: flex;
-    justify-content: flex-end;
-    gap: 8px;
-  }
 </style>
