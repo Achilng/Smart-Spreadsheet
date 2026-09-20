@@ -1,9 +1,8 @@
-mod batches;
-mod search;
 mod artist_auto_prefix;
 mod artist_xml;
+mod automation_rules;
+mod batches;
 mod compare;
-pub(crate) mod automation_rules;
 mod delete;
 mod export;
 mod groups;
@@ -13,25 +12,26 @@ pub mod identity;
 mod image_updates;
 mod images;
 mod library_filters;
+pub mod materials;
 mod metadata_fingerprints;
 mod migrations;
 mod notes;
-pub(crate) mod prompt_edit;
-mod quick_edit;
+mod prompt_edit;
 mod query;
+mod quick_edit;
+mod search;
 mod settings;
 mod tags;
-pub mod materials;
 
-pub use batches::{AppendOutcome, BatchSummary, LibrarySummary, NewRow, SourceType};
-pub use compare::{
-    COMPARE_MODEL_SECTION_CAP, CompareModelSection, CompareSample, CompareSectionPage,
-};
 pub use artist_auto_prefix::{
     ArtistTextPrefixResult, AutoArtistCandidate, AutoArtistPrefixApplyResult,
     AutoArtistPrefixPreview,
 };
 pub use automation_rules::*;
+pub use batches::{AppendOutcome, BatchSummary, LibrarySummary, NewRow, SourceType};
+pub use compare::{
+    COMPARE_MODEL_SECTION_CAP, CompareModelSection, CompareSample, CompareSectionPage,
+};
 pub use delete::DeleteOutcome;
 pub use export::ExportRow;
 pub use groups::GroupSummary;
@@ -42,13 +42,15 @@ pub use images::RowImageLocator;
 pub use library_filters::*;
 pub use migrations::CURRENT_SCHEMA_VERSION;
 pub use prompt_edit::{PromptEditResult, SinglePromptEditResult};
+pub use query::{
+    DedupeCluster, DedupeMode, MAX_PAGE_SIZE, RowPage, RowQuery, RowRecord, SortMode, TagMatchMode,
+    TagSummary,
+};
 pub use quick_edit::{
     QuickArtistPrefixApplyResult, QuickArtistPrefixChange, QuickArtistPrefixPreview,
     QuickEditCondition, QuickEditError, QuickEditTextField, QuickGroupApplyResult,
-    QuickGroupChange, QuickGroupPreview, QuickTagApplyResult, QuickTagAssociation,
-    QuickTagPreview,
+    QuickGroupChange, QuickGroupPreview, QuickTagApplyResult, QuickTagAssociation, QuickTagPreview,
 };
-pub use query::{DedupeCluster, DedupeMode, MAX_PAGE_SIZE, RowPage, RowQuery, RowRecord, SortMode, TagMatchMode, TagSummary};
 pub use settings::{ImageExportRenameMode, ImageExportSettings};
 pub use tags::{RowSelection, TagMutationError, TagMutationResult, TagSelectionSummary};
 
@@ -56,8 +58,8 @@ use std::path::Path;
 use std::time::Duration;
 
 use migrations::{
-    MIGRATION_10, MIGRATION_11, MIGRATION_12, MIGRATION_14, MIGRATION_15, MIGRATION_16,
-    MIGRATION_17, MIGRATION_18, MIGRATION_9, MINIMUM_UPGRADABLE_SCHEMA_VERSION, SCHEMA_17,
+    MIGRATION_9, MIGRATION_10, MIGRATION_11, MIGRATION_12, MIGRATION_14, MIGRATION_15,
+    MIGRATION_16, MIGRATION_17, MIGRATION_18, MINIMUM_UPGRADABLE_SCHEMA_VERSION, SCHEMA_17,
 };
 use rusqlite::backup::{Backup, StepResult};
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior};
@@ -72,7 +74,9 @@ pub enum DatabaseError {
     Sqlite(#[from] rusqlite::Error),
     #[error("数据库版本 {found} 高于当前支持版本 {supported}")]
     UnsupportedSchemaVersion { found: u32, supported: u32 },
-    #[error("数据库版本 {found} 过旧；当前版本只支持从 v{minimum} 及以上升级，请先使用旧版应用升级数据库")]
+    #[error(
+        "数据库版本 {found} 过旧；当前版本只支持从 v{minimum} 及以上升级，请先使用旧版应用升级数据库"
+    )]
     LegacySchemaVersion { found: u32, minimum: u32 },
     #[error("数据库完整性检查失败: {0}")]
     IntegrityCheckFailed(String),
@@ -229,7 +233,9 @@ fn repair_legacy_artist_strings(connection: &mut Connection) -> Result<(), Datab
         let mut update = transaction.prepare("UPDATE rows SET artists = ?2 WHERE id = ?1")?;
         for (row_id, positive_prompt, character_prompt) in candidates {
             let combined = format!(
-                "{}\n{}", positive_prompt.unwrap_or_default(), character_prompt.unwrap_or_default()
+                "{}\n{}",
+                positive_prompt.unwrap_or_default(),
+                character_prompt.unwrap_or_default()
             );
             let artists = crate::pipeline::extract_artist_tags(&combined);
             if artists.is_empty() {
@@ -254,7 +260,9 @@ fn repair_legacy_artist_strings(connection: &mut Connection) -> Result<(), Datab
 fn backfill_missing_artist_strings(connection: &mut Connection) -> Result<(), DatabaseError> {
     const KEY: &str = "artist_string_fallback_version";
     let version: Option<String> = connection
-        .query_row("SELECT value FROM settings WHERE key = ?1", [KEY], |row| row.get(0))
+        .query_row("SELECT value FROM settings WHERE key = ?1", [KEY], |row| {
+            row.get(0)
+        })
         .optional()?;
     if version.as_deref() == Some("1") {
         return Ok(());
@@ -269,28 +277,34 @@ fn backfill_missing_artist_strings(connection: &mut Connection) -> Result<(), Da
         let mut update = transaction.prepare("UPDATE rows SET artists = ?2 WHERE id = ?1")?;
         let mut last_id = 0i64;
         loop {
-            let batch = select.query_map([last_id], |row| {
-                Ok((
-                    row.get::<_, i64>(0)?,
-                    row.get::<_, Option<String>>(1)?,
-                    row.get::<_, Option<String>>(2)?,
-                ))
-            })?.collect::<Result<Vec<_>, _>>()?;
+            let batch = select
+                .query_map([last_id], |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, Option<String>>(1)?,
+                        row.get::<_, Option<String>>(2)?,
+                    ))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
             if batch.is_empty() {
                 break;
             }
             for (id, positive, character) in batch {
                 last_id = id;
                 if let Some(artists) = crate::pipeline::artist_string(
-                    positive.as_deref().unwrap_or_default(), character.as_deref(),
+                    positive.as_deref().unwrap_or_default(),
+                    character.as_deref(),
                 ) {
                     update.execute(rusqlite::params![id, artists])?;
                 }
             }
         }
     }
-    transaction.execute("INSERT INTO settings(key, value) VALUES (?1, '1')
-        ON CONFLICT(key) DO UPDATE SET value = excluded.value", [KEY])?;
+    transaction.execute(
+        "INSERT INTO settings(key, value) VALUES (?1, '1')
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        [KEY],
+    )?;
     transaction.commit()?;
     Ok(())
 }
@@ -323,7 +337,10 @@ fn migrate(connection: &mut Connection) -> Result<(), DatabaseError> {
     verify_foreign_keys(connection)
 }
 
-fn apply_pending_migrations(connection: &mut Connection, from_version: u32) -> Result<(), DatabaseError> {
+fn apply_pending_migrations(
+    connection: &mut Connection,
+    from_version: u32,
+) -> Result<(), DatabaseError> {
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let mut version = from_version;
     if version == 0 {
@@ -441,11 +458,14 @@ mod tests {
     #[test]
     fn reopening_backfills_missing_artists_once_and_compare_uses_the_fallback() {
         let mut database = Database::open_in_memory().unwrap();
-        let rows: Vec<NewRow> = (0..300).map(|index| NewRow {
-            identity: format!("fallback-{index}"), source_ordinal: index + 1,
-            positive_prompt: Some("  painter, scenery\n{blue sky}  ".into()),
-            ..NewRow::default()
-        }).collect();
+        let rows: Vec<NewRow> = (0..300)
+            .map(|index| NewRow {
+                identity: format!("fallback-{index}"),
+                source_ordinal: index + 1,
+                positive_prompt: Some("  painter, scenery\n{blue sky}  ".into()),
+                ..NewRow::default()
+            })
+            .collect();
         test_support::append_rows(&mut database, &rows);
         database.connection.execute_batch(
             "DELETE FROM settings WHERE key = 'artist_string_fallback_version';
@@ -455,15 +475,33 @@ mod tests {
         ).unwrap();
         let mut database = Database::initialize(database.connection).unwrap();
         let sample = database.get_compare_sample(1).unwrap();
-        assert_eq!(sample.row.artists.as_deref(), Some("painter, scenery\n{blue sky}"));
+        assert_eq!(
+            sample.row.artists.as_deref(),
+            Some("painter, scenery\n{blue sky}")
+        );
         let page = database.query_compare_same_artists(1, 0, 24).unwrap();
         assert_eq!(page.total_count, 296);
         assert_eq!(page.rows.len(), 24);
-        let stored: Vec<Option<String>> = database.connection.prepare(
-            "SELECT artists FROM rows WHERE id IN (3, 4, 5) ORDER BY id"
-        ).unwrap().query_map([], |row| row.get(0)).unwrap().collect::<Result<_, _>>().unwrap();
-        assert_eq!(stored, vec![Some("artist:keep".into()), None, Some("artist:character".into())]);
-        database.connection.execute("UPDATE rows SET artists = NULL WHERE id = 2", []).unwrap();
+        let stored: Vec<Option<String>> = database
+            .connection
+            .prepare("SELECT artists FROM rows WHERE id IN (3, 4, 5) ORDER BY id")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(
+            stored,
+            vec![
+                Some("artist:keep".into()),
+                None,
+                Some("artist:character".into())
+            ]
+        );
+        database
+            .connection
+            .execute("UPDATE rows SET artists = NULL WHERE id = 2", [])
+            .unwrap();
         backfill_missing_artist_strings(&mut database.connection).unwrap();
         assert_eq!(database.get_compare_sample(2).unwrap().row.artists, None);
     }
@@ -540,7 +578,10 @@ mod tests {
         let database = Database::open_in_memory().unwrap();
         database
             .connection
-            .execute("INSERT INTO tags(name) VALUES (?1), (?2)", ["Landscape", "landscape"])
+            .execute(
+                "INSERT INTO tags(name) VALUES (?1), (?2)",
+                ["Landscape", "landscape"],
+            )
             .unwrap();
 
         let count: u32 = database
@@ -557,16 +598,21 @@ mod tests {
             let database = Database::open(&temporary.path).unwrap();
             database
                 .connection
-                .execute("INSERT INTO settings(key, value) VALUES ('theme', 'dark')", [])
+                .execute(
+                    "INSERT INTO settings(key, value) VALUES ('theme', 'dark')",
+                    [],
+                )
                 .unwrap();
         }
 
         let database = Database::open(&temporary.path).unwrap();
         let value: String = database
             .connection
-            .query_row("SELECT value FROM settings WHERE key = ?1", params!["theme"], |row| {
-                row.get(0)
-            })
+            .query_row(
+                "SELECT value FROM settings WHERE key = ?1",
+                params!["theme"],
+                |row| row.get(0),
+            )
             .unwrap();
         assert_eq!(database.schema_version().unwrap(), CURRENT_SCHEMA_VERSION);
         assert_eq!(value, "dark");
@@ -620,7 +666,9 @@ mod tests {
         let mut database = Database::open(&temporary.path).unwrap();
         let repaired: String = database
             .connection
-            .query_row("SELECT artists FROM rows WHERE id = 1", [], |row| row.get(0))
+            .query_row("SELECT artists FROM rows WHERE id = 1", [], |row| {
+                row.get(0)
+            })
             .unwrap();
         assert_eq!(
             repaired,
@@ -657,7 +705,10 @@ mod tests {
                 search: String::new(),
             })
             .unwrap();
-        assert_eq!(page.rows.iter().map(|row| row.id).collect::<Vec<_>>(), vec![2]);
+        assert_eq!(
+            page.rows.iter().map(|row| row.id).collect::<Vec<_>>(),
+            vec![2]
+        );
     }
 
     #[test]
@@ -806,7 +857,10 @@ mod tests {
     fn upgrading_v16_adds_style_signature_column_and_index() {
         let mut connection = Connection::open_in_memory().unwrap();
         connection
-            .execute_batch(&format!("{} PRAGMA user_version = 16;", schema_16_fixture()))
+            .execute_batch(&format!(
+                "{} PRAGMA user_version = 16;",
+                schema_16_fixture()
+            ))
             .unwrap();
 
         migrate(&mut connection).unwrap();
@@ -909,12 +963,7 @@ mod tests {
 
         // 4. 批量画师前缀。
         database
-            .prepend_artist(
-                &RowSelection::Explicit {
-                    row_ids: vec![2],
-                },
-                "solo",
-            )
+            .prepend_artist(&RowSelection::Explicit { row_ids: vec![2] }, "solo")
             .unwrap();
         assert_all_style_signatures_consistent(&database);
 
@@ -1161,7 +1210,10 @@ mod tests {
                 .expect("system clock should be valid")
                 .as_nanos();
             Self {
-                path: directory.join(format!("smart-spreadsheet-db-{}-{nonce}.sqlite3", std::process::id())),
+                path: directory.join(format!(
+                    "smart-spreadsheet-db-{}-{nonce}.sqlite3",
+                    std::process::id()
+                )),
             }
         }
     }

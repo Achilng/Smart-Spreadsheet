@@ -1,4 +1,4 @@
-import { type ViewMode } from "../../stores/workspace-state.svelte";
+export type ViewMode = "group" | "gallery" | "table" | "duplicates" | "promptDocs" | "materials";
 
 /** 主窗口视图的顺序与文案（分段控件 / 画布大标题共用） */
 export const VIEW_MODES: { mode: ViewMode; label: string }[] = [

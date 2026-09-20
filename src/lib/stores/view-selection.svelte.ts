@@ -1,6 +1,7 @@
+import type { ViewMode } from "../utils/view-modes";
 import { errorText } from "../utils/format";
 import { setNotice } from "./notices.svelte";
-import { type ViewMode, workspaceState } from "./workspace-state.svelte";
+import { workspaceState } from "./workspace-state.svelte";
 import { libraryState } from "./library-state.svelte";
 import {
   getDedupeClusterMembers,

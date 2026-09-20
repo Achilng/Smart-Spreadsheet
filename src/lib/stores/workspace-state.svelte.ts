@@ -1,4 +1,4 @@
-export type ViewMode = "group" | "gallery" | "table" | "duplicates" | "promptDocs" | "materials";
+import type { ViewMode } from "../utils/view-modes";
 
 /** Window-local presentation preferences; no library operations. */
 export const workspaceState = $state({

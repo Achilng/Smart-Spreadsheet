@@ -1,15 +1,16 @@
+use super::repository::validate_group_targets;
 use crate::automation::actions::{
     note_sequence_prefixes, parse_note_sequence_number, simulate_actions,
 };
 use crate::automation::error::AutomationRuleError;
 use crate::automation::matching::PreparedConditionSet;
+use crate::automation::model::draft_from_rule;
 use crate::automation::model::{
     AutomationRule, AutomationRuleDraft, RuleAction, RuleExecutionReport, RuleExecutionSummary,
     RuleExecutionTrigger, RulePreview, RuleRow,
 };
 use crate::automation::text::normalized_strings;
 use crate::automation::validation::validate_draft;
-use crate::db::automation_rules::repository::draft_from_rule;
 use crate::db::{Database, DatabaseError};
 use rusqlite::{Connection, Transaction, TransactionBehavior, params};
 use std::collections::{HashMap, HashSet};
@@ -212,26 +213,6 @@ impl Database {
             stopped_row_ids,
         })
     }
-}
-
-pub(crate) fn validate_group_targets(
-    connection: &Connection,
-    actions: &[RuleAction],
-) -> Result<(), AutomationRuleError> {
-    for action in actions {
-        let RuleAction::SetGroup { group_id, .. } = action else {
-            continue;
-        };
-        let exists: bool = connection.query_row(
-            "SELECT EXISTS(SELECT 1 FROM groups WHERE id = ?1)",
-            [group_id],
-            |row| row.get(0),
-        )?;
-        if !exists {
-            return Err(AutomationRuleError::MissingTargetGroup(*group_id));
-        }
-    }
-    Ok(())
 }
 
 pub(crate) fn ensure_action_tags(

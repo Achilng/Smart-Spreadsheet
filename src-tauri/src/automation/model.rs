@@ -453,3 +453,15 @@ pub(crate) struct RuleRow {
     pub(crate) source_type: String,
     pub(crate) source_path: String,
 }
+
+pub(crate) fn draft_from_rule(rule: &AutomationRule) -> AutomationRuleDraft {
+    AutomationRuleDraft {
+        name: rule.name.clone(),
+        description: rule.description.clone(),
+        enabled: rule.enabled,
+        run_on_import: rule.run_on_import,
+        run_on_update: rule.run_on_update,
+        conditions: rule.conditions.clone(),
+        actions: rule.actions.clone(),
+    }
+}

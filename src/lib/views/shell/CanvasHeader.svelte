@@ -24,7 +24,7 @@
   import type { DedupeMode } from "../../api";
   import SizeSlider from "./SizeSlider.svelte";
   import SortControl from "./SortControl.svelte";
-  import { viewLabel } from "./view-modes";
+  import { viewLabel } from "../../utils/view-modes";
   import { libraryFilterLabel } from "../../utils/library-filters";
 
   const title = $derived(viewLabel(workspaceState.viewMode));

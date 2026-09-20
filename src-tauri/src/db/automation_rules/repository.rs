@@ -1,9 +1,8 @@
 use crate::automation::error::AutomationRuleError;
-use crate::automation::model::{AutomationRule, AutomationRuleDraft};
+use crate::automation::model::{AutomationRule, AutomationRuleDraft, RuleAction};
 use crate::automation::validation::validate_draft;
-use crate::db::automation_rules::execution::validate_group_targets;
 use crate::db::{Database, DatabaseError};
-use rusqlite::{Transaction, TransactionBehavior, params};
+use rusqlite::{Connection, Transaction, TransactionBehavior, params};
 use std::collections::HashSet;
 
 pub(crate) fn count_u32(value: usize) -> Result<u32, AutomationRuleError> {
@@ -216,18 +215,6 @@ pub(crate) fn automation_rule_from_stored(
     })
 }
 
-pub(crate) fn draft_from_rule(rule: &AutomationRule) -> AutomationRuleDraft {
-    AutomationRuleDraft {
-        name: rule.name.clone(),
-        description: rule.description.clone(),
-        enabled: rule.enabled,
-        run_on_import: rule.run_on_import,
-        run_on_update: rule.run_on_update,
-        conditions: rule.conditions.clone(),
-        actions: rule.actions.clone(),
-    }
-}
-
 pub(crate) fn normalize_rule_positions(
     transaction: &Transaction<'_>,
 ) -> Result<(), rusqlite::Error> {
@@ -247,6 +234,26 @@ pub(crate) fn normalize_rule_positions(
             "UPDATE automation_rules SET position = ?2 WHERE id = ?1",
             params![id, i64::try_from(position).unwrap_or(i64::MAX)],
         )?;
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_group_targets(
+    connection: &Connection,
+    actions: &[RuleAction],
+) -> Result<(), AutomationRuleError> {
+    for action in actions {
+        let RuleAction::SetGroup { group_id, .. } = action else {
+            continue;
+        };
+        let exists: bool = connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM groups WHERE id = ?1)",
+            [group_id],
+            |row| row.get(0),
+        )?;
+        if !exists {
+            return Err(AutomationRuleError::MissingTargetGroup(*group_id));
+        }
     }
     Ok(())
 }

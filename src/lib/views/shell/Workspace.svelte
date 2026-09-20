@@ -1,7 +1,8 @@
 <script lang="ts">
+  import type { ViewMode } from "../../utils/view-modes";
   import { errorText } from "../../utils/format";
   import { setNotice } from "../../stores/notices.svelte";
-  import { type ViewMode, workspaceState } from "../../stores/workspace-state.svelte";
+  import { workspaceState } from "../../stores/workspace-state.svelte";
   import { libraryState } from "../../stores/library-state.svelte";
   import { taskState } from "../../stores/task-state.svelte";
   import { emitTo, listen, type UnlistenFn } from "@tauri-apps/api/event";

@@ -1,11 +1,12 @@
 <script lang="ts">
+  import type { ViewMode } from "../../utils/view-modes";
   import { formatCount } from "../../utils/format";
-  import { type ViewMode, workspaceState } from "../../stores/workspace-state.svelte";
+  import { workspaceState } from "../../stores/workspace-state.svelte";
 
   import { duplicateBrowse } from "../../stores/duplicate-browse-store.svelte";
   import { groupStore } from "../../stores/group-store.svelte";
   import { clearSelection, resetSelectionAnchor } from "../../stores/selection-store.svelte";
-  import { VIEW_MODES } from "./view-modes";
+  import { VIEW_MODES } from "../../utils/view-modes";
 
   let segmentedEl = $state<HTMLElement | null>(null);
   let buttonEls: HTMLButtonElement[] = $state([]);

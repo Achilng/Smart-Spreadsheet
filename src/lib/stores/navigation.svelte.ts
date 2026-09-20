@@ -16,7 +16,7 @@ import { anyModalOpen } from "./modal-layer.svelte";
 import { browsingScrollSnapshot, persistSort, registerBrowseResetListener, resetRows, rowStore } from "./row-store.svelte";
 import { clearSelection } from "./selection-store.svelte";
 import { applyScrollSnapshot } from "./view-state";
-import { viewLabel } from "../views/shell/view-modes";
+import { viewLabel } from "../utils/view-modes";
 
 /** Read only navigable properties here: row clicks and scrolling never add an entry. */
 export function navigationRoute() {
