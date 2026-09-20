@@ -4,6 +4,7 @@
 
 ## 当前状态
 
+- 新方向：用户已确定用 React 重写前端；已完成代码范围梳理和 [专项计划](docs/REACT-REWRITE.md)。用户明确保留现有结构、功能位置和白色配色，只精修细节。当前仅完成规划，尚未安装依赖或迁移代码；下一步是基线清单与同结构可交互样稿。
 - 代码组织重构已完成：工作分支 `refactor/code-organization`；重构前基线 `6dc941a`、备份标签 `backup/pre-structure-refactor-20260920` 已推送。
 - 命令、运行时、规则引擎、快速整理和图片导入按职责组织；前端全局状态拆分，五个大型功能页面的业务流程迁入控制器，共用筛选快照、文本处理、滚动恢复、定位和编辑能力。
 - 入口说明见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)，范围、复用清单和验证记录见 [docs/REFACTORING.md](docs/REFACTORING.md)。
