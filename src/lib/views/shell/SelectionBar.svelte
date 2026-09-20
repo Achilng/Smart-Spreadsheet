@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { formatCount } from "../../stores/app-state.svelte";
+  import { formatCount } from "../../utils/format";
+
   import { deletion, requestDelete } from "../../stores/delete-actions.svelte";
   import { buildExportItems } from "../../stores/export-actions";
   import { anyModalOpen } from "../../stores/modal-layer.svelte";

@@ -1,3 +1,9 @@
+import { formatCount } from "../utils/format";
+import { runAction } from "./tasks";
+import { setNotice } from "./notices.svelte";
+import { libraryState } from "./library-state.svelte";
+import { taskState } from "./task-state.svelte";
+import { snapshotQueryFilters } from "../utils/library-query";
 import { listen } from "@tauri-apps/api/event";
 import { open, save } from "@tauri-apps/plugin-dialog";
 
@@ -11,11 +17,10 @@ import {
   type JsonExportOptions,
   type RowSelection,
 } from "../api";
-import { app, formatCount, runAction, setNotice } from "./app-state.svelte";
+
 import { requestJsonExport } from "./json-export-dialog.svelte";
 import { rowStore } from "./row-store.svelte";
 import { getSelectedCount, selectionDto } from "./selection-store.svelte";
-import { cloneLibraryFilters } from "../utils/library-filters";
 
 /**
  * 导出范围：有勾选时导出勾选行，否则导出当前筛选结果
@@ -27,15 +32,7 @@ export function exportScope(): RowSelection {
   }
   return {
     kind: "filtered",
-    tags: [...rowStore.tags],
-    tagMode: rowStore.tagMode,
-    dedupe: rowStore.dedupe,
-    singleArtistOnly: rowStore.singleArtistOnly,
-    artistFilter: rowStore.artistFilter,
-    hasVibe: rowStore.hasVibe,
-    untaggedOnly: rowStore.untaggedOnly,
-    filters: cloneLibraryFilters(rowStore.filters),
-    search: rowStore.search,
+    ...snapshotQueryFilters(rowStore),
     excludedRowIds: [],
   };
 }
@@ -195,20 +192,20 @@ export async function chooseImageFilesExport(mode: ImageFileExportMode): Promise
 }
 
 function hasRows(): boolean {
-  const library = app.snapshot?.library;
+  const library = libraryState.snapshot?.library;
   return Boolean(library && library.rowCount > 0);
 }
 
 async function runExport(action: () => Promise<void>): Promise<void> {
   await runAction(async () => {
     const unlisten = await listen<ExportProgress>("export://progress", event => {
-      app.exportProgress = event.payload;
+      taskState.exportProgress = event.payload;
     });
     try {
       await action();
     } finally {
       unlisten();
-      app.exportProgress = null;
+      taskState.exportProgress = null;
     }
   });
 }

@@ -1,8 +1,9 @@
 <script lang="ts">
+  import { setNotice } from "../../stores/notices.svelte";
   import { onDestroy } from "svelte";
   import type { MaterialVersion } from "../../api/materials";
   import type { ImageLoader } from "../../images/image-loader";
-  import { setNotice } from "../../stores/app-state.svelte";
+
   import MaterialDetailImage from "./MaterialDetailImage.svelte";
 
   let { version, isDefault, loader, revision, active, onedit }: {

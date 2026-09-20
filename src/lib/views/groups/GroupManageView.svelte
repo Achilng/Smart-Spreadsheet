@@ -1,8 +1,9 @@
 <script lang="ts">
+  import { errorText } from "../../utils/format";
+  import { workspaceState } from "../../stores/workspace-state.svelte";
   import X from "@lucide/svelte/icons/x";
   import { flip } from "svelte/animate";
 
-  import { app, errorText } from "../../stores/app-state.svelte";
   import { cleanEmptyGroups, groupStore, loadGroups, removeGroup, renameExistingGroup } from "../../stores/group-store.svelte";
   import { requestGroupDelete } from "../../stores/group-delete-confirm.svelte";
   import { resetRows } from "../../stores/row-store.svelte";
@@ -20,7 +21,7 @@
   });
 
   function close(): void {
-    app.groupManageOpen = false;
+    workspaceState.groupManageOpen = false;
   }
 
   function startRename(id: number, name: string): void {
@@ -88,7 +89,7 @@
   }
 </script>
 
-<Modal open={app.groupManageOpen} onclose={close} busy={busy} width="480px">
+<Modal open={workspaceState.groupManageOpen} onclose={close} busy={busy} width="480px">
   <div class="panel">
     <header>
       <h2>管理分组（{groupStore.list.length}）</h2>

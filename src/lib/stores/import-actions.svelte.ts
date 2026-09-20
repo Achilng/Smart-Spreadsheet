@@ -1,3 +1,9 @@
+import { bumpDataVersion } from "./library-changes";
+import { errorText, formatCount } from "../utils/format";
+import { runAction } from "./tasks";
+import { setNotice } from "./notices.svelte";
+import { libraryState } from "./library-state.svelte";
+import { taskState } from "./task-state.svelte";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 
@@ -9,14 +15,14 @@ import {
   type ImageImportResult,
   type ImageImportProgress,
 } from "../api";
-import { app, bumpDataVersion, errorText, formatCount, runAction, setNotice } from "./app-state.svelte";
+
 import { clearHistory, recordHistory } from "./history.svelte";
 
 export async function updateAutoArtistPrefixOnImport(enabled: boolean): Promise<void> {
-  if (app.busy || !app.snapshot?.dataDirectory) return;
-  app.busy = true;
+  if (taskState.busy || !libraryState.snapshot?.dataDirectory) return;
+  taskState.busy = true;
   try {
-    app.snapshot = await setAutoArtistPrefixOnImport(enabled);
+    libraryState.snapshot = await setAutoArtistPrefixOnImport(enabled);
     setNotice({
       tone: "success",
       text: enabled
@@ -26,7 +32,7 @@ export async function updateAutoArtistPrefixOnImport(enabled: boolean): Promise<
   } catch (error) {
     setNotice({ tone: "error", text: `无法保存导入设置：${errorText(error)}` });
   } finally {
-    app.busy = false;
+    taskState.busy = false;
   }
 }
 
@@ -89,14 +95,14 @@ export async function runImageImport(path: string): Promise<void> {
       label: `导入 ${formatCount(initial.added)} 张图片`,
       undo: async () => {
         const result = await undoImportBatch(batchId);
-        app.snapshot = result.snapshot;
+        libraryState.snapshot = result.snapshot;
         bumpDataVersion({ preserveScroll: true });
       },
       redo: async () => {
         const result = await performImageImport(path, false);
         if (result.added !== initial.added) {
           const cleanup = await undoImportBatch(result.batchId);
-          app.snapshot = cleanup.snapshot;
+          libraryState.snapshot = cleanup.snapshot;
           bumpDataVersion({ preserveScroll: true });
           throw new Error(
             `来源已变化：原操作导入 ${formatCount(initial.added)} 张，本次只能导入 ${formatCount(result.added)} 张`,
@@ -112,13 +118,13 @@ async function performImageImport(path: string, showResult: boolean): Promise<Im
   const unlisten = await listen<ImageImportProgress>(
     "import-images://progress",
     event => {
-      app.importProgress = event.payload;
+      taskState.importProgress = event.payload;
     },
   );
-  app.autoArtistPrefixImportActive = Boolean(app.snapshot?.autoArtistPrefixOnImport);
+  taskState.autoArtistPrefixImportActive = Boolean(libraryState.snapshot?.autoArtistPrefixOnImport);
   try {
     const result = await importImages(path);
-    app.snapshot = result.snapshot;
+    libraryState.snapshot = result.snapshot;
     if (result.added > 0) {
       bumpDataVersion();
     }
@@ -180,8 +186,8 @@ async function performImageImport(path: string, showResult: boolean): Promise<Im
     return result;
   } finally {
     unlisten();
-    app.importProgress = null;
-    app.autoArtistPrefixImportActive = false;
+    taskState.importProgress = null;
+    taskState.autoArtistPrefixImportActive = false;
   }
 }
 
@@ -190,7 +196,7 @@ export async function runExistingImageUpdate(path: string): Promise<void> {
     const unlisten = await listen<ImageImportProgress>(
       "import-images://progress",
       event => {
-        app.importProgress = event.payload;
+        taskState.importProgress = event.payload;
       },
     );
     try {
@@ -205,7 +211,7 @@ export async function runExistingImageUpdate(path: string): Promise<void> {
         }
         throw error;
       }
-      app.snapshot = result.snapshot;
+      libraryState.snapshot = result.snapshot;
       if (result.updated > 0) {
         clearHistory();
         bumpDataVersion();
@@ -258,7 +264,7 @@ export async function runExistingImageUpdate(path: string): Promise<void> {
       });
     } finally {
       unlisten();
-      app.importProgress = null;
+      taskState.importProgress = null;
     }
   });
 }

@@ -1,15 +1,17 @@
 <script lang="ts">
+  import { dismissNotice, setNotice, noticeState } from "../stores/notices.svelte";
+  import { formatCount } from "../utils/format";
+  import { taskState } from "../stores/task-state.svelte";
   import X from "@lucide/svelte/icons/x";
   import { invoke } from "@tauri-apps/api/core";
 
-  import { app, dismissNotice, formatCount, setNotice } from "../stores/app-state.svelte";
   import { flipDuration, softFly } from "./motion";
   import { flip } from "svelte/animate";
 
   let cancelling = $state(false);
 
   /** 导入与“更新现有图片”管线均支持取消；其余进度不显示取消按钮。 */
-  const cancellable = $derived(Boolean(app.importProgress));
+  const cancellable = $derived(Boolean(taskState.importProgress));
 
   async function cancelTask(): Promise<void> {
     if (cancelling) return;
@@ -23,7 +25,7 @@
 
   // 进度条消失（任务结束）后复位取消按钮状态
   $effect(() => {
-    if (!app.importProgress) {
+    if (!taskState.importProgress) {
       cancelling = false;
     }
   });
@@ -41,7 +43,7 @@
   }
 
   const progressText = $derived.by(() => {
-    const migration = app.migrationProgress;
+    const migration = taskState.migrationProgress;
     if (migration) {
       switch (migration.stage) {
         case "preparing":
@@ -64,14 +66,14 @@
           return null;
       }
     }
-    const hashing = app.hashProgress;
+    const hashing = taskState.hashProgress;
     if (hashing) {
       const unreadable = hashing.unreadable > 0
         ? `，${formatCount(hashing.unreadable)} 行图片不可读`
         : "";
       return `正在升级图片指纹 ${formatCount(hashing.processed)} / ${formatCount(hashing.total)}${unreadable}`;
     }
-    const progress = app.importProgress;
+    const progress = taskState.importProgress;
     if (progress) {
       switch (progress.stage) {
         case "extracting":
@@ -92,37 +94,37 @@
           return null;
       }
     }
-    const phash = app.phashProgress;
+    const phash = taskState.phashProgress;
     if (phash) {
       const unreadable = phash.unreadable > 0
         ? `，${formatCount(phash.unreadable)} 张不可读`
         : "";
       return `正在计算感知哈希 ${formatCount(phash.processed)} / ${formatCount(phash.total)}${unreadable}`;
     }
-    const vibe = app.vibeBackfillProgress;
+    const vibe = taskState.vibeBackfillProgress;
     if (vibe) {
       return `正在建立 VIBE 聚合索引 ${formatCount(vibe.processed)} / ${formatCount(vibe.total)}（升级后一次性工作，可继续正常使用）`;
     }
-    const style = app.styleSignatureProgress;
+    const style = taskState.styleSignatureProgress;
     if (style) {
       return `正在建立画风索引 ${formatCount(style.processed)} / ${formatCount(style.total)}（升级后一次性工作，可继续正常使用）`;
     }
-    const exporting = app.exportProgress;
+    const exporting = taskState.exportProgress;
     if (exporting) {
       return `正在导出 ${formatCount(exporting.processed)} / ${formatCount(exporting.total)}`;
     }
     return null;
   });
   const progressPercent = $derived.by(() => {
-    const migration = app.migrationProgress;
+    const migration = taskState.migrationProgress;
     if (migration && migration.total > 0) {
       return Math.round((migration.completed / migration.total) * 100);
     }
-    const hashing = app.hashProgress;
+    const hashing = taskState.hashProgress;
     if (hashing && hashing.total > 0) {
       return Math.round((hashing.processed / hashing.total) * 100);
     }
-    const importing = app.importProgress;
+    const importing = taskState.importProgress;
     if (importing) {
       if (
         (importing.stage !== "hashing" && importing.stage !== "processing" && importing.stage !== "perceptualHashing" && importing.stage !== "copying") ||
@@ -132,19 +134,19 @@
       }
       return Math.round((importing.processed / importing.total) * 100);
     }
-    const phash = app.phashProgress;
+    const phash = taskState.phashProgress;
     if (phash && phash.total > 0) {
       return Math.round((phash.processed / phash.total) * 100);
     }
-    const vibe = app.vibeBackfillProgress;
+    const vibe = taskState.vibeBackfillProgress;
     if (vibe && vibe.total > 0) {
       return Math.round((vibe.processed / vibe.total) * 100);
     }
-    const style = app.styleSignatureProgress;
+    const style = taskState.styleSignatureProgress;
     if (style && style.total > 0) {
       return Math.round((style.processed / style.total) * 100);
     }
-    const exporting = app.exportProgress;
+    const exporting = taskState.exportProgress;
     if (exporting && exporting.total > 0) {
       return Math.round((exporting.processed / exporting.total) * 100);
     }
@@ -154,7 +156,7 @@
 
 <!-- 通知与进度分栏共存：右下角纵向堆叠，不压住底部选择条 -->
 <div class="toast-stack">
-  {#each app.notices as notice (notice.id)}
+  {#each noticeState.notices as notice (notice.id)}
     <div
       class="toast toast-{notice.tone}"
       role={notice.tone === "error" ? "alert" : "status"}
@@ -169,7 +171,7 @@
     <div class="toast toast-progress" role="status" transition:softFly={{ duration: 180, y: 8 }}>
       <span class="progress-copy">
         <span>{progressText}</span>
-        {#if app.autoArtistPrefixImportActive}
+        {#if taskState.autoArtistPrefixImportActive}
           <small>提示：导入完成后将自动补全有库内证据的画师前缀，无需确认。</small>
         {/if}
       </span>

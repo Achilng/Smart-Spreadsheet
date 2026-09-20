@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { errorText } from "../../utils/format";
+  import { workspaceState } from "../../stores/workspace-state.svelte";
   import { onDestroy, onMount } from "svelte";
   import { flip } from "svelte/animate";
   import { flipDuration } from "../../ui/motion";
@@ -7,7 +9,7 @@
   import { newMaterialVersion, materialVersionDrafts, moveMaterialVersion, duplicateMaterialVersion } from "../../utils/material-versions";
   import { confirm, open } from "@tauri-apps/plugin-dialog";
   import { inspectMaterialImage, inspectMaterialLibraryImage, saveMaterial, type Material, type MaterialDraft, type MaterialInspection } from "../../api/materials";
-  import { app, errorText } from "../../stores/app-state.svelte";
+
   import { tagStore } from "../../stores/tag-store.svelte";
   import { tagColorFor } from "../../utils/tag-colors";
   import { MATERIAL_IMAGE_EXTENSIONS, mergeMaterialMetadata, splitMaterialTags } from "../../utils/materials";
@@ -132,7 +134,7 @@
   }
 </script>
 
-<Modal open={!libraryOpen && app.viewMode === "materials"} onclose={() => void close()} {busy} width="900px" labelledby="material-editor-title">
+<Modal open={!libraryOpen && workspaceState.viewMode === "materials"} onclose={() => void close()} {busy} width="900px" labelledby="material-editor-title">
   <div class="editor">
     <header><h2 id="material-editor-title">{material ? "编辑素材" : "确认导入素材"}</h2><span>{remaining > 0 ? `之后还有 ${remaining} 张待确认` : material ? "保存后修改才会生效" : "确认保存后才会添加到素材库"}</span></header>
     <div class="editor-body">

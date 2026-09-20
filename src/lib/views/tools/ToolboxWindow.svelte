@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { refreshSnapshot } from "../../features/library/library-actions";
+  import { libraryState } from "../../stores/library-state.svelte";
+  import { taskState } from "../../stores/task-state.svelte";
   import type { LucideIcon } from "@lucide/svelte";
   import Braces from "@lucide/svelte/icons/braces";
   import CircleArrowUp from "@lucide/svelte/icons/circle-arrow-up";
@@ -14,7 +17,6 @@
   import { listen } from "@tauri-apps/api/event";
   import { getCurrentWindow } from "@tauri-apps/api/window";
 
-  import { app, refreshSnapshot } from "../../stores/app-state.svelte";
   import { installCloseGuards, registerCloseGuard } from "../../stores/close-guard";
   import {
     clearHistory,
@@ -161,9 +163,9 @@
 
   const hasLibrary = $derived(
     Boolean(
-      app.snapshot?.dataDirectory &&
-        !app.snapshot.startupError &&
-        (app.snapshot.library?.rowCount ?? 0) > 0,
+      libraryState.snapshot?.dataDirectory &&
+        !libraryState.snapshot.startupError &&
+        (libraryState.snapshot.library?.rowCount ?? 0) > 0,
     ),
   );
   const activeDefinition = $derived(
@@ -178,9 +180,9 @@
     let unlistenLibraryChange: (() => void) | null = null;
     // 关窗守卫：进行中的任务与撤回能力都会随窗口关闭而消失，先确认
     const unregisterGuard = registerCloseGuard(() => {
-      if (app.busy || history.busy) return "还有后台任务正在进行";
-      if (app.phashProgress) return "感知哈希刷新尚未完成";
-      if (app.exportProgress) return "导出任务尚未完成";
+      if (taskState.busy || history.busy) return "还有后台任务正在进行";
+      if (taskState.phashProgress) return "感知哈希刷新尚未完成";
+      if (taskState.exportProgress) return "导出任务尚未完成";
       if (history.undoCount > 0) {
         return `关闭后将无法撤回本窗口的 ${history.undoCount} 步批量修改`;
       }
@@ -194,7 +196,7 @@
     // 保证“需要资料库”的工具可用性跟随主窗口实际状态。
     void getCurrentWindow()
       .onFocusChanged(({ payload: focused }) => {
-        if (focused && !app.busy) {
+        if (focused && !taskState.busy) {
           void refreshSnapshot();
         }
       })
@@ -210,7 +212,7 @@
       if (event.payload !== "toolbox" && history.undoCount + history.redoCount > 0) {
         clearHistory();
       }
-      if (!app.busy) {
+      if (!taskState.busy) {
         void refreshSnapshot();
       }
     }).then(fn => {
@@ -227,7 +229,7 @@
   });
 
   $effect(() => {
-    if (!app.loaded) return;
+    if (!libraryState.loaded) return;
     const selected = tools.find(tool => tool.id === activeTool);
     if (selected?.requiresLibrary && !hasLibrary) {
       activeTool = "jsonDedupe";
@@ -297,14 +299,14 @@
       <button
         type="button"
         class="btn btn-ghost history-btn"
-        disabled={history.undoCount === 0 || history.busy || app.busy}
+        disabled={history.undoCount === 0 || history.busy || taskState.busy}
         title={history.undoLabel ? `撤回：${history.undoLabel}（Ctrl+Z）` : "没有可撤回的操作"}
         onclick={() => void undoLastAction()}
       >↶ 撤回</button>
       <button
         type="button"
         class="btn btn-ghost history-btn"
-        disabled={history.redoCount === 0 || history.busy || app.busy}
+        disabled={history.redoCount === 0 || history.busy || taskState.busy}
         title={history.redoLabel ? `重做：${history.redoLabel}（Ctrl+Y）` : "没有可重做的操作"}
         onclick={() => void redoLastAction()}
       >↷ 重做</button>
@@ -352,7 +354,7 @@
       {/if}
 
       <div class="tool-stack">
-        {#if !app.loaded}
+        {#if !libraryState.loaded}
           <div class="empty-state loading-state">
             <span class="spinner" aria-hidden="true"></span>
             正在读取应用状态…

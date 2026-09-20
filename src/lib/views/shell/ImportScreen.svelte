@@ -1,5 +1,10 @@
 <script lang="ts">
-  import { app, chooseDirectory, errorText, setNotice } from "../../stores/app-state.svelte";
+  import { chooseDirectory } from "../../features/library/library-actions";
+  import { errorText } from "../../utils/format";
+  import { setNotice } from "../../stores/notices.svelte";
+  import { libraryState } from "../../stores/library-state.svelte";
+  import { taskState } from "../../stores/task-state.svelte";
+
   import {
     chooseImageArchive,
     chooseImageFolder,
@@ -31,15 +36,15 @@
       文件夹、单张 PNG，以及 zip/7z/rar 压缩包。无 metadata
       图片不会入库，会自动移到异常图片目录。
     </p>
-    <p class="directory" title={app.snapshot?.dataDirectory}>
-      数据目录：{app.snapshot?.dataDirectory}
+    <p class="directory" title={libraryState.snapshot?.dataDirectory}>
+      数据目录：{libraryState.snapshot?.dataDirectory}
     </p>
     <label class="import-setting">
       <input
         type="checkbox"
         role="switch"
-        checked={app.snapshot?.autoArtistPrefixOnImport ?? false}
-        disabled={app.busy}
+        checked={libraryState.snapshot?.autoArtistPrefixOnImport ?? false}
+        disabled={taskState.busy}
         onchange={event => void updateAutoArtistPrefixOnImport(
           (event.currentTarget as HTMLInputElement).checked,
         )}
@@ -53,7 +58,7 @@
       <button
         type="button"
         class="btn btn-primary"
-        disabled={app.busy}
+        disabled={taskState.busy}
         onclick={() => void chooseImageFolder()}
       >
         导入图片文件夹
@@ -61,7 +66,7 @@
       <button
         type="button"
         class="btn"
-        disabled={app.busy}
+        disabled={taskState.busy}
         onclick={() => void openToolbox()}
       >
         编写自动规则
@@ -69,7 +74,7 @@
       <button
         type="button"
         class="btn"
-        disabled={app.busy}
+        disabled={taskState.busy}
         onclick={() => void chooseImageArchive()}
       >
         导入压缩包
@@ -81,7 +86,7 @@
       <button
         type="button"
         class="link-btn"
-        disabled={app.busy}
+        disabled={taskState.busy}
         onclick={() => void chooseDirectory("open")}
       >打开已有数据目录</button>
     </p>

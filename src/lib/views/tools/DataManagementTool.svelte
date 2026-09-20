@@ -1,9 +1,8 @@
 <script lang="ts">
-  import {
-    app,
-    chooseMigration,
-    resetDataWithConfirmation,
-  } from "../../stores/app-state.svelte";
+  import { chooseMigration, resetDataWithConfirmation } from "../../features/library/library-actions";
+  import { libraryState } from "../../stores/library-state.svelte";
+  import { taskState } from "../../stores/task-state.svelte";
+
 </script>
 
 <div class="tool-page">
@@ -12,14 +11,14 @@
       <span class="eyebrow overline">数据目录</span>
       <h3>迁移资料库</h3>
       <p>将数据库、受管图片和缓存复制并校验到一个新的空文件夹，成功后自动切换。</p>
-      {#if app.snapshot?.dataDirectory}
-        <code title={app.snapshot.dataDirectory}>{app.snapshot.dataDirectory}</code>
+      {#if libraryState.snapshot?.dataDirectory}
+        <code title={libraryState.snapshot.dataDirectory}>{libraryState.snapshot.dataDirectory}</code>
       {/if}
     </div>
     <button
       type="button"
       class="btn"
-      disabled={app.busy}
+      disabled={taskState.busy}
       onclick={() => void chooseMigration()}
     >
       选择迁移目标…
@@ -35,7 +34,7 @@
     <button
       type="button"
       class="btn btn-danger"
-      disabled={app.busy}
+      disabled={taskState.busy}
       onclick={() => void resetDataWithConfirmation()}
     >
       重置表格…

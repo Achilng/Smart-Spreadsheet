@@ -9,6 +9,4 @@ export function mergeMaterialMetadata(sections: MetadataSection[], selected: str
   const ids = new Set(selected);
   return sections.filter(section => ids.has(section.id)).map(section => section.text).join("\n\n");
 }
-export function splitMaterialTags(value: string): string[] {
-  return [...new Set(value.split(/[,，\n\r]/).map(name => name.trim()).filter(Boolean))];
-}
+export { splitListText as splitMaterialTags } from "./list-text.ts";

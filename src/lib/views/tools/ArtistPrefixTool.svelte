@@ -1,5 +1,8 @@
 <script lang="ts">
-  import { emitTo } from "@tauri-apps/api/event";
+  import { errorText, formatCount } from "../../utils/format";
+  import { notifyMainStateChanged } from "../../windows/library-events";
+  import { setNotice } from "../../stores/notices.svelte";
+  import { taskState } from "../../stores/task-state.svelte";
 
   import {
     applyAutoArtistPrefix,
@@ -11,15 +14,9 @@
     type AutoArtistPrefixPreview,
     type ArtistTextPrefixResult,
   } from "../../api";
-  import {
-    app,
-    errorText,
-    formatCount,
-    notifyMainStateChanged,
-    setNotice,
-  } from "../../stores/app-state.svelte";
+
   import { history, recordHistory } from "../../stores/history.svelte";
-  import { focusMainWindow, type ToolboxRowRequest } from "../../windows/toolbox";
+  import { openRowInMainWindow } from "../../windows/toolbox";
 
   let preview = $state<AutoArtistPrefixPreview | null>(null);
   let selectedNames = $state<string[]>([]);
@@ -41,7 +38,7 @@
   );
   const selectedCount = $derived(selectedNames.length);
   const busy = $derived(
-    previewing || applying || processingText || history.busy || app.busy,
+    previewing || applying || processingText || history.busy || taskState.busy,
   );
 
   function updateTextInput(event: Event): void {
@@ -156,9 +153,7 @@
     if (!rowId || openingRowId !== null) return;
     openingRowId = rowId;
     try {
-      const request: ToolboxRowRequest = { rowId };
-      await emitTo("main", "toolbox://open-row", request);
-      await focusMainWindow();
+      await openRowInMainWindow(rowId);
     } catch (cause) {
       setNotice({ tone: "error", text: `无法在主窗口打开图片：${errorText(cause)}` });
     } finally {

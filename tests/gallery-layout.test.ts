@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { galleryLayout, galleryCellPosition, galleryVisibleIndices, GALLERY_PADDING, GALLERY_GAP } from "../src/lib/views/gallery/gallery-layout.ts";
+import { galleryLayout, galleryCellPosition, galleryVisibleIndices, GALLERY_PADDING, GALLERY_GAP } from "../src/lib/images/gallery-layout.ts";
 
 test("gallery cards fit their viewport across slider sizes and narrow windows", () => {
   for (const width of [80, 255, 500, 900, 1600]) {

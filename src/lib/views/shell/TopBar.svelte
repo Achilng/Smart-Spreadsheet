@@ -1,10 +1,14 @@
 <script lang="ts">
+  import { errorText, formatCount } from "../../utils/format";
+  import { setNotice } from "../../stores/notices.svelte";
+  import { libraryState } from "../../stores/library-state.svelte";
+  import { workspaceState } from "../../stores/workspace-state.svelte";
+  import { taskState } from "../../stores/task-state.svelte";
   import X from "@lucide/svelte/icons/x";
   import { onDestroy, untrack } from "svelte";
   import NavigationButtons from "./NavigationButtons.svelte";
   import { navigation } from "../../stores/navigation.svelte";
 
-  import { app, errorText, formatCount, setNotice } from "../../stores/app-state.svelte";
   import {
     chooseImageArchive,
     chooseImageFolder,
@@ -25,7 +29,7 @@
   let searchSession = 0;
   let lastInputAt = 0;
   let searchScope: "materials" | "rows" = "rows";
-  const isMaterials = $derived(app.viewMode === "materials");
+  const isMaterials = $derived(workspaceState.viewMode === "materials");
 
   function flushSearch(): void {
     clearTimeout(debounceTimer);
@@ -78,7 +82,7 @@
     });
   });
 
-  const library = $derived(app.snapshot?.library ?? null);
+  const library = $derived(libraryState.snapshot?.library ?? null);
 
   const importItems = $derived<DropdownItem[]>([
     { label: "导入文件夹", action: () => void chooseImageFolder() },
@@ -86,21 +90,21 @@
     {
       label: "导入时自动补全画师前缀",
       hint: "仅使用库内明确 artist: 证据",
-      checked: app.snapshot?.autoArtistPrefixOnImport ?? false,
+      checked: libraryState.snapshot?.autoArtistPrefixOnImport ?? false,
       action: () => void updateAutoArtistPrefixOnImport(
-        !(app.snapshot?.autoArtistPrefixOnImport ?? false),
+        !(libraryState.snapshot?.autoArtistPrefixOnImport ?? false),
       ),
     },
     {
       label: "更新现有图片",
       hint: "只更新，不新增；保留 Tag / 分组",
-      action: () => (app.updateImportOpen = true),
+      action: () => (workspaceState.updateImportOpen = true),
     },
   ]);
 
   const exportItems = $derived<DropdownItem[]>(buildExportItems());
 
-  const exportDisabled = $derived(app.busy || !library || library.rowCount === 0);
+  const exportDisabled = $derived(taskState.busy || !library || library.rowCount === 0);
 
   async function openToolbox(): Promise<void> {
     try {
@@ -124,7 +128,7 @@
 
   <div class="title-spacer" data-tauri-drag-region></div>
 
-  {#if app.viewMode !== "promptDocs"}
+  {#if workspaceState.viewMode !== "promptDocs"}
     <div class="search-box" data-tauri-drag-region>
       <input
         type="text"
@@ -153,13 +157,13 @@
     <button
       type="button"
       class="btn btn-ghost"
-      disabled={app.busy}
+      disabled={taskState.busy}
       onclick={() => void openToolbox()}
     >
       工具箱
     </button>
-    {#if app.viewMode !== "materials"}
-      <Dropdown label="导入" items={importItems} disabled={app.busy} ghost />
+    {#if workspaceState.viewMode !== "materials"}
+      <Dropdown label="导入" items={importItems} disabled={taskState.busy} ghost />
       <Dropdown label="导出" items={exportItems} disabled={exportDisabled} primary />
     {/if}
   </div>

@@ -1,12 +1,14 @@
 <script lang="ts">
+  import { createViewportScroll } from "../../stores/viewport-scroll.svelte";
+  import { workspaceState } from "../../stores/workspace-state.svelte";
   import { onDestroy } from "svelte";
 
   import type { RowRecord } from "../../api";
-  import { app } from "../../stores/app-state.svelte";
+
   import { PAGE_SIZE, clearAllFilters, ensurePage, getRow, resetRows, rowStore } from "../../stores/row-store.svelte";
   import { emptyResultText } from "../../utils/empty-state";
   import { thumbnails } from "../../images/thumbnails";
-  import { restoreScrollPosition, savedScrollPosition, rememberVisibleRange, saveScrollPosition, scrollPositionVersion } from "../../stores/view-state";
+  import { rememberVisibleRange, saveScrollPosition, scrollPositionVersion } from "../../stores/view-state";
   import TableRow from "./TableRow.svelte";
 
   let { active = true }: { active?: boolean } = $props();
@@ -14,7 +16,7 @@
   const HEADER_HEIGHT = 36;
   const OVERSCAN = 6;
 
-  const rowHeight = $derived(app.tableRowHeight);
+  const rowHeight = $derived(workspaceState.tableRowHeight);
   const thumbColWidth = $derived(Math.max(52, Math.round(rowHeight * 1.15)));
   const gridCols = $derived(
     `36px ${thumbColWidth}px 64px 150px minmax(0, 1.8fr) minmax(0, 1.8fr) minmax(0, 1.1fr) minmax(0, 1.3fr)`,
@@ -80,55 +82,21 @@
     }
   });
 
-  // 挂载和每次切回激活时恢复滚动位置。spacer 高度依赖 totalCount，必须等
-  // 数据就绪；刷新在途时 totalCount 还是旧语义的值，提前恢复会被钳制。
-  // 保活后浏览器通常能自行保留位置，这里作为钳制后的兜底按帧重试恢复。
-  let restored = $state(false);
-  let restoring = false;
-  let seenReset = rowStore.resetToken;
-
-  // 先更新虚拟可见区，再由下方 effect 在绘制前同步 DOM 滚动位置。
-  $effect.pre(() => {
-    if (rowStore.resetToken !== seenReset) {
-      seenReset = rowStore.resetToken;
-      restored = false;
-    }
-    if (!active) {
-      restored = false;
-    } else if (!restored && !rowStore.initialLoading && !rowStore.refreshing) {
-      scrollTop = savedScrollPosition("table");
-    }
+  const scrollRecovery = createViewportScroll({
+    key: "table",
+    active: () => active,
+    viewport: () => viewport,
+    resetToken: () => rowStore.resetToken,
+    loading: () => rowStore.initialLoading || rowStore.refreshing,
+    layoutReady: () => viewportHeight > 0,
+    extent: () => { void rowStore.totalCount; return spacerHeight; },
+    apply: top => { scrollTop = top; },
   });
-
-  $effect(() => {
-    if (
-      restored ||
-      !active ||
-      !viewport ||
-      rowStore.initialLoading ||
-      rowStore.refreshing ||
-      viewportHeight <= 0
-    ) {
-      return;
-    }
-    void rowStore.totalCount;
-    void spacerHeight;
-    restored = true;
-    restoring = true;
-    restoreScrollPosition(
-      viewport,
-      "table",
-      60,
-      top => (scrollTop = top),
-      () => (restoring = false),
-    );
-  });
-
 
   function onScroll(): void {
     scrollTop = viewport?.scrollTop ?? 0;
     // 恢复期间的钳制事件和隐藏状态下的读数不代表用户位置，不能写入记忆
-    if (active && !restoring) {
+    if (active && !scrollRecovery.restoring) {
       saveTableScroll(scrollTop);
     }
   }

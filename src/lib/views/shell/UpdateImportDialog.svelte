@@ -1,12 +1,13 @@
 <script lang="ts">
+  import { workspaceState } from "../../stores/workspace-state.svelte";
+  import { taskState } from "../../stores/task-state.svelte";
   import { open } from "@tauri-apps/plugin-dialog";
 
-  import { app } from "../../stores/app-state.svelte";
   import { runExistingImageUpdate } from "../../stores/import-actions.svelte";
   import Modal from "../../ui/Modal.svelte";
 
   function close(): void {
-    app.updateImportOpen = false;
+    workspaceState.updateImportOpen = false;
   }
 
   async function chooseFolder(): Promise<void> {
@@ -33,7 +34,7 @@
   }
 </script>
 
-<Modal open={app.updateImportOpen} onclose={close} labelledby="update-import-title" width="520px">
+<Modal open={workspaceState.updateImportOpen} onclose={close} labelledby="update-import-title" width="520px">
   <div class="update-dialog">
     <header>
       <h2 id="update-import-title">更新现有图片</h2>
@@ -57,9 +58,9 @@
     <p class="tip">请选择图片原来所在的文件夹，或原来的压缩包路径。</p>
 
     <footer>
-      <button type="button" class="btn" disabled={app.busy} onclick={close}>取消</button>
-      <button type="button" class="btn" disabled={app.busy} onclick={() => void chooseArchive()}>选择压缩包</button>
-      <button type="button" class="btn btn-primary" disabled={app.busy} onclick={() => void chooseFolder()}>选择文件夹</button>
+      <button type="button" class="btn" disabled={taskState.busy} onclick={close}>取消</button>
+      <button type="button" class="btn" disabled={taskState.busy} onclick={() => void chooseArchive()}>选择压缩包</button>
+      <button type="button" class="btn btn-primary" disabled={taskState.busy} onclick={() => void chooseFolder()}>选择文件夹</button>
     </footer>
   </div>
 </Modal>

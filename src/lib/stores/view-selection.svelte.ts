@@ -1,10 +1,14 @@
+import { errorText } from "../utils/format";
+import { setNotice } from "./notices.svelte";
+import { type ViewMode, workspaceState } from "./workspace-state.svelte";
+import { libraryState } from "./library-state.svelte";
 import {
   getDedupeClusterMembers,
   getGroupMembers,
   queryRows,
   type RowPage,
 } from "../api";
-import { app, errorText, setNotice, type ViewMode } from "./app-state.svelte";
+
 import { duplicateBrowse } from "./duplicate-browse-store.svelte";
 import { groupBrowse } from "./group-browse-store.svelte";
 import { groupStore } from "./group-store.svelte";
@@ -26,7 +30,7 @@ export const viewSelection = $state({
 function groupScopeSignature(): string {
   return [
     "group",
-    String(app.dataVersion),
+    String(libraryState.dataVersion),
     String(groupStore.membershipVersion),
     rowStore.tags.join("\u{2}"),
     rowStore.tagMode,
@@ -42,7 +46,7 @@ function groupScopeSignature(): string {
 function duplicateScopeSignature(): string {
   return [
     "duplicates",
-    String(app.dataVersion),
+    String(libraryState.dataVersion),
     duplicateBrowse.dedupeMode,
     rowStore.tags.join("\u{2}"),
     rowStore.tagMode,
@@ -54,7 +58,7 @@ function duplicateScopeSignature(): string {
   ].join("\u{1}");
 }
 
-function currentScopeSignature(mode: ViewMode = app.viewMode): string {
+function currentScopeSignature(mode: ViewMode = workspaceState.viewMode): string {
   if (mode === "group") return groupScopeSignature();
   if (mode === "duplicates") return duplicateScopeSignature();
   return [
@@ -154,10 +158,10 @@ async function duplicateViewRowIds(): Promise<number[]> {
 
 /** 当前视图“全选”的目标数；分组筛选下未加载未分组区时可能暂时未知。 */
 export function currentViewSelectionTotal(): number | null {
-  if (app.viewMode === "duplicates") {
+  if (workspaceState.viewMode === "duplicates") {
     return duplicateBrowse.clusters.reduce((total, cluster) => total + cluster.memberCount, 0);
   }
-  if (app.viewMode === "group") {
+  if (workspaceState.viewMode === "group") {
     const knownUngrouped = groupBrowse.ungrouped?.totalCount;
     if (knownUngrouped != null) {
       return groupStore.list.reduce((total, group) => total + group.memberCount, knownUngrouped);
@@ -174,7 +178,7 @@ export function currentViewSelectionTotal(): number | null {
       !rowStore.untaggedOnly &&
       rowStore.filters.length === 0 &&
       rowStore.search === "";
-    return filtersInactive ? (app.snapshot?.library?.rowCount ?? null) : null;
+    return filtersInactive ? (libraryState.snapshot?.library?.rowCount ?? null) : null;
   }
   return rowStore.totalCount;
 }
@@ -185,14 +189,14 @@ export function currentViewSelectionTotal(): number | null {
  * 固化为 explicit 行 ID，保证后续编辑、导出和删除都只作用于这个视图里的图片。
  */
 export async function selectAllCurrentView(): Promise<number> {
-  const mode = app.viewMode;
+  const mode = workspaceState.viewMode;
   if (mode !== "group" && mode !== "duplicates") {
     return selectAllFiltered();
   }
   const signature = currentScopeSignature(mode);
   try {
     const ids = mode === "group" ? await groupViewRowIds() : await duplicateViewRowIds();
-    if (app.viewMode !== mode || currentScopeSignature(mode) !== signature) {
+    if (workspaceState.viewMode !== mode || currentScopeSignature(mode) !== signature) {
       return getSelectedCount();
     }
     setExplicitSelection(ids);

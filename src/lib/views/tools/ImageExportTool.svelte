@@ -1,291 +1,26 @@
 <script lang="ts">
-  import { emitTo, listen, type UnlistenFn } from "@tauri-apps/api/event";
-  import { getCurrentWebview } from "@tauri-apps/api/webview";
-  import { open } from "@tauri-apps/plugin-dialog";
+  import { formatCount } from "../../utils/format";
   import FolderInput from "@lucide/svelte/icons/folder-input";
   import Folder from "@lucide/svelte/icons/folder";
   import Trash2 from "@lucide/svelte/icons/trash-2";
   import X from "@lucide/svelte/icons/x";
-  import { onMount } from "svelte";
+  import { createImageExportController } from "../../features/image-export/controller.svelte";
 
-  import {
-    collectExportImages,
-    exportSelectedImages,
-    getImageExportSettings,
-    setImageExportSettings,
-    type ExportProgress,
-    type ImageFileRenameMode,
-    type ImageFilesExportResult,
-    type RowSelection,
-  } from "../../api";
-  import {
-    errorText,
-    formatCount,
-    setNotice,
-  } from "../../stores/app-state.svelte";
-  import {
-    focusMainWindow,
-    type ToolboxSelectionSnapshot,
-  } from "../../windows/toolbox";
-
-  interface Props {
-    active: boolean;
-  }
-
-  let { active }: Props = $props();
-
-  let selectionSnapshot = $state<ToolboxSelectionSnapshot | null>(null);
-  let destination = $state<string | null>(null);
-  let renameEnabled = $state(false);
-  let renameMode = $state<"random" | "custom">("random");
-  let customName = $state("");
-  let stripMetadata = $state(false);
-  let exporting = $state(false);
-  let progress = $state<ExportProgress | null>(null);
-  let lastResult = $state<ImageFilesExportResult | null>(null);
-  let localError = $state<string | null>(null);
-  let selectionListenerReady = $state(false);
-  let settingsReady = $state(false);
-  let addedPaths = $state<string[]>([]);
-  let scanning = $state(false);
-  let draggingOverSource = $state(false);
-  let sourceDropZone: HTMLButtonElement;
-
-  const mainSelectedCount = $derived(selectionSnapshot?.count ?? 0);
-  const addedCount = $derived(addedPaths.length);
-  const selectedCount = $derived(mainSelectedCount + addedCount);
-  const effectiveRenameMode = $derived<ImageFileRenameMode>(
-    renameEnabled ? renameMode : "original",
-  );
-  const customNameValid = $derived(
-    effectiveRenameMode !== "custom" || customName.trim().length > 0,
-  );
-  const canExport = $derived(
-    !exporting &&
-      !scanning &&
-      selectedCount > 0 &&
-      Boolean(destination) &&
-      customNameValid,
-  );
-
-  onMount(() => {
-    let disposed = false;
-    let unlistenSelection: UnlistenFn | null = null;
-    let unlistenDragDrop: UnlistenFn | null = null;
-    void getImageExportSettings()
-      .then(settings => {
-        if (disposed) return;
-        destination = settings.destination;
-        renameEnabled = settings.renameEnabled;
-        renameMode = settings.renameMode;
-        customName = settings.customName;
-        stripMetadata = settings.stripMetadata;
-        settingsReady = true;
-      })
-      .catch(cause => {
-        if (disposed) return;
-        localError = `无法读取已保存的导出设置：${errorText(cause)}`;
-      });
-    void listen<ToolboxSelectionSnapshot>("main://selection-changed", event => {
-      selectionSnapshot = event.payload;
-    }).then(unlisten => {
-      if (disposed) {
-        unlisten();
-      } else {
-        unlistenSelection = unlisten;
-        selectionListenerReady = true;
-        void requestSelection();
-      }
-    });
-    void getCurrentWebview().onDragDropEvent(event => {
-      if (!active || exporting || scanning) {
-        draggingOverSource = false;
-        return;
-      }
-      if (event.payload.type === "enter" || event.payload.type === "over") {
-        draggingOverSource = isInsideSourceDropZone(event.payload.position);
-      } else if (event.payload.type === "leave") {
-        draggingOverSource = false;
-      } else {
-        const shouldAdd = isInsideSourceDropZone(event.payload.position);
-        draggingOverSource = false;
-        if (shouldAdd) {
-          void addSourcePaths(event.payload.paths);
-        }
-      }
-    }).then(unlisten => {
-      if (disposed) unlisten();
-      else unlistenDragDrop = unlisten;
-    });
-
-    return () => {
-      disposed = true;
-      unlistenSelection?.();
-      unlistenDragDrop?.();
-    };
-  });
-
-  $effect(() => {
-    if (active && selectionListenerReady) {
-      void requestSelection();
-    }
-  });
-
-  $effect(() => {
-    const settings = {
-      destination,
-      renameEnabled,
-      renameMode,
-      customName,
-      stripMetadata,
-    };
-    if (!settingsReady) return;
-    const timer = window.setTimeout(() => {
-      void setImageExportSettings(settings).catch(cause => {
-        localError = `无法保存导出设置：${errorText(cause)}`;
-      });
-    }, 250);
-    return () => window.clearTimeout(timer);
-  });
-
-  async function requestSelection(): Promise<void> {
-    try {
-      await emitTo("main", "toolbox://request-selection");
-    } catch {
-      localError = "无法读取主窗口选区，请确认主窗口仍在运行。";
-    }
-  }
-
-  async function chooseDestination(): Promise<void> {
-    const selected = await open({
-      directory: true,
-      multiple: false,
-      title: "选择图片导出文件夹",
-    });
-    if (typeof selected !== "string") {
-      return;
-    }
-    destination = selected;
-    lastResult = null;
-    localError = null;
-  }
-
-  async function chooseSourceFolder(): Promise<void> {
-    const selected = await open({
-      directory: true,
-      multiple: false,
-      title: "选择需要导出的图片文件夹",
-    });
-    if (typeof selected === "string") {
-      await addSourcePaths([selected]);
-    }
-  }
-
-  async function addSourcePaths(paths: string[]): Promise<void> {
-    if (paths.length === 0 || scanning || exporting) return;
-    scanning = true;
-    localError = null;
-    lastResult = null;
-    try {
-      addedPaths = await collectExportImages([...addedPaths, ...paths]);
-    } catch (cause) {
-      localError = errorText(cause);
-    } finally {
-      scanning = false;
-    }
-  }
-
-  function removeAddedPath(path: string): void {
-    addedPaths = addedPaths.filter(candidate => candidate !== path);
-    lastResult = null;
-  }
-
-  function clearAddedPaths(): void {
-    addedPaths = [];
-    lastResult = null;
-  }
-
-  function isInsideSourceDropZone(position: { x: number; y: number }): boolean {
-    if (!sourceDropZone) return false;
-    const scale = window.devicePixelRatio || 1;
-    const x = position.x / scale;
-    const y = position.y / scale;
-    const rect = sourceDropZone.getBoundingClientRect();
-    return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
-  }
-
-  async function returnToMain(): Promise<void> {
-    try {
-      await focusMainWindow();
-    } catch (cause) {
-      localError = `无法切换到主窗口：${errorText(cause)}`;
-    }
-  }
-
-  async function runExport(): Promise<void> {
-    if (!canExport || !destination) {
-      return;
-    }
-    const selection: RowSelection = selectionSnapshot?.selection ?? {
-      kind: "explicit",
-      rowIds: [],
-    };
-    const target = destination;
-    const custom = effectiveRenameMode === "custom" ? customName.trim() : null;
-    exporting = true;
-    progress = null;
-    lastResult = null;
-    localError = null;
-    const unlisten = await listen<ExportProgress>("export://progress", event => {
-      progress = event.payload;
-    });
-    try {
-      const result = await exportSelectedImages(
-        selection,
-        addedPaths,
-        target,
-        effectiveRenameMode,
-        custom,
-        stripMetadata,
-      );
-      lastResult = result;
-      const missing = result.missing > 0
-        ? `，${formatCount(result.missing)} 张源文件不可用`
-        : "";
-      setNotice({
-        tone: "success",
-        text: `已导出 ${formatCount(result.exported)} 张图片${missing}。`,
-      });
-      await requestSelection();
-    } catch (cause) {
-      localError = errorText(cause);
-    } finally {
-      unlisten();
-      progress = null;
-      exporting = false;
-    }
-  }
-
-  function folderName(path: string): string {
-    return path.split(/[\\/]/).filter(Boolean).pop() ?? path;
-  }
-
-  function fileName(path: string): string {
-    return path.split(/[\\/]/).pop() ?? path;
-  }
+  let { active }: { active: boolean } = $props();
+  const controller = createImageExportController(() => active);
 </script>
 
 <div class="export-page">
-  <section class="selection-card" class:is-ready={selectedCount > 0}>
+  <section class="selection-card" class:is-ready={controller.selectedCount > 0}>
     <span class="step step-badge">1</span>
     <div class="card-copy">
       <h3>选择需要导出的图片</h3>
-      {#if selectedCount > 0}
+      {#if controller.selectedCount > 0}
         <p>
-          共选择 <strong>{formatCount(selectedCount)}</strong> 张图片
-          {#if mainSelectedCount > 0 && addedCount > 0}
-            （主窗口 {formatCount(mainSelectedCount)} 张，另行添加 {formatCount(addedCount)} 张）
-          {:else if addedCount > 0}
+          共选择 <strong>{formatCount(controller.selectedCount)}</strong> 张图片
+          {#if controller.mainSelectedCount > 0 && controller.addedCount > 0}
+            （主窗口 {formatCount(controller.mainSelectedCount)} 张，另行添加 {formatCount(controller.addedCount)} 张）
+          {:else if controller.addedCount > 0}
             （通过文件夹或拖放添加）
           {/if}
         </p>
@@ -294,44 +29,44 @@
       {/if}
     </div>
     <div class="selection-actions">
-      <button type="button" class="btn" onclick={() => void returnToMain()}>
+      <button type="button" class="btn" onclick={() => void controller.returnToMain()}>
         返回主窗口选择
       </button>
       <button
-        bind:this={sourceDropZone}
+        bind:this={controller.sourceDropZone}
         type="button"
         class="source-drop-zone"
-        class:is-dragging={draggingOverSource}
-        disabled={scanning || exporting}
-        onclick={() => void chooseSourceFolder()}
+        class:is-dragging={controller.draggingOverSource}
+        disabled={controller.scanning || controller.exporting}
+        onclick={() => void controller.chooseSourceFolder()}
       >
         <FolderInput size={20} strokeWidth={1.7} />
         <span>
-          <strong>{scanning ? "正在扫描图片…" : "点击选择文件夹"}</strong>
+          <strong>{controller.scanning ? "正在扫描图片…" : "点击选择文件夹"}</strong>
           <small>或拖入图片 / 文件夹</small>
         </span>
       </button>
     </div>
-    {#if addedCount > 0}
+    {#if controller.addedCount > 0}
       <div class="added-sources">
         <div class="added-heading">
-          <span>已追加并去重 {formatCount(addedCount)} 张，文件夹已包含全部子文件夹</span>
-          <button type="button" onclick={clearAddedPaths} title="清空另行添加的图片">
+          <span>已追加并去重 {formatCount(controller.addedCount)} 张，文件夹已包含全部子文件夹</span>
+          <button type="button" onclick={controller.clearAddedPaths} title="清空另行添加的图片">
             <Trash2 size={14} strokeWidth={1.8} />
             清空
           </button>
         </div>
         <div class="source-preview">
-          {#each addedPaths.slice(0, 4) as path (path)}
+          {#each controller.addedPaths.slice(0, 4) as path (path)}
             <span title={path}>
-              <code>{fileName(path)}</code>
-              <button type="button" onclick={() => removeAddedPath(path)} aria-label={`移除 ${fileName(path)}`}>
+              <code>{controller.fileName(path)}</code>
+              <button type="button" onclick={() => controller.removeAddedPath(path)} aria-label={`移除 ${controller.fileName(path)}`}>
                 <X size={13} strokeWidth={1.8} />
               </button>
             </span>
           {/each}
-          {#if addedCount > 4}
-            <em>还有 {formatCount(addedCount - 4)} 张</em>
+          {#if controller.addedCount > 4}
+            <em>还有 {formatCount(controller.addedCount - 4)} 张</em>
           {/if}
         </div>
       </div>
@@ -349,15 +84,15 @@
     <button
       type="button"
       class="folder-picker"
-      class:has-value={Boolean(destination)}
-      onclick={() => void chooseDestination()}
+      class:has-value={Boolean(controller.destination)}
+      onclick={() => void controller.chooseDestination()}
     >
       <span class="folder-icon" aria-hidden="true"><Folder size={22} strokeWidth={1.6} /></span>
       <span class="folder-copy">
-        <strong>{destination ? folderName(destination) : "选择导出文件夹…"}</strong>
-        <small title={destination ?? undefined}>{destination ?? "尚未选择"}</small>
+        <strong>{controller.destination ? controller.folderName(controller.destination) : "选择导出文件夹…"}</strong>
+        <small title={controller.destination ?? undefined}>{controller.destination ?? "尚未选择"}</small>
       </span>
-      <span class="change-label">{destination ? "更换" : "选择"}</span>
+      <span class="change-label">{controller.destination ? "更换" : "选择"}</span>
     </button>
   </section>
 
@@ -369,39 +104,39 @@
         <p>默认保留原文件名；同名文件会自动追加序号。</p>
       </div>
       <label class="switch-row">
-        <input type="checkbox" bind:checked={renameEnabled} />
+        <input type="checkbox" bind:checked={controller.renameEnabled} />
         <span>重命名</span>
       </label>
     </div>
 
-    {#if renameEnabled}
+    {#if controller.renameEnabled}
       <div class="rename-options">
-        <label class:is-active={renameMode === "random"}>
-          <input type="radio" bind:group={renameMode} value="random" />
+        <label class:is-active={controller.renameMode === "random"}>
+          <input type="radio" bind:group={controller.renameMode} value="random" />
           <span>
             <strong>随机乱码</strong>
             <small>例如 a4f083bd7c19e260.png</small>
           </span>
         </label>
-        <label class:is-active={renameMode === "custom"}>
-          <input type="radio" bind:group={renameMode} value="custom" />
+        <label class:is-active={controller.renameMode === "custom"}>
+          <input type="radio" bind:group={controller.renameMode} value="custom" />
           <span>
             <strong>自定义命名</strong>
             <small>按“名称_1、名称_2…”顺序生成</small>
           </span>
         </label>
       </div>
-      {#if renameMode === "custom"}
+      {#if controller.renameMode === "custom"}
         <label class="custom-name">
           <span>文件名前缀</span>
           <div>
             <input
               type="text"
-              bind:value={customName}
+              bind:value={controller.customName}
               maxlength="120"
               placeholder="例如：胡桃精选"
             />
-            <code>{customName.trim() || "自定义名称"}_1.png</code>
+            <code>{controller.customName.trim() || "自定义名称"}_1.png</code>
           </div>
         </label>
       {/if}
@@ -416,66 +151,66 @@
         <p>重新编码导出副本，移除 PNG 附加块及 NovelAI Alpha 通道隐写元数据。</p>
       </div>
       <label class="switch-row danger-switch">
-        <input type="checkbox" bind:checked={stripMetadata} />
+        <input type="checkbox" bind:checked={controller.stripMetadata} />
         <span>抹除元数据</span>
       </label>
     </div>
-    {#if stripMetadata}
+    {#if controller.stripMetadata}
       <p class="safety-note">
         只处理新导出的图片副本；会微调透明度最低位（肉眼不可见），原图和资料库不会被修改。
       </p>
     {/if}
   </section>
 
-  {#if localError}
-    <p class="message error" role="alert">{localError}</p>
+  {#if controller.localError}
+    <p class="message error" role="alert">{controller.localError}</p>
   {/if}
 
-  {#if exporting && progress}
+  {#if controller.exporting && controller.progress}
     <div class="progress-card">
       <div>
         <strong>正在导出图片…</strong>
-        <span>{formatCount(progress.processed)} / {formatCount(progress.total)}</span>
+        <span>{formatCount(controller.progress.processed)} / {formatCount(controller.progress.total)}</span>
       </div>
-      <span class="progress export-progress" role="progressbar" aria-valuemin={0} aria-valuemax={Math.max(1, progress.total)} aria-valuenow={progress.processed}>
-        <span class="progress-fill" style:transform="scaleX({progress.total > 0 ? progress.processed / progress.total : 0})"></span>
+      <span class="progress export-progress" role="progressbar" aria-valuemin={0} aria-valuemax={Math.max(1, controller.progress.total)} aria-valuenow={controller.progress.processed}>
+        <span class="progress-fill" style:transform="scaleX({controller.progress.total > 0 ? controller.progress.processed / controller.progress.total : 0})"></span>
       </span>
     </div>
   {/if}
 
-  {#if lastResult}
+  {#if controller.lastResult}
     <div class="result-card">
       <strong>导出完成</strong>
       <span>
-        已导出 {formatCount(lastResult.exported)} 张
-        {lastResult.missing > 0 ? `，${formatCount(lastResult.missing)} 张源文件不可用` : ""}
+        已导出 {formatCount(controller.lastResult.exported)} 张
+        {controller.lastResult.missing > 0 ? `，${formatCount(controller.lastResult.missing)} 张源文件不可用` : ""}
       </span>
-      <code title={lastResult.directory}>{lastResult.directory}</code>
+      <code title={controller.lastResult.directory}>{controller.lastResult.directory}</code>
     </div>
   {/if}
 
   <footer class="action-bar">
     <div>
-      {#if selectedCount === 0}
+      {#if controller.selectedCount === 0}
         <span class="bar-hint">请选择文件夹、拖入图片，或在主窗口选择图片</span>
-      {:else if !destination}
+      {:else if !controller.destination}
         <span class="bar-hint">请选择导出文件夹</span>
-      {:else if !customNameValid}
+      {:else if !controller.customNameValid}
         <span class="bar-hint">请输入自定义文件名前缀</span>
       {:else}
-        <span class="bar-hint">准备导出 {formatCount(selectedCount)} 张图片</span>
+        <span class="bar-hint">准备导出 {formatCount(controller.selectedCount)} 张图片</span>
       {/if}
-      {#if settingsReady}
+      {#if controller.settingsReady}
         <small class="remember-hint">导出位置和选项会自动记住</small>
       {/if}
     </div>
     <button
       type="button"
       class="btn btn-primary export-button"
-      disabled={!canExport}
-      onclick={() => void runExport()}
+      disabled={!controller.canExport}
+      onclick={() => void controller.runExport()}
     >
-      {exporting ? "正在导出…" : "开始导出"}
+      {controller.exporting ? "正在导出…" : "开始导出"}
     </button>
   </footer>
 </div>
@@ -747,7 +482,6 @@
     font-weight: 600;
     white-space: nowrap;
   }
-
 
   .rename-options {
     display: grid;

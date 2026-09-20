@@ -1,11 +1,12 @@
 <script lang="ts">
+  import { formatCount } from "../../utils/format";
   import Images from "@lucide/svelte/icons/images";
   import ChevronLeft from "@lucide/svelte/icons/chevron-left";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import CompareCard from "./CompareCard.svelte";
   import type { RowRecord } from "../../api";
   import type { CompareModelSection } from "../../api/compare";
-  import { formatCount } from "../../stores/app-state.svelte";
+
   import { modelComparisonTier, modelVersionBadge } from "../../utils/model-version";
   let { section, sampleModel, sampleUnavailable, loading, error, onretry, onactivate }: {
     section: CompareModelSection; sampleModel: string | null; sampleUnavailable: boolean; loading: boolean; error: string | null;

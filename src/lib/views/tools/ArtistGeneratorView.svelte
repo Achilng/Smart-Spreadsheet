@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { errorText, formatCount } from "../../utils/format";
+  import { setNotice } from "../../stores/notices.svelte";
   import { onMount } from "svelte";
   import Dices from "@lucide/svelte/icons/dices";
 
@@ -7,7 +9,7 @@
     listDistinctArtists,
     setCustomArtists,
   } from "../../api";
-  import { errorText, formatCount, setNotice } from "../../stores/app-state.svelte";
+
   import { softFade, softFly } from "../../ui/motion";
 
   let libraryArtists = $state<string[]>([]);

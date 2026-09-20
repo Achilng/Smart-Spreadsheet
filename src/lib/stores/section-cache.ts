@@ -1,10 +1,11 @@
-import { errorText } from "./app-state.svelte";
+import { errorText } from "../utils/format";
+
 import type { SectionMembers } from "./section-types";
 
 export const MEMBERS_PAGE = 200;
 
 export interface PageResult {
-  rows: { id: number }[];
+  rows: SectionMembers["rows"];
   totalCount: number;
 }
 
@@ -27,7 +28,7 @@ export function createSectionCache(
     try {
       const page = await fetchPage(0, MEMBERS_PAGE);
       if (sig !== getSignature()) return;
-      setCache(key, { rows: page.rows as any[], totalCount: page.totalCount, loading: false, error: null });
+      setCache(key, { rows: page.rows, totalCount: page.totalCount, loading: false, error: null });
     } catch (e) {
       if (sig !== getSignature()) return;
       setCache(key, { rows: [], totalCount: 0, loading: false, error: errorText(e) });
@@ -45,7 +46,7 @@ export function createSectionCache(
     try {
       const page = await fetchPage(data.rows.length, MEMBERS_PAGE);
       if (sig !== getSignature()) return;
-      data.rows = [...data.rows, ...page.rows as any[]];
+      data.rows = [...data.rows, ...page.rows];
       data.totalCount = page.totalCount;
       data.loading = false;
       data.error = null;

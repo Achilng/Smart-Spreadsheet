@@ -1,7 +1,8 @@
 <script lang="ts">
+  import { formatCount } from "../../utils/format";
+  import { workspaceState } from "../../stores/workspace-state.svelte";
   import X from "@lucide/svelte/icons/x";
 
-  import { app, formatCount } from "../../stores/app-state.svelte";
   import { duplicateBrowse } from "../../stores/duplicate-browse-store.svelte";
   import { groupBrowse } from "../../stores/group-browse-store.svelte";
   import { groupStore } from "../../stores/group-store.svelte";
@@ -26,10 +27,10 @@
   import { viewLabel } from "./view-modes";
   import { libraryFilterLabel } from "../../utils/library-filters";
 
-  const title = $derived(viewLabel(app.viewMode));
+  const title = $derived(viewLabel(workspaceState.viewMode));
 
   const countText = $derived.by(() => {
-    switch (app.viewMode) {
+    switch (workspaceState.viewMode) {
       case "gallery":
       case "table":
         return `${formatCount(rowStore.totalCount)} 张符合条件`;
@@ -97,10 +98,10 @@
   <span class="c-spacer"></span>
 
   <div class="c-controls">
-    {#if app.viewMode === "gallery" || app.viewMode === "table"}
+    {#if workspaceState.viewMode === "gallery" || workspaceState.viewMode === "table"}
       <SizeSlider />
       <SortControl controlId="canvas-sort" />
-    {:else if app.viewMode === "group"}
+    {:else if workspaceState.viewMode === "group"}
       <div class="txt-group" role="group" aria-label="分组排序">
         <button
           type="button"
@@ -118,9 +119,9 @@
       <button
         type="button"
         class="txt-action"
-        onclick={() => (app.groupManageOpen = true)}
+        onclick={() => (workspaceState.groupManageOpen = true)}
       >管理分组</button>
-    {:else if app.viewMode === "duplicates"}
+    {:else if workspaceState.viewMode === "duplicates"}
       <div class="txt-group" role="group" aria-label="聚合依据">
         <button
           type="button"

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { splitListText as splitValues } from "../../utils/list-text";
   import X from "@lucide/svelte/icons/x";
 
   import {
@@ -44,10 +45,6 @@
 
   function text(event: Event): string {
     return (event.currentTarget as HTMLInputElement | HTMLTextAreaElement).value;
-  }
-
-  function splitValues(value: string): string[] {
-    return [...new Set(value.split(/[,，\n\r]/).map(item => item.trim()).filter(Boolean))];
   }
 
   /** 当前条件是否已填了会因切换类型而丢失的内容 */

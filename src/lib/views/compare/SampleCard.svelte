@@ -1,9 +1,10 @@
 <script lang="ts">
+  import { setNotice } from "../../stores/notices.svelte";
   import RefreshCw from "@lucide/svelte/icons/refresh-cw";
   import ChevronDown from "@lucide/svelte/icons/chevron-down";
   import Copy from "@lucide/svelte/icons/copy";
   import type { RowRecord } from "../../api";
-  import { setNotice } from "../../stores/app-state.svelte";
+
   import { modelVersionBadge } from "../../utils/model-version";
   import { rowFileName, rowResolution } from "../../utils/row-display";
   import PaneImage from "./PaneImage.svelte";

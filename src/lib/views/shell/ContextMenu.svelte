@@ -1,8 +1,11 @@
 <script lang="ts">
+  import { formatCount } from "../../utils/format";
+  import { setNotice } from "../../stores/notices.svelte";
+  import { workspaceState } from "../../stores/workspace-state.svelte";
   import { save } from "@tauri-apps/plugin-dialog";
   import { exportRowImage, rowIdsWithArtists, showItemInExplorer } from "../../api";
   import ContextMenuShell from "../../ui/ContextMenuShell.svelte";
-  import { app, formatCount, setNotice } from "../../stores/app-state.svelte";
+
   import { contextMenu, hideContextMenu } from "../../stores/context-menu.svelte";
   import { requestDelete } from "../../stores/delete-actions.svelte";
   import {
@@ -107,8 +110,8 @@
     hideContextMenu();
     clearSelection();
     focusArtistFilter(artists);
-    if (app.viewMode !== "gallery" && app.viewMode !== "table") {
-      app.viewMode = "gallery";
+    if (workspaceState.viewMode !== "gallery" && workspaceState.viewMode !== "table") {
+      workspaceState.viewMode = "gallery";
     }
   }
 

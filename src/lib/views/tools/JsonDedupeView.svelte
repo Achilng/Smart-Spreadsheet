@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { errorText, formatCount } from "../../utils/format";
   import { listen } from "@tauri-apps/api/event";
   import { open, save } from "@tauri-apps/plugin-dialog";
 
@@ -9,7 +10,7 @@
     type JsonDedupeProgress,
     type JsonDedupeSummary,
   } from "../../api";
-  import { errorText, formatCount } from "../../stores/app-state.svelte";
+
   import { softFade, softFly } from "../../ui/motion";
 
   let inputPath = $state<string | null>(null);

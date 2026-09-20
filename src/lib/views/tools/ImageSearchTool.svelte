@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { emitTo } from "@tauri-apps/api/event";
+  import { errorText, formatCount } from "../../utils/format";
+  import { setNotice } from "../../stores/notices.svelte";
   import { getCurrentWebview } from "@tauri-apps/api/webview";
   import { open } from "@tauri-apps/plugin-dialog";
   import ImageUp from "@lucide/svelte/icons/image-up";
@@ -11,9 +12,9 @@
     type RowRecord,
     type SimilarImageMatch,
   } from "../../api";
-  import { errorText, formatCount, setNotice } from "../../stores/app-state.svelte";
+
   import Thumbnail from "../../ui/Thumbnail.svelte";
-  import { focusMainWindow, type ToolboxRowRequest } from "../../windows/toolbox";
+  import { openRowInMainWindow } from "../../windows/toolbox";
   import { softFade, softFly } from "../../ui/motion";
 
   interface Props {
@@ -154,9 +155,7 @@
   async function openInMain(rowId: number): Promise<void> {
     openingRowId = rowId;
     try {
-      const request: ToolboxRowRequest = { rowId };
-      await emitTo("main", "toolbox://open-row", request);
-      await focusMainWindow();
+      await openRowInMainWindow(rowId);
     } catch (cause) {
       setNotice({
         tone: "error",

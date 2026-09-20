@@ -1,6 +1,7 @@
 <script lang="ts">
+  import { formatCount } from "../utils/format";
   import type { Snippet } from "svelte";
-  import { formatCount } from "../stores/app-state.svelte";
+
   import { tagStore } from "../stores/tag-store.svelte";
   import { tagColorFor } from "../utils/tag-colors";
   import "./tag-filter-sidebar.css";

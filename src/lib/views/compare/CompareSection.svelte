@@ -1,11 +1,12 @@
 <script lang="ts">
+  import { formatCount } from "../../utils/format";
   import Images from "@lucide/svelte/icons/images";
   import ChevronLeft from "@lucide/svelte/icons/chevron-left";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import CompareCard from "./CompareCard.svelte";
   import type { RowRecord } from "../../api";
   import type { SectionState } from "../../stores/compare-store.svelte";
-  import { formatCount } from "../../stores/app-state.svelte";
+
   let { title, description, state, emptyText, sampleUnavailable, onLoadMore, onPrevious, onretry, onactivate }: {
     title: string; description?: string; state: SectionState; emptyText: string; sampleUnavailable: boolean;
     onLoadMore: () => void; onPrevious: () => void; onretry: () => void; onactivate: (row: RowRecord) => void;

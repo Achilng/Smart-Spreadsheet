@@ -1,4 +1,8 @@
 <script lang="ts">
+  import { createPromptEditor } from "../../features/library/field-editor.svelte";
+  import { errorText } from "../../utils/format";
+  import { setNotice } from "../../stores/notices.svelte";
+  import { workspaceState } from "../../stores/workspace-state.svelte";
   import DetailPanelLayout from "../../ui/DetailPanelLayout.svelte";
   import DetailPreview from "../../ui/DetailPreview.svelte";
   import DetailLightbox from "../../ui/DetailLightbox.svelte";
@@ -16,7 +20,7 @@
     updatePositivePrompt,
     mutableRowState,
   } from "../../api";
-  import { app, errorText, setNotice } from "../../stores/app-state.svelte";
+
   import { beginFileDrag } from "../../stores/file-drag";
   import { requestDelete } from "../../stores/delete-actions.svelte";
   import { removeFromGroup, groupStore } from "../../stores/group-store.svelte";
@@ -66,109 +70,8 @@
     }
   }
 
-  function createPromptEditor(
-    label: string,
-    getField: () => string | null | undefined,
-    saveFn: (rowId: number, value: string) => Promise<any>,
-    patchField: (rowId: number, value: string, result: any) => void,
-  ) {
-    let editing = $state(false);
-    let value = $state("");
-    let saving = $state(false);
-    let error = $state<string | null>(null);
-    let restored = $state(false);
-    let initialValue = "";
-    let editingRowId: number | null = null;
-    /** 切行时未保存的编辑按行暂存，回到该行再点“编辑”可继续 */
-    const drafts = new Map<number, string>();
-
-    function start(): void {
-      if (!row) return;
-      const base = getField() ?? "";
-      const draft = drafts.get(row.id);
-      value = draft ?? base;
-      initialValue = base;
-      restored = draft !== undefined && draft !== base;
-      editingRowId = row.id;
-      editing = true;
-      error = null;
-    }
-
-    function isDirty(): boolean {
-      return editing && value !== initialValue;
-    }
-
-    function cancel(): void {
-      if (isDirty() && !window.confirm(`放弃「${label.replace("编辑", "")}」未保存的修改吗？`)) {
-        return;
-      }
-      if (editingRowId !== null) drafts.delete(editingRowId);
-      editing = false;
-      error = null;
-      restored = false;
-    }
-
-    async function save(): Promise<void> {
-      const current = row;
-      if (!current || saving) return;
-      saving = true;
-      error = null;
-      const before = mutableRowState(current);
-      try {
-        const result = await saveFn(current.id, value);
-        drafts.delete(current.id);
-        // 先把新值写入行缓存，再退出编辑态，避免展示态短暂回显旧值。
-        patchField(current.id, value, result);
-        editing = false;
-        restored = false;
-        await recordOrWarn(label, [before]);
-      } catch (e) {
-        error = errorText(e);
-      } finally {
-        saving = false;
-      }
-    }
-
-    function onKeydown(event: KeyboardEvent): void {
-      // 中文输入法用 Enter 确认候选词时不应触发保存。
-      if (event.isComposing) return;
-      if (event.key === "Escape") {
-        event.preventDefault();
-        event.stopPropagation();
-        cancel();
-      } else if (event.key === "Enter" && !event.shiftKey) {
-        event.preventDefault();
-        event.stopPropagation();
-        void save();
-      }
-    }
-
-    /** 切换行时调用：不丢内容，未保存的编辑暂存为原行草稿。 */
-    function reset(): void {
-      if (isDirty() && editingRowId !== null) {
-        drafts.set(editingRowId, value);
-      }
-      editing = false;
-      error = null;
-      restored = false;
-    }
-
-    return {
-      get editing() { return editing; },
-      get value() { return value; },
-      set value(v: string) { value = v; },
-      get saving() { return saving; },
-      get error() { return error; },
-      get restored() { return restored; },
-      start,
-      cancel,
-      save,
-      onKeydown,
-      reset,
-    };
-  }
-
   const promptEditor = createPromptEditor(
+    () => row, recordOrWarn,
     "编辑正向提示词",
     () => row?.positivePrompt,
     updatePositivePrompt,
@@ -176,6 +79,7 @@
   );
 
   const negPromptEditor = createPromptEditor(
+    () => row, recordOrWarn,
     "编辑负向提示词",
     () => row?.negativePrompt,
     updateNegativePrompt,
@@ -183,6 +87,7 @@
   );
 
   const characterPromptEditor = createPromptEditor(
+    () => row, recordOrWarn,
     "编辑角色提示词",
     () => row?.characterPrompt,
     updateCharacterPrompt,
@@ -191,6 +96,7 @@
   );
 
   const noteEditor = createPromptEditor(
+    () => row, recordOrWarn,
     "编辑备注",
     () => row?.note,
     updateNote,
@@ -399,7 +305,7 @@
 
 <DetailPanelLayout title={row ? (rowFileName(row) ?? `第 ${row.sourceOrdinal} 行`) : "详情"}
   subtitle={row ? [rowResolution(row), row.time].filter(Boolean).join(" · ") : undefined}
-  empty={!row} oncollapse={() => app.detailOpen = false}
+  empty={!row} oncollapse={() => workspaceState.detailOpen = false}
   ondelete={() => { if (row) requestDelete({ kind: "explicit", rowIds: [row.id] }, 1); }}>
   {#if row}
       <DetailPreview src={displayUrl} alt={`第 ${row.sourceOrdinal} 行图片`}

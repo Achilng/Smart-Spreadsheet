@@ -1,3 +1,5 @@
+import { bumpDataVersion } from "./library-changes";
+import { errorText } from "../utils/format";
 import {
   assignRowsToGroup,
   createGroup,
@@ -14,7 +16,7 @@ import {
   type MutableRowState,
   type RowSelection,
 } from "../api";
-import { bumpDataVersion, errorText } from "./app-state.svelte";
+
 import { recordHistory } from "./history.svelte";
 import { loadTags } from "./tag-store.svelte";
 

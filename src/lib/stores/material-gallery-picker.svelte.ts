@@ -1,5 +1,5 @@
+import { workspaceState } from "./workspace-state.svelte";
 import type { RowRecord } from "../api/rows";
-import { app } from "./app-state.svelte";
 
 export const materialGalleryPicker = $state({
   active: false,
@@ -13,7 +13,7 @@ export function startMaterialGalleryPick(callback: (rowId: number | null) => voi
   complete = callback;
   materialGalleryPicker.selected = null;
   materialGalleryPicker.active = true;
-  app.viewMode = "gallery";
+  workspaceState.viewMode = "gallery";
   return () => {
     if (complete !== callback) return;
     complete = null;
@@ -30,6 +30,6 @@ export function finishMaterialGalleryPick(useSelected: boolean): void {
   complete = null;
   materialGalleryPicker.active = false;
   materialGalleryPicker.selected = null;
-  app.viewMode = "materials";
+  workspaceState.viewMode = "materials";
   callback?.(rowId ?? null);
 }

@@ -1,6 +1,7 @@
 <script lang="ts">
+  import { formatCount } from "../../utils/format";
   import DeleteConfirmation from "../../ui/DeleteConfirmation.svelte";
-  import { formatCount } from "../../stores/app-state.svelte";
+
   import { cancelDelete, confirmDelete, deletion } from "../../stores/delete-actions.svelte";
 </script>
 

@@ -1,5 +1,7 @@
+import { errorText } from "../utils/format";
+import { libraryState } from "./library-state.svelte";
 import { getGroupMembers, queryRows } from "../api";
-import { app, errorText } from "./app-state.svelte";
+
 import { groupStore } from "./group-store.svelte";
 import { rowStore } from "./row-store.svelte";
 import { createSectionCache, MEMBERS_PAGE } from "./section-cache";
@@ -24,7 +26,7 @@ let memberSignature = "\u{0}unloaded";
 let ungroupedSignature = "\u{0}unloaded";
 
 function currentMemberSignature(): string {
-  return `${app.dataVersion}\u{1}${groupStore.membershipVersion}`;
+  return `${libraryState.dataVersion}\u{1}${groupStore.membershipVersion}`;
 }
 
 function currentUngroupedSignature(): string {

@@ -1,3 +1,4 @@
+import { emitTo } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 
 import type { RowSelection } from "../api";
@@ -29,4 +30,11 @@ export function openToolboxWindow(): Promise<void> {
 
 export function focusMainWindow(): Promise<void> {
   return invoke<void>("focus_main_window");
+}
+
+/** Reveal a library row from any toolbox feature, then focus the main window. */
+export async function openRowInMainWindow(rowId: number): Promise<void> {
+  const request: ToolboxRowRequest = { rowId };
+  await emitTo("main", "toolbox://open-row", request);
+  await focusMainWindow();
 }

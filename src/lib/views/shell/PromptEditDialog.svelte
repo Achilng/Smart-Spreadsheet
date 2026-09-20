@@ -1,9 +1,10 @@
 <script lang="ts">
+  import { errorText } from "../../utils/format";
   import X from "@lucide/svelte/icons/x";
 
   import { findReplacePrompt, prefixArtistTag, type RowSelection } from "../../api";
   import Modal from "../../ui/Modal.svelte";
-  import { errorText } from "../../stores/app-state.svelte";
+
   import { captureSelectionStates, recordRowStateChange } from "../../stores/history-actions";
   import { resetRows } from "../../stores/row-store.svelte";
   import { softFade, softFly } from "../../ui/motion";

@@ -1,3 +1,4 @@
+import { bumpDataVersion } from "./library-changes";
 import {
   getRowsByIds,
   mutableRowState,
@@ -6,7 +7,7 @@ import {
   type MutableRowState,
   type RowSelection,
 } from "../api";
-import { bumpDataVersion } from "./app-state.svelte";
+
 import { bumpGroupMembership, loadGroups } from "./group-store.svelte";
 import { recordHistory } from "./history.svelte";
 import { loadTags } from "./tag-store.svelte";

@@ -1,4 +1,7 @@
-import { app, errorText, registerHistoryClearer, setNotice } from "./app-state.svelte";
+import { errorText } from "../utils/format";
+import { registerHistoryClearer } from "./history-context";
+import { setNotice } from "./notices.svelte";
+import { taskState } from "./task-state.svelte";
 
 const HISTORY_LIMIT = 50;
 
@@ -96,7 +99,7 @@ export async function undoLastAction(): Promise<void> {
   if (history.busy || activeGroup) {
     return;
   }
-  if (app.busy) {
+  if (taskState.busy) {
     setNotice({ tone: "error", text: "当前有任务进行中，暂时无法撤销。" });
     return;
   }
@@ -106,7 +109,7 @@ export async function undoLastAction(): Promise<void> {
     return;
   }
   history.busy = true;
-  app.busy = true;
+  taskState.busy = true;
   syncState();
   try {
     await action.undo();
@@ -117,7 +120,7 @@ export async function undoLastAction(): Promise<void> {
     setNotice({ tone: "error", text: `撤销失败（${action.label}）：${errorText(error)}` });
   } finally {
     history.busy = false;
-    app.busy = false;
+    taskState.busy = false;
     syncState();
   }
 }
@@ -126,7 +129,7 @@ export async function redoLastAction(): Promise<void> {
   if (history.busy || activeGroup) {
     return;
   }
-  if (app.busy) {
+  if (taskState.busy) {
     setNotice({ tone: "error", text: "当前有任务进行中，暂时无法重做。" });
     return;
   }
@@ -136,7 +139,7 @@ export async function redoLastAction(): Promise<void> {
     return;
   }
   history.busy = true;
-  app.busy = true;
+  taskState.busy = true;
   syncState();
   try {
     await action.redo();
@@ -147,7 +150,7 @@ export async function redoLastAction(): Promise<void> {
     setNotice({ tone: "error", text: `重做失败（${action.label}）：${errorText(error)}` });
   } finally {
     history.busy = false;
-    app.busy = false;
+    taskState.busy = false;
     syncState();
   }
 }

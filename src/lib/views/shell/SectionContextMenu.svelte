@@ -1,7 +1,8 @@
 <script lang="ts">
+  import { setNotice } from "../../stores/notices.svelte";
   import { setDedupeAlias } from "../../api";
   import ContextMenuShell from "../../ui/ContextMenuShell.svelte";
-  import { setNotice } from "../../stores/app-state.svelte";
+
   import { groupStore, removeGroup, renameExistingGroup } from "../../stores/group-store.svelte";
   import { requestGroupDelete } from "../../stores/group-delete-confirm.svelte";
   import {

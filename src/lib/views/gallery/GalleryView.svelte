@@ -1,24 +1,25 @@
 <script lang="ts">
+  import { createViewportScroll } from "../../stores/viewport-scroll.svelte";
+  import { workspaceState } from "../../stores/workspace-state.svelte";
   import { onDestroy } from "svelte";
 
   import type { RowRecord } from "../../api";
-  import { app } from "../../stores/app-state.svelte";
+
   import { PAGE_SIZE, clearAllFilters, ensurePage, getRow, resetRows, rowStore } from "../../stores/row-store.svelte";
   import { emptyResultText } from "../../utils/empty-state";
   import { thumbnails } from "../../images/thumbnails";
   import { galleryPreviews } from "../../images/progressive-images";
   import { vibeStatuses } from "../../images/vibe-statuses";
-  import { restoreScrollPosition, savedScrollPosition, rememberVisibleRange, saveScrollPosition, scrollPositionVersion } from "../../stores/view-state";
+  import { rememberVisibleRange, saveScrollPosition, scrollPositionVersion } from "../../stores/view-state";
   import GalleryCard from "./GalleryCard.svelte";
   import GalleryViewport from "./GalleryViewport.svelte";
-  import { galleryLayout, galleryCellPosition, galleryVisibleIndices, GALLERY_GAP as GAP, GALLERY_PADDING as PADDING } from "./gallery-layout";
-
+  import { galleryLayout, galleryCellPosition, galleryVisibleIndices, GALLERY_GAP as GAP, GALLERY_PADDING as PADDING } from "../../images/gallery-layout";
 
   let { active = true }: { active?: boolean } = $props();
 
   const PROGRESSIVE_DELAY_MS = 400;
 
-  const minCardWidth = $derived(app.galleryCardSize);
+  const minCardWidth = $derived(workspaceState.galleryCardSize);
 
   let viewport = $state<HTMLDivElement | null>(null);
   let scrollTop = $state(0);
@@ -141,51 +142,16 @@
     }
   });
 
-  // 挂载和每次切回激活时恢复滚动位置。spacer 高度依赖 totalCount，必须等
-  // 数据就绪；刷新在途时 totalCount 还是旧语义的值，提前恢复会被钳制。
-  // 保活后浏览器通常能自行保留位置，这里作为钳制后的兜底按帧重试恢复。
-  let restored = $state(false);
-  let restoring = false;
-  let seenReset = rowStore.resetToken;
-
-  // 先更新虚拟可见区，再由下方 effect 在绘制前同步 DOM 滚动位置。
-  $effect.pre(() => {
-    if (rowStore.resetToken !== seenReset) {
-      seenReset = rowStore.resetToken;
-      restored = false;
-    }
-    if (!active) {
-      restored = false;
-    } else if (!restored && !rowStore.initialLoading && !rowStore.refreshing) {
-      scrollTop = savedScrollPosition("gallery");
-    }
+  const scrollRecovery = createViewportScroll({
+    key: "gallery",
+    active: () => active,
+    viewport: () => viewport,
+    resetToken: () => rowStore.resetToken,
+    loading: () => rowStore.initialLoading || rowStore.refreshing,
+    layoutReady: () => viewportWidth > 0 && viewportHeight > 0,
+    extent: () => { void rowStore.totalCount; return spacerHeight; },
+    apply: top => { scrollTop = top; },
   });
-
-  $effect(() => {
-    if (
-      restored ||
-      !active ||
-      !viewport ||
-      rowStore.initialLoading ||
-      rowStore.refreshing ||
-      viewportWidth <= 0 ||
-      viewportHeight <= 0
-    ) {
-      return;
-    }
-    void rowStore.totalCount;
-    void spacerHeight;
-    restored = true;
-    restoring = true;
-    restoreScrollPosition(
-      viewport,
-      "gallery",
-      60,
-      top => (scrollTop = top),
-      () => (restoring = false),
-    );
-  });
-
 
   // 以图搜图等外部入口按资料库真实序号定位。等待筛选重置结束后，
   // 根据当前响应式列数计算图片坐标并把目标卡片滚到视区中央。
@@ -216,8 +182,7 @@
       0,
       PADDING + gridRow * cellHeight - Math.max(0, (viewportHeight - cardHeight) / 2),
     );
-    restored = true;
-    restoring = false;
+    scrollRecovery.markPositioned();
     scrollTop = centeredTop;
     viewport.scrollTop = centeredTop;
     saveGalleryScroll(centeredTop);
@@ -229,7 +194,7 @@
     scrollTop = viewport?.scrollTop ?? 0;
     pauseProgressiveLoading();
     // 恢复期间的钳制事件和隐藏状态下的读数不代表用户位置，不能写入记忆
-    if (active && !restoring) {
+    if (active && !scrollRecovery.restoring) {
       saveGalleryScroll(scrollTop);
     }
   }

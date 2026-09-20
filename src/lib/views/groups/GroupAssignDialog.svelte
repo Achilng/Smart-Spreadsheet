@@ -1,10 +1,11 @@
 <script lang="ts">
+  import { errorText } from "../../utils/format";
   import X from "@lucide/svelte/icons/x";
   import { flip } from "svelte/animate";
 
   import type { RowSelection } from "../../api";
   import Modal from "../../ui/Modal.svelte";
-  import { errorText } from "../../stores/app-state.svelte";
+
   import { captureSelectionStates, recordRowStateChange } from "../../stores/history-actions";
   import { beginHistoryGroup, commitHistoryGroup } from "../../stores/history.svelte";
   import { assignToGroup, createNewGroup, groupStore, loadGroups, removeFromGroup } from "../../stores/group-store.svelte";

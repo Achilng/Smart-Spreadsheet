@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { defaultAction } from "../../features/automation/rule-defaults";
+  import { splitListText as splitValues } from "../../utils/list-text";
   import GripVertical from "@lucide/svelte/icons/grip-vertical";
   import X from "@lucide/svelte/icons/x";
 
@@ -47,34 +49,12 @@
     { value: "stopProcessing", label: "停止这张图片的后续规则" },
   ];
 
-  function defaultAction(type: RuleAction["type"]): RuleAction {
-    switch (type) {
-      case "addTags": return { type, tags: [] };
-      case "removeTags": return { type, tags: [] };
-      case "setGroup": return { type, groupId: 0, onlyIfUngrouped: false };
-      case "clearGroup": return { type };
-      case "appendPrompt": return { type, field: "positive", value: "" };
-      case "deletePromptTags": return { type, field: "positive", value: "" };
-      case "replacePrompt": return { type, field: "positive", find: "", replace: "", caseSensitive: true };
-      case "prefixArtist": return { type, artists: [] };
-      case "setNote": return { type, value: "" };
-      case "setNoteSequence": return { type, prefix: "" };
-      case "appendNote": return { type, value: "", separator: "\n" };
-      case "clearNote": return { type };
-      case "stopProcessing": return { type };
-    }
-  }
-
   function patch(values: Record<string, unknown>): void {
     onreplace({ ...action, ...values } as RuleAction);
   }
 
   function text(event: Event): string {
     return (event.currentTarget as HTMLInputElement | HTMLTextAreaElement).value;
-  }
-
-  function splitValues(value: string): string[] {
-    return [...new Set(value.split(/[,，\n\r]/).map(item => item.trim()).filter(Boolean))];
   }
 
   function groupExists(groupId: number): boolean {

@@ -1,17 +1,14 @@
 <script lang="ts">
+  import { bumpDataVersion } from "./lib/stores/library-changes";
+  import { refreshSnapshot, resetAndReconfigure } from "./lib/features/library/library-actions";
+  import { runStyleSignatureBackfill, runVibeBackfill } from "./lib/features/library/maintenance";
+  import { setNotice } from "./lib/stores/notices.svelte";
+  import { type MainStateChange } from "./lib/windows/library-events";
+  import { libraryState } from "./lib/stores/library-state.svelte";
+  import { taskState } from "./lib/stores/task-state.svelte";
   import { listen } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
 
-  import {
-    app,
-    bumpDataVersion,
-    refreshSnapshot,
-    resetAndReconfigure,
-    runStyleSignatureBackfill,
-    runVibeBackfill,
-    setNotice,
-    type MainStateChange,
-  } from "./lib/stores/app-state.svelte";
   import { installCloseGuards, registerCloseGuard } from "./lib/stores/close-guard";
   import { clearHistory } from "./lib/stores/history.svelte";
   import ImportScreen from "./lib/views/shell/ImportScreen.svelte";
@@ -30,12 +27,12 @@
 
     // 长任务进行中关窗会拦截确认，避免导入/导出被拦腰截断
     const unregisterGuard = registerCloseGuard(() => {
-      if (app.importProgress) return "图片导入尚未完成，关闭会中断导入";
-      if (app.exportProgress) return "导出任务尚未完成";
-      if (app.hashProgress) return "内容哈希补算尚未完成";
-      if (app.phashProgress) return "感知哈希刷新尚未完成";
-      if (app.vibeBackfillProgress) return "VIBE 聚合索引建立尚未完成（关闭后下次启动会自动续跑）";
-      if (app.busy) return "还有后台任务正在进行";
+      if (taskState.importProgress) return "图片导入尚未完成，关闭会中断导入";
+      if (taskState.exportProgress) return "导出任务尚未完成";
+      if (taskState.hashProgress) return "内容哈希补算尚未完成";
+      if (taskState.phashProgress) return "感知哈希刷新尚未完成";
+      if (taskState.vibeBackfillProgress) return "VIBE 聚合索引建立尚未完成（关闭后下次启动会自动续跑）";
+      if (taskState.busy) return "还有后台任务正在进行";
       return null;
     });
     void installCloseGuards().then(fn => {
@@ -74,10 +71,10 @@
 
   const inWorkspace = $derived(
     Boolean(
-      app.loaded &&
-        app.snapshot &&
-        !app.snapshot.startupError &&
-        app.snapshot.dataDirectory,
+      libraryState.loaded &&
+        libraryState.snapshot &&
+        !libraryState.snapshot.startupError &&
+        libraryState.snapshot.dataDirectory,
     ),
   );
 
@@ -106,20 +103,20 @@
     <WindowControls />
   </div>
   <div class="flow-body">
-    {#if !app.loaded}
+    {#if !libraryState.loaded}
       <div class="center-screen">
         <p class="muted">正在读取应用状态…</p>
       </div>
-    {:else if app.snapshot?.startupError}
+    {:else if libraryState.snapshot?.startupError}
       <div class="center-screen">
         <div class="flow-card">
           <h2>无法打开已配置的数据目录</h2>
-          <p class="muted">{app.snapshot.startupError}</p>
+          <p class="muted">{libraryState.snapshot.startupError}</p>
           <div class="flow-actions">
             <button
               type="button"
               class="btn btn-primary"
-              disabled={app.busy}
+              disabled={taskState.busy}
               onclick={() => void resetAndReconfigure()}
             >
               重新配置

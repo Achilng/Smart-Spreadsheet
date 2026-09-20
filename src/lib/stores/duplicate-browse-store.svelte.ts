@@ -1,10 +1,12 @@
+import { errorText } from "../utils/format";
+import { libraryState } from "./library-state.svelte";
 import {
   getDedupeClusterMembers,
   listDedupeClusters,
   type DedupeCluster,
   type DedupeMode,
 } from "../api";
-import { app, errorText } from "./app-state.svelte";
+
 import { rowStore } from "./row-store.svelte";
 import { sectionMenu } from "./section-context-menu.svelte";
 import { createSectionCache } from "./section-cache";
@@ -32,7 +34,7 @@ let loadGeneration = 0;
 
 function currentClusterSignature(): string {
   return [
-    String(app.dataVersion),
+    String(libraryState.dataVersion),
     duplicateBrowse.dedupeMode,
     rowStore.tags.join("\u{2}"),
     rowStore.tagMode,

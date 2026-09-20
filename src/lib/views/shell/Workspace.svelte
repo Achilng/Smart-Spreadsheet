@@ -1,4 +1,9 @@
 <script lang="ts">
+  import { errorText } from "../../utils/format";
+  import { setNotice } from "../../stores/notices.svelte";
+  import { type ViewMode, workspaceState } from "../../stores/workspace-state.svelte";
+  import { libraryState } from "../../stores/library-state.svelte";
+  import { taskState } from "../../stores/task-state.svelte";
   import { emitTo, listen, type UnlistenFn } from "@tauri-apps/api/event";
   import DetailSidebar from "../../ui/DetailSidebar.svelte";
   import { onDestroy, onMount, untrack } from "svelte";
@@ -8,7 +13,7 @@
   } from "../../stores/navigation.svelte";
 
   import { getRowIndex, getRowsByIds } from "../../api";
-  import { app, errorText, setNotice, type ViewMode } from "../../stores/app-state.svelte";
+
   import { materialGalleryPicker, finishMaterialGalleryPick } from "../../stores/material-gallery-picker.svelte";
   import { rowFileName } from "../../utils/row-display";
   import { deletion, requestDelete } from "../../stores/delete-actions.svelte";
@@ -63,7 +68,7 @@
   onDestroy(installNavigation());
   $effect.pre(() => {
     const route = navigationRoute();
-    const directory = app.snapshot?.dataDirectory;
+    const directory = libraryState.snapshot?.dataDirectory;
     untrack(() => observeNavigation(route, directory));
   });
   $effect(() => {
@@ -91,7 +96,7 @@
   }
 
   $effect(() => {
-    rememberVisitedView(app.viewMode);
+    rememberVisitedView(workspaceState.viewMode);
   });
 
   // 首次挂载和工作簿替换时：清缩略图缓存（行 ID 可能复用）、重载数据、刷新 Tag 库、清空选择。
@@ -99,9 +104,9 @@
   // 保留选区和缩略图缓存——否则每按一次 Ctrl+Z 选区就被清空、整屏图闪烁。
   // untrack：这些调用内部有”读-改-写”（如 pagesVersion += 1），不能注册为本 effect 的依赖。
   $effect(() => {
-    void app.dataVersion;
-    const preserveScroll = app.preserveScrollOnDataChange;
-    const preserveSelection = app.preserveSelectionOnDataChange;
+    void libraryState.dataVersion;
+    const preserveScroll = libraryState.preserveScrollOnDataChange;
+    const preserveSelection = libraryState.preserveSelectionOnDataChange;
     untrack(() => {
       if (!preserveSelection) {
         thumbnails.clear();
@@ -146,7 +151,7 @@
 
       const index = await getRowIndex(request.rowId, rowStore.sort);
       revealRowInGallery(row, index);
-      app.viewMode = "gallery";
+      workspaceState.viewMode = "gallery";
       clearSelection();
     } catch (error) {
       setNotice({
@@ -207,7 +212,7 @@
       return;
     }
     // 素材拥有独立文本与记录，不能触发画廊的删除、全选或撤销。
-    if (app.viewMode === "materials") return;
+    if (workspaceState.viewMode === "materials") return;
     const target = event.target;
     const isTextEditing =
       target instanceof HTMLInputElement ||
@@ -246,7 +251,7 @@
     if (
       event.key.toLowerCase() === "a" &&
       (event.ctrlKey || event.metaKey) &&
-      app.viewMode !== "promptDocs" &&
+      workspaceState.viewMode !== "promptDocs" &&
       !(event.target instanceof HTMLInputElement) &&
       !(event.target instanceof HTMLTextAreaElement)
     ) {
@@ -255,7 +260,7 @@
       return;
     }
 
-    if (event.key === "Delete" && app.viewMode !== "promptDocs" && !isEditing && !deletion.open) {
+    if (event.key === "Delete" && workspaceState.viewMode !== "promptDocs" && !isEditing && !deletion.open) {
       const selectedCount = getSelectedCount();
       if (selectedCount > 0) {
         event.preventDefault();
@@ -282,24 +287,24 @@
     <div class="material-pick-bar" role="region" aria-label="选择素材展示图">
       <div><strong>为素材选择展示图</strong><span>{materialGalleryPicker.selected ? `已选：${rowFileName(materialGalleryPicker.selected) ?? `图片 #${materialGalleryPicker.selected.id}`}` : "在画廊中单击一张图片，可使用搜索和 Tag 筛选。"}</span></div>
       <div class="material-pick-actions">
-        {#if app.viewMode !== "gallery"}<button class="btn" onclick={() => app.viewMode = "gallery"}>回到画廊</button>{/if}
+        {#if workspaceState.viewMode !== "gallery"}<button class="btn" onclick={() => workspaceState.viewMode = "gallery"}>回到画廊</button>{/if}
         <button class="btn" onclick={() => finishMaterialGalleryPick(false)}>取消选图，返回编辑</button>
-        <button class="btn btn-primary" disabled={!materialGalleryPicker.selected || app.busy || anyModalOpen()} onclick={() => finishMaterialGalleryPick(true)}>使用这张图片</button>
+        <button class="btn btn-primary" disabled={!materialGalleryPicker.selected || taskState.busy || anyModalOpen()} onclick={() => finishMaterialGalleryPick(true)}>使用这张图片</button>
       </div>
     </div>
   {/if}
   {#if visitedViews.materials}
-    {#key app.snapshot?.dataDirectory}
-      <div class="workspace-body prompt-docs-body" class:is-active={app.viewMode === "materials"} aria-hidden={app.viewMode !== "materials"}>
-        <main class="prompt-docs-main"><MaterialsView active={app.viewMode === "materials"} /></main>
+    {#key libraryState.snapshot?.dataDirectory}
+      <div class="workspace-body prompt-docs-body" class:is-active={workspaceState.viewMode === "materials"} aria-hidden={workspaceState.viewMode !== "materials"}>
+        <main class="prompt-docs-main"><MaterialsView active={workspaceState.viewMode === "materials"} /></main>
       </div>
     {/key}
   {/if}
   {#if visitedViews.promptDocs}
       <div
         class="workspace-body prompt-docs-body"
-        class:is-active={app.viewMode === "promptDocs"}
-        aria-hidden={app.viewMode !== "promptDocs"}
+        class:is-active={workspaceState.viewMode === "promptDocs"}
+        aria-hidden={workspaceState.viewMode !== "promptDocs"}
       >
         <main class="prompt-docs-main">
           <PromptDocsView />
@@ -309,8 +314,8 @@
 
     <div
       class="workspace-body data-body"
-      class:is-active={isDataViewMode(app.viewMode)}
-      aria-hidden={!isDataViewMode(app.viewMode)}
+      class:is-active={isDataViewMode(workspaceState.viewMode)}
+      aria-hidden={!isDataViewMode(workspaceState.viewMode)}
     >
       <aside class="sidebar">
         <TagSidebar />
@@ -323,30 +328,30 @@
         <CanvasHeader />
         <div class="view-stack">
           {#if visitedViews.group}
-            <section class="view-panel" class:is-active={app.viewMode === "group"}>
-              <GroupBrowseView active={app.viewMode === "group"} />
+            <section class="view-panel" class:is-active={workspaceState.viewMode === "group"}>
+              <GroupBrowseView active={workspaceState.viewMode === "group"} />
             </section>
           {/if}
           {#if visitedViews.duplicates}
-            <section class="view-panel" class:is-active={app.viewMode === "duplicates"}>
-              <DuplicateBrowseView active={app.viewMode === "duplicates"} />
+            <section class="view-panel" class:is-active={workspaceState.viewMode === "duplicates"}>
+              <DuplicateBrowseView active={workspaceState.viewMode === "duplicates"} />
             </section>
           {/if}
           {#if visitedViews.gallery}
-            <section class="view-panel" class:is-active={app.viewMode === "gallery"}>
-              <GalleryView active={app.viewMode === "gallery"} />
+            <section class="view-panel" class:is-active={workspaceState.viewMode === "gallery"}>
+              <GalleryView active={workspaceState.viewMode === "gallery"} />
             </section>
           {/if}
           {#if visitedViews.table}
-            <section class="view-panel" class:is-active={app.viewMode === "table"}>
-              <TableView active={app.viewMode === "table"} />
+            <section class="view-panel" class:is-active={workspaceState.viewMode === "table"}>
+              <TableView active={workspaceState.viewMode === "table"} />
             </section>
           {/if}
         </div>
         {#if !materialGalleryPicker.active}<SelectionBar />{/if}
       </main>
 
-      <DetailSidebar open={app.detailOpen} onopen={() => app.detailOpen = true}>
+      <DetailSidebar open={workspaceState.detailOpen} onopen={() => workspaceState.detailOpen = true}>
         <DetailPanel />
       </DetailSidebar>
     </div>
@@ -363,10 +368,10 @@
 <JsonExportDialog />
 <FilterPanel />
 
-{#if dropState.dragging && app.viewMode !== "promptDocs"}
+{#if dropState.dragging && workspaceState.viewMode !== "promptDocs"}
   <div class="drop-overlay" transition:softFade={{ duration: 120 }}>
     <div class="drop-hint" transition:softPop={{ duration: 150, y: 4, start: 0.98 }}>
-      {app.viewMode === "materials" ? "松开鼠标，预览并确认素材" : "松开鼠标以导入图片"}
+      {workspaceState.viewMode === "materials" ? "松开鼠标，预览并确认素材" : "松开鼠标以导入图片"}
     </div>
   </div>
 {/if}

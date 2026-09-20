@@ -1,5 +1,9 @@
+import { errorText } from "../utils/format";
+import { setNotice } from "./notices.svelte";
+import { workspaceState } from "./workspace-state.svelte";
+import { snapshotQueryFilters } from "../utils/library-query";
 import { queryRows, type DedupeMode, type LibraryFilter, type RowRecord, type SortMode, type TagMatchMode } from "../api";
-import { app, errorText, setNotice } from "./app-state.svelte";
+
 import { applyScrollSnapshot, captureScrollSnapshot, clearScrollPositions, filterReturnRange, prepareFilterScrollSnapshot, type ScrollSnapshot } from "./view-state";
 import { cloneLibraryFilters } from "../utils/library-filters";
 import { createRequestQueue } from "../utils/request-queue";
@@ -112,17 +116,9 @@ export function ensurePage(pageIndex: number): void {
         () => queryRows({
         offset: pageIndex * PAGE_SIZE,
         limit: PAGE_SIZE,
-        tags: [...rowStore.tags],
-        tagMode: rowStore.tagMode,
-        dedupe: rowStore.dedupe,
-        singleArtistOnly: rowStore.singleArtistOnly,
-        artistFilter: rowStore.artistFilter,
-        hasVibe: rowStore.hasVibe,
-        untaggedOnly: rowStore.untaggedOnly,
-        filters: cloneLibraryFilters(rowStore.filters),
+        ...snapshotQueryFilters(rowStore),
         groupView: rowStore.groupView,
         hideGrouped: rowStore.hideGrouped,
-        search: rowStore.search,
         sort: rowStore.sort,
       }));
       if (!page || requestGeneration !== generation || (incoming && rowStore.error !== null)) {
@@ -215,8 +211,8 @@ export function resetRows(options: ResetOptions = {}): void {
       const snapshot = options.navigation;
       pendingScrollSnapshot = snapshot;
       applyScrollOnSwap = () => applyScrollSnapshot(snapshot);
-      const range = snapshot.ranges.find(([key]) => key === app.viewMode)?.[1];
-      if (range && (app.viewMode === "gallery" || app.viewMode === "table")) {
+      const range = snapshot.ranges.find(([key]) => key === workspaceState.viewMode)?.[1];
+      if (range && (workspaceState.viewMode === "gallery" || workspaceState.viewMode === "table")) {
         const first = Math.max(0, Math.floor(range.first / PAGE_SIZE));
         const last = Math.max(first, Math.floor(range.last / PAGE_SIZE));
         requiredSwapPages = new Set(Array.from({ length: last - first + 1 }, (_, index) => first + index));
@@ -225,8 +221,8 @@ export function resetRows(options: ResetOptions = {}): void {
       const snapshot = prepareFilterScrollSnapshot(hasActiveFilters());
       pendingScrollSnapshot = snapshot;
       applyScrollOnSwap = () => applyScrollSnapshot(snapshot);
-      const range = !hasActiveFilters() ? filterReturnRange(app.viewMode) : undefined;
-      if (range && (app.viewMode === "gallery" || app.viewMode === "table")) {
+      const range = !hasActiveFilters() ? filterReturnRange(workspaceState.viewMode) : undefined;
+      if (range && (workspaceState.viewMode === "gallery" || workspaceState.viewMode === "table")) {
         const first = Math.floor(range.first / PAGE_SIZE);
         const last = Math.floor(range.last / PAGE_SIZE);
         requiredSwapPages = new Set(Array.from({ length: last - first + 1 }, (_, index) => first + index));

@@ -1,9 +1,11 @@
 <script lang="ts">
+  import { formatCount } from "../../utils/format";
+  import { libraryState } from "../../stores/library-state.svelte";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import { untrack } from "svelte";
 
   import type { DedupeCluster, RowRecord } from "../../api";
-  import { app, formatCount } from "../../stores/app-state.svelte";
+
   import {
     duplicateBrowse,
     ensureClusterMembers,
@@ -25,7 +27,7 @@
     if (!active) {
       return;
     }
-    void app.dataVersion;
+    void libraryState.dataVersion;
     void sectionMenu.aliasVersion;
     void duplicateBrowse.dedupeMode;
     void rowStore.tags;

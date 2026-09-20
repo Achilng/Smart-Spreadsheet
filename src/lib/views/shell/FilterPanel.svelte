@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { errorText } from "../../utils/format";
+  import { workspaceState } from "../../stores/workspace-state.svelte";
+  import { splitListText as splitValues } from "../../utils/list-text";
   import X from "@lucide/svelte/icons/x";
 
   import {
@@ -7,7 +10,7 @@
     type FilterNumericOperator,
     type LibraryFilter,
   } from "../../api";
-  import { app, errorText } from "../../stores/app-state.svelte";
+
   import { groupStore } from "../../stores/group-store.svelte";
   import { rowStore, setLibraryFilters } from "../../stores/row-store.svelte";
   import { clearSelection } from "../../stores/selection-store.svelte";
@@ -103,7 +106,7 @@
   }
 
   $effect(() => {
-    if (app.filterOpen && !initialized) {
+    if (workspaceState.filterOpen && !initialized) {
       initialized = true;
       hydrate();
       if (artists.length === 0 && !artistsLoading) {
@@ -113,23 +116,19 @@
           .catch(cause => { error = `画师列表加载失败：${errorText(cause)}`; })
           .finally(() => { artistsLoading = false; });
       }
-    } else if (!app.filterOpen) {
+    } else if (!workspaceState.filterOpen) {
       initialized = false;
     }
   });
 
   function close(): void {
-    app.filterOpen = false;
+    workspaceState.filterOpen = false;
   }
 
   function toggleTag(name: string): void {
     draft.tagValues = draft.tagValues.includes(name)
       ? draft.tagValues.filter(value => value !== name)
       : [...draft.tagValues, name];
-  }
-
-  function splitValues(value: string): string[] {
-    return [...new Set(value.split(/[,，\n\r]/).map(item => item.trim()).filter(Boolean))];
   }
 
   function validComparison(value: FilterNumericComparison): boolean {
@@ -229,7 +228,7 @@
   }
 </script>
 
-<Modal open={app.filterOpen} onclose={close} labelledby="filter-panel-title" width="520px">
+<Modal open={workspaceState.filterOpen} onclose={close} labelledby="filter-panel-title" width="520px">
   <div class="filter-panel">
     <header class="panel-head">
       <div>

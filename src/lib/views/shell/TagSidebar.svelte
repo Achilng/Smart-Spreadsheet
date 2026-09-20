@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { bumpDataVersion } from "../../stores/library-changes";
+  import { errorText, formatCount } from "../../utils/format";
+  import { workspaceState } from "../../stores/workspace-state.svelte";
   import { materialIdsForTag, restoreMaterialTag } from "../../api/materials";
   import {
     createTag,
@@ -10,7 +13,7 @@
   import ListFilter from "@lucide/svelte/icons/list-filter";
   import ContextMenuShell from "../../ui/ContextMenuShell.svelte";
   import Modal from "../../ui/Modal.svelte";
-  import { app, bumpDataVersion, errorText, formatCount } from "../../stores/app-state.svelte";
+
   import { captureSelectionStates, restoreRowStates } from "../../stores/history-actions";
   import { recordHistory } from "../../stores/history.svelte";
   import {
@@ -223,21 +226,21 @@
   {#snippet filters()}
   <div class="f-group" role="group" aria-label="去重与筛选">
     <div class="f-head">显示</div>
-    <label class="check-row" class:on={rowStore.dedupe === "positivePrompt"} class:is-disabled={app.viewMode === "group"}>
+    <label class="check-row" class:on={rowStore.dedupe === "positivePrompt"} class:is-disabled={workspaceState.viewMode === "group"}>
       <input
         type="checkbox"
         checked={rowStore.dedupe === "positivePrompt"}
-        disabled={app.viewMode === "group"}
+        disabled={workspaceState.viewMode === "group"}
         onchange={() => toggleDedupe("positivePrompt")}
       />
       <span class="cbox" aria-hidden="true"></span>
       按正向提示词去重
     </label>
-    <label class="check-row" class:on={rowStore.dedupe === "artists"} class:is-disabled={app.viewMode === "group"}>
+    <label class="check-row" class:on={rowStore.dedupe === "artists"} class:is-disabled={workspaceState.viewMode === "group"}>
       <input
         type="checkbox"
         checked={rowStore.dedupe === "artists"}
-        disabled={app.viewMode === "group"}
+        disabled={workspaceState.viewMode === "group"}
         onchange={() => toggleDedupe("artists")}
       />
       <span class="cbox" aria-hidden="true"></span>
@@ -247,7 +250,7 @@
       type="button"
       class="filter-launch"
       class:on={rowStore.filters.length > 0}
-      onclick={() => (app.filterOpen = true)}
+      onclick={() => (workspaceState.filterOpen = true)}
     >
       <ListFilter size={16} strokeWidth={1.9} />
       <span>过滤</span>

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { errorText, formatCount } from "../../utils/format";
+  import { splitListText as splitNames } from "../../utils/list-text";
   import Plus from "@lucide/svelte/icons/plus";
   import X from "@lucide/svelte/icons/x";
 
@@ -10,7 +12,7 @@
     setRecentTags,
     type RowSelection,
   } from "../../api";
-  import { errorText, formatCount } from "../../stores/app-state.svelte";
+
   import { captureSelectionStates, recordRowStateChange } from "../../stores/history-actions";
   import { resetRows } from "../../stores/row-store.svelte";
   import { loadTags, tagStore } from "../../stores/tag-store.svelte";
@@ -139,10 +141,6 @@
 
   const stagedAdds = $derived([...staged.entries()].filter(([, op]) => op === "add").map(([name]) => name));
   const stagedRemoves = $derived([...staged.entries()].filter(([, op]) => op === "remove").map(([name]) => name));
-
-  function splitNames(value: string): string[] {
-    return [...new Set(value.split(/[,，\n\r]/).map(item => item.trim()).filter(Boolean))];
-  }
 
   /** 新建并暂存为添加；支持逗号/换行分隔批量输入 */
   function createAndStage(): void {

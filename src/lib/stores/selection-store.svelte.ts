@@ -1,3 +1,5 @@
+import { setNotice } from "./notices.svelte";
+import { snapshotQueryFilters } from "../utils/library-query";
 import { SvelteSet } from "svelte/reactivity";
 
 import {
@@ -9,7 +11,7 @@ import {
   type TagMatchMode,
 } from "../api";
 import { getRow, rowStore } from "./row-store.svelte";
-import { setNotice } from "./app-state.svelte";
+
 import { cloneLibraryFilters } from "../utils/library-filters";
 
 /**
@@ -204,15 +206,7 @@ export function resetSelectionAnchor(): void {
 export async function selectAllFiltered(): Promise<number> {
   const dto: RowSelection = {
     kind: "filtered",
-    tags: [...rowStore.tags],
-    tagMode: rowStore.tagMode,
-    dedupe: rowStore.dedupe,
-    singleArtistOnly: rowStore.singleArtistOnly,
-    artistFilter: rowStore.artistFilter,
-    hasVibe: rowStore.hasVibe,
-    untaggedOnly: rowStore.untaggedOnly,
-    filters: cloneLibraryFilters(rowStore.filters),
-    search: rowStore.search,
+    ...snapshotQueryFilters(rowStore),
     excludedRowIds: [],
   };
   const requestVersion = selection.version;

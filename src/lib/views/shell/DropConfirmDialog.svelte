@@ -1,6 +1,7 @@
 <script lang="ts">
+  import { libraryState } from "../../stores/library-state.svelte";
   import Modal from "../../ui/Modal.svelte";
-  import { app } from "../../stores/app-state.svelte";
+
   import { cancelDropImport, confirmDropImport, dropState } from "../../stores/drop-import.svelte";
 
   function displayName(path: string): string {
@@ -15,7 +16,7 @@
         确定要导入以下 {dropState.paths.length} 个项目吗？
       </h2>
       <p>将追加导入到当前资料库。</p>
-      {#if app.snapshot?.autoArtistPrefixOnImport}
+      {#if libraryState.snapshot?.autoArtistPrefixOnImport}
         <p class="artist-prefix-hint">
           已开启自动画师前缀检查：导入完成后直接处理，不会再要求确认。
         </p>

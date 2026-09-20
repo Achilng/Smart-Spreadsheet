@@ -1,6 +1,10 @@
+import { formatCount } from "../utils/format";
+import { setNotice } from "./notices.svelte";
+import { libraryState } from "./library-state.svelte";
+import { workspaceState } from "./workspace-state.svelte";
+import { taskState } from "./task-state.svelte";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 
-import { app, formatCount, setNotice } from "./app-state.svelte";
 import { outboundDrag } from "./file-drag";
 import { runImageImport } from "./import-actions.svelte";
 
@@ -33,7 +37,7 @@ export function filterDroppedPaths(raw: string[]): string[] {
 
 export function requestDropImport(paths: string[]): void {
   if (dropState.busy) return;
-  if (app.busy) {
+  if (taskState.busy) {
     setNotice({ tone: "error", text: "当前有任务进行中，请等它完成后再拖入导入。" });
     return;
   }
@@ -81,19 +85,19 @@ export function listenDragDrop(): () => void {
 
   getCurrentWebview()
     .onDragDropEvent((event) => {
-      if (!app.snapshot?.dataDirectory) return;
+      if (!libraryState.snapshot?.dataDirectory) return;
 
-      if (app.viewMode === "materials") {
-        dropState.dragging = (event.payload.type === "enter" || event.payload.type === "over") && !app.busy && !outboundDrag;
-        if (event.payload.type === "drop" && !app.busy && !outboundDrag) {
+      if (workspaceState.viewMode === "materials") {
+        dropState.dragging = (event.payload.type === "enter" || event.payload.type === "over") && !taskState.busy && !outboundDrag;
+        if (event.payload.type === "drop" && !taskState.busy && !outboundDrag) {
           window.dispatchEvent(new CustomEvent<string[]>("material-path-drop", { detail: event.payload.paths }));
         }
         return;
       }
 
-      if (app.viewMode === "promptDocs") {
+      if (workspaceState.viewMode === "promptDocs") {
         dropState.dragging = false;
-        if (event.payload.type === "drop" && !app.busy) {
+        if (event.payload.type === "drop" && !taskState.busy) {
           window.dispatchEvent(
             new CustomEvent<string[]>("prompt-doc-path-drop", {
               detail: event.payload.paths,
@@ -109,7 +113,7 @@ export function listenDragDrop(): () => void {
         dropState.dragging = false;
       } else if (event.payload.type === "drop") {
         dropState.dragging = false;
-        if (!app.busy && !dropState.open && !outboundDrag) {
+        if (!taskState.busy && !dropState.open && !outboundDrag) {
           requestDropImport(event.payload.paths);
         }
       }

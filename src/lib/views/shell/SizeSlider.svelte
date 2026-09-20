@@ -1,24 +1,24 @@
 <script lang="ts">
+  import { workspaceState } from "../../stores/workspace-state.svelte";
   import Grid2x2 from "@lucide/svelte/icons/grid-2x2";
-  import { app } from "../../stores/app-state.svelte";
 
   const GALLERY_MIN = 120;
   const GALLERY_MAX = 400;
   const TABLE_MIN = 40;
   const TABLE_MAX = 128;
 
-  const isGallery = $derived(app.viewMode === "gallery" || app.viewMode === "materials");
+  const isGallery = $derived(workspaceState.viewMode === "gallery" || workspaceState.viewMode === "materials");
 
   const min = $derived(isGallery ? GALLERY_MIN : TABLE_MIN);
   const max = $derived(isGallery ? GALLERY_MAX : TABLE_MAX);
-  const value = $derived(isGallery ? app.galleryCardSize : app.tableRowHeight);
+  const value = $derived(isGallery ? workspaceState.galleryCardSize : workspaceState.tableRowHeight);
 
   function onInput(event: Event): void {
     const v = Number((event.target as HTMLInputElement).value);
     if (isGallery) {
-      app.galleryCardSize = v;
+      workspaceState.galleryCardSize = v;
     } else {
-      app.tableRowHeight = v;
+      workspaceState.tableRowHeight = v;
     }
   }
 </script>

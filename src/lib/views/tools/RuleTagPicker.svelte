@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { splitListText } from "../../utils/list-text";
   import Check from "@lucide/svelte/icons/check";
   import RefreshCw from "@lucide/svelte/icons/refresh-cw";
   import Search from "@lucide/svelte/icons/search";
@@ -34,7 +35,7 @@
   });
 
   function normalize(values: string[]): string[] {
-    return [...new Set(values.flatMap(value => value.split(/[,，\n\r]/)).map(value => value.trim()).filter(Boolean))];
+    return [...new Set(values.flatMap(splitListText))];
   }
 
   function toggle(name: string): void {

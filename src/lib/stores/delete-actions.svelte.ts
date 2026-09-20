@@ -1,5 +1,10 @@
+import { bumpDataVersion } from "./library-changes";
+import { errorText, formatCount } from "../utils/format";
+import { setNotice } from "./notices.svelte";
+import { libraryState } from "./library-state.svelte";
+import { taskState } from "./task-state.svelte";
 import { deleteRows, type RowSelection } from "../api";
-import { app, bumpDataVersion, errorText, formatCount, setNotice } from "./app-state.svelte";
+
 import { clearHistory } from "./history.svelte";
 
 export const deletion = $state({
@@ -37,10 +42,10 @@ export async function confirmDelete(): Promise<void> {
   }
   deletion.busy = true;
   deletion.error = null;
-  app.busy = true;
+  taskState.busy = true;
   try {
     const result = await deleteRows(selection, deletion.trashOriginals);
-    app.snapshot = result.snapshot;
+    libraryState.snapshot = result.snapshot;
     deletion.open = false;
     deletion.selection = null;
     clearHistory();
@@ -68,6 +73,6 @@ export async function confirmDelete(): Promise<void> {
     deletion.error = `删除失败：${errorText(error)}`;
   } finally {
     deletion.busy = false;
-    app.busy = false;
+    taskState.busy = false;
   }
 }

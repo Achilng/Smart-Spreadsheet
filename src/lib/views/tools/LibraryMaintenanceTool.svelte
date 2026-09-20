@@ -1,16 +1,14 @@
 <script lang="ts">
+  import { errorText, formatCount } from "../../utils/format";
+  import { runAction } from "../../stores/tasks";
+  import { runPhashBackfill } from "../../features/library/maintenance";
+  import { setNotice } from "../../stores/notices.svelte";
+  import { libraryState } from "../../stores/library-state.svelte";
+  import { taskState } from "../../stores/task-state.svelte";
   import FolderOpen from "@lucide/svelte/icons/folder-open";
   import RefreshCw from "@lucide/svelte/icons/refresh-cw";
 
   import { openRejectedImagesDirectory } from "../../api";
-  import {
-    app,
-    errorText,
-    formatCount,
-    runAction,
-    runPhashBackfill,
-    setNotice,
-  } from "../../stores/app-state.svelte";
 
   async function openRejectedDirectory(): Promise<void> {
     await runAction(async () => {
@@ -26,16 +24,16 @@
     <div class="card-copy">
       <h3>刷新感知哈希</h3>
       <p>为缺少或过期的图片重新计算感知哈希。以图搜图依赖这项数据。</p>
-      {#if app.phashProgress}
+      {#if taskState.phashProgress}
         <div class="phash-progress">
-          <span class="progress" role="progressbar" aria-valuemin={0} aria-valuemax={app.phashProgress.total} aria-valuenow={app.phashProgress.processed}>
+          <span class="progress" role="progressbar" aria-valuemin={0} aria-valuemax={taskState.phashProgress.total} aria-valuenow={taskState.phashProgress.processed}>
             <span
               class="progress-fill"
-              style:transform="scaleX({app.phashProgress.total > 0 ? app.phashProgress.processed / app.phashProgress.total : 0})"
+              style:transform="scaleX({taskState.phashProgress.total > 0 ? taskState.phashProgress.processed / taskState.phashProgress.total : 0})"
             ></span>
           </span>
           <span class="progress-text tabular">
-            {formatCount(app.phashProgress.processed)} / {formatCount(app.phashProgress.total)}
+            {formatCount(taskState.phashProgress.processed)} / {formatCount(taskState.phashProgress.total)}
           </span>
         </div>
       {/if}
@@ -43,10 +41,10 @@
     <button
       type="button"
       class="btn btn-primary"
-      disabled={app.busy}
+      disabled={taskState.busy}
       onclick={() => void runPhashBackfill()}
     >
-      {app.phashProgress ? "正在计算…" : "开始刷新"}
+      {taskState.phashProgress ? "正在计算…" : "开始刷新"}
     </button>
   </section>
 
@@ -55,24 +53,24 @@
     <div class="card-copy">
       <h3>失败图片目录</h3>
       <p>查看导入时因元数据异常而被移出的图片，便于手动检查和整理。</p>
-      {#if app.snapshot?.rejectedImagesDirectory}
-        <code title={app.snapshot.rejectedImagesDirectory}>
-          {app.snapshot.rejectedImagesDirectory}
+      {#if libraryState.snapshot?.rejectedImagesDirectory}
+        <code title={libraryState.snapshot.rejectedImagesDirectory}>
+          {libraryState.snapshot.rejectedImagesDirectory}
         </code>
       {/if}
     </div>
     <button
       type="button"
       class="btn"
-      disabled={app.busy}
+      disabled={taskState.busy}
       onclick={() => void openRejectedDirectory()}
     >
       打开目录
     </button>
   </section>
 
-  {#if app.snapshot?.startupError}
-    <p class="error-box">{errorText(app.snapshot.startupError)}</p>
+  {#if libraryState.snapshot?.startupError}
+    <p class="error-box">{errorText(libraryState.snapshot.startupError)}</p>
   {/if}
 </div>
 

@@ -1,6 +1,8 @@
+import { errorText } from "../utils/format";
+import { setNotice } from "./notices.svelte";
 import { startDrag } from "@crabnebula/tauri-plugin-drag";
 import { prepareFileDrag } from "../api";
-import { errorText, setNotice } from "./app-state.svelte";
+
 import { isRowSelected, selectionDto } from "./selection-store.svelte";
 
 const DRAG_THRESHOLD = 5;

@@ -1,5 +1,7 @@
 <script lang="ts">
-  import { app, formatCount, type ViewMode } from "../../stores/app-state.svelte";
+  import { formatCount } from "../../utils/format";
+  import { type ViewMode, workspaceState } from "../../stores/workspace-state.svelte";
+
   import { duplicateBrowse } from "../../stores/duplicate-browse-store.svelte";
   import { groupStore } from "../../stores/group-store.svelte";
   import { clearSelection, resetSelectionAnchor } from "../../stores/selection-store.svelte";
@@ -10,11 +12,11 @@
   let indicator = $state<{ x: number; w: number } | null>(null);
 
   function switchView(mode: ViewMode): void {
-    const previousMode = app.viewMode;
+    const previousMode = workspaceState.viewMode;
     const stayedInFlatView =
       (previousMode === "gallery" || previousMode === "table") &&
       (mode === "gallery" || mode === "table");
-    app.viewMode = mode;
+    workspaceState.viewMode = mode;
     resetSelectionAnchor();
     // 画廊/表格共享同一筛选结果，可保留选区；分组/重复项的卡片集合不同，
     // 跨边界时清空，避免批量操作包含当前视图没有显示的行。
@@ -41,7 +43,7 @@
   // 指示器跟随激活按钮：切换视图 / 计数变化 / 媒体查询与窗口尺寸变化时重测。
   // 兄弟按钮宽度变化必然改变收缩包裹的父容器宽度，父级 ResizeObserver 兜底。
   $effect(() => {
-    const index = VIEW_MODES.findIndex(view => view.mode === app.viewMode);
+    const index = VIEW_MODES.findIndex(view => view.mode === workspaceState.viewMode);
     void groupStore.list.length;
     void duplicateBrowse.clusters.length;
     const el = buttonEls[index];
@@ -73,8 +75,8 @@
     <button
       type="button"
       class="seg"
-      class:is-active={app.viewMode === view.mode}
-      aria-pressed={app.viewMode === view.mode}
+      class:is-active={workspaceState.viewMode === view.mode}
+      aria-pressed={workspaceState.viewMode === view.mode}
       aria-label={ariaLabelFor(view.mode, view.label)}
       onclick={() => switchView(view.mode)}
       bind:this={buttonEls[index]}

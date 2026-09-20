@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { errorText } from "../../utils/format";
+  import { setNotice } from "../../stores/notices.svelte";
+  import { taskState } from "../../stores/task-state.svelte";
   import CheckCircle2 from "@lucide/svelte/icons/check-circle-2";
   import CircleArrowUp from "@lucide/svelte/icons/circle-arrow-up";
   import Download from "@lucide/svelte/icons/download";
@@ -9,7 +12,6 @@
   import { check, type DownloadEvent, type Update } from "@tauri-apps/plugin-updater";
   import { onMount } from "svelte";
 
-  import { app, errorText, setNotice } from "../../stores/app-state.svelte";
   import { history } from "../../stores/history.svelte";
 
   type UpdateStatus = "idle" | "checking" | "latest" | "available" | "downloading" | "installing" | "error";
@@ -31,15 +33,15 @@
   const installBlockedReason = $derived.by(() => {
     if (status !== "available") return null;
     if (
-      app.busy ||
+      taskState.busy ||
       history.busy ||
-      app.importProgress ||
-      app.exportProgress ||
-      app.phashProgress ||
-      app.hashProgress ||
-      app.vibeBackfillProgress ||
-      app.styleSignatureProgress ||
-      app.migrationProgress
+      taskState.importProgress ||
+      taskState.exportProgress ||
+      taskState.phashProgress ||
+      taskState.hashProgress ||
+      taskState.vibeBackfillProgress ||
+      taskState.styleSignatureProgress ||
+      taskState.migrationProgress
     ) {
       return "还有任务正在进行，请等待任务结束后再更新。";
     }
@@ -113,7 +115,7 @@
     status = "downloading";
     downloadedBytes = 0;
     totalBytes = null;
-    app.busy = true;
+    taskState.busy = true;
     setNotice(null);
 
     try {
@@ -126,7 +128,7 @@
       status = "error";
       setNotice({ tone: "error", text: `更新安装失败：${errorMessage}` });
     } finally {
-      app.busy = false;
+      taskState.busy = false;
     }
   }
 

@@ -1,6 +1,7 @@
 <script lang="ts">
+  import { formatCount } from "../../utils/format";
   import Modal from "../../ui/Modal.svelte";
-  import { formatCount } from "../../stores/app-state.svelte";
+
   import {
     cancelGroupDelete,
     confirmGroupDelete,

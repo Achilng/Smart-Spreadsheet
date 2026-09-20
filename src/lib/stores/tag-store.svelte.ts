@@ -1,5 +1,5 @@
+import { errorText } from "../utils/format";
 import { listTags, type TagSummary } from "../api";
-import { errorText } from "./app-state.svelte";
 
 export const tagStore = $state({
   list: [] as TagSummary[],

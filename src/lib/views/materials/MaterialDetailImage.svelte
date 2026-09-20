@@ -1,6 +1,7 @@
 <script lang="ts">
+  import { errorText } from "../../utils/format";
   import { ImageLoader, isImageLoadCancelled } from "../../images/image-loader";
-  import { errorText } from "../../stores/app-state.svelte";
+
   import DetailPreview from "../../ui/DetailPreview.svelte";
   import DetailLightbox from "../../ui/DetailLightbox.svelte";
 

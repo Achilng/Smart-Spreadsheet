@@ -1,6 +1,10 @@
+import { errorText } from "../utils/format";
+import { setNotice } from "./notices.svelte";
+import { libraryState } from "./library-state.svelte";
+import { workspaceState } from "./workspace-state.svelte";
 import { getRowsByIds } from "../api";
 import { createNavigationHistory } from "../utils/navigation-history";
-import { app, errorText, setNotice } from "./app-state.svelte";
+
 import {
   duplicateBrowse, ensureClusterMembers, loadMoreClusterMembers, syncDuplicateCaches,
 } from "./duplicate-browse-store.svelte";
@@ -17,7 +21,7 @@ import { viewLabel } from "../views/shell/view-modes";
 /** Read only navigable properties here: row clicks and scrolling never add an entry. */
 export function navigationRoute() {
   return {
-    view: app.viewMode,
+    view: workspaceState.viewMode,
     query: {
       tags: [...rowStore.tags], tagMode: rowStore.tagMode, dedupe: rowStore.dedupe,
       singleArtistOnly: rowStore.singleArtistOnly, artistFilter: rowStore.artistFilter,
@@ -37,9 +41,9 @@ function capturePosition() {
   return {
     scroll: browsingScrollSnapshot(),
     activeId: rowStore.activeRow?.id ?? null,
-    detailOpen: app.detailOpen,
-    cardSize: app.galleryCardSize,
-    rowHeight: app.tableRowHeight,
+    detailOpen: workspaceState.detailOpen,
+    cardSize: workspaceState.galleryCardSize,
+    rowHeight: workspaceState.tableRowHeight,
     groups: [...groupBrowse.expandedIds],
     renderLimits: { ...groupBrowse.renderLimits },
     groupCounts: Object.fromEntries(Object.entries(groupBrowse.memberCache).map(([id, data]) => [id, data.rows.length])),
@@ -175,7 +179,7 @@ export function finishNavigationRestore(): void {
 export function navigateHistory(direction: -1 | 1): void {
   if (anyModalOpen() || navigation.restoring) return;
   // Flush synchronous route changes (e.g. the search field's blur) before moving.
-  observeNavigation(navigationRoute(), app.snapshot?.dataDirectory);
+  observeNavigation(navigationRoute(), libraryState.snapshot?.dataDirectory);
   if (!(direction === -1 ? history.back : history.forward)) return;
   history.save(capturePosition());
   const entry = history.go(direction)!;
@@ -187,14 +191,14 @@ export function navigateHistory(direction: -1 | 1): void {
   capturedBeforeReset = false;
   pendingSearchSession = undefined;
   clearSelection();
-  app.viewMode = route.view;
+  workspaceState.viewMode = route.view;
   Object.assign(rowStore, { ...route.query, tags: [...route.query.tags], filters: JSON.parse(JSON.stringify(route.query.filters)) });
   persistSort(route.query.sort);
   rowStore.revealIndex = null;
   rowStore.revealToken = route.jump;
-  app.detailOpen = position.detailOpen;
-  app.galleryCardSize = position.cardSize;
-  app.tableRowHeight = position.rowHeight;
+  workspaceState.detailOpen = position.detailOpen;
+  workspaceState.galleryCardSize = position.cardSize;
+  workspaceState.tableRowHeight = position.rowHeight;
   groupBrowse.sortByCount = route.groupSort;
   groupBrowse.expandedIds = [...position.groups];
   groupBrowse.renderLimits = { ...position.renderLimits };
