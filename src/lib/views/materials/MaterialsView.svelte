@@ -20,6 +20,8 @@
   import DetailSidebar from "../../ui/DetailSidebar.svelte";
   import MaterialVersionMenu from "./MaterialVersionMenu.svelte";
   import MaterialEditor from "./MaterialEditor.svelte";
+  import ContextMenuShell from "../../ui/ContextMenuShell.svelte";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
 
   let { active }: { active: boolean } = $props();
   const thumbnails = new ImageLoader(id => materialImage(id, true), 4, 144, "image/png");
@@ -34,6 +36,8 @@
   let tagError = $state("");
   let tags = $state<TagSummary[]>([]);
   let selected = $state<Material | null>(null);
+  let contextMenu = $state<{ item: Material; x: number; y: number } | null>(null);
+  let deleting = $state(false);
   let detailOpen = $state(true);
   let selectedTags = $state<string[]>([]);
   let untagged = $state(false);
@@ -119,7 +123,23 @@
     void layout.spacerHeight;
     viewport.scrollTop = untrack(() => scrollTop);
   });
-  function onScroll() { if (active) scrollTop = viewport?.scrollTop ?? 0; }
+  $effect(() => {
+    void active; void editorOpen; void app.busy; void app.snapshot?.dataDirectory; void revision;
+    void materialBrowser.search; void selectedTags; void untagged;
+    untrack(() => contextMenu = null);
+  });
+  function showContextMenu(event: MouseEvent, item: Material) {
+    event.preventDefault(); event.stopPropagation();
+    if (!active || editorOpen || app.busy || deleting || (event.target instanceof Element && event.target.closest('[role="menu"]'))) return;
+    selected = item;
+    contextMenu = { item, x: event.clientX, y: event.clientY };
+  }
+  function deleteFromMenu() {
+    const item = contextMenu?.item;
+    contextMenu = null;
+    if (item) void remove(item);
+  }
+  function onScroll() { contextMenu = null; if (active) scrollTop = viewport?.scrollTop ?? 0; }
   function filterTag(name: string) { selectedTags = selectedTags.includes(name) ? selectedTags.filter(t => t !== name) : [...selectedTags, name]; untagged = false; }
   function clearFilter() { selectedTags = []; untagged = false; materialBrowser.search = ""; }
   function beginImport(paths: string[]) {
@@ -153,11 +173,21 @@
     try { await navigator.clipboard.writeText(text); setNotice({ tone: "success", text: `已复制「${item.title}」的文本。` }); }
     catch (cause) { setNotice({ tone: "error", text: `复制失败：${errorText(cause)}` }); }
   }
-  async function remove() {
-    const item = selected;
-    if (!item || !(await confirm(`删除素材「${item.title}」及其展示图和文本？原始图片不会被修改。`, { title: "删除素材", kind: "warning", okLabel: "删除", cancelLabel: "取消" }))) return;
-    try { await deleteMaterial(item.id); selected = null; thumbnails.clear(); covers.clear(); versionCovers.clear(); revision++; setNotice({ tone: "success", text: "素材已删除。" }); }
+  async function remove(item: Material | null = selected) {
+    if (!item || deleting) return;
+    const directory = app.snapshot?.dataDirectory;
+    deleting = true;
+    try {
+      if (!(await confirm(`删除素材「${item.title}」及其全部 ${item.versions.length} 个版本、展示图和文本？原始图片不会被修改。`, { title: "删除素材", kind: "warning", okLabel: "删除", cancelLabel: "取消" }))) return;
+      if (directory !== app.snapshot?.dataDirectory) return;
+      await deleteMaterial(item.id);
+      if (directory !== app.snapshot?.dataDirectory) return;
+      if (selected?.id === item.id) selected = null;
+      thumbnails.clear(); covers.clear(); versionCovers.clear(); revision++;
+      setNotice({ tone: "success", text: "素材已删除。" });
+    }
     catch (cause) { setNotice({ tone: "error", text: errorText(cause) }); }
+    finally { deleting = false; }
   }
   onMount(() => {
     const handler = (event: Event) => beginImport((event as CustomEvent<string[]>).detail);
@@ -166,6 +196,8 @@
   });
   onDestroy(() => { request++; pages.dispose(); thumbnails.dispose(); covers.dispose(); versionCovers.dispose(); });
 </script>
+
+<svelte:window onresize={() => contextMenu = null} />
 
 <section class="materials" inert={editorOpen}>
   <aside class="filter-sidebar">
@@ -198,7 +230,8 @@
           {@const item = cell.item}
           <GalleryTile x={cell.x} y={cell.y} width={layout.cardWidth} imageHeight={layout.imageHeight}
             skeleton={!item} title={item?.title ?? ""} titleAlign="center" tags={item?.tags ?? []} isActive={!!item && selected?.id === item.id}
-            onclick={() => { if (item) selected = item; }} ondblclick={() => { if (item) void copy(item); }}>
+            onclick={() => { if (item) selected = item; }} ondblclick={() => { if (item) void copy(item); }}
+            oncontextmenu={event => { if (item) showContextMenu(event, item); }}>
             {#snippet overlayControls()}{#if item && item.versions.length > 1}<MaterialVersionMenu material={item} onmanage={() => editItem(item)} />{/if}{/snippet}
             {#snippet image()}{#if item}<Thumbnail rowId={item.id} loader={thumbnails} previewLoader={null} allowFileDrag={false} hasImage={true} alt={item.title} />{/if}{/snippet}
           </GalleryTile>
@@ -211,9 +244,13 @@
       onedit={edit} ondelete={() => void remove()} oncollapse={() => detailOpen = false} />
   </DetailSidebar>
 </section>
+<ContextMenuShell open={contextMenu !== null} x={contextMenu?.x ?? 0} y={contextMenu?.y ?? 0} onclose={() => contextMenu = null}>
+  <button type="button" role="menuitem" class="danger menu-delete" disabled={deleting} onclick={deleteFromMenu}><Trash2 size={14} strokeWidth={1.6} />删除素材</button>
+</ContextMenuShell>
 {#if editorOpen}{#key editorKey}<MaterialEditor material={editing} versionId={editingVersion} path={pendingPaths[0] ?? null} remaining={Math.max(0, pendingPaths.length - 1)} loader={covers} versionLoader={versionCovers} onsaved={saved} onclose={closeEditor} />{/key}{/if}
 
 <style>
+  .menu-delete { gap: 8px; }
   .materials { width: 100%; height: 100%; display: flex; min-height: 0; color: var(--text); }
   .filter-sidebar { width: 240px; flex: none; min-height: 0; background: var(--surface); border-right: 1px solid var(--border); }
   h1,h2,p { margin: 0; } h1 { font-size: 25px; } h1 small { font-size: 14px; color: var(--text-3); font-weight: 400; }
