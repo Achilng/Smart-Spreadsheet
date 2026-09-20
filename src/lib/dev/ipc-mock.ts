@@ -157,10 +157,32 @@ declare global {
 }
 
 export function installIpcMock(): void {
+  eventListeners.clear();
+  window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: (_event: string, id: number) => { eventListeners.delete(id); } };
+  const params = new URLSearchParams(location.search);
+  const windowLabel = params.get("window") ?? "main";
+  const libraryRows = Array.from({ length: params.has("large") ? 60_000 : 64 }, (_, index) => rowDto({
+    id: index + 1,
+    imagePath: `D:\\mock\\${index % 7 === 0 ? "清晨的山谷与远处的群山_长文件名显示检查_" : "风景_"}${String(index + 1).padStart(3, "0")}.png`,
+    artists: index % 2 === 0 ? "artist:alpha" : "artist:beta",
+    positivePrompt: `masterpiece, scenery, mountains, soft light, ${index % 2 ? "sunset" : "morning"}, artist:${index % 2 ? "beta" : "alpha"}`,
+    generationModel: "NovelAI Diffusion V4.5 Full",
+    imageWidth: index % 3 === 0 ? 1216 : 832,
+    imageHeight: index % 3 === 0 ? 832 : 1216,
+    tags: index % 4 === 0 ? ["收藏", "风景", "柔和光线"] : index % 3 === 0 ? [] : ["风景"],
+    vibeReferenceCount: index % 4 === 0 ? 2 : 0,
+  }));
+  const snapshot = {
+    dataDirectory: params.has("setup") ? null : "D:\\mock",
+    rejectedImagesDirectory: "D:\\mock\\rejected",
+    library: { rowCount: libraryRows.length, batchCount: 1, lastBatch: null },
+    autoArtistPrefixOnImport: false,
+    startupError: null,
+  };
   window.__mockCalls = [];
   window.__mockDelayMs = Number(new URLSearchParams(location.search).get("mockDelay") ?? 0);
   const internals = {
-    metadata: { currentWindow: { label: "compare" }, currentWebview: { label: "compare" } },
+    metadata: { currentWindow: { label: windowLabel }, currentWebview: { label: windowLabel } },
     transformCallback(callback: (payload: unknown) => void): number {
       callbackCounter += 1;
       const id = callbackCounter;
@@ -172,7 +194,7 @@ export function installIpcMock(): void {
     async invoke(command: string, args: Record<string, unknown> | undefined): Promise<unknown> {
       const payload = args ?? {};
       window.__mockCalls?.push({ command, payload });
-      if (command.includes("compare")) {
+      if (!command.startsWith("plugin:")) {
         if (window.__mockDelayMs) await new Promise(resolve => setTimeout(resolve, window.__mockDelayMs));
         if (window.__mockFailNext === command) {
           window.__mockFailNext = undefined;
@@ -180,6 +202,27 @@ export function installIpcMock(): void {
         }
       }
       switch (command) {
+        case "get_app_snapshot": return snapshot;
+        case "set_auto_artist_prefix_on_import":
+          snapshot.autoArtistPrefixOnImport = Boolean(payload.enabled);
+          return { ...snapshot };
+        case "query_rows": {
+          const query = payload.query as { offset: number; limit: number; search?: string; tags?: string[]; tagMode?: string; untaggedOnly?: boolean };
+          const search = (query.search ?? "").toLowerCase();
+          let rows = libraryRows.filter(row => (!search || `${row.imagePath} ${row.positivePrompt} ${row.artists}`.toLowerCase().includes(search))
+            && (!query.untaggedOnly || row.tags.length === 0)
+            && (!query.tags?.length || (query.tagMode === "or" ? query.tags.some(tag => row.tags.includes(tag)) : query.tags.every(tag => row.tags.includes(tag)))));
+          if (payload.sort === "timeDesc") rows = [...rows].reverse();
+          return { rows: rows.slice(query.offset, query.offset + query.limit), totalCount: rows.length, offset: query.offset, limit: query.limit, hasMore: query.offset + query.limit < rows.length };
+        }
+        case "get_rows_by_ids": return libraryRows.filter(row => (payload.rowIds as number[]).includes(row.id));
+        case "get_row_index": return libraryRows.findIndex(row => row.id === payload.rowId);
+        case "list_tags": return ["收藏", "风景", "柔和光线"].map(name => ({ name, rowCount: libraryRows.filter(row => row.tags.includes(name)).length }));
+        case "list_groups": return [];
+        case "backfill_vibe_statuses":
+        case "backfill_style_signatures": return { total: 0, processed: 0, updated: 0, unreadable: 0 };
+        case "plugin:window|is_maximized": return false;
+        case "plugin:window|is_focused": return true;
         case "plugin:event|listen": {
           const id = Number(payload.handler);
           const entry = eventListeners.get(id);

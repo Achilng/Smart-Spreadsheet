@@ -5,6 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 1422",
+    "dev:react": "vite --config vite.react.config.ts",
+    "check:react": "tsc --project tsconfig.react.json",
+    "build:react": "npm run check:react && vite build --config vite.react.config.ts",
     "build": "svelte-check --tsconfig ./tsconfig.json && vite build",
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "test:unit": "node --test tests/*.test.ts",
@@ -22,13 +25,25 @@
     "@tiptap/extension-file-handler": "^3.27.1",
     "@tiptap/extension-image": "^3.27.1",
     "@tiptap/pm": "^3.27.1",
-    "@tiptap/starter-kit": "^3.27.1"
+    "@tiptap/starter-kit": "^3.27.1",
+    "clsx": "2.1.1",
+    "lucide-react": "1.47.0",
+    "radix-ui": "1.6.7",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "tailwind-merge": "3.7.0",
+    "zustand": "5.0.15"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.1.2",
+    "@tailwindcss/vite": "4.3.3",
     "@tauri-apps/cli": "2.11.2",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.0.2",
     "svelte": "^5.56.3",
     "svelte-check": "^4.6.0",
+    "tailwindcss": "4.3.3",
     "typescript": "6.0.3",
     "vite": "8.0.16"
   }
