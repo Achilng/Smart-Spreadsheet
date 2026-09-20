@@ -1,5 +1,8 @@
 <script lang="ts">
   import { onDestroy } from "svelte";
+  import Layers from "@lucide/svelte/icons/layers";
+  import Copy from "@lucide/svelte/icons/copy";
+  import Check from "@lucide/svelte/icons/check";
   import type { Material, MaterialVersion } from "../../api/materials";
   import { setNotice } from "../../stores/app-state.svelte";
   import ContextMenuShell from "../../ui/ContextMenuShell.svelte";
@@ -41,15 +44,19 @@
   });
 </script>
 
-<button class="version-count" aria-label={`${material.title}：选择版本复制`} aria-haspopup="menu" aria-expanded={open} onclick={show} onpointerdown={event => { if (open) event.stopPropagation(); }}>
-  {material.versions.length} 个版本 <span aria-hidden="true">⌄</span>
+<button class="version-count" title={`${material.versions.length} 个版本 · 快速复制`} aria-label={`${material.title}：选择版本复制`} aria-haspopup="menu" aria-expanded={open} onclick={show} onpointerdown={event => { if (open) event.stopPropagation(); }}>
+  <Layers size={13} strokeWidth={1.6} /><span>{material.versions.length}</span>
 </button>
 <ContextMenuShell {open} {x} {y} onclose={close}>
+  <div class="menu-heading">复制版本</div>
   <div class="version-options">
     {#each material.versions as version, index (version.id)}
       <button type="button" role="menuitem" class:copied={copiedId === version.id} aria-disabled={busy} onclick={() => void copy(version)}>
         <span class="name">{version.name}</span>
-        <small aria-live="polite">{copiedId === version.id ? "已复制" : index === 0 ? "默认" : ""}</small>
+        {#if index === 0 && copiedId !== version.id}<small>默认</small>{/if}
+        <span class="copy-indicator" class:success={copiedId === version.id} aria-label={copiedId === version.id ? "已复制" : "复制"} aria-live="polite">
+          {#if copiedId === version.id}<Check size={13} />{:else}<Copy size={13} strokeWidth={1.5} />{/if}
+        </span>
       </button>
     {/each}
   </div>
@@ -58,13 +65,15 @@
 </ContextMenuShell>
 
 <style>
-  .version-count { position: relative; z-index: 1; }
-  .version-count { display: flex; align-items: center; gap: 5px; padding: 4px 8px; border: 1px solid color-mix(in srgb, var(--border) 60%, transparent); border-radius: var(--radius-full); background: color-mix(in srgb, var(--surface) 88%, transparent); color: var(--text-2); backdrop-filter: blur(12px); box-shadow: var(--shadow-1); font-size: 11px; line-height: 1.4; transition: background var(--motion-fast) var(--ease-responsive), color var(--motion-fast) var(--ease-responsive); }
-  .version-count:hover, .version-count[aria-expanded="true"] { background: var(--surface); color: var(--text); }
+  .version-count { position: relative; z-index: 1; display: flex; align-items: center; justify-content: center; gap: 6px; min-width: 40px; height: 26px; padding: 0 7px; border: 1px solid rgb(255 255 255 / 20%); border-radius: 6px; background: rgb(25 29 36 / 48%); color: #fff; backdrop-filter: blur(10px); box-shadow: 0 1px 4px rgb(0 0 0 / 10%); font-size: 11px; font-weight: 500; font-variant-numeric: tabular-nums; line-height: 1; transition: background var(--motion-fast) var(--ease-responsive), border-color var(--motion-fast) var(--ease-responsive); }
+  .version-count:hover, .version-count[aria-expanded="true"] { background: rgb(25 29 36 / 68%); border-color: rgb(255 255 255 / 35%); }
   .version-count:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .version-options { width: 200px; max-height: min(320px, 60vh); overflow-y: auto; }
-  .version-options button { gap: 14px; min-height: 34px; }
+  .menu-heading { padding: 7px 10px 5px; color: var(--text-3); font-size: 10px; }
+  .version-options button { gap: 10px; min-height: 36px; }
   .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   small { flex: none; color: var(--text-3); font-size: 10px; }
-  .copied small { color: var(--accent); }
+  .copy-indicator { display: flex; flex: none; color: var(--text-3); opacity: 0; transition: opacity var(--motion-fast) var(--ease-responsive); }
+  button:hover .copy-indicator, button:focus-visible .copy-indicator, .copy-indicator.success { opacity: 1; }
+  .copy-indicator.success { color: var(--accent); }
 </style>

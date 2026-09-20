@@ -2,6 +2,8 @@
   import { onDestroy, onMount } from "svelte";
   import { flip } from "svelte/animate";
   import { flipDuration } from "../../ui/motion";
+  import GripVertical from "@lucide/svelte/icons/grip-vertical";
+  import { pointerSort, type SortPreview } from "../../utils/pointer-sort";
   import { newMaterialVersion, materialVersionDrafts, moveMaterialVersion, duplicateMaterialVersion } from "../../utils/material-versions";
   import { confirm, open } from "@tauri-apps/plugin-dialog";
   import { inspectMaterialImage, inspectMaterialLibraryImage, saveMaterial, type Material, type MaterialDraft, type MaterialInspection } from "../../api/materials";
@@ -26,7 +28,7 @@
   const previewUrls = new Set<string>();
   let imageTarget = $state<"cover" | "version">("cover");
   let activeKey = $state("");
-  let draggedKey = $state<string | null>(null);
+  let sortPreview = $state<SortPreview | null>(null);
   const current = $derived(draft.versions.find(v => v.key === activeKey) ?? draft.versions[0]);
   const activeIndex = $derived(draft.versions.indexOf(current));
   const imageKey = $derived(imageTarget === "cover" ? "cover" : current.key);
@@ -165,19 +167,25 @@
           <small>{draft.tags.length ? `已选：${draft.tags.join("、")}` : "未选择 Tag"}</small>
         </div>
         <div class="version-heading"><strong>版本 <small>{draft.versions.length}</small></strong><span>拖动排序 · 第一项默认复制</span></div>
-        <div class="version-list" role="list" aria-label="素材版本">
+        <div class="version-list" role="list" aria-label="素材版本" class:sorting={!!sortPreview}
+          use:pointerSort={{ disabled: busy, onpreview: value => sortPreview = value, onmove: (key, index) => moveVersion(draft.versions.findIndex(v => v.key === key), index) }}>
           {#each draft.versions as version, index (version.key)}
-            <div class="version-row" class:active={current.key === version.key} role="listitem" draggable={!busy}
-              animate:flip={{ duration: flipDuration(180) }}
-              ondragstart={event => { draggedKey = version.key; event.dataTransfer?.setData("text/plain", version.key); }}
-              ondragend={() => draggedKey = null} ondragover={event => { if (draggedKey) event.preventDefault(); }}
-              ondrop={event => { event.preventDefault(); if (draggedKey) moveVersion(draft.versions.findIndex(v => v.key === draggedKey), index); draggedKey = null; }}>
-              <button class="version-select" aria-pressed={current.key === version.key} onclick={() => selectVersion(version.key)}><span class="grip" aria-hidden="true">⠿</span><span>{version.name || "未命名版本"}</span>{#if index === 0}<small>默认</small>{/if}</button>
+            <div class="version-row" class:active={current.key === version.key} role="listitem" data-sort-key={version.key}
+              class:drag-source={sortPreview?.key === version.key} class:drop-before={sortPreview?.beforeKey === version.key}
+              class:drop-after={!!sortPreview && sortPreview.beforeKey === null && sortPreview.lastKey === version.key}
+              animate:flip={{ duration: flipDuration(180) }}>
+              <button type="button" class="grip" data-sort-handle aria-label={`拖动排序 ${version.name}`} title="拖动排序，也可使用右侧上下移动按钮"><GripVertical size={14} strokeWidth={1.5} /></button>
+              <button class="version-select" aria-pressed={current.key === version.key} onclick={() => selectVersion(version.key)}><span>{version.name || "未命名版本"}</span>{#if index === 0}<small>默认</small>{/if}</button>
               <button class="move" aria-label={`上移 ${version.name}`} disabled={index === 0} onclick={() => moveVersion(index,index-1)}>↑</button>
               <button class="move" aria-label={`下移 ${version.name}`} disabled={index === draft.versions.length-1} onclick={() => moveVersion(index,index+1)}>↓</button>
             </div>
           {/each}
         </div>
+        {#if sortPreview}
+          <div class="version-floating" aria-hidden="true" style:left="{sortPreview.left}px" style:top="{sortPreview.top}px" style:width="{sortPreview.width}px">
+            <GripVertical size={14} strokeWidth={1.5} /><span>{draft.versions.find(v => v.key === sortPreview?.key)?.name || "未命名版本"}</span>
+          </div>
+        {/if}
         <div class="version-actions">
           <button class="btn" disabled={draft.versions.length >= 128} onclick={() => addVersion()}>新增版本</button>
           <button class="btn" disabled={draft.versions.length >= 128} onclick={() => addVersion(true)}>复制为新版本</button>
@@ -230,13 +238,19 @@
   .image-switch button.active { color: var(--text); background: var(--surface); box-shadow: var(--shadow-1); }
   .version-heading { display: flex; align-items: center; justify-content: space-between; font-size: var(--font-sm); }
   .version-heading span { font-size: 11px; color: var(--text-3); }
-  .version-list { display: grid; gap: 4px; max-height: 180px; overflow-y: auto; }
-  .version-row { display: flex; align-items: center; border: 1px solid transparent; border-radius: 8px; transition: background 180ms var(--ease-responsive), border-color 180ms var(--ease-responsive); }
+  .version-list { display: grid; gap: 4px; max-height: 180px; overflow-y: auto; padding: 3px 0; overscroll-behavior: contain; }
+  .version-row { position: relative; display: flex; align-items: center; border: 1px solid transparent; border-radius: 8px; transition: background 180ms var(--ease-responsive), border-color 180ms var(--ease-responsive); }
   .version-row.active { background: var(--accent-soft); border-color: var(--accent-soft-border); }
   .version-select { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; padding: 8px; border: 0; background: transparent; text-align: left; font-size: var(--font-sm); }
-  .version-select > span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .version-select > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .version-select small { flex: none; margin-left: auto; color: var(--accent); font-size: 10px; }
-  .grip { color: var(--text-3); cursor: grab; }
+  .grip { display: grid; place-items: center; padding: 8px 5px; border: 0; background: transparent; color: var(--text-3); cursor: grab; touch-action: none; user-select: none; }
+  .grip:active, .sorting { cursor: grabbing; }
+  .drag-source { opacity: 0.3; }
+  .drop-before::before, .drop-after::after { content: ""; position: absolute; height: 2px; left: 2px; right: 2px; background: var(--accent); border-radius: 2px; pointer-events: none; }
+  .drop-before::before { top: -3px; } .drop-after::after { bottom: -3px; }
+  .version-floating { position: fixed; z-index: var(--z-menu); display: flex; align-items: center; gap: 8px; padding: 8px; box-sizing: border-box; border: 1px solid var(--accent-soft-border); border-radius: 8px; background: var(--surface); box-shadow: var(--shadow-2); color: var(--text); font-size: var(--font-sm); pointer-events: none; }
+  .version-floating span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .move { border: 0; background: transparent; color: var(--text-3); padding: 5px 7px; }
   .version-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
   .version-actions .btn { font-size: var(--font-sm); padding: 4px 8px; }
