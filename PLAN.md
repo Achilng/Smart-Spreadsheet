@@ -43,6 +43,7 @@
 | --- | --- |
 | 当前进度、阻塞与待验证项 | [PROGRESS.md](PROGRESS.md) |
 | 发布步骤与更新签名 | [docs/RELEASING.md](docs/RELEASING.md) |
+| 代码组织重构、复用边界与回档 | [docs/REFACTORING.md](docs/REFACTORING.md) |
 | 各版本面向用户的更新说明 | [.github/release-notes/](.github/release-notes/) |
 | 图片对比的专项设计 | [对比功能实现计划.md](对比功能实现计划.md) |
 | 自动规则 AI 助手提示词 | [AUTOMATION_RULE_AI_PROMPT.md](AUTOMATION_RULE_AI_PROMPT.md) |
