@@ -6,7 +6,7 @@
 
 ## 当前状态
 
-- 代码组织重构进行中：基线 `6dc941a` 已建立并推送备份标签 `backup/pre-structure-refactor-20260920`，工作分支 `refactor/code-organization`；计划与复用清单见 [docs/REFACTORING.md](docs/REFACTORING.md)。按用户要求不新增测试，保持既有功能与数据格式，先整理后端模块边界。
+- 代码组织重构进行中：基线 `6dc941a`、备份标签 `backup/pre-structure-refactor-20260920`，工作分支 `refactor/code-organization` 均已推送；计划见 [docs/REFACTORING.md](docs/REFACTORING.md)。后端 120 个命令与运行时业务入口已按功能拆分，生命周期/连接访问集中管理，原有测试独立存放；301 项 Rust 测试通过，3 项原有性能测试跳过。下一步拆分规则内部职责并收拢前端公共能力，不新增测试。
 
 - 素材卡片新增右键「删除素材」，复用画廊菜单外壳；素材右键及详情删除与画廊共用 DeleteConfirmation 应用内弹窗（布局、危险按钮、动画、错误提示），已移除素材删除的 Windows 原生确认框。删除对象绑定右键卡片，提示包含全部版本，防止重复删除及切库后误删；开发版热更新，未替换安装版。
 - 已移除素材侧栏的 Tag 搜索框及对应过滤逻辑；侧栏直接展示 Tag 列表，顶部素材搜索与 Tag 多选筛选保留。
