@@ -31,6 +31,7 @@ export function useProgressiveImage(rowId: number | undefined, tier: "thumbnail"
   const thumb = useImage(thumbnails, rowId);
   const preview = useImage(tier === "detail" ? detailPreviews : galleryPreviews, tier === "thumbnail" ? undefined : rowId, true);
   const cachedGallery = tier === "detail" && rowId !== undefined ? galleryPreviews.cached(rowId) : null;
+  const previewUrl = preview.url ?? cachedGallery;
   const retry = useCallback(() => { thumb.retry(); preview.retry(); }, [thumb.retry, preview.retry]);
-  return { url: preview.url ?? cachedGallery ?? thumb.url, error: tier === "thumbnail" ? thumb.error : preview.error, retry };
+  return { url: previewUrl ?? thumb.url, thumbnailUrl: thumb.url, previewUrl, error: tier === "thumbnail" ? thumb.error : preview.error, retry };
 }
