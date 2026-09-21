@@ -5,8 +5,8 @@ import { useRows } from "../state/library";
 /** A fixed virtual spacer is committed before position is restored in layout effect. */
 export function useViewport(key: "gallery" | "table") {
   const viewport = useRef<HTMLDivElement>(null);
-  const [size, setSize] = useState(() => ({ width: 0, height: 0, top: savedScrollPosition(key) }));
   const resetToken = useRows(state => state.resetToken);
+  const [size, setSize] = useState(() => ({ width: 0, height: 0, top: savedScrollPosition(key), resetToken }));
   const loading = useRows(state => state.loading || state.refreshing);
   const restoring = useRef(false);
   useLayoutEffect(() => {
@@ -23,7 +23,7 @@ export function useViewport(key: "gallery" | "table") {
     restoring.current = true;
     const top = savedScrollPosition(key);
     node.scrollTop = top;
-    setSize(previous => ({ ...previous, top: node.scrollTop }));
+    setSize(previous => ({ ...previous, top: node.scrollTop, resetToken }));
     restoring.current = false;
   }, [key, resetToken, loading, size.height]);
   const onScroll = (event: UIEvent<HTMLDivElement>) => {
@@ -34,5 +34,8 @@ export function useViewport(key: "gallery" | "table") {
   const rememberRange = (first: number, last: number) => {
     if (!loading) rememberVisibleRange(key, first, last);
   };
-  return { viewport, size, onScroll, rememberRange };
+  // New pages and their target position must be rendered together. Rendering
+  // with the old position first can unmount every card before layout restores it.
+  const top = !loading && size.resetToken !== resetToken ? savedScrollPosition(key) : size.top;
+  return { viewport, size: { ...size, top }, onScroll, rememberRange };
 }

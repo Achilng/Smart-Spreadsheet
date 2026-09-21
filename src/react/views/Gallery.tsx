@@ -48,7 +48,7 @@ export function Gallery() {
         const row = pages.get(Math.floor(index / PAGE_SIZE))?.[index % PAGE_SIZE];
         const position = galleryCellPosition(index, layout);
         const style = { left: position.x, top: position.y, width: layout.cardWidth, "--image-height": `${layout.imageHeight}px` } as CSSProperties;
-        if (!row) return <div key={index} className="r-card r-card-skeleton" style={style}><div className="r-thumb r-image-placeholder" /></div>;
+        if (!row) return <div key={`placeholder-${index}`} className="r-card r-card-skeleton" style={style}><div className="r-thumb r-image-placeholder" /></div>;
         const badge = modelVersionBadge(row.generationModel);
         const checked = isSelected(row.id, selection);
         return <RowContextMenu key={row.id} row={row}><div onContextMenu={() => useRows.setState({ activeRow: row })} role="listitem" className="r-card" data-active={activeId === row.id} data-checked={checked} data-selecting={selectionActive} style={style}>

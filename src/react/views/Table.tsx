@@ -38,7 +38,7 @@ export function Table() {
       <div className="r-table-head" role="row">{["", "图片", "行号", "时间", "正向提示词", "角色提示词", "画师串", "Tags"].map((label, index) => <span key={index} role="columnheader">{label}</span>)}</div>
       <div className="r-table-spacer" role="rowgroup" style={{ height: total * height }}>{indices.map(index => {
         const row = pages.get(Math.floor(index / PAGE_SIZE))?.[index % PAGE_SIZE];
-        if (!row) return <div className="r-table-row r-image-placeholder" key={index} style={{ top: index * height, height }} />;
+        if (!row) return <div className="r-table-row r-image-placeholder" key={`placeholder-${index}`} style={{ top: index * height, height }} />;
         const show = () => useRows.setState({ activeRow: row });
         return <RowContextMenu key={row.id} row={row}><div onContextMenu={() => useRows.setState({ activeRow: row })} role="row" tabIndex={0} aria-rowindex={index + 2} aria-selected={isSelected(row.id, selection)} data-active={row.id === activeId} className="r-table-row" style={{ top: index * height, height }}
           onClick={event => { if (dragged.current) { dragged.current = false; return; } if (event.ctrlKey || event.metaKey || (event.shiftKey && selection.anchor !== null)) toggleRow(row.id, index, event.shiftKey); else show(); }}
