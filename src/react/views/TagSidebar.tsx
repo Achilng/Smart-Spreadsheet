@@ -1,10 +1,10 @@
 import { ListFilter } from "lucide-react";
 import { useState } from "react";
-import { ContextMenu } from "radix-ui";
+import { ContextMenu, RadioGroup } from "radix-ui";
 import { hasActiveFilters, refreshTags, setQuery, useLibrary, useRows } from "../state/library";
 import { useWorkspace } from "../state/workspace";
 import { TagManagementDialog } from "./TagManagementDialog";
-import { Button, Checkbox } from "../ui/controls";
+import { Button, Checkbox, Hint } from "../ui/controls";
 import { formatCount } from "../../lib/utils/format";
 import { tagColorFor } from "../../lib/utils/tag-colors";
 
@@ -23,7 +23,10 @@ export function TagSidebar({ onFilter }: { onFilter: () => void }) {
       </label>)}
       <Button className="r-filter-launch" onClick={onFilter}><ListFilter size={15} /><strong>过滤</strong><small>选择条件</small></Button>
     </section>
-    <div className="r-tag-heading"><h4>Tag</h4><button type="button" onClick={() => setQuery({ tagMode: query.tagMode === "and" ? "or" : "and" })} title="切换 Tag 筛选的组合方式">{query.tagMode.toUpperCase()} 模式 ⌄</button></div>
+    <div className="r-tag-heading"><h4>Tag</h4><RadioGroup.Root className="r-tag-mode" aria-label="Tag 匹配方式" orientation="horizontal" value={query.tagMode} onValueChange={mode => { if (mode === "and" || mode === "or") setQuery({ tagMode: mode }); }}>
+      <Hint text="同时包含全部所选 Tag"><RadioGroup.Item className="r-tag-mode-option" value="and" aria-label="AND：同时包含全部所选 Tag">AND</RadioGroup.Item></Hint>
+      <Hint text="包含任意一个所选 Tag"><RadioGroup.Item className="r-tag-mode-option" value="or" aria-label="OR：包含任意一个所选 Tag">OR</RadioGroup.Item></Hint>
+    </RadioGroup.Root></div>
     <div className="r-tag-list">{tagError ? <div className="r-list-note"><p>Tag 列表加载失败：{tagError}</p><Button onClick={() => void refreshTags()}>重试</Button></div> : entries.length === 0 ? <p className="r-list-note">还没有 Tag。选中图片后点“编辑 Tag”即可创建。</p> : entries.map(tag => <ContextMenu.Root key={tag.name}><ContextMenu.Trigger asChild><label className="r-check-row r-tag-row" data-active={query.tags.includes(tag.name)}>
       <Checkbox checked={query.tags.includes(tag.name)} onCheckedChange={checked => setQuery({ tags: checked ? [...query.tags, tag.name] : query.tags.filter(value => value !== tag.name) })} />
       <span className="r-tag-swatch" style={{ background: tagColorFor(tag.name, tags).background }} /><span className="r-tag-name" title={tag.name}>{tag.name}</span><small>{formatCount(tag.rowCount)}</small>

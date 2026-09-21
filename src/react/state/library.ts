@@ -106,11 +106,14 @@ export function setQuery(patch: Partial<Filters>, searchSession?: number): void 
   if (patch.tags?.length) next.untaggedOnly = false;
   if (patch.untaggedOnly) next.tags = [];
   if (JSON.stringify(before) === JSON.stringify(next)) return;
+  const tagModeOnly = before.tagMode !== next.tagMode && JSON.stringify({ ...before, tagMode: next.tagMode }) === JSON.stringify(next);
   useRows.setState({ query: next });
   if (patch.sort) {
     try { localStorage.setItem("smart-spreadsheet.image-sort", patch.sort); } catch (error) { notify(`无法记住图片顺序：${errorText(error)}`, "error"); }
   }
-  void reloadRows({ resetScroll: true, filterChange: before.sort === next.sort, searchSession });
+  // Changing how the existing tags combine should refresh in place, including
+  // when zero or one tag is selected and the result set does not change at all.
+  void reloadRows({ resetScroll: !tagModeOnly, filterChange: !tagModeOnly && before.sort === next.sort, searchSession });
 }
 
 export function clearFilters(): void {
