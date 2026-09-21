@@ -13,18 +13,20 @@ export const MATERIAL_PAGE_SIZE = 48;
 export const materialThumbnails = new ImageLoader(id => materialImage(id, true), 4, 144, "image/png");
 export const materialCovers = new ImageLoader(id => materialImage(id, false), 2, 8, "image/png");
 export const materialVersionCovers = new ImageLoader(materialVersionImage, 2, 16, "image/png");
+export const materialCardVersionImages = new ImageLoader(materialVersionImage, 3, 144, "image/png");
 interface MaterialsState {
   search: string; selectedTags: string[]; untagged: boolean; tags: TagSummary[]; tagError: string;
   pages: Map<number, Material[]>; total: number; loading: boolean; error: string; revision: number;
   selected: Material | null; detailOpen: boolean; scrollTop: number; initialized: boolean;
   editorOpen: boolean; editing: Material | null; editingVersion?: number; pendingPaths: string[]; editorKey: number;
   pendingDelete: Material | null; deleteError: string; deleting: boolean;
+  cardVersions: Record<number, number>; openCardId: number | null;
 }
-const initial: MaterialsState = { search: "", selectedTags: [], untagged: false, tags: [], tagError: "", pages: new Map(), total: 0, loading: false, error: "", revision: 0, selected: null, detailOpen: true, scrollTop: 0, initialized: false, editorOpen: false, editing: null, pendingPaths: [], editorKey: 0, pendingDelete: null, deleteError: "", deleting: false };
+const initial: MaterialsState = { search: "", selectedTags: [], untagged: false, tags: [], tagError: "", pages: new Map(), total: 0, loading: false, error: "", revision: 0, selected: null, detailOpen: true, scrollTop: 0, initialized: false, editorOpen: false, editing: null, pendingPaths: [], editorKey: 0, pendingDelete: null, deleteError: "", deleting: false, cardVersions: {}, openCardId: null };
 export const useMaterials = create<MaterialsState>(() => initial);
 let generation = 0;
 let pending = new Set<number>();
-function clearImages() { materialThumbnails.clear(); materialCovers.clear(); materialVersionCovers.clear(); }
+function clearImages() { materialThumbnails.clear(); materialCovers.clear(); materialVersionCovers.clear(); materialCardVersionImages.clear(); }
 useLibrary.subscribe((state, previous) => {
   if (state.snapshot?.dataDirectory !== previous.snapshot?.dataDirectory) {
     generation++; pending = new Set(); clearImages(); useMaterials.setState({ ...initial, pages: new Map(), revision: useMaterials.getState().revision + 1 });
@@ -36,7 +38,7 @@ export function initializeMaterials() { if (!useMaterials.getState().initialized
 export async function reloadMaterials(keepSelection = true) {
   generation++; pending = new Set();
   const token = generation;
-  useMaterials.setState({ pages: new Map(), total: 0, loading: true, error: "", initialized: true, scrollTop: 0, ...(!keepSelection && { selected: null }) });
+  useMaterials.setState({ pages: new Map(), total: 0, loading: true, error: "", initialized: true, scrollTop: 0, openCardId: null, ...(!keepSelection && { selected: null }) });
   await Promise.all([loadMaterialPage(0), materialTagCounts().then(tags => { if (token === generation) useMaterials.setState({ tags, tagError: "" }); }).catch(error => { if (token === generation) useMaterials.setState({ tagError: errorText(error) }); })]);
 }
 export async function loadMaterialPage(page: number) {
