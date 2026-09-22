@@ -1,8 +1,11 @@
 import { memo, useEffect, useId, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+import LiquidGlass from "liquid-glass-react";
 import type { Material } from "../../../lib/api/materials";
 import { copyMaterial, materialCardVersionImages, materialThumbnails, useMaterials } from "../../state/materials";
 import { useImage } from "../../ui/use-image";
 import "./material-card.css";
+
+const STILL_GLASS_POINTER = { x: 0, y: 0 };
 
 /** A version choice is browsing state, independent of the saved default version. */
 export const MaterialCard = memo(function MaterialCard({ material, active, open }: { material: Material; active: boolean; open: boolean }) {
@@ -30,7 +33,11 @@ export const MaterialCard = memo(function MaterialCard({ material, active, open 
       // Ignore a late clipboard response after another copy or card unmount.
       if (sequence !== copySequence.current) return;
       setCopyFeedback({ message: tone === "error" ? (text ? "复制失败，请重试" : "暂无文本，请先编辑") : "✓ 复制成功", visible: true });
-      feedbackTimer.current = setTimeout(() => setCopyFeedback(value => ({ ...value, visible: false })), 1800);
+      feedbackTimer.current = setTimeout(() => {
+        setCopyFeedback(value => ({ ...value, visible: false }));
+        // Release the SVG filters and resize listener once the fade-out finishes.
+        feedbackTimer.current = setTimeout(() => setCopyFeedback({ message: "", visible: false }), 220);
+      }, 1800);
     });
   }
 
@@ -115,7 +122,11 @@ export const MaterialCard = memo(function MaterialCard({ material, active, open 
             <span aria-hidden="true">{versions.length}</span>
           </span>
         </div>
-        <div className={`rm-portrait-toast${copyFeedback.visible ? " is-visible" : ""}`} role="status" aria-live="polite" aria-atomic="true" aria-hidden={!copyFeedback.visible}>{copyFeedback.message}</div>
+        <div className={`rm-portrait-toast${copyFeedback.visible ? " is-visible" : ""}`} role="status" aria-live="polite" aria-atomic="true" aria-hidden={!copyFeedback.visible}>
+          {copyFeedback.message && <LiquidGlass className="rm-copy-glass" mode="standard" displacementScale={40} blurAmount={0.12} saturation={150} aberrationIntensity={1.5} elasticity={0} cornerRadius={14} padding="12px 18px" globalMousePos={STILL_GLASS_POINTER} mouseOffset={STILL_GLASS_POINTER}>
+            <span className="rm-copy-glass-label">{copyFeedback.message}</span>
+          </LiquidGlass>}
+        </div>
         {image.error && <button className="rm-portrait-retry" onClick={() => image.retry()}>重试图片</button>}
       </div>
     </div>
