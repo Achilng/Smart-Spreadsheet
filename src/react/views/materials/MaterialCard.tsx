@@ -106,18 +106,17 @@ export const MaterialCard = memo(function MaterialCard({ material, active, open 
           <div className="rm-portrait-shade" /><div className="rm-portrait-glare" />
         </div>
         <button ref={hit} type="button" className="rm-portrait-hit" aria-label={`选择素材 ${material.title}，当前版本 ${version.name}`} aria-pressed={active} aria-expanded={open} aria-controls={panelId}
-          title="单击查看详情 · 双击复制当前版本文本 · 右键切换版本"
           onClick={() => { if (open) close(true); useMaterials.setState({ selected: material }); }}
           onDoubleClick={copyCurrentVersion}
           onKeyDown={event => { if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) { event.preventDefault(); toggle(); } }} />
-        <h3 className="rm-portrait-name" title={material.title}>{material.title}</h3>
+        <h3 className="rm-portrait-name">{material.title}</h3>
         <div className={`rm-portrait-toast${copyFeedback.visible ? " is-visible" : ""}`} role="status" aria-live="polite" aria-atomic="true" aria-hidden={!copyFeedback.visible}>{copyFeedback.message}</div>
         {image.error && <button className="rm-portrait-retry" onClick={() => image.retry()}>重试图片</button>}
       </div>
     </div>
     <div ref={panel} id={panelId} className="rm-look-panel" inert={!open} aria-hidden={!open} onKeyDown={navigate}>
       {versions.length > 8 && <input className="rm-look-search" aria-label="搜索版本" placeholder="搜索版本…" value={query} onChange={event => setQuery(event.target.value)} onKeyDown={event => { if (event.key === "Enter") panel.current?.querySelector<HTMLButtonElement>(".rm-look-option")?.click(); }} />}
-      <div className="rm-look-options" role="group" aria-label="可选版本">{options.map(item => <button key={item.id} type="button" className="rm-look-option" aria-pressed={item.id === version.id} title={item.name} onClick={() => {
+      <div className="rm-look-options" role="group" aria-label="可选版本">{options.map(item => <button key={item.id} type="button" className="rm-look-option" aria-pressed={item.id === version.id} onClick={() => {
         useMaterials.setState(state => ({ cardVersions: { ...state.cardVersions, [material.id]: item.id } }));
         close(true);
       }}>{item.name}</button>)}{!options.length && <p className="rm-look-empty">没有匹配的版本</p>}</div>
