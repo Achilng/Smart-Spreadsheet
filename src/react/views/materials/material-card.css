@@ -20,8 +20,30 @@
 .rm-portrait-stack-icon:before{left:1px;top:3px;transform:rotate(-13deg);opacity:.45}
 .rm-portrait-stack-icon:after{left:6px;top:1px;transform:rotate(7deg);background:#173139}
 .rm-portrait-retry{position:absolute;left:50%;top:42%;transform:translateX(-50%);z-index:3;background:#ffffffd9;color:#3d6251;border:1px solid #cbd8ce;border-radius:4px;padding:5px;font-size:11px;cursor:pointer}
-.rm-portrait-toast{position:absolute;left:50%;top:42%;z-index:6;pointer-events:none;width:max-content;max-width:calc(100% - 12px);box-sizing:border-box;border:1px solid #ffffff80;padding:11px 17px;background:linear-gradient(135deg,#ffffffa3,#ffffff61);-webkit-backdrop-filter:blur(16px) saturate(115%);backdrop-filter:blur(16px) saturate(115%);border-radius:10px;box-shadow:0 6px 20px #00000014,inset 0 1px 0 #ffffff66;font-size:clamp(10px,5.5cqi,12px);line-height:1.5;text-align:center;overflow-wrap:anywhere;color:#30343b;opacity:0;transform:translate(-50%,8px);transition:opacity .22s,transform .3s var(--card-ease)}
-.rm-portrait-toast.is-visible{opacity:1;transform:translate(-50%,0)}
+/* Apple-inspired regular material: a readable milky body with a directional glass rim. */
+.rm-portrait-toast{
+  position:absolute;left:50%;top:42%;z-index:6;pointer-events:none;
+  width:max-content;max-width:calc(100% - 16px);box-sizing:border-box;
+  padding:12px 19px;border:1px solid rgb(255 255 255 / 58%);border-radius:14px;
+  background:linear-gradient(155deg,rgb(255 255 255 / 32%),rgb(255 255 255 / 6%) 48%,rgb(255 255 255 / 18%)),rgb(246 247 249 / 68%);
+  -webkit-backdrop-filter:blur(24px) saturate(180%) brightness(1.06);
+  backdrop-filter:blur(24px) saturate(180%) brightness(1.06);
+  box-shadow:0 8px 24px -6px rgb(18 24 35 / 22%),0 2px 6px -2px rgb(18 24 35 / 12%),0 0 0 .5px rgb(18 24 35 / 8%),inset 0 1px 0 rgb(255 255 255 / 85%),inset 0 -1px 0 rgb(255 255 255 / 24%);
+  color:#25262a;font-size:clamp(10px,5.5cqi,12px);font-weight:600;line-height:1.5;
+  text-align:center;overflow-wrap:anywhere;text-shadow:0 .5px 0 rgb(255 255 255 / 45%);
+  opacity:0;visibility:hidden;transform:translate(-50%,6px) scale(.96);
+  transition:opacity .2s ease-out,transform .32s cubic-bezier(.22,1,.36,1),visibility 0s .2s;
+}
+.rm-portrait-toast:before{
+  content:"";position:absolute;inset:-1px;padding:1px;border-radius:inherit;pointer-events:none;
+  background:linear-gradient(145deg,rgb(255 255 255 / 95%),rgb(255 255 255 / 12%) 38%,rgb(255 255 255 / 8%) 60%,rgb(255 255 255 / 65%));
+  -webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);
+  -webkit-mask-composite:xor;mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);mask-composite:exclude;
+}
+.rm-portrait-toast.is-visible{opacity:1;visibility:visible;transform:translate(-50%,0) scale(1);transition-delay:0s}
+@supports not (backdrop-filter:blur(1px)){.rm-portrait-toast{background:#f4f5f7}}
+@media(prefers-reduced-transparency:reduce){.rm-portrait-toast{background:#f4f5f7;-webkit-backdrop-filter:none;backdrop-filter:none}}
+@media(forced-colors:active){.rm-portrait-toast{background:Canvas;color:CanvasText;border-color:CanvasText;box-shadow:none;text-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none}.rm-portrait-toast:before{display:none}}
 .rm-portrait-card.is-open .rm-portrait-stack{transform:translateX(-30%) scale(.4)}
 .rm-look-panel{position:absolute;left:46%;right:6px;top:12%;bottom:10px;padding-left:clamp(6px,3cqi,12px);border-left:1px solid #73928138;display:flex;flex-direction:column;gap:8px;opacity:0;visibility:hidden;pointer-events:none;transform:translateX(-8px);transition:opacity .25s,transform .4s var(--card-ease),visibility .25s}
 .is-open .rm-look-panel{opacity:1;visibility:visible;pointer-events:auto;transform:none}
