@@ -9,10 +9,11 @@
   --border: #e5e5e8;
   --border-strong: #d9d9de;
   --border-faint: #ececef;
-  --text: #1d1d1f;
-  --text-2: #515154;
-  --text-3: #86868b;
-  --text-4: #b9b9be;
+  /* netease-song-list.html: colorBlack1 / 3 / 5 / 6. Alpha belongs to text, not its container. */
+  --text: rgba(40, 50, 72, 1);
+  --text-2: rgba(40, 50, 72, .8);
+  --text-3: rgba(40, 50, 72, .6);
+  --text-4: rgba(40, 50, 72, .5);
   --primary: #1d1d1f;
   --primary-hover: #000000;
   --accent: #0071e3;
@@ -53,15 +54,21 @@
   --radius-l: 16px;
   --radius-full: 999px;
 
-  /* ---- 字号阶梯：11(overline)→13(正文)→15(面板标题)→17(对话框)→20(大标题) ---- */
-  --font-xs: 11px;
-  --font-sm: 12px;
-  --font-md: 13px;
-  --font-base: 14px;
-  --font-lg: 15px;
-  --font-xl: 17px;
-  --font-2xl: 20px;
-  --ls-caps: 0.05em;
+  /* ---- 网易云歌曲列表：14px 标题 / 13px 正文与辅助信息 / 9px 微型徽章 ---- */
+  --font-body: 13px;
+  --font-title: 14px;
+  --font-badge: 9px;
+  --font-weight-body: 400;
+  --font-weight-title: 500;
+  --line-height-ui: 1.4;
+  --font-xs: var(--font-body);
+  --font-sm: var(--font-body);
+  --font-md: var(--font-body);
+  --font-base: var(--font-title);
+  --font-lg: var(--font-title);
+  --font-xl: var(--font-title);
+  --font-2xl: var(--font-title);
+  --ls-caps: normal;
 
   /* ---- 间距阶梯（供后续阶段与新代码使用） ---- */
   --space-1: 4px;
@@ -135,10 +142,11 @@ code, pre, kbd, samp {
 body {
   margin: 0;
   font-family: var(--font);
-  font-size: var(--font-base);
-  line-height: 1.5;
+  font-size: var(--font-body);
+  font-weight: var(--font-weight-body);
+  line-height:var(--line-height-ui);
   background: var(--bg);
-  color: var(--text);
+  color: var(--text-2);
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
 }
@@ -150,6 +158,16 @@ h4,
 p {
   margin: 0;
 }
+
+h1, h2, h3, h4, h5, h6 {
+  font-size: var(--font-title);
+  font-weight: var(--font-weight-title);
+  line-height: var(--line-height-ui);
+  color: var(--text);
+}
+
+strong, b { font-weight: var(--font-weight-title); }
+small { font-size: var(--font-body); font-weight: var(--font-weight-body); }
 
 button {
   font: inherit;
@@ -391,9 +409,7 @@ textarea:focus-visible {
   padding: 5px 16px;
   border-radius: var(--radius-full);
   border: 1px solid var(--border-strong);
-  background: var(--surface);
-  color: var(--text);
-  font-weight: 600;
+  background: var(--surface);color:var(--text-2);font-weight:var(--font-weight-body);
   font-size: var(--font-md);
   white-space: nowrap;
   transition:
@@ -446,9 +462,8 @@ textarea:focus-visible {
 
 .btn-ghost {
   border-color: transparent;
-  background: transparent;
-  color: var(--text);
-  font-weight: 400;
+  background: transparent;color:var(--text-2);
+  font-weight:var(--font-weight-body);
 }
 
 .btn-ghost:hover:not(:disabled) {
@@ -471,8 +486,8 @@ textarea:focus-visible {
 /* ---- overline 小节标签（字段标题 / 表头 / 分组名共用） ---- */
 .overline {
   font-size: var(--font-xs);
-  font-weight: 650;
-  letter-spacing: var(--ls-caps);
+  font-weight:var(--font-weight-title);
+  letter-spacing:normal;
   text-transform: uppercase;
   color: var(--text-3);
 }
@@ -499,7 +514,7 @@ textarea:focus-visible {
 
 .flow-card h2 {
   font-size: var(--font-2xl);
-  letter-spacing: -0.01em;
+  letter-spacing:normal;
 }
 
 .flow-card .flow-actions {
@@ -518,9 +533,7 @@ textarea:focus-visible {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  background: var(--surface-3);
-  color: var(--text);
-  font-weight: 600;
+  background: var(--surface-3);color:var(--text-2);font-weight:var(--font-weight-body);
   border-radius: var(--radius-full);
   padding: 1px 10px;
   white-space: nowrap;
@@ -536,7 +549,7 @@ textarea:focus-visible {
 .chip-more {
   background: var(--surface-2);
   color: var(--text-3);
-  font-weight: 400;
+  font-weight:var(--font-weight-body);
   flex: none;
 }
 
@@ -547,10 +560,10 @@ textarea:focus-visible {
   background: var(--vibe-badge-bg);
   box-shadow: var(--vibe-badge-shadow);
   color: var(--text);
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 1.5;
-  letter-spacing: 0.02em;
+  font-size:var(--font-badge);
+  font-weight:var(--font-weight-body);
+  line-height:var(--line-height-ui);
+  letter-spacing:normal;
   pointer-events: none;
   white-space: nowrap;
 }
@@ -563,10 +576,10 @@ textarea:focus-visible {
   box-shadow:
     inset 0 0 0 1px rgb(0 0 0 / 10%),
     var(--vibe-badge-shadow);
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 1.5;
-  letter-spacing: 0.02em;
+  font-size:var(--font-badge);
+  font-weight:var(--font-weight-body);
+  line-height:var(--line-height-ui);
+  letter-spacing:normal;
   pointer-events: none;
   white-space: nowrap;
 }
@@ -649,7 +662,7 @@ textarea:focus-visible {
   background: var(--accent-soft);
   color: var(--accent);
   font-size: var(--font-sm);
-  font-weight: 700;
+  font-weight:var(--font-weight-title);
   font-variant-numeric: tabular-nums;
 }
 
@@ -670,9 +683,9 @@ textarea:focus-visible {
 }
 
 .metric-grid strong {
-  font-size: 20px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
+  font-size:var(--font-title);
+  font-weight:var(--font-weight-title);
+  letter-spacing:normal;
   font-variant-numeric: tabular-nums;
 }
 
@@ -706,7 +719,7 @@ textarea:focus-visible {
 
 .action-bar .bar-hint {
   color: var(--text-2);
-  font-size: 12.5px;
+  font-size:var(--font-body);
 }
 
 /* ---- 命中示例缩略图网格 ---- */
@@ -740,7 +753,7 @@ textarea:focus-visible {
   background: none;
   padding: 4px 8px;
   border-radius: var(--radius-full);
-  font-size: 12.5px;
+  font-size:var(--font-body);
   color: var(--text-2);
   transition:
     background var(--motion-fast) var(--ease-responsive),
@@ -754,7 +767,7 @@ textarea:focus-visible {
 
 .txt-opt.is-active {
   color: var(--text);
-  font-weight: 700;
+  font-weight:var(--font-weight-title);
 }
 
 .txt-action {
@@ -762,7 +775,7 @@ textarea:focus-visible {
   background: none;
   padding: 4px 8px;
   border-radius: var(--radius-full);
-  font-size: 12.5px;
+  font-size:var(--font-body);
   color: var(--accent);
   transition:
     background var(--motion-fast) var(--ease-responsive),

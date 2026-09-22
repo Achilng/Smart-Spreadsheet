@@ -1,18 +1,18 @@
-.r-row-warning { color: var(--danger); font-weight: 600; font-size: var(--font-sm); line-height: 1.6; }
+.r-row-warning { color: var(--danger); font-weight:var(--font-weight-title); font-size: var(--font-sm); line-height:var(--line-height-ui); }
 .r-row-trash-option { display: flex; align-items: flex-start; gap: 10px; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-s); background: var(--surface-2); cursor: pointer; }
 .r-row-trash-option .r-checkbox { flex: none; margin-top: 2px; }
 .r-row-trash-option > span { display: grid; gap: 4px; }
-.r-row-trash-option strong { font-size: var(--font-md); }
-.r-row-trash-option small { color: var(--text-2); font-size: var(--font-sm); line-height: 1.5; }
+.r-row-trash-option strong { font-size:var(--font-title); }
+.r-row-trash-option small { color: var(--text-2); font-size: var(--font-sm); line-height:var(--line-height-ui); }
 .r-row-edit-tabs { display: flex; gap: 4px; padding: 4px; border: 1px solid var(--border); background: var(--surface-2); border-radius: var(--radius-s); }
 .r-row-edit-tabs .btn { flex: 1; border-color: transparent; background: transparent; }
 .r-row-edit-tabs .btn[aria-selected="true"] { background: var(--surface); border-color: var(--border); color: var(--accent); box-shadow: var(--shadow-1); }
 .r-row-edit-fields { display: grid; gap: 12px; min-height: 155px; align-content: start; }
 .r-row-edit-fields label { display: grid; gap: 5px; font-size: var(--font-sm); color: var(--text-2); }
-.r-row-edit-fields p { line-height: 1.6; }
-.r-row-prefix-hint { color: var(--accent); font-size: var(--font-sm); line-height: 1.55; }
+.r-row-edit-fields p { line-height:var(--line-height-ui); }
+.r-row-prefix-hint { color: var(--accent); font-size: var(--font-sm); line-height:var(--line-height-ui); }
 .r-drop-paths { margin: 0; padding: 10px 14px; list-style: none; max-height: 200px; overflow: auto; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-s); }
-.r-drop-paths li { font-size: var(--font-md); line-height: 1.7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.r-drop-paths li { font-size: var(--font-md); line-height:var(--line-height-ui); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .r-native-drop-overlay { position: fixed; inset: 60px 12px 12px; z-index: 70; pointer-events: none; border: 2px dashed var(--accent); border-radius: var(--radius-m); background: color-mix(in srgb, var(--surface) 92%, transparent); color: var(--accent); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; box-shadow: var(--shadow-2); }
 .r-native-drop-overlay strong { font-size: var(--font-xl); }
 .r-native-drop-overlay span { font-size: var(--font-md); color: var(--text-2); }
