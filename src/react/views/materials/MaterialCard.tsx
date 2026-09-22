@@ -16,9 +16,25 @@ export const MaterialCard = memo(function MaterialCard({ material, active, open 
   const hit = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   const frame = useRef(0);
+  const copySequence = useRef(0);
+  const feedbackTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const [copyFeedback, setCopyFeedback] = useState({ message: "", visible: false });
   const [query, setQuery] = useState("");
   const panelId = useId();
   const options = versions.filter(item => item.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
+
+  function copyCurrentVersion() {
+    const sequence = ++copySequence.current;
+    const text = version.text;
+    clearTimeout(feedbackTimer.current);
+    setCopyFeedback({ message: "", visible: false });
+    void copyMaterial(material, text, (_message, tone) => {
+      // Ignore a late clipboard response after another copy or card unmount.
+      if (sequence !== copySequence.current) return;
+      setCopyFeedback({ message: tone === "error" ? (text ? "复制失败，请重试" : "暂无文本，请先编辑") : "✓ 复制成功", visible: true });
+      feedbackTimer.current = setTimeout(() => setCopyFeedback(value => ({ ...value, visible: false })), 1800);
+    });
+  }
 
   function resetTilt() {
     cancelAnimationFrame(frame.current);
@@ -51,7 +67,7 @@ export const MaterialCard = memo(function MaterialCard({ material, active, open 
     const reduced = matchMedia("(prefers-reduced-motion: reduce)");
     window.addEventListener("blur", resetTilt);
     reduced.addEventListener("change", resetTilt);
-    return () => { cancelAnimationFrame(frame.current); window.removeEventListener("blur", resetTilt); reduced.removeEventListener("change", resetTilt); };
+    return () => { cancelAnimationFrame(frame.current); clearTimeout(feedbackTimer.current); copySequence.current++; window.removeEventListener("blur", resetTilt); reduced.removeEventListener("change", resetTilt); };
   }, []);
 
   function move(event: PointerEvent<HTMLDivElement>) {
@@ -93,9 +109,10 @@ export const MaterialCard = memo(function MaterialCard({ material, active, open 
         <button ref={hit} type="button" className="rm-portrait-hit" aria-label={`选择素材 ${material.title}，当前版本 ${version.name}`} aria-pressed={active} aria-expanded={open} aria-controls={panelId}
           title="单击查看详情 · 双击复制当前版本文本 · 右键切换版本"
           onClick={() => { if (open) close(true); useMaterials.setState({ selected: material }); }}
-          onDoubleClick={() => void copyMaterial(material, version.text)}
+          onDoubleClick={copyCurrentVersion}
           onKeyDown={event => { if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) { event.preventDefault(); toggle(); } }} />
         <h3 className="rm-portrait-name" title={material.title}>{material.title}</h3>
+        <div className={`rm-portrait-toast${copyFeedback.visible ? " is-visible" : ""}`} role="status" aria-live="polite" aria-atomic="true" aria-hidden={!copyFeedback.visible}>{copyFeedback.message}</div>
         {image.error && <button className="rm-portrait-retry" onClick={() => image.retry()}>重试图片</button>}
       </div>
     </div>

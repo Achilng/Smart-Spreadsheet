@@ -78,10 +78,10 @@ export function materialSaved(material: Material) {
   if (!state.editing && state.pendingPaths.length > 1) useMaterials.setState({ pendingPaths: state.pendingPaths.slice(1), editorKey: state.editorKey + 1 });
   else closeMaterialEditor();
 }
-export async function copyMaterial(material: Material, text = material.versions[0]?.text ?? material.text) {
-  if (!text) { notify("这份素材还没有文本，请先编辑内容。", "error"); return; }
-  try { await navigator.clipboard.writeText(text); notify(`已复制「${material.title}」的文本。`); }
-  catch (error) { notify(`复制失败：${errorText(error)}`, "error"); }
+export async function copyMaterial(material: Material, text = material.versions[0]?.text ?? material.text, feedback: typeof notify = notify) {
+  if (!text) { feedback("这份素材还没有文本，请先编辑内容。", "error"); return; }
+  try { await navigator.clipboard.writeText(text); feedback(`已复制「${material.title}」的文本。`); }
+  catch (error) { feedback(`复制失败：${errorText(error)}`, "error"); }
 }
 export function requestDeleteMaterial(item: Material) { if (!useTasks.getState().busy) useMaterials.setState({ pendingDelete: item, deleteError: "" }); }
 export async function confirmDeleteMaterial() {
