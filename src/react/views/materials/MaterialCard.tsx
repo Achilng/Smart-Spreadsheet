@@ -32,7 +32,7 @@ export const MaterialCard = memo(function MaterialCard({ material, active, open 
     void copyMaterial(material, text, (_message, tone) => {
       // Ignore a late clipboard response after another copy or card unmount.
       if (sequence !== copySequence.current) return;
-      setCopyFeedback({ message: tone === "error" ? (text ? "复制失败，请重试" : "暂无文本，请先编辑") : "✓ 复制成功", visible: true });
+      setCopyFeedback({ message: tone === "error" ? (text ? "复制失败，请重试" : "暂无文本，请先编辑") : "复制成功", visible: true });
       feedbackTimer.current = setTimeout(() => {
         setCopyFeedback(value => ({ ...value, visible: false }));
         // Release the SVG filters and resize listener once the fade-out finishes.
