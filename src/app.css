@@ -83,7 +83,8 @@
   --z-toast: 900;
   --z-dragdrop: 1000;
 
-  --font: "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif;
+  --font: "Microsoft YaHei", sans-serif;
+  --font-mono: var(--font);
 }
 
 * {
@@ -125,6 +126,10 @@ html,
 body,
 #app {
   height: 100%;
+}
+
+code, pre, kbd, samp {
+  font-family: var(--font);
 }
 
 body {
