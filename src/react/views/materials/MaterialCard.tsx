@@ -109,7 +109,13 @@ export const MaterialCard = memo(function MaterialCard({ material, active, open 
           onClick={() => { if (open) close(true); useMaterials.setState({ selected: material }); }}
           onDoubleClick={copyCurrentVersion}
           onKeyDown={event => { if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) { event.preventDefault(); toggle(); } }} />
-        <h3 className="rm-portrait-name">{material.title}</h3>
+        <div className="rm-portrait-identity">
+          <h3 className="rm-portrait-name">{material.title}</h3>
+          <span className="rm-portrait-count" role="img" aria-label={`共 ${versions.length} 个版本`}>
+            <span className="rm-portrait-stack-icon" aria-hidden="true" />
+            <span aria-hidden="true">{versions.length}</span>
+          </span>
+        </div>
         <div className={`rm-portrait-toast${copyFeedback.visible ? " is-visible" : ""}`} role="status" aria-live="polite" aria-atomic="true" aria-hidden={!copyFeedback.visible}>{copyFeedback.message}</div>
         {image.error && <button className="rm-portrait-retry" onClick={() => image.retry()}>重试图片</button>}
       </div>

@@ -12,7 +12,13 @@
 .rm-portrait-glare{position:absolute;inset:0;pointer-events:none;background:radial-gradient(circle at var(--mx,50%) var(--my,30%),#fff8df40,transparent 57%);mix-blend-mode:soft-light;opacity:0;transition:opacity .5s}
 .is-hovering .rm-portrait-glare{opacity:1}
 .rm-portrait-hit{position:absolute;inset:0;z-index:1;width:100%;border:0;border-radius:inherit;background:none;cursor:pointer}
-.rm-portrait-name{position:absolute;left:8%;right:7%;bottom:7%;z-index:2;pointer-events:none;margin:0;color:#f0f3e9;font:400 clamp(18px,10.5cqi,35px)/1.4 "STSong","SimSun",serif;letter-spacing:.12em;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow-wrap:anywhere;text-shadow:0 1px 8px #10272b40}
+.rm-portrait-identity{position:absolute;left:8%;right:7%;bottom:7%;z-index:2;pointer-events:none;display:flex;align-items:flex-end;gap:8px}
+.rm-portrait-name{flex:1;min-width:0;margin:0;color:#f0f3e9;font:400 clamp(18px,10.5cqi,35px)/1.4 "STSong","SimSun",serif;letter-spacing:.12em;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow-wrap:anywhere;text-shadow:0 1px 8px #10272b40}
+.rm-portrait-count{display:flex;align-items:center;gap:6px;flex:none;margin-bottom:clamp(3px,1.8cqi,6px);color:#e2e7e3;font-size:clamp(10px,5cqi,12px);line-height:1.4;font-variant-numeric:tabular-nums;user-select:none;text-shadow:0 1px 6px #10272b55}
+.rm-portrait-stack-icon{display:block;position:relative;width:18px;height:20px;flex:none;opacity:.8}
+.rm-portrait-stack-icon:before,.rm-portrait-stack-icon:after{content:"";position:absolute;width:10px;height:14px;border:1px solid currentColor;border-radius:2px;transform-origin:bottom center}
+.rm-portrait-stack-icon:before{left:1px;top:3px;transform:rotate(-13deg);opacity:.45}
+.rm-portrait-stack-icon:after{left:6px;top:1px;transform:rotate(7deg);background:#173139}
 .rm-portrait-retry{position:absolute;left:50%;top:42%;transform:translateX(-50%);z-index:3;background:#ffffffd9;color:#3d6251;border:1px solid #cbd8ce;border-radius:4px;padding:5px;font-size:11px;cursor:pointer}
 .rm-portrait-toast{position:absolute;left:50%;top:42%;z-index:6;pointer-events:none;width:max-content;max-width:calc(100% - 12px);box-sizing:border-box;border:1px solid #ffffff80;padding:11px 17px;background:linear-gradient(135deg,#ffffffa3,#ffffff61);-webkit-backdrop-filter:blur(16px) saturate(115%);backdrop-filter:blur(16px) saturate(115%);border-radius:10px;box-shadow:0 6px 20px #00000014,inset 0 1px 0 #ffffff66;font-size:clamp(10px,5.5cqi,12px);line-height:1.5;text-align:center;overflow-wrap:anywhere;color:#30343b;opacity:0;transform:translate(-50%,8px);transition:opacity .22s,transform .3s var(--card-ease)}
 .rm-portrait-toast.is-visible{opacity:1;transform:translate(-50%,0)}
