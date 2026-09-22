@@ -22,9 +22,8 @@ export const MaterialCard = memo(function MaterialCard({ material, active, open 
   const panelId = useId();
   const options = versions.filter(item => item.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
 
-  function copyCurrentVersion() {
+  function copyVersionText(text: string) {
     const sequence = ++copySequence.current;
-    const text = version.text;
     clearTimeout(feedbackTimer.current);
     setCopyFeedback({ message: "", visible: false });
     void copyMaterial(material, text, (_message, tone) => {
@@ -107,7 +106,7 @@ export const MaterialCard = memo(function MaterialCard({ material, active, open 
         </div>
         <button ref={hit} type="button" className="rm-portrait-hit" aria-label={`选择素材 ${material.title}，当前版本 ${version.name}`} aria-pressed={active} aria-expanded={open} aria-controls={panelId}
           onClick={() => { if (open) close(true); useMaterials.setState({ selected: material }); }}
-          onDoubleClick={copyCurrentVersion}
+          onDoubleClick={() => copyVersionText(version.text)}
           onKeyDown={event => { if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) { event.preventDefault(); toggle(); } }} />
         <div className="rm-portrait-identity">
           <h3 className="rm-portrait-name">{material.title}</h3>
@@ -124,6 +123,7 @@ export const MaterialCard = memo(function MaterialCard({ material, active, open 
       {versions.length > 8 && <input className="rm-look-search" aria-label="搜索版本" placeholder="搜索版本…" value={query} onChange={event => setQuery(event.target.value)} onKeyDown={event => { if (event.key === "Enter") panel.current?.querySelector<HTMLButtonElement>(".rm-look-option")?.click(); }} />}
       <div className="rm-look-options" role="group" aria-label="可选版本">{options.map(item => <button key={item.id} type="button" className="rm-look-option" aria-pressed={item.id === version.id} onClick={() => {
         useMaterials.setState(state => ({ cardVersions: { ...state.cardVersions, [material.id]: item.id } }));
+        copyVersionText(item.text);
         close(true);
       }}>{item.name}</button>)}{!options.length && <p className="rm-look-empty">没有匹配的版本</p>}</div>
       <button type="button" className="rm-look-close" onClick={() => close(true)}>收起 ↑</button>
