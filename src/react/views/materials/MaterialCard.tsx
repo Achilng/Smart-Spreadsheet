@@ -1,5 +1,4 @@
 import { memo, useEffect, useId, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
-import { ChevronDown } from "lucide-react";
 import type { Material } from "../../../lib/api/materials";
 import { copyMaterial, materialCardVersionImages, materialThumbnails, useMaterials } from "../../state/materials";
 import { useImage } from "../../ui/use-image";
@@ -116,11 +115,7 @@ export const MaterialCard = memo(function MaterialCard({ material, active, open 
         {image.error && <button className="rm-portrait-retry" onClick={() => image.retry()}>重试图片</button>}
       </div>
     </div>
-    <button type="button" className="rm-look-caption" aria-expanded={open} aria-controls={panelId} aria-label={`当前版本：${version.name}，展开版本目录`} title={`${version.name}${material.tags.length ? ` · ${material.tags.join("、")}` : ""}`} onClick={toggle}>
-      <span>{version.name}</span><ChevronDown size={12} aria-hidden="true" />
-    </button>
     <div ref={panel} id={panelId} className="rm-look-panel" inert={!open} aria-hidden={!open} onKeyDown={navigate}>
-      <p className="rm-look-heading">版本目录 <span>{versions.length}</span></p>
       {versions.length > 8 && <input className="rm-look-search" aria-label="搜索版本" placeholder="搜索版本…" value={query} onChange={event => setQuery(event.target.value)} onKeyDown={event => { if (event.key === "Enter") panel.current?.querySelector<HTMLButtonElement>(".rm-look-option")?.click(); }} />}
       <div className="rm-look-options" role="group" aria-label="可选版本">{options.map(item => <button key={item.id} type="button" className="rm-look-option" aria-pressed={item.id === version.id} title={item.name} onClick={() => {
         useMaterials.setState(state => ({ cardVersions: { ...state.cardVersions, [material.id]: item.id } }));

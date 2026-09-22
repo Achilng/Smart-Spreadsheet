@@ -22,7 +22,7 @@ export function MaterialsView({ active = true }: { active?: boolean }) {
   const layout = galleryLayout(bounds.width, size, state.total);
   // Portrait cards keep the gallery's column positioning and virtual window.
   layout.imageHeight = Math.round(Math.max(1, layout.cardWidth - 12) * 1216 / 832);
-  layout.cellHeight = layout.imageHeight + 58;
+  layout.cellHeight = layout.imageHeight + 24;
   layout.spacerHeight = layout.gridRows ? 32 + layout.gridRows * layout.cellHeight - 12 : 0;
   const visible = active ? galleryVisibleIndices(layout, state.scrollTop, bounds.height, state.total) : [];
   const first = visible[0] ?? 0; const last = visible.at(-1) ?? 0;
