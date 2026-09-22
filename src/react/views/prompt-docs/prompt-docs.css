@@ -18,7 +18,7 @@
 .r-pd-progress { position: absolute; z-index: 2; inset: 0 0 auto; height: 2px; overflow: hidden; background: var(--accent-soft); }
 .r-pd-progress::after { content: ""; display: block; width: 38%; height: 100%; background: var(--accent); animation: r-pd-progress .85s linear infinite; }
 .r-pd-titlebar { flex: none; min-height: 54px; display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: var(--surface); border-bottom: 1px solid var(--border); }
-.r-pd-titlebar .r-pd-title { flex: 1; min-width: 60px; width: auto; height: 34px; border-color: transparent; background: transparent; padding: 0 8px; font-size: var(--font-xl); font-weight: 650; }
+.r-pd-titlebar .r-pd-title { flex: 1; min-width: 60px; width: auto; height: 34px; border-color: transparent; background: transparent; padding: 0 8px; font-size: var(--font-xl); font-weight: 600; }
 .r-pd-title:focus { border-color: var(--border-strong); background: var(--surface-2); }
 .r-pd-status { display: inline-flex; align-items: center; gap: 4px; flex: none; color: var(--text-3); font-size: var(--font-sm); white-space: nowrap; }
 .r-pd-status.is-error { color: var(--danger); }

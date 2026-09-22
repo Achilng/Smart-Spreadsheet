@@ -10,18 +10,18 @@
   --border-strong: #d9d9de;
   --border-faint: #ececef;
   --text: #1d1d1f;
-  --text-2: #515154;
-  --text-3: #86868b;
-  --text-4: #b9b9be;
+  --text-2: #45454b;
+  --text-3: #63636b;
+  --text-4: #696971;
   --primary: #1d1d1f;
   --primary-hover: #000000;
-  --accent: #0071e3;
-  --accent-hover: #0077ed;
+  --accent: #0064c8;
+  --accent-hover: #005ab5;
   --accent-soft: #eaf3fe;
   --accent-soft-border: #c8e0fa;
   --danger: #c93a52;
   --danger-soft: #fceef0;
-  --success: #178256;
+  --success: #14754c;
   --success-soft: #e5f4ec;
   --warning: #a16207;
   --warning-soft: #faf0dc;
@@ -53,13 +53,13 @@
   --radius-l: 16px;
   --radius-full: 999px;
 
-  /* ---- 字号阶梯：11(overline)→13(正文)→15(面板标题)→17(对话框)→20(大标题) ---- */
-  --font-xs: 11px;
-  --font-sm: 12px;
-  --font-md: 13px;
-  --font-base: 14px;
-  --font-lg: 15px;
-  --font-xl: 17px;
+  /* ---- 易读字号阶梯：13(辅助)→14(控件)→15(正文)→17(面板标题)→20(对话框) ---- */
+  --font-xs: 13px;
+  --font-sm: 14px;
+  --font-md: 15px;
+  --font-base: 15px;
+  --font-lg: 17px;
+  --font-xl: 20px;
   --font-2xl: 20px;
   --ls-caps: 0.05em;
 
@@ -139,7 +139,7 @@ body {
   line-height: 1.5;
   background: var(--bg);
   color: var(--text);
-  -webkit-font-smoothing: antialiased;
+  font-weight: 400;
   overflow: hidden;
 }
 

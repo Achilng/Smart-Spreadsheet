@@ -1,6 +1,6 @@
 export const GALLERY_GAP = 12;
 export const GALLERY_PADDING = 16;
-export const GALLERY_FOOTER_HEIGHT = 42;
+export const GALLERY_FOOTER_HEIGHT = 50; // 8px padding + 21px name + 1px gap + 20px metadata.
 
 /** Shared square-card geometry for the gallery and material library. */
 export function galleryLayout(viewportWidth: number, minCardWidth: number, count: number) {
