@@ -25,18 +25,35 @@ export function validateRequest(doc) {
 }
 export function validateReply(batch, reply) {
   if (!Array.isArray(reply?.items)) throw Error('模型未返回 items 数组。');
-  const allowed = new Set(batch.map(x => x.id));
-  if (reply.items.some(x => !x || !allowed.has(x.id))) throw Error('模型返回了未知编号。');
   return batch.map(input => {
-    const found = reply.items.filter(x => x.id === input.id);
+    const found = reply.items.filter(x => x?.id === input.id);
     const r = found[0];
     let error;
-    if (found.length !== 1) error = '结果缺失或编号重复';
+    if (!found.length) error = '本条结果缺失：模型未返回对应编号，或返回了未知编号';
+    else if (found.length > 1) error = '本条编号重复，无法唯一匹配结果';
     else if (r.status === 'none' && r.artist_string === '') return { id: input.id, status: 'none', artist_string: '' };
     else if (r.status === 'ok' && typeof r.artist_string === 'string' && r.artist_string.length && input.positive_prompt.includes(r.artist_string)) return { id: input.id, status: 'ok', artist_string: r.artist_string };
     else error = '结果状态不正确，或画风串不是连续原文';
     return { id: input.id, status: 'error', artist_string: '', error };
   });
+}
+export function modelBatch(batch) {
+  // Model IDs are local to one call. Stable hashes never leave this adapter.
+  return batch.map((item, index) => ({ id: String(index + 1), positive_prompt: item.positive_prompt }));
+}
+export function restoreModelReply(batch, reply, log) {
+  if (!Array.isArray(reply?.items)) throw Error('模型未返回 items 数组。');
+  const ids = new Map(batch.map((item, i) => [String(i + 1), item.id]));
+  const items = []; let unknown = 0;
+  for (const item of reply.items) {
+    // Accept 1 and "1", but never guess by output position or artist text.
+    const shortId = typeof item?.id === 'string' ? item.id : Number.isInteger(item?.id) ? String(item.id) : '';
+    const id = ids.get(shortId);
+    if (!id) { unknown++; continue; }
+    items.push({ id, status: item.status, artist_string: item.artist_string });
+  }
+  if (unknown) log(`忽略 ${unknown} 条未知编号结果，保留可匹配项，仅重试缺失或异常项`);
+  return { items };
 }
 export function atomicJson(filename, value) {
   fs.mkdirSync(path.dirname(filename), { recursive: true });
@@ -65,12 +82,13 @@ export function normalizeBaseUrl(value) {
 export async function callApi(batch, options, signal, log) {
   if (!options.apiKey?.trim()) throw Error('请填写 API Key 后继续（authentication）。');
   const base = normalizeBaseUrl(options.baseUrl), key = options.apiKey.trim();
+  const items = modelBatch(batch);
   const body = {
     model: options.model || MODEL,
-    messages: [{ role: 'system', content: prompt }, { role: 'user', content: JSON.stringify({ items: batch }) }],
+    messages: [{ role: 'system', content: prompt }, { role: 'user', content: JSON.stringify({ items }) }],
     stream: false,
     reasoning_effort: options.effort,
-    response_format: { type: 'json_schema', json_schema: { name: 'style_extraction', strict: true, schema } },
+    response_format: { type: 'json_schema', json_schema: { name: 'style_extraction', strict: true, schema: modelSchema(items) } },
   };
   // Some compatible gateways do not implement schema or reasoning parameters.
   for (let pass = 0; pass < 3; pass++) {
@@ -89,16 +107,22 @@ export async function callApi(batch, options, signal, log) {
     const content = choice?.message?.content;
     if (typeof content !== 'string') throw Error('API 未返回可读取的文本结果');
     log('API 已返回，正在校验原文');
-    return JSON.parse(content.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, ''));
+    return restoreModelReply(batch, JSON.parse(content.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')), log);
   }
   throw Error('该接口不支持所需参数，请检查接口兼容性。');
 }
 const schema = { type: 'object', properties: { items: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, status: { type: 'string', enum: ['ok', 'none'] }, artist_string: { type: 'string' } }, required: ['id', 'status', 'artist_string'], additionalProperties: false } } }, required: ['items'], additionalProperties: false };
+function modelSchema(items) {
+  const value = structuredClone(schema);
+  value.properties.items.items.properties.id.enum = items.map(x => x.id);
+  return value;
+}
 export async function callCodex(batch, options, signal, log) {
   const dir = path.join(process.env.STYLE_TEMP_DIR || 'D:/Agent/Agent_temp/style-extractor', randomUUID());
   fs.mkdirSync(dir, { recursive: true });
   const output = path.join(dir, 'result.json');
-  atomicJson(path.join(dir, 'schema.json'), schema);
+  const items = modelBatch(batch);
+  atomicJson(path.join(dir, 'schema.json'), modelSchema(items));
   const cli = resolveCodex();
   const args = [...cli.prefix, 'exec', '--ignore-user-config', '--ephemeral', '--sandbox', 'read-only', '--skip-git-repo-check', '-C', dir, '-m', MODEL, '-c', `model_reasoning_effort="${options.effort}"`, '--output-schema', path.join(dir, 'schema.json'), '-o', output, '-'];
   await new Promise((resolve, reject) => {
@@ -124,11 +148,11 @@ export async function callCodex(batch, options, signal, log) {
       finish();
     });
     child.stdin.on('error', () => {});
-    child.stdin.end(prompt + '\n\n【待处理 JSON 数据】\n' + JSON.stringify({ items: batch }));
+    child.stdin.end(prompt + '\n\n【待处理 JSON 数据】\n' + JSON.stringify({ items }));
     if (signal.aborted) abort();
   });
   log('模型已返回，正在校验原文');
-  return JSON.parse(fs.readFileSync(output, 'utf8').replace(/^\uFEFF/, ''));
+  return restoreModelReply(batch, JSON.parse(fs.readFileSync(output, 'utf8').replace(/^\uFEFF/, '')), log);
 }
 function validateConcurrency(value = 1) {
   const concurrency = Number(value);

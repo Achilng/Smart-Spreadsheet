@@ -5,7 +5,7 @@ import path from 'node:path';
 import http from 'node:http';
 import { once } from 'node:events';
 import { setImmediate as nextTurn } from 'node:timers/promises';
-import { hash, validateRequest, validateReply, JobManager, REQUEST, callApi, normalizeBaseUrl } from './core.mjs';
+import { hash, validateRequest, validateReply, JobManager, REQUEST, callApi, normalizeBaseUrl, modelBatch, restoreModelReply } from './core.mjs';
 const tempRoot = 'D:/Agent/Agent_temp/style-extractor-tests';
 fs.mkdirSync(tempRoot, { recursive: true });
 const item = positive_prompt => ({ id: hash(positive_prompt), positive_prompt });
@@ -21,7 +21,8 @@ test('reply rejects rewrites, missing IDs, duplicate IDs, and unknown IDs', () =
   const result = validateReply(batch, { items: [{ id: batch[0].id, status: 'ok', artist_string: '0.8::A, B::, ' }, { id: batch[1].id, status: 'none', artist_string: '' }] });
   assert.deepEqual(result.map(x => x.status), ['ok', 'none']);
   assert.equal(validateReply(batch, { items: [{ id: batch[0].id, status: 'ok', artist_string: '0.8::a, B::' }] })[0].status, 'error');
-  assert.throws(() => validateReply(batch, { items: [{ id: 'invented' }] }), /未知/);
+  assert.equal(validateReply(batch, { items: [result[0], null, { id: 'invented' }] })[0].status, 'ok');
+  assert.equal(validateReply(batch, { items: [result[0], { id: 'invented' }] })[1].status, 'error');
   assert.equal(validateReply(batch, { items: [result[0], result[0]] })[0].status, 'error');
 });
 test('batch size, save, restart, and completed items are not repeated', async () => {
@@ -57,13 +58,54 @@ test('compatible API falls back for unsupported options and preserves exact Unic
     res.setHeader('Content-Type', 'application/json');
     if (body.response_format || body.reasoning_effort) {
       res.statusCode = 400; res.end(JSON.stringify({ error: { message: (body.response_format ? 'response_format' : 'reasoning_effort') + ' unsupported' } }));
-    } else res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ items: [{ id: batch[0].id, status: 'ok', artist_string: '0.5::画师🙂, Artist::, \r\n' }] }) }, finish_reason: 'stop' }] }));
+    } else res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ items: [{ id: '1', status: 'ok', artist_string: '0.5::画师🙂, Artist::, \r\n' }] }) }, finish_reason: 'stop' }] }));
   });
   server.listen(0, '127.0.0.1'); await once(server, 'listening'); t.after(() => server.close());
   const reply = await callApi(batch, { baseUrl: `http://127.0.0.1:${server.address().port}/v1/`, model: 'gpt-6-luna【神秘】', apiKey: 'test-only', effort: 'high' }, new AbortController().signal, () => {});
   assert.equal(bodies.length, 3); assert.equal(bodies[0].model, 'gpt-6-luna【神秘】');
-  assert.deepEqual(JSON.parse(bodies[0].messages[1].content).items, batch);
+  assert.deepEqual(JSON.parse(bodies[0].messages[1].content).items, [{ id: '1', positive_prompt: batch[0].positive_prompt }]);
+  assert.deepEqual(bodies[0].response_format.json_schema.schema.properties.items.items.properties.id.enum, ['1']);
+  assert.equal(JSON.stringify(bodies).includes(batch[0].id), false);
   assert.equal(validateReply(batch, reply)[0].status, 'ok');
+});
+
+test('short IDs map by identity after reordered responses, without guessing unknown or duplicated IDs', () => {
+  const batch = [item('artist:A'), item('artist:B'), item('artist:C')];
+  assert.deepEqual(modelBatch(batch).map(x => x.id), ['1', '2', '3']);
+  const logs = [];
+  const restored = restoreModelReply(batch, { items: [
+    { id: 3, status: 'ok', artist_string: 'artist:C' },
+    { id: '1', status: 'ok', artist_string: 'artist:A' },
+    { id: '02', status: 'ok', artist_string: 'artist:B' }, null,
+  ] }, x => logs.push(x));
+  assert.deepEqual(validateReply(batch, restored).map(x => x.status), ['ok', 'error', 'ok']);
+  assert.equal(logs.length, 1);
+  restored.items.push(restored.items[1]);
+  assert.deepEqual(validateReply(batch, restored).map(x => x.status), ['error', 'error', 'ok']);
+});
+
+test('one bad model ID preserves nine successes and retries only the missing item using a fresh short ID', async t => {
+  const requests = [], dir = directory();
+  const server = http.createServer(async (req, res) => {
+    const chunks = []; for await (const chunk of req) chunks.push(chunk);
+    const body = JSON.parse(Buffer.concat(chunks)), batch = JSON.parse(body.messages[1].content).items;
+    requests.push(batch);
+    const output = batch.map((x, i) => ({ id: requests.length === 1 && i === 9 ? 'unknown' : x.id, status: 'ok', artist_string: x.positive_prompt }));
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ choices: [{ finish_reason: 'stop', message: { content: JSON.stringify({ items: output.reverse() }) } }] }));
+  });
+  server.listen(0, '127.0.0.1'); await once(server, 'listening'); t.after(() => server.close());
+  const manager = new JobManager(dir);
+  const doc = request(Array.from({ length: 10 }, (_, i) => 'artist:' + i));
+  const job = manager.create(doc, { provider: 'api', model: 'mock', baseUrl: `http://127.0.0.1:${server.address().port}/v1`, batchSize: 10 });
+  await manager.start(job.id, false, { apiKey: 'test-only' });
+  assert.deepEqual(requests.map(x => x.length), [10, 1]);
+  assert.deepEqual(requests[0].map(x => x.id), ['1','2','3','4','5','6','7','8','9','10']);
+  assert.deepEqual(requests[1], [{ id: '1', positive_prompt: 'artist:9' }]);
+  assert.equal(JSON.stringify(requests).includes('sha256:'), false);
+  assert.equal(manager.get(job.id).results.length, 10);
+  assert.equal(manager.summary(manager.get(job.id)).ok, 10);
+  assert.deepEqual(manager.result(job.id).items.map(x => x.id), doc.items.map(x => x.id));
 });
 
 test('API credentials remain transient across save, restart and error logging', async t => {
