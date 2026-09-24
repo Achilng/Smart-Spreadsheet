@@ -62,17 +62,30 @@ export function atomicJson(filename, value) {
   try { fs.writeFileSync(fd, JSON.stringify(value, null, 2), 'utf8'); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
   fs.renameSync(temp, filename);
 }
-export function resolveCodex() {
-  if (process.env.STYLE_CODEX_BIN) return { command: process.env.STYLE_CODEX_BIN, prefix: [] };
-  if (process.platform !== 'win32') return { command: 'codex', prefix: [] };
-  const r = spawnSync('powershell.exe', ['-NoProfile', '-Command', '(Get-Command codex -ErrorAction Stop).Source'], { encoding: 'utf8', windowsHide: true });
-  if (r.status !== 0) throw Error('没有找到 Codex CLI，请先安装并登录 Codex。');
-  const located = r.stdout.trim();
-  const js = path.join(path.dirname(located), 'node_modules', '@openai', 'codex', 'bin', 'codex.js');
-  if (fs.existsSync(js)) return { command: process.execPath, prefix: [js] };
-  if (located.endsWith('.exe')) return { command: located, prefix: [] };
-  if (located.endsWith('.ps1')) return { command: 'powershell.exe', prefix: ['-NoProfile', '-File', located] };
-  throw Error('无法定位 Codex 程序；可设置 STYLE_CODEX_BIN 为 codex.exe 的完整路径。');
+export function resolveCodex({ env = process.env, platform = process.platform, run = spawnSync } = {}) {
+  if (env.STYLE_CODEX_BIN) return { command: env.STYLE_CODEX_BIN, prefix: [] };
+  if (platform !== 'win32') return { command: 'codex', prefix: [] };
+  const r = run('powershell.exe', ['-NoProfile', '-Command', 'ConvertTo-Json -Compress -InputObject @((Get-Command codex -All -ErrorAction SilentlyContinue).Source)'], { encoding: 'utf8', windowsHide: true, timeout: 10000 });
+  let commands = [];
+  try { const values = JSON.parse(r.stdout); commands = (Array.isArray(values) ? values : [values]).filter(x => typeof x === 'string' && fs.existsSync(x)); } catch { /* App discovery below also works without a PATH entry. */ }
+  // PATH often lists an older npm shim first. Prefer the desktop app's registered CLI.
+  const desktop = commands.find(x => /[\\/]OpenAI[\\/]Codex[\\/]bin[\\/](?:[^\\/]+[\\/])?codex\.exe$/i.test(x));
+  if (desktop) return { command: desktop, prefix: [] };
+  if (env.LOCALAPPDATA) {
+    const bin = path.join(env.LOCALAPPDATA, 'OpenAI', 'Codex', 'bin');
+    try {
+      const candidates = [path.join(bin, 'codex.exe'), ...fs.readdirSync(bin, { withFileTypes: true }).filter(x => x.isDirectory()).map(x => path.join(bin, x.name, 'codex.exe'))];
+      const installed = candidates.flatMap(command => { try { const stat = fs.statSync(command); return stat.isFile() ? [{ command, modified: stat.mtimeMs }] : []; } catch { return []; } }).sort((a, b) => b.modified - a.modified);
+      if (installed.length) return { command: installed[0].command, prefix: [] };
+    } catch { /* No desktop installation; retain the standalone CLI fallback. */ }
+  }
+  for (const located of commands) {
+    if (located.toLowerCase().endsWith('.exe')) return { command: located, prefix: [] };
+    const js = path.join(path.dirname(located), 'node_modules', '@openai', 'codex', 'bin', 'codex.js');
+    if (fs.existsSync(js)) return { command: process.execPath, prefix: [js] };
+    if (located.toLowerCase().endsWith('.ps1')) return { command: 'powershell.exe', prefix: ['-NoProfile', '-File', located] };
+  }
+  throw Error('没有找到可用的 Codex CLI；请先安装并登录，或设置 STYLE_CODEX_BIN 为 codex.exe 的完整路径。');
 }
 export function normalizeBaseUrl(value) {
   const url = new URL(value);
@@ -124,6 +137,7 @@ export async function callCodex(batch, options, signal, log) {
   const items = modelBatch(batch);
   atomicJson(path.join(dir, 'schema.json'), modelSchema(items));
   const cli = resolveCodex();
+  log(`Codex CLI：${cli.prefix.length ? cli.prefix.join(' ') : cli.command}`);
   const args = [...cli.prefix, 'exec', '--ignore-user-config', '--ephemeral', '--sandbox', 'read-only', '--skip-git-repo-check', '-C', dir, '-m', MODEL, '-c', `model_reasoning_effort="${options.effort}"`, '--output-schema', path.join(dir, 'schema.json'), '-o', output, '-'];
   await new Promise((resolve, reject) => {
     let last = '', finished = false;
@@ -142,7 +156,7 @@ export async function callCodex(batch, options, signal, log) {
         const errors = last.split('\n').filter(line => /ERROR:|error:|not supported|unauthorized/i.test(line));
         const detail = errors.slice(-2).join('\n') || last.slice(-1500);
         return finish(Error(/not supported when using Codex with a ChatGPT account/i.test(detail)
-          ? '当前 Codex CLI 的 ChatGPT 登录端点不支持 gpt-6-luna。任务已暂停，已完成结果保留；请确认账号及 CLI 的模型可用性后继续（model not supported）。'
+          ? '当前 Codex 客户端调用 gpt-6-luna 被拒绝（model not supported）。这不代表账号一定没有权限；请检查日志中的 CLI 路径，优先使用桌面应用自带版本，并确认登录账号的模型可用性。任务已暂停，已完成结果保留。'
           : `Codex 调用失败（${code}）：${detail}`));
       }
       finish();

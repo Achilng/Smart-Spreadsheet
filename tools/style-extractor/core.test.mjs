@@ -5,12 +5,39 @@ import path from 'node:path';
 import http from 'node:http';
 import { once } from 'node:events';
 import { setImmediate as nextTurn } from 'node:timers/promises';
-import { hash, validateRequest, validateReply, JobManager, REQUEST, callApi, normalizeBaseUrl, modelBatch, restoreModelReply } from './core.mjs';
+import { hash, validateRequest, validateReply, JobManager, REQUEST, callApi, normalizeBaseUrl, modelBatch, restoreModelReply, resolveCodex } from './core.mjs';
 const tempRoot = 'D:/Agent/Agent_temp/style-extractor-tests';
 fs.mkdirSync(tempRoot, { recursive: true });
 const item = positive_prompt => ({ id: hash(positive_prompt), positive_prompt });
 const request = texts => ({ format: REQUEST, version: 1, export_id: 'test', items: texts.map(item) });
 const directory = () => fs.mkdtempSync(path.join(tempRoot, 'run-'));
+
+test('Codex resolution prefers the registered desktop binary over an earlier npm shim and stale app installs', () => {
+  const dir = directory();
+  const npm = path.join(dir, 'npm', 'codex.ps1');
+  const desktop = path.join(dir, 'OpenAI', 'Codex', 'bin', 'current', 'codex.exe');
+  const stale = path.join(dir, 'OpenAI', 'Codex', 'bin', 'other', 'codex.exe');
+  for (const filename of [npm, desktop, stale]) { fs.mkdirSync(path.dirname(filename), { recursive: true }); fs.writeFileSync(filename, '', 'utf8'); }
+  const run = () => ({ status: 0, stdout: JSON.stringify([npm, desktop]) });
+  assert.deepEqual(resolveCodex({ platform: 'win32', env: { LOCALAPPDATA: dir }, run }), { command: desktop, prefix: [] });
+  assert.deepEqual(resolveCodex({ platform: 'win32', env: { STYLE_CODEX_BIN: 'manual.exe' }, run: () => { throw Error('should not discover'); } }), { command: 'manual.exe', prefix: [] });
+});
+
+test('Codex discovery finds desktop outside PATH, follows app updates, and retains npm fallback', () => {
+  const dir = directory(), npm = path.join(dir, 'npm', 'codex.cmd');
+  const js = path.join(path.dirname(npm), 'node_modules', '@openai', 'codex', 'bin', 'codex.js');
+  for (const filename of [npm, js]) { fs.mkdirSync(path.dirname(filename), { recursive: true }); fs.writeFileSync(filename, '', 'utf8'); }
+  const run = () => ({ status: 0, stdout: JSON.stringify([npm]) });
+  assert.deepEqual(resolveCodex({ platform: 'win32', env: { LOCALAPPDATA: dir }, run }), { command: process.execPath, prefix: [js] });
+  for (const [version, time] of [['old', 1000], ['updated', 2000]]) {
+    const filename = path.join(dir, 'OpenAI', 'Codex', 'bin', version, 'codex.exe');
+    fs.mkdirSync(path.dirname(filename), { recursive: true }); fs.writeFileSync(filename, '', 'utf8'); fs.utimesSync(filename, time, time);
+  }
+  const expected = { command: path.join(dir, 'OpenAI', 'Codex', 'bin', 'updated', 'codex.exe'), prefix: [] };
+  assert.deepEqual(resolveCodex({ platform: 'win32', env: { LOCALAPPDATA: dir }, run }), expected);
+  assert.deepEqual(resolveCodex({ platform: 'win32', env: { LOCALAPPDATA: dir }, run: () => ({ status: 1, stdout: '' }) }), expected);
+  assert.throws(() => resolveCodex({ platform: 'win32', env: {}, run: () => ({ status: 1, stdout: '' }) }), /STYLE_CODEX_BIN/);
+});
 test('exact text identity includes whitespace, case, newlines and Unicode', () => {
   assert.notEqual(hash('A'), hash('A ')); assert.notEqual(hash('A\r\n'), hash('A\n'));
   assert.throws(() => validateRequest(request(['A', 'A'])), /重复/);
