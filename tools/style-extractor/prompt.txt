@@ -2,17 +2,19 @@
 
 【目标定义】
 1. 目标画风段以画师名或画师组为主要依据。画师名可能带有 artist: 前缀，也可能直接出现。
-2. 画风段内部可以包含年份、质量词、审美词、画师协作控制词，以及少量其他内容。这些内容不需要逐词筛除。
-3. 仅出现质量词、年份、媒介或颜色描述，不足以认定存在目标画风段。
+2. 画风段不只包含画师名。紧邻画师组、属于同一段的绘画方式、媒介、线条、色彩与质感描述，也属于画风段，例如水墨、水彩、线稿、黑白、灰度、传统媒介等；它们可能在第一个画师之前，也可能在最后一个画师之后。
+3. 画风段内部还可以包含年份、质量词、审美词、画师协作控制词，以及少量其他内容。这些内容不需要逐词筛除。
+4. 仅出现质量词、年份、媒介或颜色描述，不足以认定存在以画师为核心的目标画风段；但已经识别到画师组时，不能以这些词不是画师名为由将同段内容排除。
 
 【选择范围】
 1. 最多提取一个连续的原文片段，不得从多个位置分别提取后拼接。
 2. 画风段不一定在输入开头，也可能位于中间或末尾。
-3. 识别到画师组后，应保留属于同一段的完整内容，不要只提取其中的画师名字。
-4. 当内容明显转为人物数量、角色外貌、服饰、动作、构图或场景描述时，应结束画风段。
+3. 识别到画师组后，应向前、向后检查同段内容。不要默认从第一个画师名开始，漏掉前面的水墨、水彩、线稿、黑白等画风描述；也不要只提取其中的画师名字。
+4. 当内容明显转为人物数量、角色外貌、服饰、动作、取景范围或具体场景描述时，应结束画风段。例如画师组后接 upper body 或 looking at viewer，再接质量词，应在这些主体描述之前结束，不跨过去追加质量词。但不要把孤立的非画师词一律当成边界：location 这样的泛称，或与画师组、质量词混在同段的 dutch angle，可以随整段保留。依据上下文是否开始描述具体画面判断。
 5. 画风段结束后，即使后文再次出现质量词或审美词，也不要将其追加到结果。
-6. 换行和空行可以作为分段线索，但不是硬性边界；画风段也可能跨越多行。
-7. 保留画风段末尾原有的分隔逗号和空白，不包含下一段的实际内容。
+6. 优先尊重明显的人为分段。画师组及其附属词已经成段，随后出现空行，而下一段以质量词开头并继续描写人物或场景时，下一段开头的质量词属于下一段，不要并入画风段。不能只因为两段都有 best quality、masterpiece 就跨空行合并。
+7. 普通换行不等于结束。画师列表或同一权重组跨行时可以整体保留；空行后仍明显是同一画师组的延续时，再结合上下文判断。不要把所有换行都当成硬性边界。
+8. 保留选中画风段内的原始格式及紧随其后的分隔逗号、行尾空格；遇到明确的空行分段，在段落末尾结束，不把段间空行和下一段内容纳入结果。
 
 【原文保留】
 1. 提取结果必须是输入中真实存在的一个连续原文片段。
@@ -46,6 +48,32 @@ White gaps between scenes., very aesthetic, amazing quality, no text
 【示例三】
 输入：1 girl, white long hair, blue eyes, colored inner hair(blue), hair flower(white flower), smile,
 结果（JSON 字符串表示）：""
+
+【示例四：空行后的质量词属于下一段】
+输入：artist:chenbin, artist:rella, masterpiece, 2::official art, year2025 ::
+
+best quality, masterpiece, very aesthetic, highres,
+1woman, solo, blonde hair, white dress, beach
+结果（JSON 字符串表示）："artist:chenbin, artist:rella, masterpiece, 2::official art, year2025 ::"
+说明：空行已分开画风段和人物段，不能把人物段开头的质量词并入结果。
+
+【示例五：保留画师之前的绘画方式】
+输入：{{{{{ink and wash painting,}}}}},,lineart,monochrome,1.2::black and white::,artist:walluka,dizi930,traditional_media, very aesthetic, masterpiece, no text, -0.8::feet::, rating:general
+结果（JSON 字符串表示）："{{{{{ink and wash painting,}}}}},,lineart,monochrome,1.2::black and white::,artist:walluka,dizi930,traditional_media, very aesthetic, masterpiece, no text, "
+说明：水墨、线稿和黑白描述是同段画风的一部分，不能从 artist:walluka 才开始；在身体部位描述之前结束。
+
+【示例六：水彩与画师组整体保留】
+输入：1.5::watercolor_(medium)::, 0.65::, akakura, ezu (e104mjd)::, 0.7::amu (m aa)::, location, very aesthetic, masterpiece, no text
+结果（JSON 字符串表示）："1.5::watercolor_(medium)::, 0.65::, akakura, ezu (e104mjd)::, 0.7::amu (m aa)::, location, very aesthetic, masterpiece, no text"
+
+【示例七：主体取景词之后的质量词不追加】
+输入：nico-tine,k-suwabe,berryverrine,year 2025,,upper body,ultra-detailed, best quality, very aesthetic
+结果（JSON 字符串表示）："nico-tine,k-suwabe,berryverrine,year 2025,,"
+
+【示例八：同段中的风格化倾斜构图】
+输入：,wanke,wlop,year 2025,,,{{dutch angle,}},,ultra-detailed, best quality, very aesthetic
+结果（JSON 字符串表示）：",wanke,wlop,year 2025,,,{{dutch angle,}},,ultra-detailed, best quality, very aesthetic"
+说明：这里没有开始另一段具体人物或场景描述，倾斜构图词与画师、质量词作为同一段保留。
 
 【批量输出】
 下方输入为 JSON 数据。逐条独立判断，不跨条目拼接。每个输入 id 必须恰好返回一次。

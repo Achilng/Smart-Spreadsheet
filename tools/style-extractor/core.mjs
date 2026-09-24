@@ -9,7 +9,7 @@ export const root = path.dirname(fileURLToPath(import.meta.url));
 export const REQUEST = 'smart-spreadsheet.style-extraction.request';
 export const RESULT = 'smart-spreadsheet.style-extraction.result';
 export const MODEL = 'gpt-6-luna';
-export const PROMPT_VERSION = 'style-extraction-v1';
+export const PROMPT_VERSION = 'style-extraction-v2';
 export const hash = text => 'sha256:' + createHash('sha256').update(text, 'utf8').digest('hex');
 const prompt = fs.readFileSync(path.join(root, 'prompt.txt'), 'utf8');
 const promptHash = hash(prompt);
