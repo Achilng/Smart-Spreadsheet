@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { snapshotQueryFilters } from "../../lib/utils/library-query";
 import { emitTo, listen } from "@tauri-apps/api/event";
 import { getAppSnapshot, getRowIndex, getRowsByIds } from "../../lib/api";
 import type { MainStateChange } from "../../lib/windows/library-events";
@@ -48,7 +49,7 @@ export function useWorkspaceLifecycle(): void {
     const retain = (promise: Promise<() => void>) => { void promise.then(stop => { if (disposed) stop(); else cleanups.push(stop); }).catch(error => { if (!disposed) notify(`窗口同步不可用：${errorText(error)}`, "error"); }); };
     const stopNavigation = installNavigation();
     const stopGuard = registerCloseGuard(() => [useTasks.getState().busy ? `${useTasks.getState().label}正在进行中` : "", useMaintenance.getState().label ? "历史资料索引尚未完成，下次启动可继续" : "", hasFieldDrafts() ? "有未保存的图片编辑草稿" : ""].filter(Boolean).join("；") || null);
-    const shareSelection = () => { void emitTo("toolbox", "main://selection-changed", { selection: selectionDto(), count: selectedCount(useSelection.getState()) }).catch(() => {}); };
+    const shareSelection = () => { void emitTo("toolbox", "main://selection-changed", { selection: selectionDto(), count: selectedCount(useSelection.getState()), filteredSelection: { kind: "filtered", ...snapshotQueryFilters(useRows.getState().query), excludedRowIds: [] } }).catch(() => {}); };
     cleanups.push(useSelection.subscribe((next, previous) => { if (next.version !== previous.version) shareSelection(); }));
     retain(listen("toolbox://request-selection", shareSelection));
     retain(listen<{ rowId: number }>("toolbox://open-row", event => { void revealRow(event.payload.rowId).catch(error => notify(`无法定位图片：${errorText(error)}`, "error")); }));

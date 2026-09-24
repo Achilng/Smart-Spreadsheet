@@ -16,6 +16,8 @@ pub struct MutableRowState {
     pub negative_prompt: Option<String>,
     pub note: Option<String>,
     pub artists: Option<String>,
+    #[serde(default)]
+    pub artist_llm: Option<String>,
     pub tags: Vec<String>,
     pub group_id: Option<i64>,
 }
@@ -44,7 +46,8 @@ impl Database {
                     note = ?5,
                     artists = ?6,
                     group_id = ?7,
-                    style_signature = ?8
+                    style_signature = ?8,
+                    artist_llm = ?9
                  WHERE id = ?1",
                 params![
                     state.row_id,
@@ -55,6 +58,7 @@ impl Database {
                     state.artists,
                     state.group_id,
                     crate::pipeline::style_signature_of(state.positive_prompt.as_deref()),
+                    state.artist_llm,
                 ],
             )?;
             if updated == 0 {
@@ -117,6 +121,7 @@ mod tests {
                 negative_prompt: Some("old negative".into()),
                 note: Some("old note".into()),
                 artists: Some("old artist".into()),
+                artist_llm: None,
                 tags: vec!["old tag".into()],
                 group_id: Some(old_group.id),
             }])
@@ -144,6 +149,7 @@ mod tests {
             negative_prompt: None,
             note: None,
             artists: None,
+            artist_llm: None,
             tags: Vec::new(),
             group_id: None,
         };

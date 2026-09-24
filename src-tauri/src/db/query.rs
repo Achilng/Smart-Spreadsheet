@@ -91,6 +91,7 @@ pub struct RowRecord {
     pub negative_prompt: Option<String>,
     pub note: Option<String>,
     pub artists: Option<String>,
+    pub artist_llm: Option<String>,
     pub image_folder: Option<String>,
     pub image_path: Option<String>,
     pub stored_image_path: Option<String>,
@@ -867,7 +868,7 @@ pub(super) fn query_page_metadata(connection: &Connection) -> Result<Vec<RowReco
                 rows.generation_model, rows.generation_sampler, rows.generation_steps,
                 rows.generation_seed, rows.generation_scale,
                 rows.generation_cfg_rescale, rows.generation_noise_schedule,
-                rows.metadata_failed, rows.vibe_reference_count, rows.group_id, groups.name
+                rows.metadata_failed, rows.vibe_reference_count, rows.group_id, groups.name, rows.artist_llm
          FROM {PAGE_ROWS_TABLE} AS page
          JOIN rows ON rows.id = page.id
          LEFT JOIN groups ON groups.id = rows.group_id
@@ -905,6 +906,7 @@ pub(super) fn query_page_metadata(connection: &Connection) -> Result<Vec<RowReco
                 vibe_reference_count: row.get(22)?,
                 group_id: row.get(23)?,
                 group_name: row.get(24)?,
+                artist_llm: row.get(25)?,
                 tags: Vec::new(),
             })
         })?

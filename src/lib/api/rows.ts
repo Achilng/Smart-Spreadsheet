@@ -93,6 +93,7 @@ export interface RowRecord {
   negativePrompt: string | null;
   note: string | null;
   artists: string | null;
+  artistLlm?: string | null;
   imageFolder: string | null;
   imagePath: string | null;
   storedImagePath: string | null;
@@ -119,6 +120,7 @@ export interface MutableRowState {
   negativePrompt: string | null;
   note: string | null;
   artists: string | null;
+  artistLlm?: string | null;
   tags: string[];
   groupId: number | null;
 }
@@ -131,6 +133,7 @@ export function mutableRowState(row: RowRecord): MutableRowState {
     negativePrompt: row.negativePrompt,
     note: row.note,
     artists: row.artists,
+    artistLlm: row.artistLlm ?? null,
     tags: [...row.tags],
     groupId: row.groupId,
   };

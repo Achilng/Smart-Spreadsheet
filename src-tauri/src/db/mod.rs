@@ -1,5 +1,6 @@
 mod artist_auto_prefix;
 mod artist_xml;
+pub mod style_extraction;
 mod automation_rules;
 mod batches;
 mod compare;
@@ -394,6 +395,10 @@ fn apply_pending_migrations(
     if version == 19 {
         transaction.execute_batch(migrations::MIGRATION_20)?;
         version = 20;
+    }
+    if version == 20 {
+        transaction.execute_batch(migrations::MIGRATION_21)?;
+        version = 21;
     }
     debug_assert_eq!(version, CURRENT_SCHEMA_VERSION);
     transaction.pragma_update(None, "user_version", version)?;
@@ -1029,6 +1034,7 @@ mod tests {
                 negative_prompt: before.negative_prompt.clone(),
                 note: before.note.clone(),
                 artists: before.artists.clone(),
+                artist_llm: before.artist_llm.clone(),
                 tags: before.tags.clone(),
                 group_id: before.group_id,
             }])

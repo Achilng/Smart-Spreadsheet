@@ -16,6 +16,7 @@ struct ArtistPromptRow {
     character_prompt: Option<String>,
     negative_prompt: Option<String>,
     artists: Option<String>,
+    artist_llm: Option<String>,
 }
 
 impl Database {
@@ -63,7 +64,7 @@ impl Database {
                  character_prompt = ?3,
                  negative_prompt = ?4,
                  artists = ?5,
-                 style_signature = ?6
+                 style_signature = ?6, artist_llm = ?7
              WHERE id = ?1",
         )?;
         for change in &changes {
@@ -74,6 +75,7 @@ impl Database {
                 &change.new_negative_prompt,
                 &change.new_artists,
                 crate::pipeline::style_signature_of(change.new_positive_prompt.as_deref()),
+                &change.new_artist_llm,
             ])?;
         }
         drop(update);
@@ -123,7 +125,7 @@ impl Database {
                  character_prompt = ?3,
                  negative_prompt = ?4,
                  artists = ?5,
-                 style_signature = ?6
+                 style_signature = ?6, artist_llm = ?7
              WHERE id = ?1",
         )?;
         let mut changed = 0_u64;
@@ -150,6 +152,11 @@ impl Database {
                 negative,
                 artists,
                 crate::pipeline::style_signature_of(positive.as_deref()),
+                if reapply {
+                    &change.new_artist_llm
+                } else {
+                    &change.previous_artist_llm
+                },
             ])?;
             if updated == 0 {
                 return Err(QuickEditError::UnknownRow(change.row_id));
@@ -179,7 +186,7 @@ fn artist_prefix_changes(
     artist_name: &str,
 ) -> Result<Vec<QuickArtistPrefixChange>, rusqlite::Error> {
     let mut statement = connection.prepare(
-        "SELECT id, positive_prompt, character_prompt, negative_prompt, artists
+        "SELECT id, positive_prompt, character_prompt, negative_prompt, artists, artist_llm
          FROM rows
          ORDER BY id",
     )?;
@@ -190,6 +197,7 @@ fn artist_prefix_changes(
             character_prompt: row.get(2)?,
             negative_prompt: row.get(3)?,
             artists: row.get(4)?,
+            artist_llm: row.get(5)?,
         })
     })?;
     let mut changes = Vec::new();
@@ -227,7 +235,12 @@ fn artist_prefix_change(
     let new_positive_prompt = positive_rewrite.or_else(|| row.positive_prompt.clone());
     let new_character_prompt = character_rewrite.or_else(|| row.character_prompt.clone());
     let new_negative_prompt = negative_rewrite.or_else(|| row.negative_prompt.clone());
-    let new_artists = if artist_source_changed {
+    let new_artist_llm = if new_positive_prompt == row.positive_prompt {
+        row.artist_llm.clone()
+    } else {
+        None
+    };
+    let new_artists = if artist_source_changed && new_artist_llm.is_none() {
         combined_artists(
             new_positive_prompt.as_deref().unwrap_or(""),
             new_character_prompt.as_deref(),
@@ -238,6 +251,8 @@ fn artist_prefix_change(
 
     Some(QuickArtistPrefixChange {
         row_id: row.id,
+        previous_artist_llm: row.artist_llm,
+        new_artist_llm,
         previous_positive_prompt: row.positive_prompt,
         new_positive_prompt,
         previous_character_prompt: row.character_prompt,

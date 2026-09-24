@@ -13,7 +13,7 @@ export const hash = text => 'sha256:' + createHash('sha256').update(text, 'utf8'
 const prompt = fs.readFileSync(path.join(root, 'prompt.txt'), 'utf8');
 const promptHash = hash(prompt);
 export function validateRequest(doc) {
-  if (doc?.format !== REQUEST || doc.version !== 1 || typeof doc.export_id !== 'string' || !Array.isArray(doc.items) || !doc.items.length) throw Error('不是有效的待处理 JSON（需要非空 items、version 1）。');
+  if (doc?.format !== REQUEST || doc.version !== 1 || typeof doc.export_id !== 'string' || !doc.export_id || !Array.isArray(doc.items) || !doc.items.length) throw Error('不是有效的待处理 JSON（需要非空 items、version 1）。');
   const seen = new Set();
   for (const item of doc.items) {
     if (typeof item.positive_prompt !== 'string' || !item.positive_prompt.trim() || item.id !== hash(item.positive_prompt)) throw Error('正文为空或正文哈希不匹配。');
@@ -56,6 +56,42 @@ export function resolveCodex() {
   if (located.endsWith('.ps1')) return { command: 'powershell.exe', prefix: ['-NoProfile', '-File', located] };
   throw Error('无法定位 Codex 程序；可设置 STYLE_CODEX_BIN 为 codex.exe 的完整路径。');
 }
+export function normalizeBaseUrl(value) {
+  const url = new URL(value);
+  if ((url.protocol !== 'https:' && !(url.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname))) || url.username || url.password || url.search || url.hash) throw Error('Base URL 需要 HTTPS 地址，或本机 HTTP 地址；不能包含账号、参数或片段。');
+  return url.toString().replace(/\/+$/, '');
+}
+export async function callApi(batch, options, signal, log) {
+  if (!options.apiKey?.trim()) throw Error('请填写 API Key 后继续（authentication）。');
+  const base = normalizeBaseUrl(options.baseUrl), key = options.apiKey.trim();
+  const body = {
+    model: options.model || MODEL,
+    messages: [{ role: 'system', content: prompt }, { role: 'user', content: JSON.stringify({ items: batch }) }],
+    stream: false,
+    reasoning_effort: options.effort,
+    response_format: { type: 'json_schema', json_schema: { name: 'style_extraction', strict: true, schema } },
+  };
+  // Some compatible gateways do not implement schema or reasoning parameters.
+  for (let pass = 0; pass < 3; pass++) {
+    const response = await fetch(base + '/chat/completions', { method: 'POST', redirect: 'error', signal: AbortSignal.any([signal, AbortSignal.timeout(180000)]), headers: { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const text = await response.text();
+    let data; try { data = JSON.parse(text); } catch { throw Error(`API 返回了非 JSON 响应（HTTP ${response.status}）`); }
+    if (!response.ok) {
+      const detail = String(data.error?.message || data.message || response.statusText).split(key).join('[已隐藏]').slice(0, 1200);
+      if (response.status === 400 && /response_format|json_schema|structured.output/i.test(detail) && body.response_format) { delete body.response_format; log('该接口不支持结构化输出参数，改为提示词约束 JSON，并保留本地校验'); continue; }
+      if (response.status === 400 && /reasoning_effort|reasoning effort/i.test(detail) && body.reasoning_effort) { delete body.reasoning_effort; log('该接口不支持推理等级参数，使用服务端默认值'); continue; }
+      throw Error(`API 调用失败（${response.status}）：${detail}`);
+    }
+    const choice = data.choices?.[0];
+    if (choice?.finish_reason === 'length') throw Error('模型输出被截断，请减少每批条数后新建任务');
+    if (choice?.message?.refusal) throw Error('模型未处理这批文本（refusal），没有写入空结果');
+    const content = choice?.message?.content;
+    if (typeof content !== 'string') throw Error('API 未返回可读取的文本结果');
+    log('API 已返回，正在校验原文');
+    return JSON.parse(content.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, ''));
+  }
+  throw Error('该接口不支持所需参数，请检查接口兼容性。');
+}
 const schema = { type: 'object', properties: { items: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, status: { type: 'string', enum: ['ok', 'none'] }, artist_string: { type: 'string' } }, required: ['id', 'status', 'artist_string'], additionalProperties: false } } }, required: ['items'], additionalProperties: false };
 export async function callCodex(batch, options, signal, log) {
   const dir = path.join(process.env.STYLE_TEMP_DIR || 'D:/Agent/Agent_temp/style-extractor', randomUUID());
@@ -75,7 +111,17 @@ export async function callCodex(batch, options, signal, log) {
     child.stdout.on('data', () => {});
     child.stderr.on('data', data => { last = (last + data.toString('utf8')).slice(-12000); });
     child.on('error', error => finish(error));
-    child.on('close', code => { if (signal.aborted) return finish(Error('已暂停')); if (code !== 0) return finish(Error(`Codex 调用失败（${code}）：${last.slice(-3000)}`)); finish(); });
+    child.on('close', code => {
+      if (signal.aborted) return finish(Error('已暂停'));
+      if (code !== 0) {
+        const errors = last.split('\n').filter(line => /ERROR:|error:|not supported|unauthorized/i.test(line));
+        const detail = errors.slice(-2).join('\n') || last.slice(-1500);
+        return finish(Error(/not supported when using Codex with a ChatGPT account/i.test(detail)
+          ? '当前 Codex CLI 的 ChatGPT 登录端点不支持 gpt-6-luna。任务已暂停，已完成结果保留；请确认账号及 CLI 的模型可用性后继续（model not supported）。'
+          : `Codex 调用失败（${code}）：${detail}`));
+      }
+      finish();
+    });
     child.stdin.on('error', () => {});
     child.stdin.end(prompt + '\n\n【待处理 JSON 数据】\n' + JSON.stringify({ items: batch }));
     if (signal.aborted) abort();
@@ -84,39 +130,49 @@ export async function callCodex(batch, options, signal, log) {
   return JSON.parse(fs.readFileSync(output, 'utf8').replace(/^\uFEFF/, ''));
 }
 export class JobManager {
-  constructor(directory, runner = callCodex) {
+  constructor(directory, runner = (batch, options, signal, log) => options.provider === 'api' ? callApi(batch, options, signal, log) : callCodex(batch, options, signal, log)) {
     this.directory = directory; this.runner = runner; this.jobs = new Map(); this.active = null;
     fs.mkdirSync(directory, { recursive: true });
-    for (const name of fs.readdirSync(directory).filter(x => x.endsWith('.json'))) {
-      try { const job = JSON.parse(fs.readFileSync(path.join(directory, name), 'utf8')); validateRequest(job.request); if (job.version !== 1 || !Array.isArray(job.results)) continue; if (job.state === 'running') { job.state = 'paused'; job.message = '上次运行中断，点击继续即可恢复。'; } this.jobs.set(job.id, job); } catch { /* Keep unreadable files intact. */ }
+    for (const name of fs.readdirSync(directory).filter(x => /^[a-f0-9-]{36}\.json$/.test(x))) {
+      try { const job = JSON.parse(fs.readFileSync(path.join(directory, name), 'utf8')); if (job.id + '.json' !== name) continue; job.request ??= JSON.parse(fs.readFileSync(path.join(directory, job.id + '.request.json'), 'utf8')); validateRequest(job.request); if (job.version !== 1 || !Array.isArray(job.results)) continue; if (job.state === 'running') { job.state = 'paused'; job.message = '上次运行中断，点击继续即可恢复。'; } this.jobs.set(job.id, job); } catch { /* Keep unreadable files intact. */ }
     }
   }
-  save(job) { atomicJson(path.join(this.directory, job.id + '.json'), job); }
+  save(job) {
+    const inputPath = path.join(this.directory, job.id + '.request.json');
+    if (!fs.existsSync(inputPath)) atomicJson(inputPath, job.request);
+    const { request, ...state } = job;
+    atomicJson(path.join(this.directory, job.id + '.json'), state);
+  }
   create(request, settings = {}) {
     validateRequest(request);
-    const batchSize = Number(settings.batchSize ?? 10), effort = settings.effort ?? 'high';
+    const batchSize = Number(settings.batchSize ?? 10), effort = settings.effort ?? 'high', provider = settings.provider ?? 'codex';
     if (!Number.isInteger(batchSize) || batchSize < 1 || batchSize > 100 || !['low', 'medium', 'high'].includes(effort)) throw Error('每批数量应为 1–100，推理等级应为 low / medium / high。');
-    const job = { version: 1, id: randomUUID(), request, model: MODEL, promptVersion: PROMPT_VERSION, promptHash, settings: { batchSize, effort }, createdAt: new Date().toISOString(), elapsedMs: 0, calls: 0, state: 'paused', message: '任务已保存，等待开始', results: [], logs: [] };
+    if (!['codex', 'api'].includes(provider)) throw Error('调用方式无效');
+    const model = provider === 'api' ? String(settings.model || MODEL) : MODEL;
+    if (!model.length || model.length > 128 || /[\s\x00-\x1f\x7f]/u.test(model)) throw Error('模型名应为 1–128 个字符，不能包含空白或控制字符');
+    const baseUrl = provider === 'api' ? normalizeBaseUrl(settings.baseUrl) : undefined;
+    const job = { version: 1, id: randomUUID(), request, model, promptVersion: PROMPT_VERSION, promptHash, settings: { batchSize, effort, provider, model, ...(baseUrl ? { baseUrl } : {}) }, createdAt: new Date().toISOString(), elapsedMs: 0, calls: 0, state: 'paused', message: '任务已保存，等待开始', results: [], logs: [] };
     this.jobs.set(job.id, job); this.save(job); return this.summary(job);
   }
   get(id) { const job = this.jobs.get(id); if (!job) throw Error('任务不存在'); return job; }
   summary(job) {
     const ok = job.results.filter(x => x.status === 'ok').length, none = job.results.filter(x => x.status === 'none').length, errors = job.results.filter(x => x.status === 'error').length;
-    return { id: job.id, exportId: job.request.export_id, settings: job.settings, createdAt: job.createdAt, elapsedMs: job.elapsedMs, calls: job.calls, state: job.state, message: job.message, total: job.request.items.length, ok, none, errors, pending: job.request.items.length - ok - none - errors, logs: job.logs, failures: job.results.filter(x => x.status === 'error').map(x => ({ id: x.id, error: x.error })) };
+    return { id: job.id, exportId: job.request.export_id, settings: job.settings, createdAt: job.createdAt, elapsedMs: job.elapsedMs + (this.active?.id === job.id ? Date.now() - this.active.lastTick : 0), calls: job.calls, state: job.state, message: job.message, total: job.request.items.length, ok, none, errors, pending: job.request.items.length - ok - none - errors, logs: job.logs, failures: job.results.filter(x => x.status === 'error').slice(0,100).map(x => ({ id: x.id, error: x.error })) };
   }
   list() { return [...this.jobs.values()].sort((a,b) => b.createdAt.localeCompare(a.createdAt)).map(x => this.summary(x)); }
   result(id) { const j = this.get(id); const results = new Map(j.results.map(x => [x.id, x])); return { format: RESULT, version: 1, export_id: j.request.export_id, processor: { model: j.model, prompt_version: j.promptVersion, prompt_hash: j.promptHash }, items: j.request.items.map(input => ({ ...input, ...(results.get(input.id) ?? { status: 'error', artist_string: '', error: '尚未处理' }) })) }; }
   log(job, message) { job.message = message; job.logs.push({ time: new Date().toISOString(), message }); job.logs = job.logs.slice(-100); this.save(job); }
   pause(id) { if (this.active?.id === id) { this.active.controller.abort(); this.log(this.get(id), '正在暂停，已完成结果已保存'); } }
-  async start(id, retryErrors = false) {
+  async start(id, retryErrors = false, credentials = {}) {
     if (this.active) throw Error('已有任务正在运行，请先暂停。');
     const job = this.get(id);
-    if (job.promptHash !== promptHash || job.model !== MODEL) throw Error('提示词或模型已变化，请创建新任务。旧任务结果仍可下载。');
+    if (job.promptHash !== promptHash) throw Error('提示词已变化，请创建新任务。旧任务结果仍可下载。');
+    if (job.settings.provider === 'api' && !credentials.apiKey?.trim()) throw Error('请填写该任务的 API Key 后继续。');
     if (retryErrors) job.results = job.results.filter(x => x.status !== 'error');
-    const controller = new AbortController(); this.active = { id, controller }; job.state = 'running';
+    const controller = new AbortController(); this.active = { id, controller, lastTick: Date.now() }; job.state = 'running';
     let lastTick = Date.now();
-    const tick = () => { const now = Date.now(); job.elapsedMs += now - lastTick; lastTick = now; this.save(job); };
-    const timer = setInterval(tick, 1000);
+    const tick = () => { const now = Date.now(); job.elapsedMs += now - lastTick; lastTick = now; if (this.active?.id === id) this.active.lastTick = now; this.save(job); };
+    const timer = setInterval(() => { try { tick(); } catch (error) { job.message = `保存进度失败：${error.message}`; controller.abort(); } }, 5000);
     this.log(job, '开始处理');
     try {
       const done = new Set(job.results.map(x => x.id));
@@ -132,7 +188,7 @@ export class JobManager {
           let results;
           try {
             job.calls++; this.log(job, `第 ${job.calls} 次调用 · ${pending.length} 条${attempt ? ` · 重试 ${attempt}` : ''}`);
-            results = validateReply(pending, await this.runner(pending, job.settings, controller.signal, message => this.log(job, message)));
+            results = validateReply(pending, await this.runner(pending, { ...job.settings, apiKey: credentials.apiKey }, controller.signal, message => this.log(job, message)));
           } catch (error) {
             if (controller.signal.aborted) break;
             if (/unauthorized|not supported|not found|authentication|登录|权限|401|403|quota|usage limit|rate limit|429|没有找到|无法定位/i.test(error.message)) { this.log(job, error.message); job.state = 'paused'; return; }

@@ -23,6 +23,9 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            app::commands::style_extraction::export_style_request,
+            app::commands::style_extraction::preview_style_result,
+            app::commands::style_extraction::apply_style_changes,
             app::commands::windows::open_toolbox_window,
             app::commands::windows::open_compare_window,
             app::commands::windows::focus_main_window,

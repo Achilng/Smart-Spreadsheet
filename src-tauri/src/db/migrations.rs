@@ -1,4 +1,21 @@
-pub const CURRENT_SCHEMA_VERSION: u32 = 20;
+pub const CURRENT_SCHEMA_VERSION: u32 = 21;
+
+pub const MIGRATION_21: &str = r#"
+ALTER TABLE rows ADD COLUMN artist_llm TEXT CHECK (artist_llm IS NULL OR json_valid(artist_llm));
+INSERT OR IGNORE INTO settings(key, value) VALUES ('llm_library_id', lower(hex(randomblob(16))));
+CREATE TRIGGER protect_llm_artists AFTER UPDATE OF artists ON rows
+WHEN NEW.artist_llm IS NOT NULL AND NEW.positive_prompt IS OLD.positive_prompt
+ AND NEW.artists IS NOT json_extract(NEW.artist_llm, '$.artistString')
+BEGIN
+ UPDATE rows SET artists = json_extract(NEW.artist_llm, '$.artistString') WHERE id = NEW.id;
+END;
+CREATE TRIGGER invalidate_llm_artists AFTER UPDATE OF positive_prompt ON rows
+WHEN NEW.positive_prompt IS NOT OLD.positive_prompt AND NEW.artist_llm IS OLD.artist_llm
+ AND NEW.artist_llm IS NOT NULL
+BEGIN
+ UPDATE rows SET artist_llm = NULL WHERE id = NEW.id;
+END;
+"#;
 
 pub const MIGRATION_20: &str = r#"
 CREATE TABLE material_versions (

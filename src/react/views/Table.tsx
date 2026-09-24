@@ -5,6 +5,7 @@ import { useWorkspace } from "../state/workspace";
 import { useViewport } from "../ui/use-viewport";
 import { Button, Checkbox } from "../ui/controls";
 import { Thumbnail } from "../ui/Thumbnail";
+import { LlmBadge } from "../ui/LlmBadge";
 import { thumbnails } from "../ui/use-image";
 import { rememberVisibleRange } from "../../lib/stores/view-state";
 
@@ -49,7 +50,7 @@ export function Table() {
           <div role="cell" title={row.time ?? ""}>{row.time ?? "—"}</div>
           <div role="cell" title={row.positivePrompt ?? ""}>{row.positivePrompt ?? "—"}</div>
           <div role="cell" title={row.characterPrompt ?? ""}>{row.characterPrompt ?? "—"}</div>
-          <div role="cell" title={row.artists ?? ""}>{row.artists ?? "—"}</div>
+          <div role="cell" title={row.artists ?? ""}><LlmBadge source={row.artistLlm} />{row.artists || (row.artistLlm ? "未识别到画风" : "—")}</div>
           <div role="cell" className="r-table-tags" title={row.tags.join(", ")}>{row.tags.slice(0, 3).map(tag => <span key={tag}>{tag}</span>)}{row.tags.length > 3 && <span>+{row.tags.length - 3}</span>}{!row.tags.length && "—"}</div>
         </div></RowContextMenu>;
       })}</div>

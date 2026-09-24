@@ -108,6 +108,10 @@ pub struct QuickArtistPrefixChange {
     pub new_negative_prompt: Option<String>,
     pub previous_artists: Option<String>,
     pub new_artists: Option<String>,
+    #[serde(default)]
+    pub previous_artist_llm: Option<String>,
+    #[serde(default)]
+    pub new_artist_llm: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

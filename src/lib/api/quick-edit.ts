@@ -83,6 +83,8 @@ export interface QuickArtistPrefixChange {
   newNegativePrompt: string | null;
   previousArtists: string | null;
   newArtists: string | null;
+  previousArtistLlm?: string | null;
+  newArtistLlm?: string | null;
 }
 
 export interface QuickArtistPrefixApplyResult {

@@ -13,6 +13,7 @@ const server = http.createServer(async (req, res) => {
   try {
     if (req.headers.host !== `127.0.0.1:${port}`) return send(403, { error: '请使用启动时显示的本机地址。' });
     const url = new URL(req.url, `http://127.0.0.1:${port}`);
+    if (req.method === 'GET' && url.pathname === '/favicon.ico') { res.writeHead(204); return res.end(); }
     if (req.method === 'GET' && url.pathname === '/') return send(200, page, 'text/html; charset=utf-8');
     if (!url.pathname.startsWith('/api/')) return send(404, { error: '页面不存在' });
     if (req.headers['x-session-token'] !== token) return send(403, { error: '服务已重新启动，请刷新网页后继续。' });
@@ -34,7 +35,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && action === 'start') {
       if (manager.active) throw Error('已有任务正在运行，请先暂停。');
       // start executes synchronously through validation before its first await.
-      const running = manager.start(id, !!body.retryErrors); running.catch(error => manager.log(job, error.message));
+      const running = manager.start(id, !!body.retryErrors, { apiKey: body.apiKey }); running.catch(error => manager.log(job, error.message));
       await Promise.resolve(); if (!manager.active && job.state !== 'completed') throw Error(job.message);
       return send(200, manager.summary(job));
     }

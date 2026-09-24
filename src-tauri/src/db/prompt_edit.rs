@@ -18,6 +18,7 @@ pub struct PromptEditResult {
 pub struct SinglePromptEditResult {
     pub affected_rows: u64,
     pub new_artists: Option<String>,
+    pub artist_llm: Option<String>,
 }
 
 impl Database {
@@ -44,10 +45,16 @@ impl Database {
                 crate::pipeline::style_signature_of(Some(new_prompt))
             ],
         )?;
+        let (artists_str, artist_llm) = transaction.query_row(
+            "SELECT artists, artist_llm FROM rows WHERE id = ?1",
+            [row_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )?;
         transaction.commit()?;
         Ok(SinglePromptEditResult {
             affected_rows: updated as u64,
             new_artists: artists_str,
+            artist_llm,
         })
     }
 
@@ -70,10 +77,16 @@ impl Database {
             "UPDATE rows SET character_prompt = ?2, artists = ?3 WHERE id = ?1",
             rusqlite::params![row_id, new_prompt, &artists_str],
         )?;
+        let (artists_str, artist_llm) = transaction.query_row(
+            "SELECT artists, artist_llm FROM rows WHERE id = ?1",
+            [row_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )?;
         transaction.commit()?;
         Ok(SinglePromptEditResult {
             affected_rows: updated as u64,
             new_artists: artists_str,
+            artist_llm,
         })
     }
 

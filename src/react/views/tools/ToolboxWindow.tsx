@@ -15,6 +15,7 @@ import { Button } from "../../ui/controls";
 import { Notices } from "../../ui/Notices";
 import { WindowControls } from "../../ui/WindowControls";
 import ArtistPrefixTool from "./ArtistPrefixTool";
+import StyleExtractionTool from "./StyleExtractionTool";
 import ArtistGeneratorView from "./ArtistGeneratorView";
 import DataManagementTool from "./DataManagementTool";
 import LibraryMaintenanceTool from "./LibraryMaintenanceTool";
@@ -25,9 +26,10 @@ import ImageExportTool from "./ImageExportTool";
 import "./toolbox.css";
 const AutomationRulesTool = lazy(() => import("./AutomationRulesTool"));
 const QuickEditTool = lazy(() => import("./QuickEditTool"));
-type ToolId = "automationRules" | "quickEdit" | "artistPrefix" | "artist" | "imageSearch" | "imageExport" | "jsonDedupe" | "maintenance" | "data" | "update";
+type ToolId = "automationRules" | "quickEdit" | "styleExtraction" | "artistPrefix" | "artist" | "imageSearch" | "imageExport" | "jsonDedupe" | "maintenance" | "data" | "update";
 interface Tool { id: ToolId; label: string; description: string; group: string; requiresLibrary: boolean; icon: LucideIcon; component: ComponentType<{ active: boolean }>; fullBleed?: boolean }
 const tools: Tool[] = [
+  { id: "styleExtraction", label: "LLM 画风提取", description: "导出原文、导入外部模型结果并标注来源", group: "常用工具", requiresLibrary: true, icon: Braces, component: StyleExtractionTool },
   { id: "automationRules", label: "自动规则", description: "编写导入后自动检查与整理规则", group: "常用工具", requiresLibrary: false, icon: Workflow, component: AutomationRulesTool, fullBleed: true },
   { id: "quickEdit", label: "快速整理", description: "按提示词组合批量打 Tag 或分组", group: "常用工具", requiresLibrary: true, icon: ListFilter, component: QuickEditTool },
   { id: "artistPrefix", label: "画师前缀修正", description: "根据库内已有 artist: 标注修正裸画师 Tag", group: "常用工具", requiresLibrary: true, icon: ScanSearch, component: ArtistPrefixTool },

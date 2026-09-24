@@ -1,5 +1,6 @@
 //! Tauri IPC adapters, grouped by the operation they expose.
 pub(crate) mod artists;
+pub(crate) mod style_extraction;
 pub(crate) mod automation;
 pub(crate) mod compare;
 mod dto;

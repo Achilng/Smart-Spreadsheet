@@ -43,7 +43,7 @@ export function FieldEditor({ row, field, label }: { row: RowRecord; field: Fiel
       await runTask(`保存${label}`, async () => {
         if (field === "positivePrompt" || field === "characterPrompt") {
           const result = await (field === "positivePrompt" ? updatePositivePrompt : updateCharacterPrompt)(row.id, saved);
-          patchRowFields(row.id, { [field]: saved, artists: result.newArtists });
+          patchRowFields(row.id, { [field]: saved, artists: result.newArtists, artistLlm: result.artistLlm ?? null });
         } else {
           await (field === "negativePrompt" ? updateNegativePrompt : updateNote)(row.id, saved);
           patchRowFields(row.id, { [field]: field === "note" ? saved.trim() || null : saved });

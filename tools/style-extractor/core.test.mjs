@@ -2,7 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { hash, validateRequest, validateReply, JobManager, REQUEST } from './core.mjs';
+import http from 'node:http';
+import { once } from 'node:events';
+import { hash, validateRequest, validateReply, JobManager, REQUEST, callApi, normalizeBaseUrl } from './core.mjs';
 const tempRoot = 'D:/Agent/Agent_temp/style-extractor-tests';
 fs.mkdirSync(tempRoot, { recursive: true });
 const item = positive_prompt => ({ id: hash(positive_prompt), positive_prompt });
@@ -43,4 +45,37 @@ test('authentication error pauses without classifying unprocessed items as none'
   const manager = new JobManager(directory(), async () => { throw Error('401 unauthorized'); }); const job = manager.create(request(['A']));
   await manager.start(job.id); assert.equal(manager.get(job.id).state, 'paused'); assert.equal(manager.get(job.id).results.length, 0);
   assert.equal(manager.result(job.id).items[0].status, 'error');
+});
+
+test('compatible API falls back for unsupported options and preserves exact Unicode inputs', async t => {
+  const batch = [item('0.5::画师🙂, Artist::, \r\n1girl')], bodies = [];
+  const server = http.createServer(async (req, res) => {
+    const chunks = []; for await (const chunk of req) chunks.push(chunk);
+    const body = JSON.parse(Buffer.concat(chunks)); bodies.push(body);
+    assert.equal(req.url, '/v1/chat/completions'); assert.equal(req.headers.authorization, 'Bearer test-only');
+    res.setHeader('Content-Type', 'application/json');
+    if (body.response_format || body.reasoning_effort) {
+      res.statusCode = 400; res.end(JSON.stringify({ error: { message: (body.response_format ? 'response_format' : 'reasoning_effort') + ' unsupported' } }));
+    } else res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ items: [{ id: batch[0].id, status: 'ok', artist_string: '0.5::画师🙂, Artist::, \r\n' }] }) }, finish_reason: 'stop' }] }));
+  });
+  server.listen(0, '127.0.0.1'); await once(server, 'listening'); t.after(() => server.close());
+  const reply = await callApi(batch, { baseUrl: `http://127.0.0.1:${server.address().port}/v1/`, model: 'gpt-6-luna【神秘】', apiKey: 'test-only', effort: 'high' }, new AbortController().signal, () => {});
+  assert.equal(bodies.length, 3); assert.equal(bodies[0].model, 'gpt-6-luna【神秘】');
+  assert.deepEqual(JSON.parse(bodies[0].messages[1].content).items, batch);
+  assert.equal(validateReply(batch, reply)[0].status, 'ok');
+});
+
+test('API credentials remain transient across save, restart and error logging', async t => {
+  const key = 'test-secret-not-persisted', dir = directory();
+  const server = http.createServer((req, res) => { res.writeHead(401, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: { message: 'Invalid key ' + key } })); });
+  server.listen(0, '127.0.0.1'); await once(server, 'listening'); t.after(() => server.close());
+  const manager = new JobManager(dir), job = manager.create(request(['A']), { provider: 'api', model: 'gpt-6-luna【神秘】', baseUrl: `http://127.0.0.1:${server.address().port}/v1`, apiKey: key });
+  await manager.start(job.id, false, { apiKey: key });
+  assert.equal(manager.get(job.id).state, 'paused'); assert.equal(manager.get(job.id).results.length, 0);
+  for (const name of fs.readdirSync(dir)) assert.equal(fs.readFileSync(path.join(dir, name), 'utf8').includes(key), false);
+  assert.equal(JSON.stringify(manager.list()).includes(key), false);
+  assert.equal(JSON.stringify(manager.result(job.id)).includes(key), false);
+  const restored = new JobManager(dir); await assert.rejects(restored.start(job.id), /API Key/);
+  assert.throws(() => normalizeBaseUrl('https://user:password@example.com/v1'));
+  assert.throws(() => normalizeBaseUrl('https://example.com/v1?key=secret'));
 });

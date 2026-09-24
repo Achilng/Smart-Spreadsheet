@@ -10,6 +10,7 @@ export interface ToolboxRowRequest {
 }
 
 export interface ToolboxSelectionSnapshot {
+  filteredSelection?: RowSelection;
   selection: RowSelection;
   count: number;
 }

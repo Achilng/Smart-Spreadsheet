@@ -11,6 +11,7 @@ export interface PromptEditResult {
 export interface SinglePromptEditResult {
   affectedRows: number;
   newArtists: string | null;
+  artistLlm?: string | null;
 }
 
 export function updatePositivePrompt(
