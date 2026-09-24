@@ -35,7 +35,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && action === 'start') {
       if (manager.active) throw Error('已有任务正在运行，请先暂停。');
       // start executes synchronously through validation before its first await.
-      const running = manager.start(id, !!body.retryErrors, { apiKey: body.apiKey }); running.catch(error => manager.log(job, error.message));
+      const running = manager.start(id, !!body.retryErrors, { apiKey: body.apiKey, concurrency: body.concurrency }); running.catch(error => manager.log(job, error.message));
       await Promise.resolve(); if (!manager.active && job.state !== 'completed') throw Error(job.message);
       return send(200, manager.summary(job));
     }
