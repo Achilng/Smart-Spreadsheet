@@ -11,12 +11,13 @@ const credentials = new CredentialStore(manager.directory);
 const token = randomBytes(24).toString('hex');
 const page = fs.readFileSync(path.join(root, 'index.html'), 'utf8').replace('__SESSION_TOKEN__', token);
 const server = http.createServer(async (req, res) => {
-  const send = (status, value, type = 'application/json; charset=utf-8') => { res.writeHead(status, { 'Content-Type': type, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'" }); res.end(typeof value === 'string' ? value : JSON.stringify(value)); };
+  const send = (status, value, type = 'application/json; charset=utf-8') => { res.writeHead(status, { 'Content-Type': type, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'" }); res.end(typeof value === 'string' ? value : JSON.stringify(value)); };
   try {
     if (req.headers.host !== `127.0.0.1:${port}`) return send(403, { error: '请使用启动时显示的本机地址。' });
     const url = new URL(req.url, `http://127.0.0.1:${port}`);
     if (req.method === 'GET' && url.pathname === '/favicon.ico') { res.writeHead(204); return res.end(); }
     if (req.method === 'GET' && url.pathname === '/') return send(200, page, 'text/html; charset=utf-8');
+    if (req.method === 'GET' && ['/live.js', '/live.css'].includes(url.pathname)) return send(200, fs.readFileSync(path.join(root, url.pathname.slice(1)), 'utf8'), url.pathname.endsWith('.js') ? 'text/javascript; charset=utf-8' : 'text/css; charset=utf-8');
     if (!url.pathname.startsWith('/api/')) return send(404, { error: '页面不存在' });
     if (req.headers['x-session-token'] !== token) return send(403, { error: '服务已重新启动，请刷新网页后继续。' });
     if (req.headers.origin && req.headers.origin !== `http://127.0.0.1:${port}`) return send(403, { error: '来源不匹配' });
@@ -34,9 +35,25 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === 'GET' && url.pathname === '/api/jobs') return send(200, manager.list());
     if (req.method === 'POST' && url.pathname === '/api/jobs') return send(200, manager.create(body.request, body.settings));
-    const match = /^\/api\/jobs\/([a-f0-9-]+)(?:\/(start|pause|result))?$/.exec(url.pathname);
+    const match = /^\/api\/jobs\/([a-f0-9-]+)(?:\/(start|pause|result|events|lane))?$/.exec(url.pathname);
     if (!match) return send(404, { error: '接口不存在' });
     const [, id, action] = match; const job = manager.get(id);
+    if (req.method === 'GET' && action === 'lane') return send(200, manager.lane(id, Number(url.searchParams.get('slot')), url.searchParams.has('index') ? Number(url.searchParams.get('index')) : undefined));
+    if (req.method === 'GET' && action === 'events') {
+      res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store', Connection: 'keep-alive', 'X-Content-Type-Options': 'nosniff' });
+      let previous = '', lastSent = 0;
+      const push = () => {
+        if (res.writableNeedDrain || res.destroyed) return;
+        const snapshot = manager.snapshot(id);
+        // Clock updates once per second; text and completion updates up to 4 Hz.
+        snapshot.job.elapsedMs = Math.floor(snapshot.job.elapsedMs / 1000) * 1000;
+        const value = JSON.stringify(snapshot);
+        if (value !== previous) { res.write('data: ' + value + '\n\n'); previous = value; lastSent = Date.now(); }
+        else if (Date.now() - lastSent > 10000) { res.write(': heartbeat\n\n'); lastSent = Date.now(); }
+      };
+      push(); const timer = setInterval(push, 250);
+      res.on('close', () => clearInterval(timer)); return;
+    }
     if (req.method === 'GET' && action === 'result') return send(200, manager.result(id));
     if (req.method === 'GET' && !action) return send(200, manager.summary(job));
     if (req.method === 'POST' && action === 'pause') { manager.pause(id); return send(200, manager.summary(job)); }
