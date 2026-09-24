@@ -3,9 +3,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { JobManager, root } from './core.mjs';
+import { CredentialStore } from './credentials.mjs';
 
 const port = Number(process.env.STYLE_PORT || 17321);
 const manager = new JobManager(process.env.STYLE_DATA_DIR || path.join(root, 'data'));
+const credentials = new CredentialStore(manager.directory);
 const token = randomBytes(24).toString('hex');
 const page = fs.readFileSync(path.join(root, 'index.html'), 'utf8').replace('__SESSION_TOKEN__', token);
 const server = http.createServer(async (req, res) => {
@@ -23,6 +25,12 @@ const server = http.createServer(async (req, res) => {
       const chunks = []; let size = 0;
       for await (const chunk of req) { size += chunk.length; if (size > 64 * 1024 * 1024) throw Error('文件超过 64 MB 上限'); chunks.push(chunk); }
       body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
+    }
+    if (req.method === 'POST' && url.pathname === '/api/credentials') {
+      if (body.action === 'get') return send(200, { apiKey: await credentials.get(body.baseUrl) });
+      if (body.action === 'save') { await credentials.save(body.baseUrl, body.apiKey); return send(200, { saved: true }); }
+      if (body.action === 'forget') { await credentials.forget(body.baseUrl); return send(200, { saved: false }); }
+      throw Error('无效的凭据操作');
     }
     if (req.method === 'GET' && url.pathname === '/api/jobs') return send(200, manager.list());
     if (req.method === 'POST' && url.pathname === '/api/jobs') return send(200, manager.create(body.request, body.settings));
