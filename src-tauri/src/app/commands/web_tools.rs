@@ -157,11 +157,16 @@ mod tests {
             let port = listener.local_addr().unwrap().port();
             let server = std::thread::spawn(move || {
                 let (mut stream, _) = listener.accept().unwrap();
-                let mut request = [0; 1024];
-                let count = stream.read(&mut request).unwrap();
-                assert!(
-                    String::from_utf8_lossy(&request[..count]).starts_with("GET /health HTTP/1.1")
-                );
+                stream
+                    .set_read_timeout(Some(Duration::from_secs(2)))
+                    .unwrap();
+                let mut request = Vec::new();
+                while !request.ends_with(b"\r\n\r\n") {
+                    let mut byte = [0];
+                    stream.read_exact(&mut byte).unwrap();
+                    request.push(byte[0]);
+                }
+                assert!(String::from_utf8_lossy(&request).starts_with("GET /health HTTP/1.1"));
                 write!(
                     stream,
                     "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
@@ -173,7 +178,8 @@ mod tests {
             if expected {
                 assert_eq!(result.unwrap(), true);
             } else {
-                assert!(result.unwrap_err().contains("占用"));
+                let error = result.unwrap_err();
+                assert!(error.contains("占用"), "{error}");
             }
             server.join().unwrap();
         }
