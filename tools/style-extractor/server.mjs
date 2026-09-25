@@ -4,16 +4,23 @@ import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { JobManager, root, listApiModels, normalizeBaseUrl } from './core.mjs';
 import { CredentialStore } from './credentials.mjs';
+import { ResumeController } from './resume.mjs';
 
 const port = Number(process.env.STYLE_PORT || 17321);
 const manager = new JobManager(process.env.STYLE_DATA_DIR || path.join(root, 'data'));
 const credentials = new CredentialStore(manager.directory);
+const serverBase = process.env.STYLE_SERVER_API_BASE;
+const serverKey = process.env.STYLE_SERVER_API_KEY;
+const managed = !!serverBase;
+if (managed && !serverKey) throw Error('缺少服务器 API Key');
+const origin = process.env.STYLE_PUBLIC_ORIGIN || `http://127.0.0.1:${port}`;
+const resume = new ResumeController(manager, managed);
 const token = randomBytes(24).toString('hex');
-const page = fs.readFileSync(path.join(root, 'index.html'), 'utf8').replace('__SESSION_TOKEN__', token);
+const page = fs.readFileSync(path.join(root, 'index.html'), 'utf8').replace('__SESSION_TOKEN__', token).replace('__SERVER_MANAGED__', JSON.stringify(managed));
 const server = http.createServer(async (req, res) => {
   const send = (status, value, type = 'application/json; charset=utf-8') => { res.writeHead(status, { 'Content-Type': type, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'" }); res.end(typeof value === 'string' ? value : JSON.stringify(value)); };
   try {
-    if (req.headers.host !== `127.0.0.1:${port}`) return send(403, { error: '请使用启动时显示的本机地址。' });
+    if (![new URL(origin).host, `127.0.0.1:${port}`].includes(req.headers.host)) return send(403, { error: '访问地址不匹配。' });
     const url = new URL(req.url, `http://127.0.0.1:${port}`);
     if (req.method === 'GET' && url.pathname === '/health') {
       const body = 'smart-spreadsheet.style-extractor.v1';
@@ -25,7 +32,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && ['/live.js', '/live.css'].includes(url.pathname)) return send(200, fs.readFileSync(path.join(root, url.pathname.slice(1)), 'utf8'), url.pathname.endsWith('.js') ? 'text/javascript; charset=utf-8' : 'text/css; charset=utf-8');
     if (!url.pathname.startsWith('/api/')) return send(404, { error: '页面不存在' });
     if (req.headers['x-session-token'] !== token) return send(403, { error: '服务已重新启动，请刷新网页后继续。' });
-    if (req.headers.origin && req.headers.origin !== `http://127.0.0.1:${port}`) return send(403, { error: '来源不匹配' });
+    if (req.headers.origin && req.headers.origin !== origin) return send(403, { error: '来源不匹配' });
     let body = {};
     if (req.method === 'POST') {
       const chunks = []; let size = 0;
@@ -33,18 +40,19 @@ const server = http.createServer(async (req, res) => {
       body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
     }
     if (req.method === 'POST' && url.pathname === '/api/credentials') {
+      if (managed) return send(200, { apiKey: '', serverManaged: true });
       if (body.action === 'get') return send(200, { apiKey: await credentials.get(body.baseUrl) });
       if (body.action === 'save') { await credentials.save(body.baseUrl, body.apiKey); return send(200, { saved: true }); }
       if (body.action === 'forget') { await credentials.forget(body.baseUrl); return send(200, { saved: false }); }
       throw Error('无效的凭据操作');
     }
     if (req.method === 'POST' && url.pathname === '/api/models') {
-      const base = normalizeBaseUrl(body.baseUrl);
-      const key = typeof body.apiKey === 'string' && body.apiKey.trim() ? body.apiKey : await credentials.get(base);
+      const base = managed ? serverBase : normalizeBaseUrl(body.baseUrl);
+      const key = managed ? serverKey : typeof body.apiKey === 'string' && body.apiKey.trim() ? body.apiKey : await credentials.get(base);
       return send(200, { models: await listApiModels(base, key) });
     }
     if (req.method === 'GET' && url.pathname === '/api/jobs') return send(200, manager.list());
-    if (req.method === 'POST' && url.pathname === '/api/jobs') return send(200, manager.create(body.request, body.settings));
+    if (req.method === 'POST' && url.pathname === '/api/jobs') return send(200, manager.create(body.request, managed ? { ...body.settings, provider: 'api', baseUrl: serverBase } : body.settings));
     const match = /^\/api\/jobs\/([a-f0-9-]+)(?:\/(start|pause|result|events|lane))?$/.exec(url.pathname);
     if (!match) return send(404, { error: '接口不存在' });
     const [, id, action] = match; const job = manager.get(id);
@@ -65,11 +73,12 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === 'GET' && action === 'result') return send(200, manager.result(id));
     if (req.method === 'GET' && !action) return send(200, manager.summary(job));
-    if (req.method === 'POST' && action === 'pause') { manager.pause(id); return send(200, manager.summary(job)); }
+    if (req.method === 'POST' && action === 'pause') { resume.pause(id); return send(200, manager.summary(job)); }
     if (req.method === 'POST' && action === 'start') {
       if (manager.active) throw Error('已有任务正在运行，请先暂停。');
       // start executes synchronously through validation before its first await.
-      const running = manager.start(id, !!body.retryErrors, { apiKey: body.apiKey, concurrency: body.concurrency }); running.catch(error => manager.log(job, error.message));
+      if (managed && (job.settings.provider !== 'api' || job.settings.baseUrl !== serverBase)) throw Error('该任务不属于当前服务器接口，请重新创建任务。');
+      resume.start(id, !!body.retryErrors, { apiKey: managed ? serverKey : body.apiKey, concurrency: body.concurrency });
       await Promise.resolve(); if (!manager.active && job.state !== 'completed') throw Error(job.message);
       return send(200, manager.summary(job));
     }
@@ -78,6 +87,11 @@ const server = http.createServer(async (req, res) => {
 });
 server.listen(port, '127.0.0.1', () => {
   console.log(`画风提取工具：http://127.0.0.1:${port}\n任务保存于：${manager.directory}\n关闭后重新启动可恢复任务。按 Ctrl+C 停止。`);
+  try { resume.restore({ apiKey: serverKey }); } catch (error) { console.error('恢复任务失败：' + error.message); }
 });
 server.on('error', error => { console.error(error.message); process.exitCode = 1; });
-process.on('SIGINT', () => { if (manager.active) manager.pause(manager.active.id); server.close(); setTimeout(() => process.exit(0), 1500).unref(); });
+async function shutdown() {
+  const timer = setTimeout(() => process.exit(1), 20000); timer.unref();
+  server.close(); await resume.stop(); process.exit(0);
+}
+process.on('SIGINT', shutdown); process.on('SIGTERM', shutdown);

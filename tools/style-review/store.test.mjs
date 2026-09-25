@@ -1,0 +1,20 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import { createHash } from 'node:crypto';
+import { ReviewStore } from './store.mjs';
+import { REVIEW, RESULT } from './core.mjs';
+test('server review survives reload, preserves newer notes, and rejects mismatched sources',()=>{
+ const root=process.platform==='win32'?'D:/Agent/Agent_temp/style-review-store-tests':'/tmp/style-review-store-tests';fs.mkdirSync(root,{recursive:true});const dir=fs.mkdtempSync(root+'/run-');
+ const source={format:RESULT,version:1,items:[{id:'a',positive_prompt:'test',artist_string:'',status:'none'}]};
+ const id=createHash('sha256').update(JSON.stringify(source)).digest('hex');
+ const value={filename:'sample.json',cursor:0,document:{format:REVIEW,version:1,dataset_id:id,source_result:source,reviews:{0:{decision:'wrong',note:'keep',correction:'',updatedAt:'2026-09-26'}}}};
+ const store=new ReviewStore(dir);store.save(id,value);
+ const next=new ReviewStore(dir);assert.equal(next.get(id).document.reviews[0].note,'keep');
+ value.document.reviews[0]={decision:'correct',note:'stale',correction:null,updatedAt:'2026-09-25'};next.save(id,value);
+ assert.equal(next.get(id).document.reviews[0].note,'keep');
+ value.document.reviews[0]={decision:'',note:'cleared',correction:null,updatedAt:'2026-09-27'};next.save(id,value);
+ assert.equal(next.get(id).document.reviews[0].decision,'');
+ assert.throws(()=>next.save('0'.repeat(64),value),/不匹配/);assert.throws(()=>next.get('../escape'),/无效/);
+ assert.equal(next.list().length,1);
+});

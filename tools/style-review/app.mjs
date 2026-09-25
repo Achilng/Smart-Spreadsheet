@@ -1,5 +1,29 @@
 import { REVIEW, validateResult, cleanReviews, statistics, visibleIndices } from './core.mjs';
 const $ = id => document.getElementById(id);
+const config = await (await fetch('/config')).json();
+const pendingSaves = new Map(); let saving = false;
+async function serverJson(url, options) { const response = await fetch(url, options); if (!response.ok) throw Error(await response.text()); return response.json(); }
+async function refreshHistory() {
+  if (!config.serverSaved) return;
+  const list = await serverJson('/saved');
+  $('serverHistory').hidden = false;
+  $('savedReviews').replaceChildren(new Option('选择批改记录…', ''), ...list.map(x => new Option(x.filename, x.id)));
+  $('savedReviews').value = datasetId;
+}
+async function flushSaves() {
+  if (saving) return; saving = true;
+  try {
+    while (pendingSaves.size) {
+      const [id, body] = pendingSaves.entries().next().value;
+      await serverJson('/saved/'+id, { method:'POST', headers:{'Content-Type':'application/json','X-Session-Token':config.token}, body, keepalive:new TextEncoder().encode(body).length < 60000 });
+      if (pendingSaves.get(id) === body) pendingSaves.delete(id);
+      if (datasetId === id) $('saveState').textContent = pendingSaves.has(id) ? '正在同步服务器…' : '已保存到服务器 · '+new Date().toLocaleTimeString();
+    }
+    await refreshHistory();
+  } catch (error) { $('saveState').textContent='服务器保存失败，正在保留本机备份'; notice(error.message+'；请勿清除浏览器数据，恢复连接后会重试。'); }
+  finally { saving=false; }
+}
+setInterval(() => { if(pendingSaves.size) void flushSaves(); }, 5000);
 let doc = null, reviews = {}, cursor = 0, datasetId = '', filename = '', loadVersion = 0;
 const labels = { correct: '正确', wrong: '错误', unsure: '待定', pending: '未批改', error: '调用失败' };
 function notice(message = '') { $('notice').hidden = !message; $('notice').textContent = message; }
@@ -7,6 +31,10 @@ function storageKey() { return 'style-review:v1:' + datasetId; }
 function persist() {
   try { localStorage.setItem(storageKey(), JSON.stringify({ reviews, cursor, autoNext: $('autoNext').checked })); $('saveState').textContent = '已自动保存到当前浏览器 · ' + new Date().toLocaleTimeString(); }
   catch { $('saveState').textContent = '自动保存失败，请导出批改记录'; notice('浏览器存储不可用或已满，请用“导出批改记录”保存进度。'); }
+  if(config.serverSaved && doc){
+    const body=JSON.stringify({filename,cursor,autoNext:$('autoNext').checked,document:{format:REVIEW,version:1,dataset_id:datasetId,source_filename:filename,source_result:doc,reviews}});
+    pendingSaves.set(datasetId,body);$('saveState').textContent='正在同步服务器…';void flushSaves();
+  }
 }
 async function loadDocument(input, name) {
   const version = ++loadVersion;
@@ -19,7 +47,11 @@ async function loadDocument(input, name) {
   if (report && report.dataset_id !== id) throw Error('批改记录与所附原始结果不匹配');
   let cached = {};
   try { cached = JSON.parse(localStorage.getItem('style-review:v1:' + id) || '{}'); } catch { /* An exported review can still be loaded. */ }
-  const merged = cleanReviews(source.items, cached.reviews);
+  const remote = config.serverSaved ? await serverJson('/saved/'+id) : null;
+  if (version !== loadVersion) return;
+  const merged = cleanReviews(source.items, remote?.document.reviews);
+  for (const [index,r] of Object.entries(cleanReviews(source.items,cached.reviews))) if(!merged[index]||r.updatedAt>=merged[index].updatedAt) merged[index]=r;
+  if(remote && !Object.keys(cached).length) cached={cursor:remote.cursor,autoNext:remote.autoNext};
   if (report) for (const [index, r] of Object.entries(cleanReviews(source.items, report.reviews))) {
     if (!merged[index] || r.updatedAt >= merged[index].updatedAt) merged[index] = r;
   }
@@ -129,4 +161,5 @@ document.addEventListener('keydown', e => {
   const action = { '1': () => mark('correct'), '2': () => mark('wrong'), '3': () => mark('unsure'), ArrowLeft: () => move(-1), ArrowRight: () => move(1) }[e.key];
   if (action) { e.preventDefault(); action(); }
 });
-try { const initial = await (await fetch('/initial')).json(); if (initial) await loadDocument(initial.document, initial.filename); } catch (e) { notice('自动载入失败：' + e.message + '。也可以点击打开结果手动选择文件。'); }
+$('savedReviews').onchange=async()=>{const id=$('savedReviews').value;if(!id)return;try{const value=await serverJson('/saved/'+id);if(value)await loadDocument(value.document,value.filename)}catch(error){notice(error.message)}};
+try { const initial = await (await fetch('/initial')).json(); if (initial) await loadDocument(initial.document, initial.filename); await refreshHistory(); } catch (e) { notice('自动载入失败：' + e.message + '。也可以点击打开结果手动选择文件。'); }
