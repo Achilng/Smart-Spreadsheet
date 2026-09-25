@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-- 2026-09-26 准备发布 v_41（0.12.15）：删除 LLM 画风提取页面 Node.js 安装提示，纳入 v_40 以来素材库 / 多版本、React 界面与浏览体验、外置 LLM 提取及取消导入大小限制等更新；发布说明见 .github/release-notes/v_41.md。发布及本机安装验证进行中。
+- 2026-09-26 已发布 v_41（0.12.15）：删除 LLM 画风提取页面 Node.js 安装提示，纳入 v_40 以来素材库 / 多版本、React 界面与浏览体验、外置 LLM 提取及取消导入大小限制等更新；发布说明见 .github/release-notes/v_41.md。本机 release 构建通过，已更新 D:/应用/智能表格/smart-spreadsheet.exe 至 0.12.15 并重新打开，窗口响应正常。旧版备份在 D:/应用/智能表格/backups/20260926-001036-before-v41/；新版 SHA-256：20BEFB8159B0142438293E252EE0259BA60E0127A01FE5A8EE87DD13635D3DDA，备份与旧版哈希一致。GitHub 发布流程 36158467550 已通过整套前后端测试；按用户后续要求取消云端构建（已确认 cancelled），改用本机已构建 exe 打包、签名并直接发布 https://github.com/Achilng/Smart-Spreadsheet/releases/tag/v_41。安装包、.sig、latest.json 上传大小 / SHA-256 校验通过；公开最新版本入口返回 0.12.15，下载安装包哈希与本地产物一致：7C10A57B5C53A66C0EBCD8693DFE733F630445E2803AA2D487D7E470519DACA9。本机安装 exe 与 NSIS 输入在类型标记归一化后完全一致。
 
 - 2026-09-26 按用户要求取消 LLM 画风流程固定导入大小限制：桌面结果导入、提取网页选文件 / 服务上传、批改台选文件 / 启动预载 / 保存均移除 64 MiB 限制，保留格式、哈希及内容校验。部署文档改为 Nginx `client_max_body_size 0;`。独立临时数据库直接调用现有桌面 runtime / DB 方法，70.7 MiB 和 127.9 MiB 结果各成功匹配并写回 60,000 行；本地 HTTP 提取上传 126,120,202 字节、批改预载及保存 71,160,389 字节均成功，未调用模型。31 项现有网页工具测试及 cargo check --locked -p smart-spreadsheet --lib 通过。未部署线上、未替换正式安装 exe；线上 Nginx 和服务仍需更新后生效。测试数据在 D:/Agent/Agent_temp，用户资料库未改动。
 
