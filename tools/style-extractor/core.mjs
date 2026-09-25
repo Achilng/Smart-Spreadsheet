@@ -227,7 +227,7 @@ export class JobManager {
   }
   summary(job) {
     const ok = job.results.filter(x => x.status === 'ok').length, none = job.results.filter(x => x.status === 'none').length, errors = job.results.filter(x => x.status === 'error').length;
-    return { id: job.id, exportId: job.request.export_id, settings: job.settings, createdAt: job.createdAt, elapsedMs: job.elapsedMs + (this.active?.id === job.id ? Date.now() - this.active.lastTick : 0), calls: job.calls, inFlight: this.active?.id === job.id ? this.active.inFlight : 0, state: job.state, message: job.message, total: job.request.items.length, ok, none, errors, pending: job.request.items.length - ok - none - errors, logs: job.logs, failures: job.results.filter(x => x.status === 'error').slice(0,100).map(x => ({ id: x.id, error: x.error })) };
+    return { sampledAt: Date.now(), runId: this.active?.id === job.id ? this.active.runId : null, id: job.id, exportId: job.request.export_id, settings: job.settings, createdAt: job.createdAt, elapsedMs: job.elapsedMs + (this.active?.id === job.id ? Date.now() - this.active.lastTick : 0), calls: job.calls, inFlight: this.active?.id === job.id ? this.active.inFlight : 0, state: job.state, message: job.message, total: job.request.items.length, ok, none, errors, pending: job.request.items.length - ok - none - errors, logs: job.logs, failures: job.results.filter(x => x.status === 'error').slice(0,100).map(x => ({ id: x.id, error: x.error })) };
   }
   list() { return [...this.jobs.values()].sort((a,b) => b.createdAt.localeCompare(a.createdAt)).map(x => this.summary(x)); }
   result(id) { const j = this.get(id); const results = new Map(j.results.map(x => [x.id, x])); return { format: RESULT, version: 1, export_id: j.request.export_id, processor: { model: j.model, prompt_version: j.promptVersion, prompt_hash: j.promptHash }, items: j.request.items.map(input => ({ ...input, ...(results.get(input.id) ?? { status: 'error', artist_string: '', error: '尚未处理' }) })) }; }
@@ -240,7 +240,7 @@ export class JobManager {
     if (job.settings.provider === 'api' && !credentials.apiKey?.trim()) throw Error('请填写该任务的 API Key 后继续。');
     job.settings.concurrency = validateConcurrency(credentials.concurrency ?? job.settings.concurrency);
     if (retryErrors) job.results = job.results.filter(x => x.status !== 'error');
-    const controller = new AbortController(); this.active = { id, controller, lastTick: Date.now(), inFlight: 0 }; job.state = 'running';
+    const controller = new AbortController(); this.active = { id, controller, runId: randomUUID(), lastTick: Date.now(), inFlight: 0 }; job.state = 'running';
     setMaxListeners(job.settings.concurrency + 2, controller.signal);
     let lastTick = Date.now();
     const tick = () => { const now = Date.now(); job.elapsedMs += now - lastTick; lastTick = now; if (this.active?.id === id) this.active.lastTick = now; this.save(job); };

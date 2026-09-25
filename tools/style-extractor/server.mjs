@@ -45,10 +45,9 @@ const server = http.createServer(async (req, res) => {
       const push = () => {
         if (res.writableNeedDrain || res.destroyed) return;
         const snapshot = manager.snapshot(id);
-        // Clock updates once per second; text and completion updates up to 4 Hz.
-        snapshot.job.elapsedMs = Math.floor(snapshot.job.elapsedMs / 1000) * 1000;
-        const value = JSON.stringify(snapshot);
-        if (value !== previous) { res.write('data: ' + value + '\n\n'); previous = value; lastSent = Date.now(); }
+        // Throttle clock-only events without discarding subsecond precision.
+        const comparison = JSON.stringify({ ...snapshot, job: { ...snapshot.job, sampledAt: 0, elapsedMs: Math.floor(snapshot.job.elapsedMs / 1000) } });
+        if (comparison !== previous) { res.write('data: ' + JSON.stringify(snapshot) + '\n\n'); previous = comparison; lastSent = Date.now(); }
         else if (Date.now() - lastSent > 10000) { res.write(': heartbeat\n\n'); lastSent = Date.now(); }
       };
       push(); const timer = setInterval(push, 250);

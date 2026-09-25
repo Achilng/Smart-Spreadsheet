@@ -27,15 +27,41 @@ async function saveKey(base=keyBase){
   if(revision===keyRevision&&savedBase===keyBase)$('keyStatus').textContent='已在本机加密保存 · '+savedBase;
 }
 async function startJob(retryErrors=false){
+  const id=selected;starting={id,at:performance.now()};drawClock();
+  try {
   if(current?.settings.provider==='api'){
     const base=baseOf(current.settings.baseUrl);if(keyBase!==base)await loadKey(base);
     if(!$('apiKey').value.trim())throw Error('请填写 '+base+' 的 API Key。');await saveKey(base);
   }
-  return api('jobs/'+selected+'/start',{retryErrors,apiKey:$('apiKey').value,concurrency:Number($('runConcurrency').value)});
+  const j=await api('jobs/'+id+'/start',{retryErrors,apiKey:$('apiKey').value,concurrency:Number($('runConcurrency').value)});
+  if(selected===id)render(j);
+  } finally {starting=null;if(current)render(current)}
 }
 
+// Network updates calibrate the clock; they never drive its visible ticks.
+const clockSamples=new Map();let runClock=null,clockTimer,starting=null;
+function syncClock(j){
+  if(!j){runClock=null;return}
+  const running=j.state==='running',now=performance.now();
+  if(!runClock||runClock.id!==j.id||runClock.running!==running||runClock.runId!==j.runId){
+    runClock={id:j.id,runId:j.runId,running,ms:j.elapsedMs,at:now};
+  }else if(!running){runClock.ms=j.elapsedMs;runClock.at=now}
+  // A long background suspension or reconnect can require a forward correction.
+  else if(j.elapsedMs-(runClock.ms+now-runClock.at)>1500){runClock.ms=j.elapsedMs;runClock.at=now}
+}
+function drawClock(){
+  clearTimeout(clockTimer);const now=performance.now();
+  const elapsed=runClock?runClock.ms+(runClock.running?now-runClock.at:0):0;
+  const text=time(Math.max(0,elapsed));if($('elapsed').textContent!==text)$('elapsed').textContent=text;
+  if(starting?.id===selected&&!runClock?.running){
+    $('state').textContent='正在启动 · '+time(now-starting.at);
+    $('start').textContent='正在启动…';
+  }else{$('start').textContent='开始 / 继续'}
+  if(runClock?.running||starting)clockTimer=setTimeout(drawClock,Math.max(16,1000-((starting&&!runClock?.running?now-starting.at:elapsed)%1000)));
+}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){drawClock();void refresh()}});
 function time(ms){let s=Math.floor(ms/1000);return [Math.floor(s/3600),Math.floor(s/60)%60,s%60].map(x=>String(x).padStart(2,'0')).join(':')}
-function render(j){current=j;$('empty').classList.toggle('hidden',!!j);$('detail').classList.toggle('hidden',!j);if(!j)return;if(concurrencyFor!==j.id){$('runConcurrency').value=j.settings.concurrency??1;concurrencyFor=j.id}$('runConcurrency').disabled=busy||j.state==='running';$('state').textContent={running:'正在提取',paused:'已暂停 / 待开始',completed:'本轮完成'}[j.state];$('modelLabel').textContent=j.settings.model||'gpt-6-luna';$('identity').textContent='任务 '+j.id.slice(0,8)+' · 每次最多 '+j.settings.batchSize+' 条 · '+(j.settings.concurrency??1)+' 并发 · '+j.settings.effort+' · '+(j.settings.provider==='api'?j.settings.baseUrl:'Codex CLI');$('done').textContent=(j.ok+j.none)+' / '+j.total;$('none').textContent=j.none;$('errors').textContent=j.errors;$('elapsed').textContent=time(j.elapsedMs);const p=Math.round((j.ok+j.none+j.errors)/j.total*100);$('fill').style.width=p+'%';$('progress').setAttribute('aria-valuenow',p);$('percent').textContent=p+'% 已处理 · '+j.pending+' 条待处理';$('calls').textContent=j.calls+' 次模型调用 · '+(j.inFlight??0)+' 个请求进行中';$('message').textContent=j.message;$('start').disabled=busy||j.state==='running'||!j.pending;$('pause').disabled=busy||j.state!=='running';$('retry').disabled=busy||j.state==='running'||!j.errors;$('download').disabled=busy||!(j.ok+j.none+j.errors);$('logs').textContent=j.logs.slice(-14).map(x=>new Date(x.time).toLocaleTimeString()+'  '+x.message).join('\n');$('failureCard').classList.toggle('hidden',!j.errors);$('failures').replaceChildren(...j.failures.map(f=>{const p=document.createElement('p');p.textContent=f.id.slice(0,22)+'…\n'+f.error;return p}));}
+function render(j){if(j&&j.id!==selected)return;if(j&&clockSamples.get(j.id)>j.sampledAt)return;if(j)clockSamples.set(j.id,j.sampledAt);syncClock(j);current=j;$('empty').classList.toggle('hidden',!!j);$('detail').classList.toggle('hidden',!j);if(!j)return;if(concurrencyFor!==j.id){$('runConcurrency').value=j.settings.concurrency??1;concurrencyFor=j.id}$('runConcurrency').disabled=busy||j.state==='running';$('state').textContent={running:'正在提取',paused:'已暂停 / 待开始',completed:'本轮完成'}[j.state];$('modelLabel').textContent=j.settings.model||'gpt-6-luna';$('identity').textContent='任务 '+j.id.slice(0,8)+' · 每次最多 '+j.settings.batchSize+' 条 · '+(j.settings.concurrency??1)+' 并发 · '+j.settings.effort+' · '+(j.settings.provider==='api'?j.settings.baseUrl:'Codex CLI');$('done').textContent=(j.ok+j.none)+' / '+j.total;$('none').textContent=j.none;$('errors').textContent=j.errors;drawClock();const p=Math.round((j.ok+j.none+j.errors)/j.total*100);$('fill').style.width=p+'%';$('progress').setAttribute('aria-valuenow',p);$('percent').textContent=p+'% 已处理 · '+j.pending+' 条待处理';$('calls').textContent=j.calls+' 次模型调用 · '+(j.inFlight??0)+' 个请求进行中';$('message').textContent=j.message;$('start').disabled=busy||j.state==='running'||!j.pending;$('pause').disabled=busy||j.state!=='running';$('retry').disabled=busy||j.state==='running'||!j.errors;$('download').disabled=busy||!(j.ok+j.none+j.errors);$('logs').textContent=j.logs.slice(-14).map(x=>new Date(x.time).toLocaleTimeString()+'  '+x.message).join('\n');$('failureCard').classList.toggle('hidden',!j.errors);$('failures').replaceChildren(...j.failures.map(f=>{const p=document.createElement('p');p.textContent=f.id.slice(0,22)+'…\n'+f.error;return p}));}
 async function refresh(){try{const jobs=await api('jobs');$('connection').textContent='已连接 · 进度自动保存';const picker=$('jobs');picker.replaceChildren();for(const j of jobs){const o=document.createElement('option');o.value=j.id;o.textContent=new Date(j.createdAt).toLocaleString()+' · '+j.total+' 条';picker.append(o)}if(!jobs.some(j=>j.id===selected))selected=jobs[0]?.id||'';picker.value=selected;render(jobs.find(j=>j.id===selected)||null);if(keyJob!==selected){keyJob=selected;void loadKey(current?.settings.provider==='api'?current.settings.baseUrl:$('baseUrl').value).catch(e=>{$('keyStatus').textContent=e.message})}}catch(e){$('connection').textContent=e.message.includes('刷新')?'服务已重启，正在重新连接':'连接中断，正在自动重连';if(e.message.includes('刷新'))location.reload();}}
 async function perform(fn){if(busy)return;busy=true;$('create').disabled=true;$('error').textContent='';if(current)render(current);try{await fn();await refresh()}catch(e){$('error').textContent=e.message}finally{busy=false;$('create').disabled=false;if(current)render(current)}}
 $('create').onclick=()=>perform(async()=>{const file=$('file').files[0];if(!file)throw Error('请先选择待处理 JSON');if(file.size>64*1024*1024)throw Error('文件超过 64 MB');const request=JSON.parse((await file.text()).replace(/^\uFEFF/,''));if($('provider').value==='api')await saveKey($('baseUrl').value);const j=await api('jobs',{request,settings:{batchSize:Number($('batch').value),concurrency:Number($('concurrency').value),effort:$('effort').value,provider:$('provider').value,baseUrl:$('baseUrl').value.trim(),model:$('model').value.trim()}});selected=j.id;localStorage.setItem('style-job',selected)});
