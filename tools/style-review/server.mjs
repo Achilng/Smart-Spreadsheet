@@ -14,7 +14,6 @@ const token = randomBytes(24).toString('hex');
 const file = process.argv[2];
 let initial = null;
 if (file) {
-  if (fs.statSync(file).size > 64 * 1024 * 1024) throw Error('文件超过 64 MB');
   const document = JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, ''));
   validateResult(document.format === REVIEW ? document.source_result : document);
   initial = { filename: path.basename(file), document };
@@ -33,8 +32,8 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET') return send(200, JSON.stringify(store.get(saved[1])), 'application/json');
     if (req.method === 'POST') {
       if (req.headers['x-session-token'] !== token) return send(403, '服务已重新启动，请刷新网页后继续');
-      let size = 0; const chunks = [];
-      for await (const chunk of req) { size += chunk.length; if (size > 64 * 1024 * 1024) throw Error('文件超过 64 MB'); chunks.push(chunk); }
+      const chunks = [];
+      for await (const chunk of req) chunks.push(chunk);
       store.save(saved[1], JSON.parse(Buffer.concat(chunks).toString('utf8')));
       return send(200, JSON.stringify({ saved: true }), 'application/json');
     }

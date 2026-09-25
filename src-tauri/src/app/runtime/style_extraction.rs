@@ -18,17 +18,7 @@ impl AppRuntime {
         &self,
         path: &Path,
     ) -> Result<ImportPreview, AppRuntimeError> {
-        use std::io::Read;
-        let mut bytes = Vec::new();
-        std::fs::File::open(path)?
-            .take(64 * 1024 * 1024 + 1)
-            .read_to_end(&mut bytes)?;
-        if bytes.len() > 64 * 1024 * 1024 {
-            return Err(crate::db::DatabaseError::IntegrityCheckFailed(
-                "结果文件超过 64 MB".into(),
-            )
-            .into());
-        }
+        let bytes = std::fs::read(path)?;
         let bytes = bytes.strip_prefix(&[0xef, 0xbb, 0xbf]).unwrap_or(&bytes);
         let doc: ResultDocument = serde_json::from_slice(bytes)?;
         self.with_database(|db| db.preview_style_result(&doc))

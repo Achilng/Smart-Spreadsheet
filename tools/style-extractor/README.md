@@ -55,6 +55,6 @@ API 请求启用 `stream: true` 并读取 SSE；兼容接口明确拒绝流式�
 
 临时失败最多尝试三次；登录、权限、额度或限流错误会取消其余请求并暂停整个任务，保留已保存结果，解决后继续。失败项可单独重试，也可下载已完成部分；失败 / 未处理项导入时保持表格旧值。成功的「无画风」结果会清空旧值并保留 LLM 标记。修改正向正文后标记失效，角色 / 负向 / 备注的修改不影响它。提示词变更后旧任务禁止继续，以免混用规则；仍可下载旧结果或创建新任务。
 
-输入和导入文件上限均为 64 MB。可选环境变量：`STYLE_PORT`（默认 17321）、`STYLE_DATA_DIR`（任务保存目录）、`STYLE_TEMP_DIR`（CLI 临时目录，默认 D:/Agent/Agent_temp/style-extractor）、`STYLE_CODEX_BIN`（Codex 可执行文件路径）。测试临时目录与正式 data 分开。
+待处理文件、桌面端结果导入和批改台导入不设固定文件大小上限，仍校验 JSON 格式及内容；大文件的实际处理能力取决于可用内存。可选环境变量：`STYLE_PORT`（默认 17321）、`STYLE_DATA_DIR`（任务保存目录）、`STYLE_TEMP_DIR`（CLI 临时目录，默认 D:/Agent/Agent_temp/style-extractor）、`STYLE_CODEX_BIN`（Codex 可执行文件路径）。测试临时目录与正式 data 分开。
 
 验证：`node --test tools/style-extractor/core.test.mjs tools/style-extractor/browser-credentials.test.mjs tools/style-extractor/streaming.test.mjs`。

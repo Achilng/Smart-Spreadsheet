@@ -16,7 +16,7 @@
 
 ## 后续方向
 
-已实现外置 LLM 画风提取（数据库 v21、自定义 API / Codex CLI），协议、来源与状态约定见 [专项设计](docs/LLM-STYLE-EXTRACTION.md)。
+已实现外置 LLM 画风提取（数据库 v21、自定义 API / Codex CLI），协议、来源与状态约定见 [专项设计](docs/LLM-STYLE-EXTRACTION.md)。画风待处理文件、结果及批改记录导入不设固定文件大小上限，保留格式与内容校验。
 
 以下是候选事项，不代表已经排期。开始任务时明确范围和验收方式；当前正在做什么只写在 [PROGRESS.md](PROGRESS.md)。
 

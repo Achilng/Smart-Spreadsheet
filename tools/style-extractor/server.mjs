@@ -31,8 +31,8 @@ const server = http.createServer(async (req, res) => {
     if (req.headers.origin && req.headers.origin !== origin) return send(403, { error: '来源不匹配' });
     let body = {};
     if (req.method === 'POST') {
-      const chunks = []; let size = 0;
-      for await (const chunk of req) { size += chunk.length; if (size > 64 * 1024 * 1024) throw Error('文件超过 64 MB 上限'); chunks.push(chunk); }
+      const chunks = [];
+      for await (const chunk of req) chunks.push(chunk);
       body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
     }
     if (req.method === 'POST' && url.pathname === '/api/credentials') {

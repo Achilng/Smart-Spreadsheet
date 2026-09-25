@@ -132,7 +132,7 @@ function download(value, type, name) {
   const url = URL.createObjectURL(new Blob([value], { type })), a = document.createElement('a'); a.href = url; a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 $('load').onclick = () => $('file').click();
-$('file').onchange = async () => { const file = $('file').files[0]; if (!file) return; try { if (file.size > 64 * 1024 * 1024) throw Error('文件超过 64 MB'); await loadDocument(JSON.parse((await file.text()).replace(/^\uFEFF/, '')), file.name); } catch (e) { notice(e.message); } finally { $('file').value = ''; } };
+$('file').onchange = async () => { const file = $('file').files[0]; if (!file) return; try { await loadDocument(JSON.parse((await file.text()).replace(/^\uFEFF/, '')), file.name); } catch (e) { notice(e.message); } finally { $('file').value = ''; } };
 $('filter').onchange = () => render(); $('search').oninput = () => render();
 $('markCorrect').onclick = () => mark('correct'); $('markWrong').onclick = () => mark('wrong'); $('markUnsure').onclick = () => mark('unsure'); $('clear').onclick = () => mark('');
 $('prev').onclick = () => move(-1); $('next').onclick = () => move(1);
