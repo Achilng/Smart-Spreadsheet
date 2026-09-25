@@ -68,6 +68,8 @@ jobs:
       - name: Build signed Windows installer and updater manifest
         shell: pwsh
         env:
+          VITE_STYLE_EXTRACTOR_URL: https://extract.217.60.249.96.sslip.io
+          VITE_STYLE_REVIEW_URL: https://review.217.60.249.96.sslip.io
           RELEASE_SIGNING_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
