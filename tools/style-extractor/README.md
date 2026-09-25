@@ -1,13 +1,13 @@
 # 外置画风提取工具
 
 1. 在智能表格「工具箱 → LLM 画风提取」导出待处理 JSON。可选全部、选中或当前筛选范围；原文完全相同才合并，默认跳过已处理记录。
-2. 点击智能表格「工具箱 → 画风网页工具 → 画风提取工作台」，在默认浏览器打开服务器网站，登录后即可使用。服务器已配置模型，不需要在本机安装 Node 或填写 Key。开发者仍可双击本目录的 `启动画风提取.cmd`，或运行 `node tools/style-extractor/server.mjs` 使用本地模式。
+2. 点击智能表格「工具箱 → 画风网页工具 → 画风提取工作台」，在默认浏览器打开服务器网站，登录后即可使用。不需要在本机安装 Node；首次使用填写 API Key，保存在当前浏览器。开发者仍可双击本目录的 `启动画风提取.cmd`，或运行 `node tools/style-extractor/server.mjs` 使用本地模式。
 3. 浏览器打开 http://127.0.0.1:17321 ，选择 JSON 和「自定义 API」。填写 Base URL、模型名、API Key，设置每次调用条数（默认 10）和并发请求数（默认 1），创建任务后点「开始 / 继续」。
 4. 完成后下载结果 JSON，在智能表格同一工具页预览并应用。相同原文的全部记录一起更新，表格和详情显示 LLM 标记，支持撤销 / 重做。
 
 ## 接口设置
 
-工具箱已改为服务器网页入口，不再依赖本机 Node。服务器任务与结果持久保存，关闭网页不影响运行，服务重启后自动续跑未完成条目；手动暂停不自动恢复。部署配置、认证和数据迁移说明见 [服务器工作台](../SERVER-DEPLOYMENT.md)。以下接口配置说明适用于开发者手动启动的本地模式。
+工具箱已改为服务器网页入口，不再依赖本机 Node。服务器任务与结果持久保存，关闭网页不影响运行，服务重启后需回到网页点击「开始 / 继续」，浏览器重新提供 Key 后续跑未完成条目。部署配置、认证和数据迁移说明见 [服务器工作台](../SERVER-DEPLOYMENT.md)。以下接口配置说明适用于开发者手动启动的本地模式。
 
 CLIProxyAPI 也使用「自定义 API」模式：Base URL 填自己的 HTTPS 代理地址并以 `/v1` 结尾，Key 填代理的客户端访问密钥。先在代理端完成 Codex 登录，再获取模型列表；只有模型实际可用时才能开始提取。不要把服务器 SSH 密码或 OAuth 凭据填到 API Key。
 
@@ -17,9 +17,9 @@ CLIProxyAPI 也使用「自定义 API」模式：Base URL 填自己的 HTTPS 代
 
 模型旁的「获取模型列表」使用当前 Base URL 和 Key 请求 `/models`，支持直接使用当前接口已保存的 Key。获取后可搜索并点选模型，完整名称自动回填；「刷新模型列表」重新读取接口。切换 Base URL 或输入新 Key 会清空旧列表，过期请求不会覆盖新列表。接口不支持列表、返回空列表或读取失败时仍可手动填写。列表用于新建任务，已有任务的模型保持不变；Codex 模式仍固定使用 gpt-6-luna。
 
-API Key 按 Base URL 分别保存到 `data/.credentials.json`，内容由 Windows DPAPI 的当前用户模式加密，仅同一 Windows 账户可解密；不写入任务 JSON、日志、浏览器 localStorage 或 Git。填写后离开输入框会自动保存，也可以点击「保存 Key」；启动 API 任务前也会保存。重新打开网页、服务重启或切换历史任务会自动回填对应接口的 Key。「清除已保存 Key」只清除当前接口的凭据，不影响其他接口或任务结果。
+API Key 按 Base URL 分别保存在当前浏览器的 localStorage；不写入服务器环境变量、任务 JSON、日志或 Git。填写后离开输入框会自动保存，也可以点击「保存 Key」；启动 API 任务前也会保存。重新打开网页或切换历史任务会自动回填对应接口的 Key。「清除已保存 Key」只清除当前浏览器当前接口的凭据，不影响正在运行的任务；若需停止调用，请先暂停任务。换浏览器或设备需重新填写。保存失败会显示错误。旧版本 Windows DPAPI 文件不会自动迁移或读取，可从原来保存的渠道重新填写。
 
-当前 Key 下方会显示适用的 Base URL。切换接口后清空旧输入并读取该接口已保存的 Key；运行历史任务时按该任务实际端点匹配，不会把另一个接口的 Key 直接用于它。创建后端点和模型固定，左侧参数用于新任务；已有任务可以修改右侧并发数后开始 / 继续 / 重试。原文发送至所选端点，由该接口账户计费。本机加密保存目前仅支持 Windows。
+当前 Key 下方会显示适用的 Base URL。切换接口后清空旧输入并读取该接口已保存的 Key；运行历史任务时按该任务实际端点匹配，不会把另一个接口的 Key 直接用于它。创建后端点和模型固定，左侧参数用于新任务；已有任务可以修改右侧并发数后开始 / 继续 / 重试。原文发送至所选端点，由该接口账户计费。获取模型列表或开始任务时，Key 临时发送给后端用于调用；任务期间仅保留在内存，关闭网页可继续，服务重启后需再次由浏览器提供。
 
 支持 low / medium / high 推理等级。若兼容接口明确拒绝结构化输出或推理等级参数，会去掉对应参数重试，并仍严格校验返回的 JSON、编号与连续原文。
 
@@ -57,4 +57,4 @@ API 请求启用 `stream: true` 并读取 SSE；兼容接口明确拒绝流式�
 
 输入和导入文件上限均为 64 MB。可选环境变量：`STYLE_PORT`（默认 17321）、`STYLE_DATA_DIR`（任务保存目录）、`STYLE_TEMP_DIR`（CLI 临时目录，默认 D:/Agent/Agent_temp/style-extractor）、`STYLE_CODEX_BIN`（Codex 可执行文件路径）。测试临时目录与正式 data 分开。
 
-验证：`node --test tools/style-extractor/core.test.mjs tools/style-extractor/credentials.test.mjs tools/style-extractor/streaming.test.mjs`。
+验证：`node --test tools/style-extractor/core.test.mjs tools/style-extractor/browser-credentials.test.mjs tools/style-extractor/streaming.test.mjs`。
