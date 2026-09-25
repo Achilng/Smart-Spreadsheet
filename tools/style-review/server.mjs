@@ -21,6 +21,11 @@ const server = http.createServer((req, res) => {
   };
   if (req.headers.host !== `127.0.0.1:${port}` || (req.headers.origin && req.headers.origin !== `http://127.0.0.1:${port}`)) return send(403, '请使用本机地址');
   if (req.method !== 'GET') return send(405, '只读服务');
+  if (req.url === '/health') {
+    const body = 'smart-spreadsheet.style-review.v1';
+    res.writeHead(200, { 'Content-Type': 'text/plain', 'Content-Length': Buffer.byteLength(body), 'Cache-Control': 'no-store' });
+    return res.end(body);
+  }
   if (req.url === '/initial') return send(200, JSON.stringify(initial), 'application/json');
   if (req.url === '/favicon.ico') return send(204, '');
   const asset = files.get(req.url);

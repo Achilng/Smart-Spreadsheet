@@ -1,11 +1,15 @@
 # 外置画风提取工具
 
 1. 在智能表格「工具箱 → LLM 画风提取」导出待处理 JSON。可选全部、选中或当前筛选范围；原文完全相同才合并，默认跳过已处理记录。
-2. 双击本目录的 `启动画风提取.cmd`，或在项目根目录运行 `node tools/style-extractor/server.mjs`。
+2. 点击智能表格「工具箱 → 画风网页工具 → 画风提取工作台」，自动启动本地服务并用默认浏览器打开。也可双击本目录的 `启动画风提取.cmd`，或运行 `node tools/style-extractor/server.mjs`。
 3. 浏览器打开 http://127.0.0.1:17321 ，选择 JSON 和「自定义 API」。填写 Base URL、模型名、API Key，设置每次调用条数（默认 10）和并发请求数（默认 1），创建任务后点「开始 / 继续」。
 4. 完成后下载结果 JSON，在智能表格同一工具页预览并应用。相同原文的全部记录一起更新，表格和详情显示 LLM 标记，支持撤销 / 重做。
 
 ## 接口设置
+
+工具箱入口需要 Node.js 22 或更高版本；不会自动安装或升级 Node。已运行的同名服务会复用，端口被其他程序或旧版本占用时显示明确错误。关闭表格不会中止正在处理的网页任务。开发版沿用本目录 `data`，安装版保存到资料库目录下 `web-tools/style-extractor`；安装包只包含程序文件，不包含任务、结果或 Key。
+
+CLIProxyAPI 也使用「自定义 API」模式：Base URL 填自己的 HTTPS 代理地址并以 `/v1` 结尾，Key 填代理的客户端访问密钥。先在代理端完成 Codex 登录，再获取模型列表；只有模型实际可用时才能开始提取。不要把服务器 SSH 密码或 OAuth 凭据填到 API Key。
 
 需要本机已有 Node（支持内置 fetch / AbortSignal.any，例如当前 Node 24），不安装或升级环境。自定义 API 使用 OpenAI 兼容的 `/chat/completions`；Base URL 填到 `/v1`，无需附加 `/chat/completions`。
 

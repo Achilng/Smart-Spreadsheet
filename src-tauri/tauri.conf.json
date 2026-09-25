@@ -37,7 +37,23 @@
       "icons/128x128@2x.png",
       "icons/icon.png",
       "icons/icon.ico"
-    ]
+    ],
+    "resources": {
+      "../tools/style-extractor/server.mjs": "web-tools/style-extractor/server.mjs",
+      "../tools/style-extractor/core.mjs": "web-tools/style-extractor/core.mjs",
+      "../tools/style-extractor/credentials.mjs": "web-tools/style-extractor/credentials.mjs",
+      "../tools/style-extractor/codex-stream.mjs": "web-tools/style-extractor/codex-stream.mjs",
+      "../tools/style-extractor/streaming.mjs": "web-tools/style-extractor/streaming.mjs",
+      "../tools/style-extractor/index.html": "web-tools/style-extractor/index.html",
+      "../tools/style-extractor/live.js": "web-tools/style-extractor/live.js",
+      "../tools/style-extractor/live.css": "web-tools/style-extractor/live.css",
+      "../tools/style-extractor/prompt.txt": "web-tools/style-extractor/prompt.txt",
+      "../tools/style-review/server.mjs": "web-tools/style-review/server.mjs",
+      "../tools/style-review/core.mjs": "web-tools/style-review/core.mjs",
+      "../tools/style-review/app.mjs": "web-tools/style-review/app.mjs",
+      "../tools/style-review/index.html": "web-tools/style-review/index.html",
+      "../tools/style-review/style.css": "web-tools/style-review/style.css"
+    }
   },
   "plugins": {
     "updater": {

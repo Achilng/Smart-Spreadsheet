@@ -15,6 +15,11 @@ const server = http.createServer(async (req, res) => {
   try {
     if (req.headers.host !== `127.0.0.1:${port}`) return send(403, { error: '请使用启动时显示的本机地址。' });
     const url = new URL(req.url, `http://127.0.0.1:${port}`);
+    if (req.method === 'GET' && url.pathname === '/health') {
+      const body = 'smart-spreadsheet.style-extractor.v1';
+      res.writeHead(200, { 'Content-Type': 'text/plain', 'Content-Length': Buffer.byteLength(body), 'Cache-Control': 'no-store' });
+      return res.end(body);
+    }
     if (req.method === 'GET' && url.pathname === '/favicon.ico') { res.writeHead(204); return res.end(); }
     if (req.method === 'GET' && url.pathname === '/') return send(200, page, 'text/html; charset=utf-8');
     if (req.method === 'GET' && ['/live.js', '/live.css'].includes(url.pathname)) return send(200, fs.readFileSync(path.join(root, url.pathname.slice(1)), 'utf8'), url.pathname.endsWith('.js') ? 'text/javascript; charset=utf-8' : 'text/css; charset=utf-8');
