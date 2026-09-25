@@ -94,6 +94,22 @@ export function normalizeBaseUrl(value) {
   if ((url.protocol !== 'https:' && !(url.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname))) || url.username || url.password || url.search || url.hash) throw Error('Base URL 需要 HTTPS 地址，或本机 HTTP 地址；不能包含账号、参数或片段。');
   return url.toString().replace(/\/+$/, '');
 }
+export async function listApiModels(baseUrl, apiKey) {
+  const base = normalizeBaseUrl(baseUrl), key = typeof apiKey === 'string' ? apiKey.trim() : '';
+  if (!key) throw Error('请先填写或保存当前接口的 API Key。');
+  let response;
+  try {
+    response = await fetch(base + '/models', { redirect: 'error', signal: AbortSignal.timeout(15000), headers: { Authorization: 'Bearer ' + key, Accept: 'application/json' } });
+  } catch (error) { throw Error(error.name === 'TimeoutError' ? '获取模型列表超时，请重试。' : '无法连接模型列表接口，请检查 Base URL 和网络。'); }
+  let data;
+  try { data = await response.json(); } catch { throw Error(`模型列表接口未返回 JSON（HTTP ${response.status}），可手动填写模型名。`); }
+  if (!response.ok) {
+    const detail = String(data?.error?.message || data?.message || response.statusText).split(key).join('[已隐藏]').slice(0, 400);
+    throw Error(`获取模型列表失败（${response.status}）：${detail}`);
+  }
+  if (!Array.isArray(data?.data)) throw Error('接口未返回有效的模型列表，可手动填写模型名。');
+  return [...new Set(data.data.map(x => x?.id).filter(id => typeof id === 'string' && id.length && id.length <= 128 && !/[\s\x00-\x1f\x7f]/u.test(id)))].sort((a, b) => a.localeCompare(b));
+}
 export function modelStream(batch, emit = () => {}) {
   const seen = new Set();
   return new ItemStream(event => {

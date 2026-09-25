@@ -2,7 +2,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
-import { JobManager, root } from './core.mjs';
+import { JobManager, root, listApiModels, normalizeBaseUrl } from './core.mjs';
 import { CredentialStore } from './credentials.mjs';
 
 const port = Number(process.env.STYLE_PORT || 17321);
@@ -32,6 +32,11 @@ const server = http.createServer(async (req, res) => {
       if (body.action === 'save') { await credentials.save(body.baseUrl, body.apiKey); return send(200, { saved: true }); }
       if (body.action === 'forget') { await credentials.forget(body.baseUrl); return send(200, { saved: false }); }
       throw Error('无效的凭据操作');
+    }
+    if (req.method === 'POST' && url.pathname === '/api/models') {
+      const base = normalizeBaseUrl(body.baseUrl);
+      const key = typeof body.apiKey === 'string' && body.apiKey.trim() ? body.apiKey : await credentials.get(base);
+      return send(200, { models: await listApiModels(base, key) });
     }
     if (req.method === 'GET' && url.pathname === '/api/jobs') return send(200, manager.list());
     if (req.method === 'POST' && url.pathname === '/api/jobs') return send(200, manager.create(body.request, body.settings));
