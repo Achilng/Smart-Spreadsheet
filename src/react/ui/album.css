@@ -1,0 +1,23 @@
+.r-album-theme{--accent:#16191e;--accent-hover:#30353c;--accent-soft:#e7f3ff;--accent-soft-border:#b8dbfa;--surface:#fff;--bg:#fff;--surface-2:#f6f8fb;--border:#e8ecf1;background:#fff;color:#171a1f}
+.r-album-theme .btn-primary{background:#171a1f;border-color:#171a1f;color:#fff}.r-album-theme .btn-primary:hover:not(:disabled){background:#30353c}
+.r-album-theme .r-canvas-head{display:none}.r-album-theme .r-chips{background:#fff}
+.r-album-stack{display:block;position:relative;height:var(--album-stage-height,228px);width:100%;perspective:850px;isolation:isolate;--album-rx:0deg;--album-ry:0deg}
+.r-album-sheet{display:block;position:absolute;top:24px;left:50%;width:58%;max-width:180px;aspect-ratio:832/1216;border:3px solid #fff;border-radius:16px;background:#f2f5f8;box-shadow:0 7px 15px #17212f1a;overflow:hidden;pointer-events:none;transition:transform 440ms cubic-bezier(.2,.8,.25,1),box-shadow 440ms;backface-visibility:hidden}
+.r-album-sheet-0{z-index:3;transform:translateX(-50%)}
+.r-album-sheet-1{z-index:1;transform:translateX(-70%) rotate(-10deg) scale(.93)}
+.r-album-sheet-2{z-index:2;transform:translateX(-30%) rotate(10deg) scale(.93)}
+.r-album-trigger:is(:hover,:focus-visible) .r-album-sheet-0{transform:translateX(-50%) translateY(-12px) rotateX(var(--album-rx)) rotateY(var(--album-ry));box-shadow:0 15px 23px #17212f26}
+.r-album-trigger:is(:hover,:focus-visible) .r-album-sheet-1{transform:translateX(-84%) translateY(-3px) rotate(-17deg) scale(.97);box-shadow:0 12px 18px #17212f20}
+.r-album-trigger:is(:hover,:focus-visible) .r-album-sheet-2{transform:translateX(-16%) translateY(-3px) rotate(17deg) scale(.97);box-shadow:0 12px 18px #17212f20}
+.r-album-sheet .r-image,.r-album-sheet .rm-image{height:100%;width:100%;border-radius:inherit;overflow:hidden}.r-album-sheet img{height:100%;width:100%;object-fit:cover!important}
+.r-album-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:#637181;font-size:var(--font-sm)}
+.r-album-trigger{display:block;width:100%;border:0;border-radius:16px;background:transparent;color:inherit;padding:0;cursor:pointer;text-align:center;min-width:0}
+.r-album-trigger:hover{background:#f7fbff}.r-album-trigger[aria-pressed=true]{background:#e7f3ff}.r-album-trigger:focus-visible{outline:2px solid #64a5df;outline-offset:2px}
+.r-album-title{display:block;margin:8px 12px 3px;font-weight:600;font-size:var(--font-md);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.r-album-meta{display:flex;align-items:center;justify-content:center;gap:6px;color:#66717d;font-size:var(--font-sm);padding:0 8px 12px;flex-wrap:wrap}
+.r-album-header{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:24px 28px 16px}.r-album-header h1{font-size:24px;margin:0 0 6px}.r-album-header p{color:#66717d;margin:0;font-size:var(--font-sm)}
+.r-album-rail{width:82px;flex:none;display:flex;flex-direction:column;gap:7px;padding:18px 10px;background:#fafbfc;border-right:1px solid #e8ecf1;overflow:auto}.r-album-rail button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;min-height:62px;flex:none;border:0;border-radius:12px;background:none;color:#626e7a;font:inherit;font-size:var(--font-sm);cursor:pointer}.r-album-rail button[aria-pressed=true]{color:#171a1f;background:#e7f3ff;font-weight:600}.r-album-rail button:hover{background:#edf5fc}.r-album-rail button:focus-visible{outline:2px solid #64a5df;outline-offset:1px}.r-album-rail .r-album-tools{margin-top:auto}
+.r-album-workspace>.r-topbar .r-segmented{display:none}
+.r-album-filter-toggle{position:absolute;right:12px;top:12px}.r-group-filter-panel{width:220px;flex:none;display:flex;min-height:0}.r-group-filter-panel .r-sidebar{width:100%}
+@media(prefers-reduced-motion:reduce){.r-album-sheet{transition:none}.r-album-trigger:is(:hover,:focus-visible) .r-album-sheet-0{transform:translateX(-50%) translateY(-8px)}}
+@media(max-width:900px){.r-album-rail{width:66px;padding:12px 5px}.r-album-header{padding:18px 16px}.r-group-filter-panel{width:180px}}

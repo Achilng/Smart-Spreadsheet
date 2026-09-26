@@ -17,7 +17,7 @@ let directory: string | null | undefined;
 export async function loadGroups(): Promise<void> {
   const request = ++listGeneration;
   useGroups.setState({ loading: true, error: null });
-  try { const list = await listGroups(); if (request === listGeneration) useGroups.setState({ list }); }
+  try { const list = await listGroups(); if (request === listGeneration) useGroups.setState(state => ({ list, expanded: state.expanded.filter(key => key === "ungrouped" || list.some(group => String(group.id) === key)) })); }
   catch (error) { if (request === listGeneration) useGroups.setState({ error: errorText(error) }); }
   finally { if (request === listGeneration) useGroups.setState({ loading: false }); }
 }
