@@ -7,7 +7,7 @@ import { recordHistory } from "./history";
 import { notifyToolboxLibraryChanged } from "../../lib/windows/library-events";
 
 export type DuplicateMode = Exclude<DedupeMode, "none">;
-export const useDuplicates = create<{ mode: DuplicateMode; sortByCount: boolean; clusters: DedupeCluster[]; expanded: string[]; members: Record<string, SectionMembers>; renderLimits: Record<string, number>; loading: boolean; error: string | null; version: number }>(() => ({ mode: "artists", sortByCount: true, clusters: [], expanded: [], members: {}, renderLimits: {}, loading: false, error: null, version: 0 }));
+export const useDuplicates = create<{ mode: DuplicateMode; layout: "shelf" | "list"; sortByCount: boolean; clusters: DedupeCluster[]; expanded: string[]; members: Record<string, SectionMembers>; renderLimits: Record<string, number>; loading: boolean; error: string | null; version: number }>(() => ({ mode: "artists", layout: "shelf", sortByCount: true, clusters: [], expanded: [], members: {}, renderLimits: {}, loading: false, error: null, version: 0 }));
 let signature = "", generation = 0, listGeneration = 0;
 let directory: string | null | undefined;
 function args(): Parameters<typeof listDedupeClusters> { const q = useRows.getState().query; return [useDuplicates.getState().mode, [...q.tags], q.tagMode, q.singleArtistOnly, q.hasVibe, q.untaggedOnly, structuredClone(q.filters), q.hideGrouped]; }
@@ -47,6 +47,10 @@ export async function loadClusterMembers(key: string, more = false): Promise<voi
     if (request !== generation) return;
     useDuplicates.setState(state => ({ members: { ...state.members, [key]: { rows: more ? [...(current?.rows ?? []), ...page.rows] : page.rows, totalCount: page.totalCount, loading: false, error: null } } }));
   } catch (error) { if (request === generation) useDuplicates.setState(state => ({ members: { ...state.members, [key]: { ...state.members[key], loading: false, error: errorText(error) } } })); }
+}
+export function loadClusterPreview(key: string) {
+  const [mode, ...filters] = args();
+  return getDedupeClusterMembers(mode, key, ...filters, 0, 3);
 }
 export function toggleCluster(key: string): void {
   const state = useDuplicates.getState();

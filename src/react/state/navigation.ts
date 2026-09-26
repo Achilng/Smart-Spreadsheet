@@ -13,7 +13,7 @@ import { loadClusterMembers, syncDuplicates, useDuplicates } from "./duplicates"
 const route = () => ({ view: useWorkspace.getState().viewMode, query: structuredClone(useRows.getState().query), groupSort: useGroups.getState().sortByCount, duplicateMode: useDuplicates.getState().mode, duplicateSort: useDuplicates.getState().sortByCount });
 const sections = (state: ReturnType<typeof useGroups.getState> | ReturnType<typeof useDuplicates.getState>) => ({ expanded: [...state.expanded], limits: { ...state.renderLimits }, counts: Object.fromEntries(Object.entries(state.members).map(([key, value]) => [key, value.rows.length])) });
 const position = () => ({ scroll: browsingScrollSnapshot(), activeId: useRows.getState().activeRow?.id ?? null,
-  detailOpen: useWorkspace.getState().detailOpen, cardSize: useWorkspace.getState().galleryCardSize, rowHeight: useWorkspace.getState().tableRowHeight, groups: sections(useGroups.getState()), duplicates: sections(useDuplicates.getState()) });
+  detailOpen: useWorkspace.getState().detailOpen, cardSize: useWorkspace.getState().galleryCardSize, rowHeight: useWorkspace.getState().tableRowHeight, groups: sections(useGroups.getState()), duplicates: { ...sections(useDuplicates.getState()), layout: useDuplicates.getState().layout } });
 type Route = ReturnType<typeof route>;
 const history = createNavigationHistory<Route, ReturnType<typeof position>>();
 export const useNavigation = create<{ back: string; forward: string; restoring: boolean; token: number }>(() => ({ back: "", forward: "", restoring: false, token: 0 }));
@@ -72,7 +72,7 @@ export async function navigateHistory(direction: -1 | 1): Promise<void> {
     await syncGroups(); syncDuplicates();
     if (current !== serial) return;
     useGroups.setState({ expanded: [...entry.position.groups.expanded], renderLimits: { ...entry.position.groups.limits } });
-    useDuplicates.setState({ expanded: [...entry.position.duplicates.expanded], renderLimits: { ...entry.position.duplicates.limits } });
+    useDuplicates.setState({ expanded: [...entry.position.duplicates.expanded], renderLimits: { ...entry.position.duplicates.limits }, layout: entry.position.duplicates.layout });
     const restoreMembers = async (count: number, get: () => { rows: unknown[]; totalCount: number; loading: boolean; error: string | null } | undefined, load: (more?: boolean) => Promise<void>, subscribe: (listener: () => void) => () => void) => {
       if (current !== serial) return;
       await load();

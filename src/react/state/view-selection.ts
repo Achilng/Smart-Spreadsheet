@@ -24,7 +24,10 @@ export async function selectAllCurrentView(): Promise<void> {
     await append(offset => queryRows({ ...query, offset, limit: 500, dedupe: "none", groupView: false, hideGrouped: true, sort: "timeAsc" }));
   } else {
     const filters = [useDuplicates.getState().mode, query.tags, query.tagMode, query.singleArtistOnly, query.hasVibe, query.untaggedOnly, query.filters, query.hideGrouped] as const;
-    for (const cluster of await listDedupeClusters(...filters)) {
+    const duplicates = useDuplicates.getState();
+    const opened = duplicates.layout === "shelf" ? duplicates.expanded[0] : undefined;
+    const clusters = opened !== undefined ? [{ key: opened }] : await listDedupeClusters(...filters);
+    for (const cluster of clusters) {
       const [dedupe, ...rest] = filters;
       await append(offset => getDedupeClusterMembers(dedupe, cluster.key, ...rest, offset, 500));
     }
