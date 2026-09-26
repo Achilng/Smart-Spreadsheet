@@ -2,7 +2,7 @@
 .r-album-theme .btn-primary{background:#171a1f;border-color:#171a1f;color:#fff}.r-album-theme .btn-primary:hover:not(:disabled){background:#30353c}
 .r-album-theme .r-canvas-head{padding:24px 28px 0}.r-album-theme .r-chips{background:#fff}
 .r-album-stack{display:block;position:relative;height:var(--album-stage-height,228px);width:100%;perspective:850px;isolation:isolate;--album-rx:0deg;--album-ry:0deg}
-.r-album-sheet{display:block;position:absolute;top:24px;left:50%;width:58%;max-width:180px;aspect-ratio:832/1216;border:3px solid #fff;border-radius:16px;background:#f2f5f8;box-shadow:0 7px 15px #17212f1a;overflow:hidden;pointer-events:none;transition:transform 440ms cubic-bezier(.2,.8,.25,1),box-shadow 440ms;backface-visibility:hidden}
+.r-album-sheet{display:block;position:absolute;top:20px;left:50%;width:58%;max-width:var(--album-cover-max,130px);aspect-ratio:832/1216;border:3px solid #fff;border-radius:13px;background:#f2f5f8;box-shadow:0 7px 15px #17212f1a;overflow:hidden;pointer-events:none;transition:transform 440ms cubic-bezier(.2,.8,.25,1),box-shadow 440ms;backface-visibility:hidden}
 .r-album-sheet-0{z-index:3;transform:translateX(-50%)}
 .r-album-sheet-1{z-index:1;transform:translateX(-70%) rotate(-10deg) scale(.93)}
 .r-album-sheet-2{z-index:2;transform:translateX(-30%) rotate(10deg) scale(.93)}
@@ -20,3 +20,5 @@
 .r-album-filter-toggle{position:absolute;right:12px;top:12px}.r-library-filter-panel{width:220px;flex:none;display:flex;min-height:0}.r-library-filter-panel .r-sidebar{width:100%}
 @media(prefers-reduced-motion:reduce){.r-album-sheet{transition:none}.r-album-trigger:is(:hover,:focus-visible) .r-album-sheet-0{transform:translateX(-50%) translateY(-8px)}}
 @media(max-width:900px){.r-album-rail{width:66px;padding:12px 5px}.r-album-header{padding:18px 16px}.r-album-theme .r-canvas-head{padding:18px 16px 0}.r-library-filter-panel{width:180px}}
+
+.r-album-header .r-album-heading{display:flex;align-items:baseline;gap:8px;margin:0;font-size:24px;font-weight:600}.r-album-heading-count{font-size:var(--font-sm);font-weight:400;color:var(--text-3);font-variant-numeric:tabular-nums}

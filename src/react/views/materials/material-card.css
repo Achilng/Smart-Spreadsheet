@@ -1,5 +1,5 @@
 .rm-album-card{position:relative;height:100%;width:100%;min-width:0;color:#171a1f;isolation:isolate}.rm-album-card.is-open{z-index:5}
-.rm-album-card .r-album-title{font-family:STSong,SimSun,serif;font-size:20px;font-weight:400;line-height:28px;margin-top:6px}
+
 .rm-album-tags{display:block;margin:2px 12px 0;font-size:var(--font-sm);line-height:20px;color:#66717d;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .rm-album-meta{display:flex;align-items:center;justify-content:center;gap:10px;font-size:var(--font-sm);margin-top:7px;height:28px;white-space:nowrap;color:#66717d}.rm-album-meta>span,.rm-album-meta>button{display:flex;align-items:center;gap:5px}.rm-album-meta>button{font:inherit;color:#171a1f;border:0;border-radius:7px;padding:5px 7px;background:#edf6ff;cursor:pointer}
 .rm-look-panel{position:absolute;z-index:6;inset:20px 12px auto;max-height:calc(100% - 28px);display:flex;flex-direction:column;padding:12px;background:#fff;border:1px solid #c6def2;border-radius:14px;box-shadow:0 12px 35px #15283b24;box-sizing:border-box}
