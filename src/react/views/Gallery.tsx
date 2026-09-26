@@ -1,6 +1,11 @@
-import { useEffect, useLayoutEffect, useRef, type CSSProperties } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { Star } from "lucide-react";
+import { setFavorite, type RowRecord } from "../../lib/api";
+import { notify } from "../state/notices";
+import { errorText } from "../../lib/utils/format";
+import { notifyToolboxLibraryChanged } from "../../lib/windows/library-events";
 import { galleryCellPosition, galleryLayout, galleryVisibleIndices } from "../../lib/images/gallery-layout";
-import { clearFilters, ensurePage, PAGE_SIZE, reloadRows, useRows } from "../state/library";
+import { clearFilters, ensurePage, PAGE_SIZE, patchRowFields, reloadRows, useLibrary, useRows } from "../state/library";
 import { useWorkspace } from "../state/workspace";
 import { isSelected, selectedCount, toggleRow, useSelection } from "../state/selection";
 import { Thumbnail } from "../ui/Thumbnail";
@@ -8,13 +13,40 @@ import { Button, Checkbox } from "../ui/controls";
 import { rowFileName, rowResolution } from "../../lib/utils/row-display";
 import { modelVersionBadge } from "../../lib/utils/model-version";
 import { tagColorFor } from "../../lib/utils/tag-colors";
-import { useLibrary } from "../state/library";
 import { thumbnails } from "../ui/use-image";
 import { useViewport } from "../ui/use-viewport";
 import { rememberVisibleRange } from "../../lib/stores/view-state";
 
 import { RowContextMenu } from "../ui/RowContextMenu";
 import { beginFileDrag } from "../state/file-drag";
+
+const savingFavorites = new Set<string>();
+
+function FavoriteButton({ row }: { row: RowRecord }) {
+  const [saving, setSaving] = useState(false);
+  const toggleFavorite = async () => {
+    const directory = useLibrary.getState().snapshot?.dataDirectory;
+    const key = `${directory}:${row.id}`;
+    if (savingFavorites.has(key)) return;
+    savingFavorites.add(key);
+    setSaving(true);
+    try {
+      const favorite = !row.favorite;
+      if (await setFavorite(row.id, favorite) === 0) throw new Error("图片已不存在");
+      if (useLibrary.getState().snapshot?.dataDirectory !== directory) return;
+      patchRowFields(row.id, { favorite }, { resetScroll: false });
+      notifyToolboxLibraryChanged("main");
+    } catch (error) {
+      notify(`收藏更新失败：${errorText(error)}`, "error");
+    } finally {
+      savingFavorites.delete(key);
+      setSaving(false);
+    }
+  };
+  return <button type="button" className="r-card-favorite" aria-label={`${row.favorite ? "取消收藏" : "收藏"}第 ${row.sourceOrdinal} 行`} title={row.favorite ? "取消收藏" : "收藏"} aria-pressed={row.favorite} disabled={saving} onMouseDown={event => event.stopPropagation()} onDoubleClick={event => event.stopPropagation()} onClick={event => { event.stopPropagation(); void toggleFavorite(); }}>
+    <Star size={20} strokeWidth={1.8} fill={row.favorite ? "currentColor" : "none"} aria-hidden="true" />
+  </button>;
+}
 
 export function Gallery() {
   const dragged = useRef(false);
@@ -53,6 +85,7 @@ export function Gallery() {
         const checked = isSelected(row.id, selection);
         return <RowContextMenu key={row.id} row={row}><div onContextMenu={() => useRows.setState({ activeRow: row })} role="listitem" className="r-card" data-active={activeId === row.id} data-checked={checked} data-selecting={selectionActive} style={style}>
           <Checkbox aria-label={`选择第 ${row.sourceOrdinal} 行`} className="r-card-checkbox" checked={checked} onClick={event => toggleRow(row.id, index, event.shiftKey)} />
+          <FavoriteButton row={row} />
           <button type="button" className="r-thumb" aria-label={`查看第 ${row.sourceOrdinal} 行详情`} aria-pressed={activeId === row.id} onMouseDown={event => { dragged.current = false; if (row.imagePath || row.storedImagePath) beginFileDrag(event.nativeEvent, row.id, () => { dragged.current = true; }); }} onClick={event => {
             if (dragged.current) { dragged.current = false; return; }
             if (event.ctrlKey || event.metaKey || (event.shiftKey && selection.anchor !== null)) toggleRow(row.id, index, event.shiftKey);

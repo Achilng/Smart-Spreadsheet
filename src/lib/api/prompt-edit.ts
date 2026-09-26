@@ -32,6 +32,10 @@ export function updateNote(rowId: number, note: string): Promise<number> {
   return invoke<number>("update_note", { rowId, note });
 }
 
+export function setFavorite(rowId: number, favorite: boolean): Promise<number> {
+  return invoke<number>("set_favorite", { rowId, favorite });
+}
+
 export function updateCharacterPrompt(
   rowId: number,
   newPrompt: string,

@@ -83,6 +83,7 @@ pub struct RowQuery {
 #[serde(rename_all = "camelCase")]
 pub struct RowRecord {
     pub id: i64,
+    pub favorite: bool,
     pub batch_id: i64,
     pub source_ordinal: u32,
     pub time: Option<String>,
@@ -868,7 +869,7 @@ pub(super) fn query_page_metadata(connection: &Connection) -> Result<Vec<RowReco
                 rows.generation_model, rows.generation_sampler, rows.generation_steps,
                 rows.generation_seed, rows.generation_scale,
                 rows.generation_cfg_rescale, rows.generation_noise_schedule,
-                rows.metadata_failed, rows.vibe_reference_count, rows.group_id, groups.name, rows.artist_llm
+                rows.metadata_failed, rows.vibe_reference_count, rows.group_id, groups.name, rows.artist_llm, rows.favorite
          FROM {PAGE_ROWS_TABLE} AS page
          JOIN rows ON rows.id = page.id
          LEFT JOIN groups ON groups.id = rows.group_id
@@ -907,6 +908,7 @@ pub(super) fn query_page_metadata(connection: &Connection) -> Result<Vec<RowReco
                 group_id: row.get(23)?,
                 group_name: row.get(24)?,
                 artist_llm: row.get(25)?,
+                favorite: row.get(26)?,
                 tags: Vec::new(),
             })
         })?
@@ -976,6 +978,42 @@ mod tests {
         FilterTextOperator, FilterVibeOperator,
     };
     use super::*;
+
+    #[test]
+    fn favorites_refresh_cached_pages_and_filtered_selection() {
+        let mut database = tagged_database();
+        let mut query = RowQuery {
+            offset: 0, limit: 1, tags: vec![], tag_mode: TagMatchMode::And,
+            dedupe: DedupeMode::None, single_artist_only: false,
+            artist_filter: String::new(), has_vibe: false, untagged_only: false,
+            filters: vec![LibraryFilter::Favorite], group_view: false,
+            hide_grouped: false, search: String::new(),
+        };
+        assert_eq!(database.query_rows(&query).unwrap().total_count, 0);
+        assert_eq!(database.set_favorite(2, true).unwrap(), 1);
+        assert_eq!(database.set_favorite(3, true).unwrap(), 1);
+        let first = database.query_rows(&query).unwrap();
+        assert_eq!(first.total_count, 2);
+        assert_eq!(first.rows[0].id, 2);
+        assert!(first.rows[0].favorite);
+        query.offset = 1;
+        assert_eq!(database.query_rows(&query).unwrap().rows[0].id, 3);
+        let selection = super::super::RowSelection::Filtered {
+            tags: vec![], tag_mode: TagMatchMode::And, dedupe: DedupeMode::None,
+            single_artist_only: false, artist_filter: String::new(), has_vibe: false,
+            untagged_only: false, filters: query.filters.clone(),
+            search: String::new(), excluded_row_ids: vec![],
+        };
+        assert_eq!(database.selected_row_ids(&selection).unwrap(), vec![2, 3]);
+        query.offset = 0;
+        query.tags = vec!["Blue".into()];
+        assert_eq!(database.query_rows(&query).unwrap().rows[0].id, 3);
+        database.set_favorite(3, false).unwrap();
+        assert_eq!(database.query_rows(&query).unwrap().total_count, 0);
+        assert_eq!(database.selected_row_ids(&selection).unwrap(), vec![2]);
+        assert!(!database.get_rows_by_ids(&[3]).unwrap()[0].favorite);
+        assert_eq!(database.set_favorite(9999, true).unwrap(), 0);
+    }
 
     #[test]
     fn paginates_rows_stably_and_attaches_sorted_tags() {

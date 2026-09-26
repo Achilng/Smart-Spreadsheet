@@ -118,6 +118,7 @@ pub enum FilterGenerationNumberField {
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum LibraryFilter {
+    Favorite,
     Tag {
         operator: FilterTagOperator,
         #[serde(default)]
@@ -285,6 +286,7 @@ fn prompt_contains(value: &str, case_sensitive: bool, params: &mut Vec<Value>) -
 
 fn compile_filter(filter: &LibraryFilter, params: &mut Vec<Value>) -> String {
     match filter {
+        LibraryFilter::Favorite => "rows.favorite = 1".into(),
         LibraryFilter::Tag { operator, values } => {
             let values = normalized_values(values);
             match operator {

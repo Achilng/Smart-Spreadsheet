@@ -3,6 +3,7 @@ import { splitListText as splitValues } from "../../lib/utils/list-text";
 type OptionalMode<T extends string> = "any" | T;
 
 export interface FilterDraft {
+  favoriteOnly: boolean;
   tagMode: OptionalMode<"hasAll" | "hasAny" | "hasNone" | "isEmpty">;
   tagValues: string[];
   tagSearch: string;
@@ -31,6 +32,7 @@ const comparison = (): FilterNumericComparison => ({ operator: "equal", value: 0
 
 export function emptyFilterDraft(): FilterDraft {
   return {
+    favoriteOnly: false,
     tagMode: "any",
     tagValues: [],
     tagSearch: "",
@@ -60,6 +62,7 @@ export function hydrateFilterDraft(filters: LibraryFilter[]): FilterDraft {
   const draft = emptyFilterDraft();
   for (const filter of filters) {
     switch (filter.type) {
+      case "favorite": draft.favoriteOnly = true; break;
       case "tag": draft.tagMode = filter.operator; draft.tagValues = [...filter.values]; break;
       case "group": draft.groupMode = filter.operator; draft.groupId = filter.groupId; break;
       case "artist": draft.artistMode = filter.operator; draft.artistText = filter.values.join(", "); break;
@@ -83,6 +86,7 @@ function validComparison(value: FilterNumericComparison, integer = false, positi
 
 export function buildFilters(draft: FilterDraft): LibraryFilter[] {
   const filters: LibraryFilter[] = [];
+  if (draft.favoriteOnly) filters.push({ type: "favorite" });
   if (draft.tagMode !== "any") {
     if (draft.tagMode !== "isEmpty" && draft.tagValues.length === 0) {
       throw new Error("请选择至少一个 Tag。");

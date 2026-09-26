@@ -30,6 +30,7 @@ function rowDto(row: MockRow): RowRecord {
     id: row.id,
     batchId: 1,
     sourceOrdinal: row.id,
+    favorite: false,
     time: row.time ?? "2026-08-01 12:00",
     positivePrompt: row.positivePrompt ?? null,
     characterPrompt: row.characterPrompt ?? null,
@@ -244,6 +245,7 @@ export function installIpcMock(): void {
       }
       case "prompt": return textMatches([row.positivePrompt, row.characterPrompt, row.negativePrompt].filter(Boolean).join("\n"), filter.values, filter.operator, filter.caseSensitive);
       case "vibe": return filter.operator === "hasAny" ? (row.vibeReferenceCount ?? 0) > 0 : filter.operator === "hasNone" ? row.vibeReferenceCount === 0 : !!filter.comparison && numeric(row.vibeReferenceCount, filter.comparison);
+      case "favorite": return row.favorite;
       case "note": return filter.operator === "isNotEmpty" ? !!row.note?.trim() : textMatches(row.note ?? "", [filter.value], filter.operator, filter.caseSensitive);
       case "metadata": return filter.parsed !== row.metadataFailed;
       case "orientation": return filter.orientation === "landscape" ? row.imageWidth! > row.imageHeight! : filter.orientation === "portrait" ? row.imageWidth! < row.imageHeight! : row.imageWidth === row.imageHeight;
@@ -494,6 +496,7 @@ export function installIpcMock(): void {
         case "update_positive_prompt":
         case "update_character_prompt":
         case "update_negative_prompt":
+        case "set_favorite":
         case "update_note": {
           const row = libraryRows.find(item => item.id === payload.rowId);
           if (!row) throw new Error("图片不存在");
@@ -501,6 +504,7 @@ export function installIpcMock(): void {
           if (command === "update_character_prompt") row.characterPrompt = String(payload.newPrompt);
           if (command === "update_negative_prompt") row.negativePrompt = String(payload.newPrompt);
           if (command === "update_note") row.note = String(payload.note).trim() || null;
+          if (command === "set_favorite") row.favorite = Boolean(payload.favorite);
           return command === "update_positive_prompt" || command === "update_character_prompt" ? { affectedRows: 1, newArtists: row.artists } : 1;
         }
         case "restore_mutable_row_states": {

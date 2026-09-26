@@ -11,6 +11,7 @@ export interface FilterNumericComparison {
 }
 
 export type LibraryFilter =
+  | { type: "favorite" }
   | { type: "tag"; operator: "hasAll" | "hasAny" | "hasNone" | "isEmpty"; values: string[] }
   | { type: "group"; operator: "is" | "isNot" | "isEmpty"; groupId: number | null }
   | { type: "artist"; operator: "containsAny" | "containsNone" | "isSingle" | "isMultiple" | "isEmpty"; values: string[] }

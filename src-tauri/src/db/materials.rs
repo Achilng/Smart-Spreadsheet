@@ -374,7 +374,7 @@ mod tests {
         connection.execute_batch("INSERT INTO tags(id,name) VALUES (1,'OC'); INSERT INTO material_tags VALUES (7,1); PRAGMA user_version=19;").unwrap();
         let db = Database::initialize(connection).unwrap();
         let item = db.material(7).unwrap();
-        assert_eq!(db.schema_version().unwrap(), 21);
+        assert_eq!(db.schema_version().unwrap(), super::super::CURRENT_SCHEMA_VERSION);
         assert_eq!(item.versions.len(), 1);
         assert_eq!(item.versions[0].name, "默认版本");
         assert_eq!(item.versions[0].text, "  old\ntext  ");
@@ -437,7 +437,7 @@ mod tests {
             .unwrap();
         connection.pragma_update(None, "user_version", 18).unwrap();
         let mut db = Database::initialize(connection).unwrap();
-        assert_eq!(db.schema_version().unwrap(), 21);
+        assert_eq!(db.schema_version().unwrap(), super::super::CURRENT_SCHEMA_VERSION);
         let draft = MaterialDraft {
             id: None,
             title: "素材".into(),

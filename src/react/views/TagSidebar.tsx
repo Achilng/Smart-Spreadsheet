@@ -18,6 +18,7 @@ export function TagSidebar({ onFilter }: { onFilter: () => void }) {
   const entries = [...tags, ...query.tags.filter(name => !tags.some(tag => tag.name === name)).map(name => ({ name, rowCount: 0 }))];
   return <aside className="r-sidebar"><header className="r-sidebar-header"><h3>筛选</h3><p>{filtered ? "已启用筛选" : "未启用筛选"}</p></header>
     <section className="r-filter-group" aria-label="去重与筛选"><h4>显示</h4>
+      <label className="r-check-row"><Checkbox checked={query.filters.some(filter => filter.type === "favorite")} onCheckedChange={checked => setQuery({ filters: [...query.filters.filter(filter => filter.type !== "favorite"), ...(checked ? [{ type: "favorite" } as const] : [])] })} /><span>仅显示收藏</span></label>
       {([ ["positivePrompt", "按正向提示词去重"], ["artists", "按画师串去重"] ] as const).map(([mode, label]) => <label key={mode} className="r-check-row">
         <Checkbox disabled={view === "group"} checked={query.dedupe === mode} onCheckedChange={checked => setQuery({ dedupe: checked ? mode : "none" })} /><span>{label}</span>
       </label>)}

@@ -185,7 +185,7 @@ export function rowAt(index: number): RowRecord | undefined {
   return useRows.getState().pages.get(Math.floor(index / PAGE_SIZE))?.[index % PAGE_SIZE];
 }
 
-export function patchRowFields(rowId: number, fields: Partial<RowRecord>): void {
+export function patchRowFields(rowId: number, fields: Partial<RowRecord>, options: { resetScroll?: boolean } = {}): void {
   const state = useRows.getState();
   const pages = new Map(state.pages);
   for (const [key, rows] of pages) {
@@ -193,5 +193,5 @@ export function patchRowFields(rowId: number, fields: Partial<RowRecord>): void 
   }
   useRows.setState({ pages, activeRow: state.activeRow?.id === rowId ? { ...state.activeRow, ...fields } : state.activeRow });
   // Prompt, tag and note edits can change filter membership and duplicate groups.
-  void reloadRows({ resetScroll: state.query.sort === "recentlyUpdated", keepActive: true });
+  void reloadRows({ resetScroll: options.resetScroll ?? state.query.sort === "recentlyUpdated", keepActive: true });
 }

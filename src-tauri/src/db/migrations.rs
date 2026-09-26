@@ -1,4 +1,9 @@
-pub const CURRENT_SCHEMA_VERSION: u32 = 21;
+pub const CURRENT_SCHEMA_VERSION: u32 = 22;
+
+pub const MIGRATION_22: &str = r#"
+ALTER TABLE rows ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0 CHECK (favorite IN (0, 1));
+CREATE INDEX idx_rows_favorites ON rows(id) WHERE favorite = 1;
+"#;
 
 pub const MIGRATION_21: &str = r#"
 ALTER TABLE rows ADD COLUMN artist_llm TEXT CHECK (artist_llm IS NULL OR json_valid(artist_llm));

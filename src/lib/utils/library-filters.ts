@@ -24,6 +24,7 @@ function comparisonLabel(filter: { comparison: { operator: keyof typeof numericL
 
 export function libraryFilterLabel(filter: LibraryFilter, groups: readonly GroupSummary[]): string {
   switch (filter.type) {
+    case "favorite": return "仅显示收藏";
     case "tag": {
       if (filter.operator === "isEmpty") return "Tag：无 Tag";
       const operator = { hasAll: "包含全部", hasAny: "包含任意", hasNone: "不包含" }[filter.operator];

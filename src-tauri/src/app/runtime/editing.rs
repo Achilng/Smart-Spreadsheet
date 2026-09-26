@@ -2,6 +2,10 @@ use super::{AppRuntime, AppRuntimeError};
 use crate::db::{MutableRowState, RowSelection};
 
 impl AppRuntime {
+    pub(crate) fn set_favorite(&self, row_id: i64, favorite: bool) -> Result<u64, AppRuntimeError> {
+        self.with_database_mut(|db| db.set_favorite(row_id, favorite))
+    }
+
     pub(crate) fn restore_mutable_row_states(
         &self,
         states: &[MutableRowState],

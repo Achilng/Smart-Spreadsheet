@@ -6,6 +6,7 @@ mod batches;
 mod compare;
 mod delete;
 mod export;
+mod favorites;
 mod groups;
 mod hashes;
 mod history;
@@ -400,6 +401,10 @@ fn apply_pending_migrations(
         transaction.execute_batch(migrations::MIGRATION_21)?;
         version = 21;
     }
+    if version == 21 {
+        transaction.execute_batch(migrations::MIGRATION_22)?;
+        version = 22;
+    }
     debug_assert_eq!(version, CURRENT_SCHEMA_VERSION);
     transaction.pragma_update(None, "user_version", version)?;
     transaction.commit()?;
@@ -509,6 +514,40 @@ mod tests {
             .unwrap();
         backfill_missing_artist_strings(&mut database.connection).unwrap();
         assert_eq!(database.get_compare_sample(2).unwrap().row.artists, None);
+    }
+
+    #[test]
+    fn upgrades_v21_and_preserves_favorites_after_reopening() {
+        let temporary = TemporaryDatabase::new();
+        {
+            let connection = Connection::open(&temporary.path).unwrap();
+            for sql in [SCHEMA_17, MIGRATION_18, migrations::MIGRATION_19,
+                migrations::MIGRATION_20, migrations::MIGRATION_21] {
+                connection.execute_batch(sql).unwrap();
+            }
+            connection.execute_batch(
+                "INSERT INTO import_batches(id, source_type, source_path, imported_at, added_count, skipped_count)
+                 VALUES (1, 'folder', 'test', '2026-09-26', 1, 0);
+                 INSERT INTO rows(id, batch_id, source_ordinal, identity, note)
+                 VALUES (1, 1, 1, 'favorite-test', '保留原备注');
+                 PRAGMA user_version = 21;"
+            ).unwrap();
+        }
+        {
+            let mut database = Database::open(&temporary.path).unwrap();
+            assert_eq!(database.schema_version().unwrap(), CURRENT_SCHEMA_VERSION);
+            let row = database.get_rows_by_ids(&[1]).unwrap().remove(0);
+            assert!(!row.favorite);
+            assert_eq!(row.note.as_deref(), Some("保留原备注"));
+            database.set_favorite(1, true).unwrap();
+        }
+        {
+            let mut database = Database::open(&temporary.path).unwrap();
+            assert!(database.get_rows_by_ids(&[1]).unwrap()[0].favorite);
+            database.set_favorite(1, false).unwrap();
+        }
+        let mut database = Database::open(&temporary.path).unwrap();
+        assert!(!database.get_rows_by_ids(&[1]).unwrap()[0].favorite);
     }
 
     #[test]
