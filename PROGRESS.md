@@ -4,6 +4,8 @@
 
 ## 当前状态
 
+- 2026-09-26 按用户要求编译并启动收藏功能的 Tauri dev：`npm run tauri -- dev` 持续运行，Vite 地址 http://127.0.0.1:1422，Rust 文件监听开启；debug 编译通过，`target/debug/smart-spreadsheet.exe` 开发窗口已打开并正常响应。使用当前资料库；启动前确认程序已退出且 WAL 为空，将数据库备份至 `D:/应用/智能表格/backups/20260926-before-favorites-dev/smart-spreadsheet.sqlite3`，140,115,968 字节且 SHA-256 与源文件一致。启动脚本、stdout / stderr 日志及 WebView2 开发缓存位于 `D:/Agent/Agent_temp`；正式安装 exe 未替换。
+
 - 2026-09-26 完成图片收藏：画廊右上角悬停显示空心星标、收藏后常驻亮星，再次点击取消；左侧提供“仅显示收藏”，与搜索、Tag、分页、全选及导出共用筛选结果。数据库 v22 自动升级，收藏随库保存，失败显示原因且保留原状态，连续点击只提交一次，VIBE 标记避开星标。类型检查、生产构建、38 项前端测试、306 项后端测试通过（3 项原有性能测试忽略）；后端覆盖 v21 升级与关闭重开后的收藏 / 取消保存、分页、缓存失效、Tag 组合及全选结果。两处旧素材升级测试改用当前 schema 版本常量。Edge 模拟页面通过悬停 / 常驻、收藏 / 取消、筛选移除、过滤弹窗保留条件、表格切换、键盘操作、保存失败和 900×600 / 1440×900 布局检查。临时截图、测试日志及数据库在 D:/Agent/Agent_temp；未操作正式资料库，未替换正式安装版。
 
 - 2026-09-26 已发布 v_41（0.12.15）：删除 LLM 画风提取页面 Node.js 安装提示，纳入 v_40 以来素材库 / 多版本、React 界面与浏览体验、外置 LLM 提取及取消导入大小限制等更新；发布说明见 .github/release-notes/v_41.md。本机 release 构建通过，已更新 D:/应用/智能表格/smart-spreadsheet.exe 至 0.12.15 并重新打开，窗口响应正常。旧版备份在 D:/应用/智能表格/backups/20260926-001036-before-v41/；新版 SHA-256：20BEFB8159B0142438293E252EE0259BA60E0127A01FE5A8EE87DD13635D3DDA，备份与旧版哈希一致。GitHub 发布流程 36158467550 已通过整套前后端测试；按用户后续要求取消云端构建（已确认 cancelled），改用本机已构建 exe 打包、签名并直接发布 https://github.com/Achilng/Smart-Spreadsheet/releases/tag/v_41。安装包、.sig、latest.json 上传大小 / SHA-256 校验通过；公开最新版本入口返回 0.12.15，下载安装包哈希与本地产物一致：7C10A57B5C53A66C0EBCD8693DFE733F630445E2803AA2D487D7E470519DACA9。本机安装 exe 与 NSIS 输入在类型标记归一化后完全一致。
