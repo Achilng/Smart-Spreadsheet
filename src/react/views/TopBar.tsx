@@ -1,8 +1,7 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, X } from "lucide-react";
 import { useWorkspace } from "../state/workspace";
 import { setQuery, useLibrary, useRows } from "../state/library";
-import { VIEW_MODES } from "../../lib/utils/view-modes";
 import { formatCount } from "../../lib/utils/format";
 import { Button, Hint, Menu } from "../ui/controls";
 import { WindowControls } from "../ui/WindowControls";
@@ -15,7 +14,6 @@ import { setMaterialSearch, useMaterials } from "../state/materials";
 
 export function TopBar({ onUpdateImport, onToolbox }: { onUpdateImport: () => void; onToolbox: () => void }) {
   const view = useWorkspace(state => state.viewMode);
-  const setView = useWorkspace(state => state.setView);
   const total = useLibrary(state => state.snapshot?.library?.rowCount ?? 0);
   const autoArtistPrefix = useLibrary(state => state.snapshot?.autoArtistPrefixOnImport ?? false);
   const busy = useTasks(state => state.busy);
@@ -30,22 +28,8 @@ export function TopBar({ onUpdateImport, onToolbox }: { onUpdateImport: () => vo
   const [input, setInput] = useState(search);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const composing = useRef(false);
-  const tabs = useRef<HTMLElement>(null);
-  const [indicator, setIndicator] = useState<{ left: number; width: number } | null>(null);
   useEffect(() => { clearTimeout(searchTimer.current); setInput(search); }, [search, navigation.token, materialMode]);
   useEffect(() => () => clearTimeout(searchTimer.current), []);
-  useLayoutEffect(() => {
-    const root = tabs.current;
-    if (!root) return;
-    const update = () => {
-      const active = root.querySelector<HTMLButtonElement>('[aria-pressed="true"]');
-      if (active) setIndicator({ left: active.offsetLeft, width: active.offsetWidth });
-    };
-    update();
-    const observer = new ResizeObserver(update);
-    observer.observe(root);
-    return () => observer.disconnect();
-  }, [view]);
   const applySearch = (value: string) => { if (materialMode) setMaterialSearch(value); else setQuery({ search: value }, searchSession.current); };
   const commit = (value: string) => { clearTimeout(searchTimer.current); applySearch(value); searchSession.current++; };
   const schedule = (value: string) => {
@@ -59,10 +43,6 @@ export function TopBar({ onUpdateImport, onToolbox }: { onUpdateImport: () => vo
       <Hint text={navigation.back ? `后退到 ${navigation.back}` : "没有可后退的浏览记录"}><Button variant="ghost" size="icon" disabled={!navigation.back || navigation.restoring} aria-label="后退" onClick={() => void navigateHistory(-1)}><ArrowLeft size={15} /></Button></Hint>
       <Hint text={navigation.forward ? `前进到 ${navigation.forward}` : "没有可前进的浏览记录"}><Button variant="ghost" size="icon" disabled={!navigation.forward || navigation.restoring} aria-label="前进" onClick={() => void navigateHistory(1)}><ArrowRight size={15} /></Button></Hint>
     </div>
-    <nav className="r-segmented" aria-label="视图切换" ref={tabs}>
-      {indicator && <span className="r-segment-indicator" style={{ transform: `translateX(${indicator.left}px)`, width: indicator.width }} />}
-      {VIEW_MODES.map(item => <button key={item.mode} type="button" aria-pressed={view === item.mode} onClick={() => setView(item.mode)}>{item.label}</button>)}
-    </nav>
     <div className="r-title-spacer" data-tauri-drag-region />
     {view !== "promptDocs" && <div className="r-search"><input type="text" placeholder={materialMode ? "搜索素材名称 / 文本内容…" : "搜索文件名 / 提示词 / 画师…"} aria-label={materialMode ? "搜索素材名称和文本" : "搜索文件名、提示词和画师"} value={input}
       onChange={event => { setInput(event.target.value); if (!composing.current) schedule(event.target.value); }}

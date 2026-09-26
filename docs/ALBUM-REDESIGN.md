@@ -2,10 +2,11 @@
 
 ## 范围
 
-分支：`feat/album-groups-materials`。白色背景、淡蓝选中态、黑色主要按钮，仅分组与素材使用相册导航和样式。画廊、表格、重复项及其图片卡片维持原有实现，素材大小调节独立于画廊。
+分支：`feat/album-groups-materials`。主窗口的画廊、分组、素材、表格、文档、重复项统一使用左侧导航、白色背景、淡蓝选中态和黑色主要按钮，切换页面保持同一套框架。画廊保留原有图片卡片和浏览方式；分组、素材使用相册展示，素材大小调节独立于画廊。
 
 ## 使用
 
+- 所有视图从左侧导航切换，顶部保留搜索、历史和导入导出。画廊、表格、分组、重复项共用可展开的“图片筛选”侧栏，默认收起，折叠不清除已选条件；素材保留独立素材筛选，文档保留文档目录。
 - 分组默认进入书架；封面最多展示三张组内图片，悬停展开并轻微跟随鼠标，键盘聚焦也能展开。单张、空相册和未分组都有对应状态。
 - 点击相册进入组内，继续使用原有组内图片列表、选择、右键操作和详情；“所有分组”返回书架。“列表”可切回原来的分节浏览。
 - 顶部搜索分组名称；“图片筛选”展开原有图片筛选栏；“新建 / 管理分组”支持新建、重命名、合并和删除。
@@ -29,7 +30,7 @@
 
 ## 文件范围
 
-- 页面组合：`src/react/App.tsx`、`src/react/views/AlbumNavigation.tsx`。
+- 页面组合：`src/react/App.tsx`、`src/react/views/AlbumNavigation.tsx`、`src/react/views/TopBar.tsx`、`src/react/views/CanvasHeader.tsx`。
 - 通用相册：`src/react/ui/AlbumStack.tsx`、`src/react/ui/album.css`。
 - 分组：`src/react/state/groups.ts`、`src/react/views/groups/GroupBrowseView.tsx`、`GroupAlbumShelf.tsx`、`groups.css`。
 - 素材：`src/react/views/materials/MaterialCard.tsx`、`MaterialImage.tsx`、`MaterialsView.tsx`、`material-card.css`、`materials.css`。

@@ -36,15 +36,14 @@ export function App() {
   const refreshing = useRows(state => state.refreshing);
   const view = useWorkspace(state => state.viewMode);
   const [dialog, setDialog] = useState<string | null>(null);
-  const [groupFilters, setGroupFilters] = useState(false);
+  const [imageFilters, setImageFilters] = useState(false);
   const expandedGroups = useGroups(state => state.expanded);
-  const albumMode = view === "group" || view === "materials";
   useEffect(() => { void initializeLibrary().then(runStartupMaintenance); }, []);
   return <Tooltip.Provider delayDuration={550} skipDelayDuration={150}>
     {!loaded || error || !configured ? <StartupScreen />
-      : <div className={`r-workspace${albumMode ? " r-album-workspace r-album-theme" : ""}`}><TopBar onUpdateImport={() => setDialog("update")} onToolbox={() => void openToolboxWindow().catch(failure => notify(`无法打开工具箱：${errorText(failure)}`, "error"))} />
-        <div className="r-workspace-body">{albumMode && <AlbumNavigation />}<MaterialsView active={view === "materials"} />{view === "promptDocs" ? <PromptDocsView /> : view !== "materials" && <>{view === "group" ? groupFilters && <div className="r-group-filter-panel"><TagSidebar onFilter={() => setDialog("过滤")} /></div> : <TagSidebar onFilter={() => setDialog("过滤")} />}<main className="r-main-area">
-          {refreshing && <div className="r-refresh-bar" role="status" aria-label="正在刷新" />}<CanvasHeader />{view === "table" ? <Table /> : view === "group" ? <GroupBrowseView filtersOpen={groupFilters} onFilters={() => setGroupFilters(value => !value)} /> : view === "duplicates" ? <DuplicateBrowseView /> : <Gallery />}
+      : <div className="r-workspace r-album-workspace r-album-theme"><TopBar onUpdateImport={() => setDialog("update")} onToolbox={() => void openToolboxWindow().catch(failure => notify(`无法打开工具箱：${errorText(failure)}`, "error"))} />
+        <div className="r-workspace-body"><AlbumNavigation /><MaterialsView active={view === "materials"} />{view === "promptDocs" ? <PromptDocsView /> : view !== "materials" && <>{imageFilters && <div className="r-library-filter-panel"><TagSidebar onFilter={() => setDialog("过滤")} /></div>}<main className="r-main-area">
+          {refreshing && <div className="r-refresh-bar" role="status" aria-label="正在刷新" />}<CanvasHeader filtersOpen={imageFilters} onFilters={() => setImageFilters(value => !value)} />{view === "table" ? <Table /> : view === "group" ? <GroupBrowseView filtersOpen={imageFilters} onFilters={() => setImageFilters(value => !value)} /> : view === "duplicates" ? <DuplicateBrowseView /> : <Gallery />}
           <SelectionBar />
         </main>{(view !== "group" || expandedGroups.length > 0) && <DetailPanel />}</>}</div>
       </div>}
