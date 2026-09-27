@@ -75,7 +75,7 @@ export function GroupSectionCard({ row, order, scope }: { row: RowRecord; order:
       if (event.ctrlKey || event.metaKey || event.shiftKey) toggleOrderedRow(row.id, order, scope, event.shiftKey);
       else useRows.setState({ activeRow: row });
     }}>
-      <div className="r-section-thumb">{hasImage ? <Thumbnail rowId={row.id} alt={label} /> : <span className="r-section-no-image"><ImageOff size={22} /><small>无图片</small></span>}{badge && <span className={`version-badge r-section-model ${badge.className}`} title={`作画模型：${row.generationModel}`}>{badge.label}</span>}{Boolean(vibeRefs) && <span className="vibe-badge r-section-vibe">VIBE ×{vibeRefs}</span>}{row.tags.length > 0 && <span className="r-section-tags">{row.tags.slice(0, 2).join(" · ")}{row.tags.length > 2 ? ` +${row.tags.length - 2}` : ""}</span>}</div>
+      <div className="r-section-thumb">{hasImage ? <Thumbnail rowId={row.id} alt={label} /> : <span className="r-section-no-image"><ImageOff size={22} /><small>无图片</small></span>}{badge && <span className={`version-badge r-section-model ${badge.className}`} title={`作画模型：${row.generationModel}`}>{badge.label}</span>}{Boolean(vibeRefs) && <span className="vibe-badge r-section-vibe">VIBE ×{vibeRefs}</span>}{scope !== "groups" && row.tags.length > 0 && <span className="r-section-tags">{row.tags.slice(0, 2).join(" · ")}{row.tags.length > 2 ? ` +${row.tags.length - 2}` : ""}</span>}</div>
       <span className="r-section-label">{label}</span>{resolution && <span className="r-section-resolution">{resolution}</span>}
     </button>
   </div></RowContextMenu>;
