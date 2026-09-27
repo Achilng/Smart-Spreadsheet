@@ -17,11 +17,15 @@ export function GroupBrowseView({ filtersOpen, onFilters }: { filtersOpen: boole
   const taskBusy = useTasks(state => state.busy);
   const [managing, setManaging] = useState(false), [deleting, setDeleting] = useState<GroupSummary | null>(null), [renaming, setRenaming] = useState<GroupSummary | null>(null);
   const [name, setName] = useState(""), [error, setError] = useState<string | null>(null), [busy, setBusy] = useState(false);
-  const [shelf, setShelf] = useState(true), [search, setSearch] = useState("");
+  const shelf = groups.layout === "shelf", search = groups.search;
+  const setShelf = (value: boolean) => useGroups.setState({ layout: value ? "shelf" : "list" });
+  const setSearch = (value: string) => useGroups.setState({ search: value });
   useEffect(() => { syncGroups(); }, [rows.resetToken, rows.query, directory]);
   const sorted = (groups.sortByCount ? [...groups.list].sort((a, b) => b.memberCount - a.memberCount) : groups.list).filter(group => group.name.toLocaleLowerCase().includes(search.toLocaleLowerCase().trim()));
   const opened = groups.expanded[0];
   const albumOpen = shelf && Boolean(opened);
+  // Remount the viewport per destination so layout clamping cannot overwrite the page we just left.
+  const positionKey = JSON.stringify(albumOpen ? ["groups", "album", opened] : ["groups", groups.layout, groups.sortByCount, search.trim().toLocaleLowerCase()]);
   const currentGroup = groups.list.find(group => String(group.id) === opened);
   const albumName = opened === "ungrouped" ? "未分组" : currentGroup?.name;
   const albumCount = opened === "ungrouped" ? groups.members.ungrouped?.totalCount : currentGroup?.memberCount;
@@ -50,7 +54,7 @@ export function GroupBrowseView({ filtersOpen, onFilters }: { filtersOpen: boole
     </>}
     {groups.error && <div className="r-group-status" role="alert"><p className="r-group-error">加载失败：{groups.error}</p><Button onClick={() => void loadGroups()}>重试</Button></div>}
     {groups.loading && !groups.list.length && <p className="r-group-status" role="status">正在加载分组…</p>}
-    <SectionList scope="groups" loading={groups.loading || groups.expanded.some(key => !groups.members[key] || groups.members[key].loading)} version={groups.version}>
+    <SectionList key={positionKey} positionKey={positionKey} loading={groups.loading || groups.expanded.some(key => !groups.members[key] || groups.members[key].loading)} version={groups.version}>
       {!albumOpen && !groups.list.length && !groups.loading && !groups.error && <p className="r-group-status">暂无分组。可选择图片后创建分组。</p>}
       {shelf ? opened ? <SectionMembersGrid data={groups.members[opened]} scope="groups" order={order} limit={groups.renderLimits[opened] ?? 40} onReveal={() => reveal(opened)} onLoad={more => void loadGroupMembers(opened, more)} /> : <GroupAlbumShelf groups={sorted} version={groups.version} onOpen={openAlbum} /> : <>
       {sorted.map(group => { const key = String(group.id), expanded = groups.expanded.includes(key); return <section key={key} className="r-browse-section"><SectionHeader label={group.name} count={group.memberCount} expanded={expanded} onToggle={() => toggleGroup(key)} items={groupActions(group)} />{expanded && <SectionMembersGrid data={groups.members[key]} scope="groups" order={order} limit={groups.renderLimits[key] ?? 40} onReveal={() => reveal(key)} onLoad={more => void loadGroupMembers(key, more)} />}</section>; })}

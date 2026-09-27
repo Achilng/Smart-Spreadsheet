@@ -20,16 +20,16 @@ export function SectionHeader({ label, count, expanded, onToggle, items, suffix 
   if (!items) return content;
   return <ContextMenu.Root><ContextMenu.Trigger asChild>{content}</ContextMenu.Trigger><ContextMenu.Portal><ContextMenu.Content className="r-menu" collisionPadding={8}>{items.map(item => <ContextMenu.Item key={item.label} className={`r-menu-item${item.danger ? " is-danger" : ""}`} disabled={item.disabled} onSelect={item.action}>{item.label}</ContextMenu.Item>)}</ContextMenu.Content></ContextMenu.Portal></ContextMenu.Root>;
 }
-export function SectionList({ scope, loading, version, children }: { scope: "groups" | "duplicates"; loading: boolean; version: number; children: ReactNode }) {
-  const ref = useRef<HTMLDivElement>(null), restoring = useRef(false);
+export function SectionList({ positionKey, loading, version, children }: { positionKey: string; loading: boolean; version: number; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null), restoring = useRef(true);
   const reset = useRows(state => state.resetToken);
   const navigationRestoring = useNavigation(state => state.restoring);
   useLayoutEffect(() => {
-    if (loading || navigationRestoring || !ref.current) return;
     restoring.current = true;
-    restoreScrollPosition(ref.current, scope, 60, undefined, () => { restoring.current = false; });
-  }, [scope, reset, loading, version, navigationRestoring]);
-  return <div className="r-section-list" ref={ref} tabIndex={0} onScroll={event => { if (!restoring.current && !navigationRestoring && !loading) saveScrollPosition(scope, event.currentTarget.scrollTop); }}>{children}</div>;
+    if (loading || navigationRestoring || !ref.current) return;
+    return restoreScrollPosition(ref.current, positionKey, 60, undefined, () => { restoring.current = false; });
+  }, [positionKey, reset, loading, version, navigationRestoring]);
+  return <div className="r-section-list" ref={ref} tabIndex={0} onScroll={event => { if (!restoring.current && !navigationRestoring && !loading) saveScrollPosition(positionKey, event.currentTarget.scrollTop); }}>{children}</div>;
 }
 export function SectionMembersGrid({ data, scope, order, limit, onReveal, onLoad }: { data?: SectionMembers; scope: "groups" | "duplicates"; order: number[]; limit: number; onReveal: () => void; onLoad: (more?: boolean) => void }) {
   return <div className="r-section-grid" role="list">

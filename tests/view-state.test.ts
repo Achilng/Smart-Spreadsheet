@@ -129,3 +129,31 @@ test("a pending animation frame cannot restore an obsolete result set", () => {
     globalThis.requestAnimationFrame = original;
   }
 });
+
+test("leaving an album cancels its pending restore without moving the destination", () => {
+  clearScrollPositions();
+  saveScrollPosition("album", 5000);
+  saveScrollPosition("shelf", 700);
+  const frames: FrameRequestCallback[] = [];
+  const original = globalThis.requestAnimationFrame;
+  globalThis.requestAnimationFrame = callback => { frames.push(callback); return frames.length; };
+  try {
+    let top = 0, height = 100, settled = 0;
+    const el = {
+      isConnected: true,
+      get scrollTop() { return top; },
+      set scrollTop(value: number) { top = Math.min(value, height); },
+    } as HTMLElement;
+    const cancel = restoreScrollPosition(el, "album", 60, undefined, () => { settled++; });
+    assert.equal(top, 100);
+    cancel();
+    height = 8000;
+    restoreScrollPosition(el, "shelf");
+    frames.shift()?.(0);
+    assert.equal(top, 700);
+    assert.equal(settled, 0);
+    assert.equal(savedScrollPosition("album"), 5000);
+  } finally {
+    globalThis.requestAnimationFrame = original;
+  }
+});

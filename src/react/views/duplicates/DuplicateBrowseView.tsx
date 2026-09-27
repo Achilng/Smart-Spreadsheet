@@ -19,6 +19,7 @@ export function DuplicateBrowseView({ filtersOpen, onFilters }: { filtersOpen: b
   const opened = shelf ? state.expanded[0] : undefined;
   const currentCluster = state.clusters.find(cluster => cluster.key === opened);
   const albumOpen = opened !== undefined;
+  const positionKey = JSON.stringify(albumOpen ? ["duplicates", state.mode, "album", opened] : ["duplicates", state.mode, state.layout, state.sortByCount]);
   const sorted = state.sortByCount ? [...state.clusters].sort((a, b) => b.memberCount - a.memberCount) : [...state.clusters].sort((a, b) => clusterLabel(a).localeCompare(clusterLabel(b)));
   const visibleClusters = shelf ? sorted.filter(cluster => cluster.key === opened) : sorted;
   const order = visibleClusters.flatMap(cluster => state.expanded.includes(cluster.key) ? (state.members[cluster.key]?.rows ?? []).slice(0, state.renderLimits[cluster.key] ?? 40).map(row => row.id) : []);
@@ -47,7 +48,7 @@ export function DuplicateBrowseView({ filtersOpen, onFilters }: { filtersOpen: b
     {state.loading && <p className="r-group-status" role="status">正在加载重复项…</p>}
     {state.error && <div className="r-group-status" role="alert"><p className="r-group-error">加载失败：{state.error}</p><Button onClick={() => void loadClusters()}>重试</Button></div>}
     {!state.loading && !state.error && !state.clusters.length && <p className="r-group-status">{state.mode === "vibes" ? "未找到共用同一组 VIBE 引用的图片。" : "未找到重复项（所有条目均唯一）。"}</p>}
-    <SectionList scope="duplicates" loading={state.loading || state.expanded.some(key => !state.members[key] || state.members[key].loading)} version={state.version}>
+    <SectionList key={positionKey} positionKey={positionKey} loading={state.loading || state.expanded.some(key => !state.members[key] || state.members[key].loading)} version={state.version}>
       {shelf ? opened !== undefined ? members(opened) : <DuplicateAlbumShelf clusters={sorted} mode={state.mode} version={state.version} onOpen={openAlbum} /> : sorted.map(cluster => {
         const expanded = state.expanded.includes(cluster.key);
         return <section className="r-browse-section" key={cluster.key}><SectionHeader label={clusterLabel(cluster)} suffix={cluster.alias && state.mode !== "vibes" ? cluster.key : undefined} count={cluster.memberCount} expanded={expanded} onToggle={() => toggleCluster(cluster.key)} items={clusterActions(cluster)} />{expanded && members(cluster.key)}</section>;

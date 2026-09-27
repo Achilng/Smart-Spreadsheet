@@ -7,10 +7,10 @@ import { notifyToolboxLibraryChanged } from "../../lib/windows/library-events";
 
 export interface SectionMembers { rows: RowRecord[]; totalCount: number; loading: boolean; error: string | null }
 interface GroupsState {
-  list: GroupSummary[]; loading: boolean; error: string | null; sortByCount: boolean;
+  list: GroupSummary[]; loading: boolean; error: string | null; sortByCount: boolean; layout: "shelf" | "list"; search: string;
   expanded: string[]; members: Record<string, SectionMembers>; renderLimits: Record<string, number>; version: number;
 }
-export const useGroups = create<GroupsState>(() => ({ list: [], loading: false, error: null, sortByCount: false, expanded: [], members: {}, renderLimits: {}, version: 0 }));
+export const useGroups = create<GroupsState>(() => ({ list: [], loading: false, error: null, sortByCount: false, layout: "shelf", search: "", expanded: [], members: {}, renderLimits: {}, version: 0 }));
 let generation = 0, listGeneration = 0;
 let signature = "";
 let directory: string | null | undefined;
@@ -29,7 +29,7 @@ export function syncGroups(force = false): Promise<void> {
   if (!force && next === signature) return Promise.resolve();
   directory = nextDirectory;
   signature = next; generation++;
-  useGroups.setState(state => ({ members: {}, renderLimits: {}, version: state.version + 1, ...(changedDirectory ? { list: [], expanded: [] } : {}) }));
+  useGroups.setState(state => ({ members: {}, renderLimits: {}, version: state.version + 1, ...(changedDirectory ? { list: [], expanded: [], search: "" } : {}) }));
   const loading = loadGroups();
   for (const key of useGroups.getState().expanded) void loadGroupMembers(key);
   return loading;

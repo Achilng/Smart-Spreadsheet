@@ -102,6 +102,7 @@ export function scrollPositionVersion(): number {
  * 因此按帧重试直到生效，用户主动滚动或元素卸载时立即放弃。
  * onSettled 在重试结束（成功、放弃或超时）时调用；恢复期间浏览器钳制
  * 产生的 scroll 事件不代表用户位置，调用方应在结束前跳过位置保存。
+ * 返回取消函数，供页面切换或组件卸载时停止尚未完成的恢复。
  */
 export function restoreScrollPosition(
   el: HTMLElement,
@@ -109,20 +110,22 @@ export function restoreScrollPosition(
   maxFrames = 60,
   onApplied?: (top: number) => void,
   onSettled?: () => void,
-): void {
+): () => void {
   const target = savedScrollPosition(key);
   const version = scrollPositionsVersion;
+  let cancelled = false;
+  const cancel = () => { cancelled = true; };
   if (target <= 0) {
     el.scrollTop = 0;
     onApplied?.(0);
     onSettled?.();
-    return;
+    return cancel;
   }
   let applied = -1;
   let frames = 0;
   const attempt = (): void => {
     // 新结果已切换：旧恢复任务不能再把新列表拉回旧坐标。
-    if (version !== scrollPositionsVersion) return;
+    if (cancelled || version !== scrollPositionsVersion) return;
     if (!el.isConnected || (applied >= 0 && Math.abs(el.scrollTop - applied) > 1)) {
       onSettled?.();
       return;
@@ -138,6 +141,7 @@ export function restoreScrollPosition(
     }
   };
   attempt();
+  return cancel;
 }
 
 /** 提示词文档：记住上次打开的文档，切走再切回时恢复（与筛选无关，不随滚动位置清空）。 */

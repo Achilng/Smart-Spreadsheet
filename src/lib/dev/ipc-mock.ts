@@ -170,10 +170,11 @@ export function installIpcMock(): void {
   window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: (_event: string, id: number) => { eventListeners.delete(id); } };
   const params = new URLSearchParams(location.search);
   const windowLabel = params.get("window") ?? "main";
-  const libraryRows = Array.from({ length: params.has("large") ? 60_000 : 64 }, (_, index) => rowDto({
+  const albumScroll = params.has("albumScroll");
+  const libraryRows = Array.from({ length: albumScroll ? 12_000 : params.has("large") ? 60_000 : 64 }, (_, index) => rowDto({
     id: index + 1,
     imagePath: `D:\\mock\\${index % 7 === 0 ? "清晨的山谷与远处的群山_长文件名显示检查_" : "风景_"}${String(index + 1).padStart(3, "0")}.png`,
-    artists: index % 2 === 0 ? "artist:alpha" : "artist:beta",
+    artists: albumScroll ? `artist:album-${String(Math.floor(index / 300) + 1).padStart(2, "0")}` : index % 2 === 0 ? "artist:alpha" : "artist:beta",
     positivePrompt: `masterpiece, scenery, mountains, soft light, ${index % 2 ? "sunset" : "morning"}, artist:${index % 2 ? "beta" : "alpha"}`,
     generationModel: "NovelAI Diffusion V4.5 Full",
     imageWidth: index % 3 === 0 ? 1216 : 832,
@@ -194,7 +195,11 @@ export function installIpcMock(): void {
     { id: 3, name: "待整理（空分组）", memberCount: 0, createdAt: "2026-09-20T10:00:00Z" },
   ];
   for (const row of libraryRows.slice(0, 20)) { const group = groups[row.id <= 12 ? 0 : 1]; row.groupId = group.id; row.groupName = group.name; }
-  let nextGroupId = 4;
+  if (albumScroll) {
+    groups.splice(0, groups.length, ...Array.from({ length: 40 }, (_, index) => ({ id: index + 1, name: `相册 ${String(index + 1).padStart(2, "0")}`, memberCount: 300, createdAt: "2026-09-27T08:00:00Z" })));
+    for (const row of libraryRows) { const group = groups[Math.floor((row.id - 1) / 300)]; row.groupId = group.id; row.groupName = group.name; }
+  }
+  let nextGroupId = groups.length + 1;
   const aliases = new Map<string, string>();
   const now = () => new Date().toISOString();
   const docs: PromptDocDetail[] = ["风景提示词笔记", "角色与服装参考", "空白文档"].map((title, index) => ({
