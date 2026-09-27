@@ -16,6 +16,7 @@ export function useAlbumTransition() {
     if (!node || matchMedia("(prefers-reduced-motion: reduce)").matches) { update(); return; }
     let cancelled = false, applied = false, transition: ViewTransition | undefined;
     const names = new Map<HTMLElement, string>();
+    const poses = new Map<HTMLElement, { transform: string; shadow: string }>();
     const rules = document.createElement("style");
     const animations: Animation[] = [];
     const mark = (element: HTMLElement | null | undefined, name: string) => {
@@ -23,12 +24,21 @@ export function useAlbumTransition() {
       if (!names.has(element)) names.set(element, element.style.viewTransitionName);
       element.style.viewTransitionName = name;
     };
+    const freeze = (element: HTMLElement) => {
+      if (poses.has(element)) return;
+      const style = getComputedStyle(element);
+      const transform = style.transform, shadow = style.boxShadow;
+      poses.set(element, { transform: element.style.transform, shadow: element.style.boxShadow });
+      element.style.transform = transform;
+      element.style.boxShadow = shadow;
+    };
     const clean = () => {
       if (cancelled) return;
       cancelled = true;
       transition?.skipTransition();
       animations.forEach(animation => animation.cancel());
       names.forEach((name, element) => { element.style.viewTransitionName = name; });
+      poses.forEach((pose, element) => { element.style.transform = pose.transform; element.style.boxShadow = pose.shadow; });
       rules.remove();
       delete node.dataset.albumMotion;
       delete document.documentElement.dataset.albumMotion;
@@ -61,6 +71,9 @@ export function useAlbumTransition() {
         await animations[0].finished.catch(() => {});
         return;
       }
+      // Preserve the exact hover pose before disabling secondary CSS transitions.
+      // Otherwise an in-flight fan/tilt can jump before the first snapshot.
+      if (direction === "enter") sheets().forEach(freeze);
       node.dataset.albumMotion = direction;
       document.documentElement.dataset.albumMotion = direction;
       document.head.append(rules);
@@ -81,6 +94,16 @@ export function useAlbumTransition() {
         if (cancelled || !node.isConnected) return;
         focusDestination();
         const destination = direction === "enter" ? cards() : sheets();
+        // Hold the captured pose through handoff; pointer/focus changes must not
+        // move the live cover behind its frozen transition snapshot.
+        if (direction === "leave") destination.forEach(freeze);
+        const images = [...node.querySelectorAll<HTMLImageElement>(".r-section-list img")].filter(visible).slice(0, 72);
+        let decodeTimer: ReturnType<typeof setTimeout> | undefined;
+        await Promise.race([
+          Promise.allSettled(images.map(image => image.decode())),
+          new Promise<void>(resolve => { decodeTimer = setTimeout(resolve, 80); }),
+        ]).finally(() => clearTimeout(decodeTimer));
+        if (cancelled || !node.isConnected) return;
         const targetTitle = direction === "enter" ? node.querySelector<HTMLElement>(".r-group-detail-title h1") : album()?.querySelector<HTMLElement>(".r-album-title");
         if (direction === "enter" || targetTitle && visible(targetTitle)) mark(targetTitle, "album-title");
         destination.slice(0, direction === "enter" ? 24 : 3).forEach((element, index) => {

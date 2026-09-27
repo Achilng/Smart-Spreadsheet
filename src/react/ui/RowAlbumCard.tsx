@@ -7,6 +7,15 @@ import { Button } from "./controls";
 
 let active = 0;
 const waiting: (() => void)[] = [];
+type Preview = Pick<RowPage, "rows" | "totalCount">;
+// Keep the bookshelf ready while visiting an album. Source version is part of
+// the key, so filters, edits and library switches never reuse stale covers.
+const previews = new Map<string, Preview>();
+function rememberPreview(key: string, page: Preview) {
+  previews.delete(key);
+  previews.set(key, { rows: page.rows.slice(0, 3), totalCount: page.totalCount });
+  while (previews.size > 96) previews.delete(previews.keys().next().value!);
+}
 function limited<T>(run: () => Promise<T>): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const begin = () => { active++; void run().then(resolve, reject).finally(() => { active--; waiting.shift()?.(); }); };
@@ -15,12 +24,14 @@ function limited<T>(run: () => Promise<T>): Promise<T> {
 }
 
 /** Mount with a new key when the source query changes; keep loadPreview stable. */
-export function RowAlbumCard({ albumKey, label, count, actionLabel, loadPreview, initialPreview, onOpen }: {
-  albumKey: string; label: string; count?: number; actionLabel: string; loadPreview: () => Promise<RowPage>; initialPreview?: Pick<RowPage, "rows" | "totalCount">; onOpen: () => void;
+export function RowAlbumCard({ albumKey, previewKey, label, count, actionLabel, loadPreview, initialPreview, onOpen }: {
+  albumKey: string; previewKey: string; label: string; count?: number; actionLabel: string; loadPreview: () => Promise<RowPage>; initialPreview?: Preview; onOpen: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [visible, setVisible] = useState(Boolean(initialPreview)), [page, setPage] = useState<Pick<RowPage, "rows" | "totalCount"> | null>(() => initialPreview ? { rows: initialPreview.rows.slice(0, 3), totalCount: initialPreview.totalCount } : null);
+  const [page, setPage] = useState<Preview | null>(() => initialPreview ? { rows: initialPreview.rows.slice(0, 3), totalCount: initialPreview.totalCount } : previews.get(previewKey) ?? null);
+  const [visible, setVisible] = useState(Boolean(page));
   const [error, setError] = useState(""), [attempt, setAttempt] = useState(0);
+  useEffect(() => { if (page) rememberPreview(previewKey, page); }, [previewKey, page]);
   useEffect(() => {
     if (!ref.current) return;
     const observer = new IntersectionObserver(entries => setVisible(entries[0].isIntersecting), { root: ref.current.closest(".r-section-list"), rootMargin: "160px" });
