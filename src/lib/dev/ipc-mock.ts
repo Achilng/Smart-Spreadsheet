@@ -127,12 +127,13 @@ function tinyPng(): ArrayBuffer {
 }
 
 /** Browser-only generated scenery, so visual QA can inspect actual image framing. */
-async function previewPng(rowId: number): Promise<ArrayBuffer> {
+async function previewPng(rowId: number, dimensions = { width: 320, height: 400 }): Promise<ArrayBuffer> {
   const canvas = document.createElement("canvas");
-  canvas.width = 320;
-  canvas.height = 400;
+  canvas.width = dimensions.width;
+  canvas.height = dimensions.height;
   const context = canvas.getContext("2d");
   if (!context) return tinyPng();
+  context.scale(dimensions.width / 320, dimensions.height / 400);
   const palettes = [["#dedfcf", "#81969e", "#4d6d78"], ["#f5dcbf", "#c19487", "#816f80"], ["#d6e8df", "#83a5a1", "#496f78"]];
   const colors = palettes[rowId % palettes.length];
   const gradient = context.createLinearGradient(0, 0, 0, 400);
@@ -225,6 +226,7 @@ export function installIpcMock(): void {
   window.__mockCalls = [];
   window.__mockDelayMs = Number(new URLSearchParams(location.search).get("mockDelay") ?? 0);
   window.__mockFailNext = params.get("failNext") ?? undefined;
+  let brokenOriginal = params.has("brokenOriginal");
   const numeric = (value: number | null, comparison: FilterNumericComparison): boolean => {
     if (value === null) return false;
     const { operator, value: other, secondValue } = comparison;
@@ -719,8 +721,14 @@ export function installIpcMock(): void {
         case "get_row_thumbnail":
         case "get_row_gallery_preview":
         case "get_row_preview":
-        case "get_row_original":
           return previewPng(Number(payload.rowId));
+        case "get_row_original": {
+          if (brokenOriginal) { brokenOriginal = false; return new Uint8Array([0, 1, 2, 3]).buffer; }
+          const rowId = Number(payload.rowId), row = libraryRows.find(item => item.id === rowId);
+          const shape = params.get("originalShape");
+          const dimensions = shape === "tall" ? { width: 512, height: 8192 } : shape === "wide" ? { width: 8192, height: 512 } : { width: row?.imageWidth || 832, height: row?.imageHeight || 1216 };
+          return previewPng(rowId, dimensions);
+        }
         case "get_row_vibe_status":
           return 2;
         case "plugin:window|destroy":

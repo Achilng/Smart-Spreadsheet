@@ -19,19 +19,22 @@
 .rd-tag-suggestions{position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:10;max-height:190px;overflow:auto;padding:4px;border:1px solid var(--border);border-radius:8px;background:var(--surface);box-shadow:var(--shadow-2)}
 .rd-tag-suggestions>button{display:block;width:100%;padding:6px 8px;text-align:left;border:0;border-radius:4px;background:transparent;color:var(--text);font-size: var(--font-sm);cursor:pointer;overflow-wrap:anywhere}
 .rd-tag-suggestions>button:hover,.rd-tag-suggestions>button[aria-selected="true"]{background:var(--surface-2)}
-.rd-lightbox-overlay{position:fixed;inset:0;background:#111827b8;z-index:var(--z-lightbox);animation:r-fade-in 140ms ease-out}
-.rd-lightbox{position:fixed;inset:20px;z-index:calc(var(--z-lightbox) + 1);display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--border);border-radius:12px;background:var(--surface);box-shadow:0 20px 80px #0005;outline:none;animation:r-fade-in 160ms ease-out}
-.rd-lightbox-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 14px;border-bottom:1px solid var(--border)}
-.rd-lightbox-head>div:first-child{min-width:0}
-.rd-lightbox-head h2{font-size: var(--font-base);margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.rd-lightbox-head span{font-size: var(--font-xs);color:var(--text-3)}
-.rd-lightbox-stage{position:relative;flex:1;min-height:0;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#f1f2f4;touch-action:none;overscroll-behavior:contain;user-select:none}
-.rd-lightbox-stage[data-zoomed="true"]{cursor:grab}
-.rd-lightbox-stage[data-dragging="true"]{cursor:grabbing}
-.rd-lightbox-stage>img{max-width:none;max-height:none;flex:none;object-fit:contain;will-change:transform;pointer-events:none}
-.rd-lightbox-empty{color:var(--text-3);font-size: var(--font-md)}
-.rd-lightbox-footer{display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:9px 12px;border-top:1px solid var(--border);font-size: var(--font-sm);flex-wrap:wrap}
-.rd-lightbox-footer>span:first-child{margin-right:auto;color:var(--text-3);font-size: var(--font-xs)}
-.rd-zoom-value{min-width:45px;text-align:center;font-variant-numeric:tabular-nums}
-@media(max-width:700px){.rd-lightbox{inset:8px}.rd-lightbox-footer>span:first-child{display:none}}
-@media(prefers-reduced-motion:reduce){.rd-lightbox,.rd-lightbox-overlay{animation:none}.rd-preview-open{transition:none}}
+.rd-lightbox-overlay{position:fixed;inset:0;background:#17212ec2;z-index:var(--z-lightbox);backdrop-filter:blur(5px);animation:r-fade-in 140ms ease-out}
+.rd-lightbox{position:fixed;inset:16px;z-index:calc(var(--z-lightbox) + 1);display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden;border:1px solid #dbe2e9;border-radius:16px;background:#fff;box-shadow:0 24px 90px #0005;outline:none;animation:r-fade-in 160ms ease-out}
+.rd-lightbox[data-expanded=true]{inset:0;border-radius:0;border:0}
+.rd-lightbox-head{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:14px 18px;border-bottom:1px solid #e8ecf1;flex:none;background:#fff}
+.rd-lightbox-info{min-width:0;flex:1}.rd-lightbox-head h2{font-size:var(--font-base);font-weight:600;line-height:1.5;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rd-lightbox-metadata{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:3px;color:#66717d;font-size:var(--font-xs);font-variant-numeric:tabular-nums}.rd-lightbox-status{display:inline-flex;align-items:center;gap:5px}.rd-lightbox-status[data-error=true]{color:#a34b25}
+.rd-lightbox-actions{gap:6px}.rd-lightbox-actions .btn{min-height:34px;border-radius:9px}.rd-lightbox-actions .btn-icon{width:34px;height:34px}.rd-lightbox-actions .btn:hover{background:#edf5fc}
+.rd-lightbox-stage{position:relative;flex:1;min-height:0;min-width:0;overflow:hidden;background-color:#f4f6f8;background-image:linear-gradient(45deg,#e9edf166 25%,transparent 25%),linear-gradient(-45deg,#e9edf166 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#e9edf166 75%),linear-gradient(-45deg,transparent 75%,#e9edf166 75%);background-size:20px 20px;background-position:0 0,0 10px,10px -10px,-10px 0;touch-action:none;overscroll-behavior:contain;user-select:none;cursor:zoom-in;outline:none}
+.rd-lightbox-stage:focus-visible{box-shadow:inset 0 0 0 2px #a9d2f5}
+.rd-lightbox-stage[data-zoomed=true]{cursor:grab}.rd-lightbox-stage[data-dragging=true]{cursor:grabbing}
+.rd-lightbox-stage>img{position:absolute;top:50%;left:50%;display:block;max-width:none;max-height:none;object-fit:contain;transform-origin:center;will-change:transform;pointer-events:none;box-shadow:0 3px 18px #17212f1a}
+.rd-lightbox-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;padding:24px;color:#66717d;font-size:var(--font-sm)}.rd-lightbox-empty strong{font-weight:500;color:#303b49}
+.rd-lightbox-footer{display:flex;align-items:center;justify-content:flex-end;gap:14px;padding:10px 18px;border-top:1px solid #e8ecf1;background:#fff;font-size:var(--font-sm);flex:none;flex-wrap:wrap}
+.rd-lightbox-help{margin-right:auto;color:#66717d;font-size:var(--font-xs)}.rd-lightbox-zoom,.rd-lightbox-modes{display:flex;align-items:center;gap:3px}.rd-lightbox-zoom{padding:3px;border-radius:10px;background:#f3f6f9}.rd-zoom-value{min-width:64px;text-align:center;font-size:var(--font-sm);font-variant-numeric:tabular-nums;color:#26313f}
+.rd-lightbox-modes .btn{font-size:var(--font-sm);border-radius:9px}.rd-lightbox-modes .btn[aria-pressed=true]{background:#e7f3ff;color:#171a1f}.rd-lightbox-spinner{animation:rd-lightbox-spin 1s linear infinite;flex:none}
+@keyframes rd-lightbox-spin{to{transform:rotate(360deg)}}
+@media(max-width:1000px){.rd-lightbox-help{display:none}.rd-lightbox-footer{justify-content:center}}
+@media(max-width:700px){.rd-lightbox{inset:8px;border-radius:12px}.rd-lightbox-head{padding:10px 12px;gap:10px}.rd-lightbox-actions>button>span{display:none}.rd-lightbox-actions{gap:2px}.rd-lightbox-metadata{gap:6px}.rd-lightbox-footer{padding:8px;gap:6px}}
+@media(prefers-reduced-motion:reduce){.rd-lightbox,.rd-lightbox-overlay,.rd-lightbox-spinner{animation:none}.rd-preview-open{transition:none}}
