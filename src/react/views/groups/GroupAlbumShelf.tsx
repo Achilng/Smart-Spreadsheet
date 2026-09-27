@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { getGroupMembers, queryRows, type GroupSummary } from "../../../lib/api";
 import { useRows } from "../../state/library";
+import { useGroups } from "../../state/groups";
 import { RowAlbumCard } from "../../ui/RowAlbumCard";
 
 export function GroupAlbumShelf({ groups, version, onOpen }: { groups: GroupSummary[]; version: number; onOpen: (key: string) => void }) {
@@ -8,9 +9,10 @@ export function GroupAlbumShelf({ groups, version, onOpen }: { groups: GroupSumm
 }
 function GroupAlbum({ group, onOpen }: { group?: GroupSummary; onOpen: () => void }) {
   const id = group?.id;
+  const cached = useGroups(state => state.members[String(id ?? "ungrouped")]);
   const loadPreview = useCallback(() => id !== undefined ? getGroupMembers(id, 0, 3) : queryRows({
     ...structuredClone(useRows.getState().query), offset: 0, limit: 3, dedupe: "none", groupView: false, hideGrouped: true, sort: "timeAsc",
   }), [id]);
   const label = group?.name ?? "未分组";
-  return <RowAlbumCard label={label} count={group?.memberCount} actionLabel={`打开分组 ${label}`} loadPreview={loadPreview} onOpen={onOpen} />;
+  return <RowAlbumCard albumKey={String(id ?? "ungrouped")} label={label} count={group?.memberCount} actionLabel={`打开分组 ${label}`} loadPreview={loadPreview} initialPreview={cached?.rows.length ? cached : undefined} onOpen={onOpen} />;
 }

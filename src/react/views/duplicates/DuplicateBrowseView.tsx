@@ -9,9 +9,11 @@ import { runTask, useTasks } from "../../state/tasks";
 import { Button, Input, Menu, Modal, Select, type MenuItem } from "../../ui/controls";
 import { SectionHeader, SectionList, SectionMembersGrid } from "../groups/SectionParts";
 import { DuplicateAlbumShelf } from "./DuplicateAlbumShelf";
+import { useAlbumTransition } from "../../ui/use-album-transition";
 import "../groups/groups.css";
 
 export function DuplicateBrowseView({ filtersOpen, onFilters }: { filtersOpen: boolean; onFilters: () => void }) {
+  const motion = useAlbumTransition();
   const state = useDuplicates(), rows = useRows(), directory = useLibrary(value => value.snapshot?.dataDirectory), taskBusy = useTasks(value => value.busy);
   const [renaming, setRenaming] = useState<DedupeCluster | null>(null), [name, setName] = useState(""), [busy, setBusy] = useState(false), [error, setError] = useState<string | null>(null);
   useEffect(() => { syncDuplicates(); }, [state.mode, rows.resetToken, rows.query, directory]);
@@ -25,8 +27,8 @@ export function DuplicateBrowseView({ filtersOpen, onFilters }: { filtersOpen: b
   const order = visibleClusters.flatMap(cluster => state.expanded.includes(cluster.key) ? (state.members[cluster.key]?.rows ?? []).slice(0, state.renderLimits[cluster.key] ?? 40).map(row => row.id) : []);
   const reveal = (key: string) => useDuplicates.setState(value => ({ renderLimits: { ...value.renderLimits, [key]: (value.renderLimits[key] ?? 40) + 40 } }));
   function clearActive() { clearSelection(); useRows.setState({ activeRow: null }); }
-  function openAlbum(key: string) { clearActive(); useDuplicates.setState({ expanded: [key] }); void loadClusterMembers(key); }
-  function setLayout(layout: "shelf" | "list") { clearActive(); useDuplicates.setState({ layout, expanded: [] }); }
+  function openAlbum(key: string) { void motion.navigate("enter", key, () => { clearActive(); useDuplicates.setState({ expanded: [key] }); void loadClusterMembers(key); }, () => loadClusterMembers(key)); }
+  function setLayout(layout: "shelf" | "list") { const update = () => { clearActive(); useDuplicates.setState({ layout, expanded: [] }); }; if (albumOpen && layout === "shelf") void motion.navigate("leave", opened, update); else update(); }
   function clusterActions(cluster: DedupeCluster): MenuItem[] {
     return [{ label: "重命名", disabled: taskBusy, action: () => { setRenaming(cluster); setName(cluster.alias ?? clusterLabel(cluster)); setError(null); } }];
   }
@@ -37,7 +39,7 @@ export function DuplicateBrowseView({ filtersOpen, onFilters }: { filtersOpen: b
     try { await runTask("设置重复项别名", () => renameCluster(renaming, name)); setRenaming(null); }
     catch (cause) { setError(errorText(cause)); } finally { setBusy(false); }
   }
-  return <div className={`r-section-view${albumOpen ? " r-group-album-detail" : ""}`}>
+  return <div ref={motion.root} className={`r-section-view${albumOpen ? " r-group-album-detail" : ""}`}>
     {albumOpen ? <header className="r-album-header r-group-detail-header">
       <div className="r-group-detail-title"><Button variant="ghost" size="icon" aria-label="返回所有重复项" title="返回所有重复项" onClick={() => setLayout("shelf")}><ArrowLeft size={20} /></Button><h1 title={currentCluster ? clusterLabel(currentCluster) : opened}>{currentCluster ? clusterLabel(currentCluster) : opened}</h1>{currentCluster && <span className="r-album-heading-count">{currentCluster.memberCount.toLocaleString()} 张</span>}</div>
       <div className="rm-actions"><Button aria-expanded={filtersOpen} onClick={onFilters}><SlidersHorizontal size={15} />图片筛选</Button>{currentCluster && <Menu label="重复项操作" items={clusterActions(currentCluster)} />}</div>

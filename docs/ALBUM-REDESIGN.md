@@ -17,6 +17,7 @@
 
 ## 数据与性能
 
+- 相册进入 / 返回采用 [View Transitions](https://developer.mozilla.org/en-US/docs/Web/API/Document/startViewTransition)：三张叠图按图片 ID 与网格的同一张图衔接，标题平移缩放，其余可见卡片错峰铺开 / 收拢。主段 520ms，最多 24 张卡片参与。深层滚动时只匹配真正可见的同一张图，不改变滚动位置来迁就动画；返回复用已加载成员的前三张封面。预取最多等待 140ms，慢请求继续显示原有加载状态；减少动态效果直接切换，不支持 API 时使用短促的位移缩放回退。动画期间切走会取消并清理临时标记，进入 / 返回焦点使用 preventScroll。
 - 分组与重复项的书架、列表、各个相册分别记住会话内滚动位置；重复项还按判断依据区分，分组总览按搜索 / 排序区分。进入新相册从顶部开始，返回书架和再次进入已浏览相册恢复各自位置。分组的布局和搜索随主视图切换保留，并写入前进 / 后退快照；换库清空分组搜索。
 - 不复用目的地不同的滚动容器，加载时屏蔽浏览器自动钳制的位置记录，卸载取消旧恢复。图片卡片预留稳定的缩略图 / 两行文字高度，保留卡片级离屏优化，移除整组 500px 估算高度，避免列表重新展开时的滚动锚定跳动。
 - 不改变数据库、原图、素材文本、版本保存顺序或现有资料库文件。
@@ -26,6 +27,7 @@
 
 ## 验证
 
+- 相册动效专项：1180×760 验证三张真实图片匹配、标题移动中段截图和返回收拢；300 张 / 8500px 深层进出保持位置，900×600 重复项书架 1802px 与组内 900px 不变。键盘 Enter、返回焦点、减少动态效果、禁用原生 API、空相册、延迟 600ms 加载和动画期间切至画廊均通过，动画完成 / 取消后临时名称与状态归零。生产构建、类型检查和 45 项既有测试通过。仅浏览器模拟与 dev 热更新，不宣称打包后的 WebView2 动效专项验收。
 - 2026-09-27 位置恢复专项：`?mock=1&albumScroll=1` 提供 40 本相册、每本 300 张的独立模拟资料库；1180×760 书架 1107px / 相册 8500px 返回与重入一致，300 张跨分页数据和前进 / 后退恢复正常，不同相册位置互不覆盖。900×600 分组书架 1802px / 相册 8500px、重复项书架 2728px / 相册 900px 返回一致；分组列表 1100px、搜索词及列表模式在切换画廊和历史往返后保留。新增卸载取消恢复的回归测试，45 项单元测试通过。开发窗口已热更新；本轮未重新打包替换安装 exe。
 - TypeScript 检查、前端生产构建、41 项前端单元测试通过（新增三项素材图片去重、回退及加载上限测试）。
 - 使用 `?mock=1` 的独立模拟资料库检查：分组封面与空相册、进入组内、素材版本目录、换图与复制、详情、返回画廊，900×600 下素材筛选与详情同时展开。
@@ -37,6 +39,7 @@
 
 - 页面组合：`src/react/App.tsx`、`src/react/views/AlbumNavigation.tsx`、`src/react/views/TopBar.tsx`、`src/react/views/CanvasHeader.tsx`。
 - 通用相册：`src/react/ui/AlbumStack.tsx`、`src/react/ui/RowAlbumCard.tsx`、`src/react/ui/album.css`。
+- 相册进出：`src/react/ui/use-album-transition.ts`、`src/react/ui/album-transition.css`；`Thumbnail.tsx` 提供图片身份用于匹配。
 - 分组：`src/react/state/groups.ts`、`src/react/views/groups/GroupBrowseView.tsx`、`GroupAlbumShelf.tsx`、`groups.css`。
 - 素材：`src/react/views/materials/MaterialCard.tsx`、`MaterialImage.tsx`、`MaterialsView.tsx`、`material-card.css`、`materials.css`。
 - 重复项：`src/react/views/duplicates/DuplicateBrowseView.tsx`、`DuplicateAlbumShelf.tsx`、`src/react/state/duplicates.ts`；浏览与选区：`src/react/state/navigation.ts`、`view-selection.ts`。

@@ -10,9 +10,11 @@ import { DeleteGroupDialog, GroupManageDialog } from "./GroupManageDialog";
 import { SectionHeader, SectionList, SectionMembersGrid } from "./SectionParts";
 import { GroupAlbumShelf } from "./GroupAlbumShelf";
 import { clearSelection } from "../../state/selection";
+import { useAlbumTransition } from "../../ui/use-album-transition";
 import "./groups.css";
 
 export function GroupBrowseView({ filtersOpen, onFilters }: { filtersOpen: boolean; onFilters: () => void }) {
+  const motion = useAlbumTransition();
   const groups = useGroups(), rows = useRows(), directory = useLibrary(state => state.snapshot?.dataDirectory);
   const taskBusy = useTasks(state => state.busy);
   const [managing, setManaging] = useState(false), [deleting, setDeleting] = useState<GroupSummary | null>(null), [renaming, setRenaming] = useState<GroupSummary | null>(null);
@@ -29,8 +31,8 @@ export function GroupBrowseView({ filtersOpen, onFilters }: { filtersOpen: boole
   const currentGroup = groups.list.find(group => String(group.id) === opened);
   const albumName = opened === "ungrouped" ? "未分组" : currentGroup?.name;
   const albumCount = opened === "ungrouped" ? groups.members.ungrouped?.totalCount : currentGroup?.memberCount;
-  function openAlbum(key: string) { clearSelection(); useRows.setState({ activeRow: null }); useGroups.setState({ expanded: [key] }); void loadGroupMembers(key); }
-  function returnToShelf() { clearSelection(); useRows.setState({ activeRow: null }); useGroups.setState({ expanded: [] }); setShelf(true); }
+  function openAlbum(key: string) { void motion.navigate("enter", key, () => { clearSelection(); useRows.setState({ activeRow: null }); useGroups.setState({ expanded: [key] }); void loadGroupMembers(key); }, () => loadGroupMembers(key)); }
+  function returnToShelf() { const update = () => { clearSelection(); useRows.setState({ activeRow: null }); useGroups.setState({ expanded: [] }); setShelf(true); }; if (albumOpen) void motion.navigate("leave", opened, update); else update(); }
   function groupActions(group: GroupSummary): MenuItem[] {
     return [{ label: "重命名", disabled: taskBusy, action: () => { setRenaming(group); setName(group.name); setError(null); } }, { label: "删除分组", danger: true, disabled: taskBusy, action: () => setDeleting(group) }];
   }
@@ -44,7 +46,7 @@ export function GroupBrowseView({ filtersOpen, onFilters }: { filtersOpen: boole
     try { await runTask("重命名分组", () => renameExistingGroup(renaming, name)); setRenaming(null); }
     catch (cause) { setError(errorText(cause)); } finally { setBusy(false); }
   }
-  return <div className={`r-section-view${albumOpen ? " r-group-album-detail" : ""}`}>
+  return <div ref={motion.root} className={`r-section-view${albumOpen ? " r-group-album-detail" : ""}`}>
     {albumOpen ? <header className="r-album-header r-group-detail-header">
       <div className="r-group-detail-title"><Button variant="ghost" size="icon" aria-label="返回所有分组" title="返回所有分组" onClick={returnToShelf}><ArrowLeft size={20} /></Button><h1 title={albumName}>{albumName}</h1>{albumCount !== undefined && <span className="r-album-heading-count">{albumCount.toLocaleString()} 张</span>}</div>
       <div className="rm-actions"><Button aria-expanded={filtersOpen} onClick={onFilters}><SlidersHorizontal size={15} />图片筛选</Button>{currentGroup && <Menu label="分组操作" items={groupActions(currentGroup)} />}</div>

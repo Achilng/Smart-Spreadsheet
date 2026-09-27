@@ -28,7 +28,7 @@ export const Thumbnail = memo(function Thumbnail({ rowId, detail = false, enhanc
     return () => { observer.disconnect(); clearTimeout(timer); scrollRoot?.removeEventListener("scroll", settled); };
   }, [enhanced, rowId]);
   const image = useProgressiveImage(hasImage ? rowId : undefined, detail ? "detail" : enhanced && readyId === rowId ? "gallery" : "thumbnail");
-  return <div ref={root} className={`r-image ${className ?? ""}`} data-loaded={Boolean(image.url)} onDoubleClick={event => { if (image.error) { event.stopPropagation(); image.retry(); } }}>
+  return <div ref={root} className={`r-image ${className ?? ""}`} data-image-row={rowId} data-loaded={Boolean(image.url)} onDoubleClick={event => { if (image.error) { event.stopPropagation(); image.retry(); } }}>
     {!hasImage ? <span className="r-image-error"><ImageOff size={20} /><span>无图片</span></span> : <>
       {image.thumbnailUrl ? <img className="r-image-base" src={image.thumbnailUrl} alt={alt} decoding="async" draggable={false} /> : image.error && !image.previewUrl ? <span className="r-image-error" title="双击重试"><ImageOff size={20} /><span>图片无法读取</span></span> : <span className="r-image-placeholder" aria-label="正在加载图片" />}
       {image.previewUrl && <DecodedPreview key={image.previewUrl} url={image.previewUrl} alt={image.thumbnailUrl ? "" : alt} />}

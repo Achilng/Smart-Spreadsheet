@@ -15,11 +15,11 @@ function limited<T>(run: () => Promise<T>): Promise<T> {
 }
 
 /** Mount with a new key when the source query changes; keep loadPreview stable. */
-export function RowAlbumCard({ label, count, actionLabel, loadPreview, onOpen }: {
-  label: string; count?: number; actionLabel: string; loadPreview: () => Promise<RowPage>; onOpen: () => void;
+export function RowAlbumCard({ albumKey, label, count, actionLabel, loadPreview, initialPreview, onOpen }: {
+  albumKey: string; label: string; count?: number; actionLabel: string; loadPreview: () => Promise<RowPage>; initialPreview?: Pick<RowPage, "rows" | "totalCount">; onOpen: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [visible, setVisible] = useState(false), [page, setPage] = useState<RowPage | null>(null);
+  const [visible, setVisible] = useState(Boolean(initialPreview)), [page, setPage] = useState<Pick<RowPage, "rows" | "totalCount"> | null>(() => initialPreview ? { rows: initialPreview.rows.slice(0, 3), totalCount: initialPreview.totalCount } : null);
   const [error, setError] = useState(""), [attempt, setAttempt] = useState(0);
   useEffect(() => {
     if (!ref.current) return;
@@ -36,7 +36,7 @@ export function RowAlbumCard({ label, count, actionLabel, loadPreview, onOpen }:
     return () => { cancelled = true; };
   }, [visible, count, loadPreview, attempt, page]);
   const total = count ?? page?.totalCount;
-  return <div ref={ref} role="listitem" className="r-group-album">
+  return <div ref={ref} role="listitem" className="r-group-album" data-album-key={albumKey}>
     <button className="r-album-trigger" type="button" aria-label={actionLabel} onClick={onOpen}>
       <AlbumStack images={visible ? (page?.rows ?? []).map(row => <Thumbnail key={row.id} rowId={row.id} hasImage={Boolean(row.imagePath?.trim() || row.storedImagePath?.trim())} alt={label} />) : []} empty={error ? "封面加载失败" : total === 0 ? "空相册" : !page ? "正在加载…" : "暂无图片"} />
       <span className="r-album-title" title={label}>{label}</span><span className="r-album-meta">{total === undefined ? "待整理的图片" : `${total.toLocaleString()} 张图片`}</span>

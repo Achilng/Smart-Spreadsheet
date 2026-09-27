@@ -1,0 +1,23 @@
+/* Only the album surface participates; the navigation rail stays still. */
+:root[data-album-motion]::view-transition{pointer-events:none}
+:root[data-album-motion]::view-transition-group(*){animation-duration:520ms;animation-timing-function:cubic-bezier(.22,.8,.22,1)}
+:root[data-album-motion]::view-transition-old(root){display:none}
+:root[data-album-motion]::view-transition-new(root){animation:none;mix-blend-mode:normal}
+:root[data-album-motion]::view-transition-image-pair(*){isolation:isolate}
+:root[data-album-motion]::view-transition-old(*),:root[data-album-motion]::view-transition-new(*){mix-blend-mode:normal;animation-duration:360ms;object-fit:cover;overflow:clip}
+:root[data-album-motion]::view-transition-group(album-title){z-index:10}
+:root[data-album-motion]::view-transition-old(album-title),:root[data-album-motion]::view-transition-new(album-title){object-fit:contain;object-position:left center}
+.r-album-title[style*="view-transition-name"]{width:fit-content;max-width:calc(100% - 24px);margin-left:auto;margin-right:auto}
+:root[data-album-motion]::view-transition-group(album-photo-0),:root[data-album-motion]::view-transition-group(album-photo-1),:root[data-album-motion]::view-transition-group(album-photo-2){z-index:8}
+:root[data-album-motion=enter]::view-transition-old(album-page){animation:album-shelf-retreat 280ms ease both}
+:root[data-album-motion=enter]::view-transition-new(album-page){animation:album-page-open 400ms cubic-bezier(.2,.8,.2,1) 80ms both}
+:root[data-album-motion=leave]::view-transition-old(album-page){animation:album-page-close 260ms ease both}
+:root[data-album-motion=leave]::view-transition-new(album-page){animation:album-shelf-return 440ms cubic-bezier(.2,.8,.2,1) both}
+[data-album-motion] .r-section-grid{animation:none}
+@keyframes album-shelf-retreat{to{opacity:0;transform:scale(.96) translateY(8px)}}
+@keyframes album-page-open{from{opacity:0;transform:translateY(18px) scale(.985)}to{opacity:1;transform:none}}
+@keyframes album-page-close{to{opacity:0;transform:translateY(12px) scale(.985)}}
+@keyframes album-shelf-return{from{opacity:.2;transform:scale(1.025)}to{opacity:1;transform:none}}
+@keyframes album-tile-unfold{from{opacity:0;transform:translateY(30px) scale(.87) rotate(2deg)}to{opacity:1;transform:none}}
+@keyframes album-tile-fold{to{opacity:0;transform:translateY(-18px) scale(.88) rotate(-2deg)}}
+@media(prefers-reduced-motion:reduce){:root[data-album-motion]::view-transition-group(*),:root[data-album-motion]::view-transition-old(*),:root[data-album-motion]::view-transition-new(*){animation-duration:1ms!important;animation-delay:0ms!important}}
