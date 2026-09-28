@@ -81,7 +81,7 @@ const server = http.createServer(async (req, res) => {
       return send(200, manager.summary(job));
     }
     if (req.method === 'POST' && action === 'start') {
-      if (manager.active) throw Error('已有任务正在运行，请先暂停。');
+      if (manager.active) return send(409, { error: `任务 ${manager.active.id.slice(0, 8)} 正在运行，请先查看或暂停该任务。`, activeJobId: manager.active.id });
       // start executes synchronously through validation before its first await.
       if (managed && job.settings.provider !== 'api') throw Error('服务器仅支持 API 渠道。');
       resume.start(id, !!body.retryErrors, { apiKey: typeof body.apiKey === 'string' ? body.apiKey.trim() : '', concurrency: body.concurrency, channels: body.channels });

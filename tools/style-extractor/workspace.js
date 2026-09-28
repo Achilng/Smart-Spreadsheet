@@ -1,5 +1,5 @@
 const $=id=>document.getElementById(id);
-let selected=localStorage.getItem('style-job')||'',busy=false,current=null,choiceJob=null;
+let selected=localStorage.getItem('style-job')||'',busy=false,current=null,choiceJob=null,runningJob=null;
 const clockSamples=new Map();
 // Network updates calibrate the clock; they never drive its visible ticks.
 let runClock=null,clockTimer,starting=null;
@@ -69,7 +69,8 @@ function renderChannels(j) {
   $('channelStatusList').replaceChildren(...(j.channels || []).map(channel => {
     const row = document.createElement('div'); row.className = 'channel-status';
     const title = document.createElement('strong'), info = document.createElement('p'), detail = document.createElement('small');
-    title.textContent = `${channel.name} · ${names[channel.state] || channel.state}`;
+    const waiting = j.state === 'running' && channel.state === 'cooldown' && channel.retryAt ? ` · ${Math.max(0, Math.ceil((channel.retryAt - j.sampledAt) / 1000))} 秒后重试` : '';
+    title.textContent = `${channel.name} · ${names[channel.state] || channel.state}${waiting}`;
     info.textContent = `${channel.inFlight} / ${channel.concurrency} 个请求 · 本轮成功 ${channel.success} 条 · 失败尝试 ${channel.failures} 条`;
     detail.textContent = channel.model + (channel.error ? ' · ' + channel.error : ''); row.append(title, info, detail); return row;
   }));
@@ -77,6 +78,10 @@ function renderChannels(j) {
 function render(j) {
   if (j && (j.id !== selected || clockSamples.get(j.id) > j.sampledAt)) return;
   if (j) clockSamples.set(j.id, j.sampledAt); syncClock(j); current = j;
+  const otherRunning = runningJob && runningJob.id !== selected;
+  $('runningNotice').hidden = !otherRunning;
+  if (otherRunning) $('runningText').textContent = `任务 ${runningJob.id.slice(0,8)} 正在运行 · 已完成 ${runningJob.ok + runningJob.none} / ${runningJob.total} 条 · ${runningJob.inFlight || 0} 个请求进行中`;
+  $('pauseRunning').disabled = busy; $('viewRunning').disabled = busy;
   $('empty').classList.toggle('hidden', !!j); $('detail').classList.toggle('hidden', !j); if (!j) return;
   const isApi = j.settings.provider === 'api';
   if (choiceJob !== j.id) { choiceJob = j.id; $('runConcurrency').value = j.settings.concurrency || 1; if (isApi) choices('runChannels', j); $('runSettings').open = j.state !== 'running'; }
@@ -87,7 +92,7 @@ function render(j) {
   $('done').textContent = `${j.ok + j.none} / ${j.total}`; $('none').textContent = j.none; $('errors').textContent = j.errors; drawClock();
   const p = Math.round((j.ok + j.none + j.errors) / j.total * 100); $('fill').style.width = p + '%'; $('progress').setAttribute('aria-valuenow', p);
   $('percent').textContent = `${p}% 已处理 · ${j.pending} 条待处理`; $('calls').textContent = `${j.calls} 次调用 · ${j.inFlight || 0} 个请求进行中`; $('message').textContent = j.message;
-  $('start').disabled = busy || j.state === 'running' || !j.pending; $('pause').disabled = busy || j.state !== 'running'; $('retry').disabled = busy || j.state === 'running' || !j.errors;
+  $('start').disabled = busy || !!otherRunning || j.state === 'running' || !j.pending; $('pause').disabled = busy || j.state !== 'running'; $('retry').disabled = busy || !!otherRunning || j.state === 'running' || !j.errors;
   $('download').disabled = busy || !(j.ok + j.none + j.errors); $('applyChannels').disabled = busy || j.state !== 'running' || !j.settings.channels;
   $('logs').textContent = j.logs.slice(-14).map(x => new Date(x.time).toLocaleTimeString() + '  ' + x.message).join('\n');
   $('failureCard').classList.toggle('hidden', !j.errors); $('failures').replaceChildren(...j.failures.map(f => { const p = document.createElement('p'); p.textContent = f.id.slice(0,22) + '…\n' + f.error; return p; })); renderChannels(j);
@@ -96,15 +101,15 @@ let refreshing = false;
 async function refresh() {
   if (refreshing) return; refreshing = true;
   try {
-    const jobs = await api('jobs'); $('connection').textContent = '已连接 · 进度自动保存';
-    $('jobs').replaceChildren(...jobs.map(j => new Option(new Date(j.createdAt).toLocaleString() + ' · ' + j.total + ' 条', j.id)));
+    const jobs = await api('jobs'); runningJob = jobs.find(j => j.state === 'running') || null; $('connection').textContent = '已连接 · 进度自动保存';
+    $('jobs').replaceChildren(...jobs.map(j => new Option((j.state === 'running' ? '▶ 正在运行 · ' : '') + new Date(j.createdAt).toLocaleString() + ' · ' + j.total + ' 条', j.id)));
     if (!jobs.some(j => j.id === selected)) selected = jobs[0]?.id || ''; $('jobs').value = selected; render(jobs.find(j => j.id === selected) || null);
   } catch (error) { $('connection').textContent = error.message.includes('刷新') ? '服务已重启，请刷新页面' : '连接中断，正在自动重连'; if (error.message.includes('刷新')) location.reload(); }
   finally { refreshing = false; }
 }
 async function perform(fn) {
   if (busy) return; busy = true; $('create').disabled = true; $('error').textContent = ''; if (current) render(current);
-  try { await fn(); await refresh(); } catch (error) { $('error').textContent = error.message; }
+  try { await fn(); await refresh(); } catch (error) { $('error').textContent = error.message; await refresh(); }
   finally { busy = false; $('create').disabled = false; if (current) render(current); }
 }
 async function startJob(retryErrors = false) {
@@ -121,7 +126,9 @@ $('create').onclick = () => perform(async () => {
   if (settings.provider === 'api') settings.channels = configs('newChannels'); else settings.concurrency = Number($('concurrency').value);
   const j = await api('jobs', { request, settings }); selected = j.id; localStorage.setItem('style-job', selected); choiceJob = null;
 });
-$('jobs').onchange = () => { selected = $('jobs').value; localStorage.setItem('style-job', selected); void refresh(); };
+$('jobs').onchange = () => { selected = $('jobs').value; $('error').textContent = ''; localStorage.setItem('style-job', selected); void refresh(); };
+$('viewRunning').onclick = () => { if (!runningJob) return; selected = runningJob.id; $('error').textContent = ''; localStorage.setItem('style-job', selected); void refresh(); };
+$('pauseRunning').onclick = () => { const id = runningJob?.id; if (id) void perform(() => api('jobs/' + id + '/pause', {})); };
 $('start').onclick = () => perform(() => startJob()); $('retry').onclick = () => perform(() => startJob(true));
 $('pause').onclick = () => perform(() => api('jobs/' + selected + '/pause', {}));
 $('applyChannels').onclick = () => perform(() => api('jobs/' + selected + '/channels', { channels: configs('runChannels', true, true) }));

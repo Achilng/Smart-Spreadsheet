@@ -22,7 +22,7 @@ export async function runChannels(manager, job, retryErrors, values) {
     for (const state of active.channels) state.config = { ...state.config, enabled: false };
     const next = configs.map(config => {
       const state = old.get(config.id) || { inFlight: 0, calls: 0, success: 0, failures: 0 };
-      Object.assign(state, { config, disabled: false, until: 0, rateFailures: 0, error: '' });
+      Object.assign(state, { config, disabled: false, until: 0, rateFailures: 0, rateEpoch: 0, revision: (state.revision || 0) + 1, error: '' });
       old.delete(config.id); return state;
     });
     active.channels = [...next, ...[...old.values()].filter(x => x.inFlight)];
@@ -57,8 +57,8 @@ export async function runChannels(manager, job, retryErrors, values) {
   }
   async function invoke(state, items, slot) {
     // Capture credentials and model: edits affect only subsequent requests.
-    const config = { ...state.config }, call = ++job.calls;
-    const currentConfig = () => state.config.baseUrl === config.baseUrl && state.config.apiKey === config.apiKey && state.config.model === config.model;
+    const config = { ...state.config }, call = ++job.calls, revision = state.revision, rateEpoch = state.rateEpoch;
+    const currentConfig = () => state.revision === revision;
     const lane = { slot: slot + 1, channelId: config.id, channelName: config.name, model: config.model, call, attempt: Math.max(...items.map(x => attempts.get(x.id) || 0)), phase: 'waiting', mode: 'stream', current: null, revision: 0,
       items: items.map(x => ({ id: x.id, source: x.positive_prompt, text: '', state: 'waiting' })) };
     lanes[slot] = lane;
@@ -87,7 +87,8 @@ export async function runChannels(manager, job, retryErrors, values) {
       const reply = await manager.runner(items, { ...job.settings, ...config, provider: 'api' }, controller.signal, text => { if (!controller.signal.aborted) log(`${config.name} · ${text}`); }, emit);
       if (!controller.signal.aborted) {
         for (const result of validateReply(items, reply)) emit({ type: 'result', result });
-        if (currentConfig()) state.rateFailures = 0;
+        // Successes from requests sent before a 429 must not cancel its cooldown.
+        if (currentConfig() && rateEpoch === state.rateEpoch && !state.disabled) { state.rateFailures = 0; state.error = ''; state.until = 0; }
       }
     } catch (error) {
       if (!controller.signal.aborted) {
@@ -97,10 +98,21 @@ export async function runChannels(manager, job, retryErrors, values) {
         if (rate || terminal) {
           channelFault = true;
           if (currentConfig()) {
-            state.error = message;
-            if (rate && ++state.rateFailures < 3) state.until = Date.now() + Math.max(1000, error.retryAfterMs || 5000 * state.rateFailures);
-            else state.disabled = true;
-            log(`${config.name} · ${state.disabled ? '渠道暂不可用' : '限流，等待恢复'}：${message}`);
+            if (rate && !terminal) {
+              // Count recovery rounds, not simultaneous rejected requests. A burst
+              // of 20 responses from the same dispatch wave is one rate-limit event.
+              if (rateEpoch === state.rateEpoch) {
+                state.error = message; state.rateEpoch++; state.rateFailures++;
+                state.until = Date.now() + Math.max(1000, error.retryAfterMs || 5000 * state.rateFailures);
+                if (state.rateFailures >= 3) state.disabled = true;
+                log(`${config.name} · ${state.disabled ? '连续三轮限流，渠道暂不可用' : '限流，等待恢复'}：${message}`);
+              } else if (state.until > Date.now() && error.retryAfterMs > 0) {
+                state.until = Math.max(state.until, Date.now() + error.retryAfterMs);
+              }
+            } else {
+              state.error = message; state.disabled = true;
+              log(`${config.name} · 渠道暂不可用：${message}`);
+            }
           }
         }
       }

@@ -65,6 +65,30 @@ test('rate-limited channel recovers after Retry-After while other channels proce
   assert.ok(calls > 1); assert.ok(progressed > 1); assert.equal(manager.get(job.id).results.length, 12);
 });
 
+test('simultaneous 429 responses count as one cooldown round and recover automatically', async () => {
+  const gates = []; let calls = 0;
+  const channels = [channel('A', 20)];
+  const manager = new JobManager(directory(), async items => {
+    if (++calls <= 13) { await new Promise(resolve => gates.push(resolve)); throw Object.assign(Error('429 concurrency limit'), { status: 429, retryAfterMs: 1000 }); }
+    return reply(items);
+  });
+  const job = manager.create(request(123), { channels, batchSize: 10 }), work = manager.start(job.id, false, { channels });
+  await until(() => gates.length === 13); gates.forEach(resolve => resolve());
+  await until(() => manager.active?.inFlight === 0);
+  assert.equal(manager.active.stats()[0].state, 'cooldown');
+  assert.equal(manager.active.channels[0].rateFailures, 1);
+  assert.equal(manager.get(job.id).state, 'running');
+  await work; assert.equal(manager.get(job.id).results.length, 123); assert.equal(calls, 26);
+});
+
+test('three failed recovery rounds pause; parallel errors never exhaust all rounds at once', async () => {
+  let calls = 0; const channels = [channel('A', 6)];
+  const manager = new JobManager(directory(), async () => { calls++; await delay(30); throw Object.assign(Error('429 rate limit'), { status: 429, retryAfterMs: 1000 }); });
+  const job = manager.create(request(6), { channels, batchSize: 1 }); await manager.start(job.id, false, { channels });
+  assert.equal(calls, 18); assert.equal(manager.get(job.id).state, 'paused');
+  assert.equal(manager.summary(manager.get(job.id)).pending, 6); assert.equal(manager.active, null);
+});
+
 test('all channels unavailable pauses, and restart requires keys and preserves successful items', async () => {
   const dir = directory(), channels = [channel('A')]; let first = true;
   const manager = new JobManager(dir, async items => { if (!first) throw Object.assign(Error('quota'), { status: 403 }); first = false; return reply(items); });

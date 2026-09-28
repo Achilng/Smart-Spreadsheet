@@ -30,9 +30,11 @@ test('server never uses environment credentials or persists submitted keys, incl
   const temp = process.platform === 'win32' ? 'D:/Agent/Agent_temp/style-browser-key-tests' : '/tmp/style-browser-key-tests';
   fs.mkdirSync(temp, { recursive: true });
   const directory = fs.mkdtempSync(path.join(temp, 'run-')), seen = [];
+  let holdCalls = null;
   const upstream = http.createServer(async (req, res) => {
     seen.push(req.headers.authorization);
     for await (const chunk of req) { /* drain request */ }
+    if (!req.url.endsWith('/models') && holdCalls) await holdCalls;
     res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify(req.url.endsWith('/models') ? { data: [{ id: 'test-model' }] } : { choices: [{ message: { content: JSON.stringify({ items: [{ id: '1', status: 'none', artist_string: '' }] }) } }] }));
   }).listen(0, '127.0.0.1');
@@ -65,7 +67,11 @@ test('server never uses environment credentials or persists submitted keys, incl
     const channels = ['A', 'B'].map(id => ({ id, name: 'channel-' + id, baseUrl: 'https://proxy.example/v1', model: 'model-' + id, concurrency: 40, apiKey: 'channel-secret-' + id }));
     const multi = await api('jobs', { request: { format: REQUEST, version: 1, export_id: 'multi-server', items: ['one','two'].map(positive_prompt => ({ id: hash(positive_prompt), positive_prompt })) }, settings: { channels, batchSize: 1 } });
     assert.equal(multi.status, 200); assert.equal(JSON.stringify(multi.data).includes('channel-secret'), false);
+    let release; holdCalls = new Promise(resolve => { release = resolve; });
     assert.equal((await api(`jobs/${multi.data.id}/start`, { channels })).status, 200);
+    const blocked = await api(`jobs/${id}/start`, { apiKey: 'browser-only-test' });
+    assert.equal(blocked.status, 409); assert.equal(blocked.data.activeJobId, multi.data.id);
+    release(); holdCalls = null;
     for (let n = 0; n < 100 && (await api(`jobs/${multi.data.id}`)).data.state === 'running'; n++) await delay(20);
     const result = (await api(`jobs/${multi.data.id}/result`)).data;
     assert.equal(result.items.length, 2); assert.deepEqual(new Set(result.items.map(x => x.model)), new Set(['model-A', 'model-B']));
