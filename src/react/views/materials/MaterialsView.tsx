@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { Copy, Edit3, Grid2X2, PanelRightClose, PanelRightOpen, Trash2, SlidersHorizontal, Plus, ImagePlus } from "lucide-react";
 import { materialAlbum } from "../../../lib/utils/material-album";
-import { galleryLayout, galleryCellPosition, galleryVisibleIndices } from "../../../lib/images/gallery-layout";
+import { GALLERY_GAP, GALLERY_PADDING, GALLERY_PADDING_TOP, galleryLayout, galleryCellPosition, galleryVisibleIndices } from "../../../lib/images/gallery-layout";
 import { useTasks } from "../../state/tasks";
 import { useWorkspace } from "../../state/workspace";
 import { useMaterials, initializeMaterials, loadMaterialPage, reloadMaterials, MATERIAL_PAGE_SIZE, materialThumbnails, materialCardVersionImages, materialCovers, materialVersionCovers, toggleMaterialTag, setMaterialUntagged, clearMaterialFilters, createMaterial, chooseMaterialImages, beginMaterialImport, editMaterial, copyMaterial, requestDeleteMaterial, confirmDeleteMaterial } from "../../state/materials";
@@ -24,7 +24,7 @@ export function MaterialsView({ active = true }: { active?: boolean }) {
   // Room for the fanned sheets and labels; gallery geometry is unchanged.
   layout.imageHeight = Math.ceil(Math.min(size * .65, layout.cardWidth * .58) * 1216 / 832) + 32;
   layout.cellHeight = layout.imageHeight + 110;
-  layout.spacerHeight = layout.gridRows ? 32 + layout.gridRows * layout.cellHeight - 12 : 0;
+  layout.spacerHeight = layout.gridRows ? GALLERY_PADDING_TOP + GALLERY_PADDING + layout.gridRows * layout.cellHeight - GALLERY_GAP : 0;
   const visible = active ? galleryVisibleIndices(layout, state.scrollTop, bounds.height, state.total) : [];
   const first = visible[0] ?? 0; const last = visible.at(-1) ?? 0;
   useEffect(() => {

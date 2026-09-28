@@ -22,6 +22,11 @@
 :root[data-album-motion]::view-transition-old(album-page){animation:album-page-out 140ms ease-out both}
 :root[data-album-motion=enter]::view-transition-new(album-page){animation:album-page-open 320ms cubic-bezier(.2,.8,.2,1) 100ms both}
 :root[data-album-motion=leave]::view-transition-new(album-page){animation:album-shelf-return 340ms cubic-bezier(.2,.8,.2,1) 100ms both}
+/* No shared cover: overlap the pages so there is never an empty frame between them. */
+:root[data-album-pairs=none]::view-transition-old(album-page){animation:album-page-out 220ms ease-out both}
+:root[data-album-pairs=none][data-album-motion=enter]::view-transition-new(album-page){animation:album-page-open 300ms cubic-bezier(.2,.8,.2,1) both}
+:root[data-album-pairs=none][data-album-motion=leave]::view-transition-new(album-page){animation:album-shelf-return 300ms cubic-bezier(.2,.8,.2,1) both}
+:root[data-album-pairs=none][data-album-motion=enter]::view-transition-new(album-heading){animation-delay:40ms}
 
 .r-group-album .r-album-title{width:fit-content;max-width:calc(100% - 24px);margin-left:auto;margin-right:auto}
 [data-album-motion] .r-album-sheet,[data-album-motion] .r-section-thumb,[data-album-motion] .r-section-check{transition:none}

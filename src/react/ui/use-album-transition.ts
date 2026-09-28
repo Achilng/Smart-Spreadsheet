@@ -42,6 +42,7 @@ export function useAlbumTransition() {
       rules.remove();
       delete node.dataset.albumMotion;
       delete document.documentElement.dataset.albumMotion;
+      delete document.documentElement.dataset.albumPairs;
       active.current = null;
     };
     active.current = clean;
@@ -114,25 +115,36 @@ export function useAlbumTransition() {
         if (cancelled || !node.isConnected) return;
         if (direction === "enter") mark(node.querySelector<HTMLElement>(".r-group-detail-title"), "album-heading");
         const pairedOrigins = new Set<number>();
-        destination.slice(0, direction === "enter" ? 24 : 3).forEach((element, index) => {
+        const matches = destination.slice(0, direction === "enter" ? 24 : 3).map(element => {
           const id = identify(element), match = id ? ids.indexOf(id) : -1;
           const paired = match >= 0 && match < (direction === "enter" ? 3 : 24) && !pairedOrigins.has(match);
           if (paired) pairedOrigins.add(match);
-          if (paired) {
+          return paired ? match : -1;
+        });
+        // Without a shared cover nothing bridges the two pages, so they cross-fade instead of
+        // clearing one before the other (which reads as a blank flash).
+        const bridged = pairedOrigins.size > 0;
+        if (!bridged) document.documentElement.dataset.albumPairs = "none";
+        matches.forEach((match, index) => {
+          const element = destination[index];
+          if (match >= 0) {
             const name = `album-${direction === "enter" ? "photo" : "tile"}-${match}`;
             mark(direction === "enter" ? thumb(element) : element, name);
             if (direction === "leave") stack(element, name);
           } else {
             mark(element, `album-arrival-${index}`);
-            // Arrivals wait until the outgoing page has faded so the two layouts never double-expose.
-            rules.sheet?.insertRule(`:root[data-album-motion]::view-transition-new(album-arrival-${index}){animation:album-tile-unfold 340ms cubic-bezier(.2,.8,.2,1) ${120 + Math.min(index * 18, 162)}ms both}`);
+            // With a bridge, arrivals wait until the outgoing page has faded so the layouts never double-expose.
+            rules.sheet?.insertRule(`:root[data-album-motion]::view-transition-new(album-arrival-${index}){animation:album-tile-unfold 340ms cubic-bezier(.2,.8,.2,1) ${(bridged ? 120 : 40) + Math.min(index * 18, 162)}ms both}`);
           }
         });
         // Old layers without a partner must leave on their own instead of waiting to be covered.
         origin.slice(0, direction === "enter" ? 3 : 24).forEach((_, index) => {
           if (pairedOrigins.has(index)) return;
           const name = `album-${direction === "enter" ? "photo" : "tile"}-${index}`;
-          rules.sheet?.insertRule(`:root[data-album-motion]::view-transition-old(${name}){animation:album-tile-fold 180ms cubic-bezier(.2,0,0,1) ${Math.min(index * 10, 60)}ms both}`);
+          // Unmatched covers leave with their shelf; the front sheet goes last so the fan never looks see-through.
+          rules.sheet?.insertRule(bridged
+            ? `:root[data-album-motion]::view-transition-old(${name}){animation:album-tile-fold 180ms cubic-bezier(.2,0,0,1) ${Math.min(index * 10, 60)}ms both}`
+            : `:root[data-album-motion]::view-transition-old(${name}){animation:album-page-out ${index ? 150 : 170}ms ease-out ${direction === "enter" && !index ? 60 : 0}ms both}`);
         });
       });
       // A skipped/unsupported snapshot still runs the state update. Never run it twice.

@@ -126,9 +126,10 @@
 .r-card-meta { min-width: 0; padding: 8px 2px 0; }
 .r-card-meta > div { overflow: hidden; font-size: var(--font-sm); line-height: 21px; text-overflow: ellipsis; white-space: nowrap; }
 .r-card-meta > small { display: flex; align-items: center; gap: 6px; height: 20px; margin-top: 1px; overflow: hidden; color: var(--text-3); font-size: var(--font-xs); line-height: 20px; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.r-card-meta > small > span:first-child { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.r-card-badges { display: flex; flex: none; gap: 4px; margin-left: auto; }
-.r-card-badges > span { height: 18px; }
+/* The resolution always stays readable; a badge that does not fit wraps onto a hidden second line. */
+.r-card-meta > small > span:first-child { flex: none; }
+.r-card-badges { display: flex; flex: 0 1 auto; flex-wrap: wrap; justify-content: flex-end; gap: 4px; min-width: 0; height: 18px; margin-left: auto; overflow: hidden; }
+.r-card-badges > span { flex: none; height: 18px; }
 
 /* ---- Table ---- */
 .r-table {

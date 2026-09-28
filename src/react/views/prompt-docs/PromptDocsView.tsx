@@ -7,7 +7,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { Bold, Check, Copy, FileText, ImagePlus, Italic, List, LoaderCircle, Plus, Redo2, RotateCw, Trash2, Undo2 } from "lucide-react";
 import { importPromptDocImageBytes, importPromptDocImageFromPath } from "../../../lib/api/prompt-docs";
 import { errorText } from "../../../lib/utils/format";
-import { Button, Input, Modal } from "../../ui/controls";
+import { Button, Input, Modal, SearchField } from "../../ui/controls";
 import { notify } from "../../state/notices";
 import { runTask, useTasks } from "../../state/tasks";
 import { useLibrary } from "../../state/library";
@@ -132,7 +132,7 @@ export function PromptDocsView() {
   return <section className="r-prompt-docs" aria-label="提示词文档">
     <aside className="r-pd-list">
       <header><h2>提示词文档</h2><Button variant="primary" disabled={locked} onClick={() => void switchPromptDoc(null, confirmDiscard)}><Plus size={14} />新建</Button></header>
-      <Input aria-label="搜索提示词文档" placeholder="搜索标题和正文…" value={state.search} onChange={event => usePromptDocs.setState({ search: event.target.value })} />
+      <SearchField aria-label="搜索提示词文档" placeholder="搜索标题和正文…" value={state.search} onChange={event => usePromptDocs.setState({ search: event.target.value })} onClear={() => usePromptDocs.setState({ search: "" })} clearLabel="清除文档搜索" />
       <div className="r-pd-items" aria-label="文档列表">
         {state.error && <div className="r-pd-error" role="alert"><p>{state.error}</p><Button disabled={locked} onClick={() => void initializePromptDocs()}><RotateCw size={14} />重新加载</Button></div>}
         {!state.error && !docs.length && <p className="r-pd-list-empty">{state.loading ? "正在加载文档…" : keyword ? "没有匹配的文档" : "还没有提示词文档"}</p>}
