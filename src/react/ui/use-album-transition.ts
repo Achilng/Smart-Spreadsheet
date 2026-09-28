@@ -55,9 +55,10 @@ export function useAlbumTransition() {
     const cards = () => [...node.querySelectorAll<HTMLElement>(".r-section-card")].filter(visible);
     // Shared covers travel as bare thumbnails; the file name stays with the page layer.
     const thumb = (card: HTMLElement) => card.querySelector<HTMLElement>(".r-section-thumb") ?? card;
-    // Page chrome swaps instantly and stays on top with a solid ground, like a fixed title bar:
-    // images move underneath it instead of showing through or covering it.
-    const heads = () => [...node.querySelectorAll<HTMLElement>(":scope > .r-page-head, :scope > .r-page-toolbar")];
+    // Snapshots ignore the list's scroll clipping, so a half-scrolled album or card is drawn whole.
+    // Everything above the list (window bar, page header, filter chips) therefore sits on top with
+    // a solid ground and swaps instantly, like a fixed frame the images move underneath.
+    const heads = () => [...node.querySelectorAll<HTMLElement>(":scope > .r-page-head, :scope > .r-page-toolbar, :scope > .r-chips")];
     const swapHeads = (side: "old" | "new") => heads().forEach((element, index) => {
       const name = `album-chrome-${side}-${index}`;
       mark(element, name);
@@ -98,6 +99,7 @@ export function useAlbumTransition() {
       document.documentElement.dataset.albumMotion = direction;
       document.head.append(rules);
       mark(node, "album-page");
+      mark(document.querySelector<HTMLElement>(".r-topbar"), "album-window-bar");
       const origin = direction === "enter" ? sheets() : cards();
       const ids = origin.map(identify);
       swapHeads("old");
