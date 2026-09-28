@@ -13,9 +13,6 @@ import { useWorkspaceLifecycle } from "./ui/use-workspace-lifecycle";
 import { JsonExportDialog } from "./views/JsonExportDialog";
 import { UpdateImportDialog } from "./views/UpdateImportDialog";
 import { TaskProgress } from "./views/TaskProgress";
-import { openToolboxWindow } from "../lib/windows/toolbox";
-import { notify } from "./state/notices";
-import { errorText } from "../lib/utils/format";
 import { RowActionDialogs } from "./views/RowActionDialogs";
 import { SelectionBar } from "./views/SelectionBar";
 import { StartupScreen } from "./views/StartupScreen";
@@ -43,8 +40,8 @@ export function App() {
   useEffect(() => { void initializeLibrary().then(runStartupMaintenance); }, []);
   return <Tooltip.Provider delayDuration={550} skipDelayDuration={150}>
     {!loaded || error || !configured ? <StartupScreen />
-      : <div className="r-workspace r-album-workspace r-album-theme"><TopBar onUpdateImport={() => setDialog("update")} onToolbox={() => void openToolboxWindow().catch(failure => notify(`无法打开工具箱：${errorText(failure)}`, "error"))} />
-        <div className="r-workspace-body"><AlbumNavigation /><MaterialsView active={view === "materials"} />{view === "promptDocs" ? <PromptDocsView /> : view !== "materials" && <>{imageFilters && <div className="r-library-filter-panel"><TagSidebar onFilter={() => setDialog("过滤")} /></div>}<main className="r-main-area">
+      : <div className="r-workspace"><TopBar />
+        <div className="r-workspace-body"><AlbumNavigation onUpdateImport={() => setDialog("update")} /><MaterialsView active={view === "materials"} />{view === "promptDocs" ? <PromptDocsView /> : view !== "materials" && <>{imageFilters && <div className="r-library-filter-panel"><TagSidebar onFilter={() => setDialog("过滤")} /></div>}<main className="r-main-area">
           {refreshing && <div className="r-refresh-bar" role="status" aria-label="正在刷新" />}<CanvasHeader filtersOpen={imageFilters} onFilters={() => setImageFilters(value => !value)} />{view === "table" ? <Table /> : view === "group" ? <GroupBrowseView filtersOpen={imageFilters} onFilters={() => setImageFilters(value => !value)} /> : view === "duplicates" ? <DuplicateBrowseView filtersOpen={imageFilters} onFilters={() => setImageFilters(value => !value)} /> : <Gallery />}
           <SelectionBar />
         </main>{(view !== "group" || expandedGroups.length > 0) && (view !== "duplicates" || duplicateDetails) && <DetailPanel />}</>}</div>

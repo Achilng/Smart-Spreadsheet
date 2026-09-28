@@ -104,7 +104,7 @@ export function DetailLightbox({ row, onClose }: { row: RowRecord; onClose: () =
 
   return <Dialog.Root open onOpenChange={open => { if (!open) onClose(); }}><Dialog.Portal>
     <Dialog.Overlay className="rd-lightbox-overlay" />
-    <Dialog.Content className="rd-lightbox r-album-theme" data-expanded={expanded} onOpenAutoFocus={event => { event.preventDefault(); (event.currentTarget as HTMLElement).querySelector<HTMLElement>(".rd-lightbox-stage")?.focus(); }} onCloseAutoFocus={event => { event.preventDefault(); opener.current?.focus(); }} onEscapeKeyDown={event => event.stopPropagation()} onKeyDown={event => {
+    <Dialog.Content className="rd-lightbox" data-expanded={expanded} onOpenAutoFocus={event => { event.preventDefault(); (event.currentTarget as HTMLElement).querySelector<HTMLElement>(".rd-lightbox-stage")?.focus(); }} onCloseAutoFocus={event => { event.preventDefault(); opener.current?.focus(); }} onEscapeKeyDown={event => event.stopPropagation()} onKeyDown={event => {
       if (event.ctrlKey || event.metaKey || event.altKey || event.target instanceof HTMLInputElement) return;
       if (event.key === "+" || event.key === "=") { event.preventDefault(); changeZoom(value => value * 1.25); }
       else if (event.key === "-") { event.preventDefault(); changeZoom(value => value / 1.25); }

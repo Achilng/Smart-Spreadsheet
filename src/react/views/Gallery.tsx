@@ -92,13 +92,11 @@ export function Gallery() {
             else useRows.setState({ activeRow: row });
           }}>
             <Thumbnail enhanced hasImage={Boolean(row.imagePath || row.storedImagePath)} rowId={row.id} alt={`第 ${row.sourceOrdinal} 行缩略图`} />
-            {badge && <span className={`r-model-badge version-badge ${badge.className}`}>{badge.label}</span>}
-            {!!row.vibeReferenceCount && <span className="r-vibe-badge">VIBE ×{row.vibeReferenceCount}</span>}
             {row.tags.length > 0 && <span className="r-card-tags" title={row.tags.join("、")}>{row.tags.slice(0, 2).map(tag => {
               const tone = tagColorFor(tag, tags); return <span key={tag} style={{ background: tone.background, color: tone.text }}>{tag}</span>;
             })}{row.tags.length > 2 && <span className="r-tag-more">+{row.tags.length - 2}</span>}</span>}
           </button>
-          <div className="r-card-meta"><div title={rowFileName(row) ?? undefined}>{rowFileName(row) ?? `#${row.sourceOrdinal}`}</div><small>{rowResolution(row) ?? `#${row.sourceOrdinal}`}</small></div>
+          <div className="r-card-meta"><div title={rowFileName(row) ?? undefined}>{rowFileName(row) ?? `#${row.sourceOrdinal}`}</div><small><span>{rowResolution(row) ?? `#${row.sourceOrdinal}`}</span>{(badge || !!row.vibeReferenceCount) && <span className="r-card-badges">{badge && <span className={`version-badge ${badge.className}`} title={`作画模型：${row.generationModel}`}>{badge.label}</span>}{!!row.vibeReferenceCount && <span className="vibe-badge" title={`包含 ${row.vibeReferenceCount} 个 VIBE 引用`}>VIBE ×{row.vibeReferenceCount}</span>}</span>}</small></div>
         </div></RowContextMenu>;
       })}</div>}
     {error && total > 0 && <div className="r-inline-error" role="alert"><span>{error}</span><Button size="sm" onClick={() => void reloadRows()}>重试</Button></div>}

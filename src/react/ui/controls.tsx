@@ -1,6 +1,6 @@
-import { useId, useLayoutEffect, useRef, type ComponentProps, type ReactNode } from "react";
+import { useId, useLayoutEffect, useRef, type ComponentProps, type ReactElement, type ReactNode } from "react";
 import { Checkbox as CheckboxPrimitive, Dialog, DropdownMenu, Select as SelectPrimitive, Slider as SliderPrimitive, Slot, Tooltip } from "radix-ui";
-import { Check, ChevronDown, Minus, X } from "lucide-react";
+import { Check, ChevronDown, Minus, Search, X } from "lucide-react";
 import { cn } from "./cn";
 
 // Project controls follow shadcn's composition model: Radix owns behavior,
@@ -22,15 +22,29 @@ export function Textarea({ className, ...props }: ComponentProps<"textarea">) {
   return <textarea className={cn("r-input r-textarea", className)} {...props} />;
 }
 
+export function SearchField({ className, value, onClear, clearLabel = "清除搜索", ...props }: ComponentProps<"input"> & { onClear?: () => void; clearLabel?: string }) {
+  return <div className={cn("r-search-field", className)}>
+    <Search size={15} aria-hidden="true" />
+    <input type="text" className="r-input is-pill" value={value} {...props} />
+    {value && onClear && <Button variant="ghost" size="icon" aria-label={clearLabel} onClick={onClear}><X size={13} /></Button>}
+  </div>;
+}
+
+export function Segmented<T extends string>({ value, onChange, options, label }: { value: T; onChange: (value: T) => void; options: readonly { value: T; label: string; icon?: ReactNode }[]; label: string }) {
+  return <div className="r-segmented" role="group" aria-label={label}>
+    {options.map(option => <button type="button" key={option.value} aria-pressed={value === option.value} onClick={() => onChange(option.value)}>{option.icon}{option.label}</button>)}
+  </div>;
+}
+
 export function Checkbox({ className, ...props }: ComponentProps<typeof CheckboxPrimitive.Root>) {
   return <CheckboxPrimitive.Root className={cn("r-checkbox", className)} {...props}>
     <CheckboxPrimitive.Indicator className="r-checkbox-indicator">{props.checked === "indeterminate" ? <Minus size={12} strokeWidth={2.4} /> : <Check size={12} strokeWidth={2.4} />}</CheckboxPrimitive.Indicator>
   </CheckboxPrimitive.Root>;
 }
 
-export function Select<T extends string>({ value, onChange, options, label, disabled }: { value: T; onChange: (value: T) => void; options: readonly (readonly [T, string])[]; label: string; disabled?: boolean }) {
+export function Select<T extends string>({ value, onChange, options, label, disabled, pill = false }: { value: T; onChange: (value: T) => void; options: readonly (readonly [T, string])[]; label: string; disabled?: boolean; pill?: boolean }) {
   return <SelectPrimitive.Root value={value} onValueChange={next => onChange(next as T)} disabled={disabled}>
-    <SelectPrimitive.Trigger className="r-input r-select" aria-label={label}><SelectPrimitive.Value /><SelectPrimitive.Icon><ChevronDown size={14} /></SelectPrimitive.Icon></SelectPrimitive.Trigger>
+    <SelectPrimitive.Trigger className={cn("r-input r-select", pill && "is-pill")} aria-label={label}><SelectPrimitive.Value /><SelectPrimitive.Icon><ChevronDown size={14} /></SelectPrimitive.Icon></SelectPrimitive.Trigger>
     <SelectPrimitive.Portal><SelectPrimitive.Content position="popper" sideOffset={5} collisionPadding={8} className="r-select-menu"><SelectPrimitive.Viewport>
       {options.map(([key, text]) => <SelectPrimitive.Item value={key} key={key} className="r-menu-item"><SelectPrimitive.ItemText>{text}</SelectPrimitive.ItemText><SelectPrimitive.ItemIndicator><Check size={13} /></SelectPrimitive.ItemIndicator></SelectPrimitive.Item>)}
     </SelectPrimitive.Viewport></SelectPrimitive.Content></SelectPrimitive.Portal>
@@ -61,19 +75,21 @@ export interface MenuItem {
   action: () => void;
 }
 
-export function Menu({ label, items, variant = "ghost", disabled, direction = "down", heading, className }: {
-  label: ReactNode;
+export function Menu({ label, items, variant = "ghost", disabled, direction = "down", heading, className, trigger }: {
+  label?: ReactNode;
   items: MenuItem[];
   variant?: "primary" | "ghost" | "default";
   disabled?: boolean;
-  direction?: "down" | "up";
+  direction?: "down" | "up" | "right";
   heading?: string;
   className?: string;
+  /** Replaces the default button; it must forward refs and props. */
+  trigger?: ReactElement;
 }) {
-  return <DropdownMenu.Root><DropdownMenu.Trigger asChild>
-    <Button variant={variant} className={cn("r-menu-trigger", className)} disabled={disabled}>{label}<ChevronDown size={13} className="r-caret" /></Button>
+  return <DropdownMenu.Root><DropdownMenu.Trigger asChild disabled={disabled}>
+    {trigger ?? <Button variant={variant} className={cn("r-menu-trigger", className)} disabled={disabled}>{label}<ChevronDown size={13} className="r-caret" /></Button>}
   </DropdownMenu.Trigger><DropdownMenu.Portal>
-    <DropdownMenu.Content side={direction === "up" ? "top" : "bottom"} align="end" sideOffset={6} collisionPadding={8} className="r-menu">
+    <DropdownMenu.Content side={direction === "up" ? "top" : direction === "right" ? "right" : "bottom"} align="end" sideOffset={direction === "right" ? 10 : 6} collisionPadding={8} className="r-menu">
       {heading && <DropdownMenu.Label className="r-menu-heading">{heading}</DropdownMenu.Label>}
       {items.map(item => <MenuEntry key={item.label} item={item} />)}
     </DropdownMenu.Content>

@@ -1,0 +1,150 @@
+/*
+ * Single source of design tokens for all three windows.
+ * One cool-neutral gray family, black primary actions, blue selection/focus.
+ * Helper text colors keep at least 4.5:1 contrast on --surface and --surface-2.
+ */
+:root {
+  color-scheme: light;
+
+  /* ---- Surfaces ---- */
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #f5f7fa;
+  --surface-3: #edf0f4;
+  --rail: #f7f8fa;
+  --border: #e6e9ee;
+  --border-strong: #d5dae1;
+  --border-faint: #eef1f4;
+  --border-hover: #bfc6cf;
+
+  /* ---- Text ---- */
+  --text: #16181d;
+  --text-2: #3f4651;
+  --text-3: #5d6673;
+  --text-4: #687180;
+
+  /* ---- Roles ---- */
+  --primary: #16181d;
+  --primary-hover: #2e333b;
+  --accent: #1f6fd1;
+  --accent-hover: #185fb5;
+  --accent-soft: #eaf3fd;
+  --accent-soft-hover: #dcebfc;
+  --accent-soft-border: #c4dcf8;
+  --danger: #c43a50;
+  --danger-soft: #fdeff1;
+  --success: #16794f;
+  --success-soft: #e6f4ec;
+  --warning: #9a5d06;
+  --warning-soft: #fbf1dd;
+
+  --overlay: rgb(15 18 24 / 34%);
+  --overlay-heavy: rgb(15 18 24 / 72%);
+  --scrollbar-thumb: #d3d8df;
+  --scrollbar-thumb-hover: #b7bec8;
+  --on-image: rgb(255 255 255 / 92%);
+
+  /* ---- Elevation ---- */
+  --elev-1: 0 1px 2px rgb(16 24 40 / 5%);
+  --elev-2: 0 1px 3px rgb(16 24 40 / 6%), 0 4px 12px -4px rgb(16 24 40 / 6%);
+  --elev-3: 0 12px 32px -10px rgb(16 24 40 / 20%), 0 3px 8px -2px rgb(16 24 40 / 6%);
+  --elev-4: 0 28px 72px -18px rgb(16 24 40 / 30%), 0 6px 18px -4px rgb(16 24 40 / 8%);
+  --focus-ring: 0 0 0 3px rgb(31 111 209 / 22%);
+
+  /* Legacy aliases used by toolbox and compare styles. */
+  --shadow-1: var(--elev-2);
+  --shadow-2: var(--elev-3);
+  --shadow-3: var(--elev-4);
+  --shadow-hover: var(--elev-3);
+  --control-shadow: var(--elev-1);
+  --popup-shadow: var(--elev-3);
+  --vibe-badge-bg: var(--on-image);
+  --vibe-badge-shadow: 0 1px 3px rgb(0 0 0 / 14%);
+
+  /* ---- Shape ---- */
+  --radius-xs: 6px;
+  --radius-s: 8px;
+  --radius-m: 12px;
+  --radius-l: 16px;
+  --radius-full: 999px;
+  --control-h: 32px;
+  --control-h-sm: 28px;
+
+  /* ---- Type: 13 helper, 14 controls, 15 body, 17 panel title, 20 dialog, 24 page ---- */
+  --font: "Microsoft YaHei", sans-serif;
+  --font-mono: var(--font);
+  --font-xs: 13px;
+  --font-sm: 14px;
+  --font-md: 15px;
+  --font-base: 15px;
+  --font-lg: 17px;
+  --font-xl: 20px;
+  --font-2xl: 20px;
+  --font-page: 24px;
+  --ls-caps: 0.05em;
+
+  /* ---- Spacing ---- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+  --page-gutter: 24px;
+
+  /* ---- Layout ---- */
+  --topbar-h: 52px;
+  --rail-width: 76px;
+  --detail-width: 340px;
+
+  /* ---- Motion: short, calm, ease-out; nothing bounces ---- */
+  --dur-instant: 90ms;
+  --dur-fast: 140ms;
+  --dur-base: 200ms;
+  --dur-slow: 280ms;
+  --ease-out: cubic-bezier(.2, .8, .2, 1);
+  --ease-emphasized: cubic-bezier(.22, 1, .36, 1);
+  --ease-in: cubic-bezier(.4, 0, 1, 1);
+
+  --motion-press: var(--dur-instant);
+  --motion-fast: var(--dur-fast);
+  --motion-base: var(--dur-base);
+  --motion-panel: 220ms;
+  --ease-responsive: var(--ease-out);
+  --ease-refined: var(--ease-emphasized);
+  --ease-exit: var(--ease-in);
+
+  /* ---- Layers ---- */
+  --z-nav: 50;
+  --z-dropdown: 200;
+  --z-menu: 600;
+  --z-overlay: 700;
+  --z-modal: 800;
+  --z-lightbox: 850;
+  --z-toast: 900;
+  --z-dragdrop: 1000;
+}
+
+@media (max-width: 1240px) {
+  :root { --detail-width: 300px; }
+}
+
+@media (max-width: 1080px) {
+  :root { --detail-width: 280px; }
+}
+
+@media (max-width: 900px) {
+  :root { --rail-width: 64px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-instant: 0ms;
+    --dur-fast: 0ms;
+    --dur-base: 0ms;
+    --dur-slow: 0ms;
+    --motion-panel: 0ms;
+  }
+}

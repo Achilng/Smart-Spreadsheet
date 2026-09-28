@@ -6,7 +6,8 @@ import { clusterLabel, loadClusterMembers, loadClusters, renameCluster, setDupli
 import { useLibrary, useRows } from "../../state/library";
 import { clearSelection } from "../../state/selection";
 import { runTask, useTasks } from "../../state/tasks";
-import { Button, Input, Menu, Modal, Select, type MenuItem } from "../../ui/controls";
+import { Button, Input, Menu, Modal, Segmented, Select, type MenuItem } from "../../ui/controls";
+import { FilterChips } from "../CanvasHeader";
 import { SectionHeader, SectionList, SectionMembersGrid } from "../groups/SectionParts";
 import { DuplicateAlbumShelf } from "./DuplicateAlbumShelf";
 import { useAlbumTransition } from "../../ui/use-album-transition";
@@ -40,13 +41,14 @@ export function DuplicateBrowseView({ filtersOpen, onFilters }: { filtersOpen: b
     catch (cause) { setError(errorText(cause)); } finally { setBusy(false); }
   }
   return <div ref={motion.root} className={`r-section-view${albumOpen ? " r-group-album-detail" : ""}`}>
-    {albumOpen ? <header className="r-album-header r-group-detail-header">
-      <div className="r-group-detail-title"><Button variant="ghost" size="icon" aria-label="返回所有重复项" title="返回所有重复项" onClick={() => setLayout("shelf")}><ArrowLeft size={20} /></Button><h1 title={currentCluster ? clusterLabel(currentCluster) : opened}>{currentCluster ? clusterLabel(currentCluster) : opened}</h1>{currentCluster && <span className="r-album-heading-count">{currentCluster.memberCount.toLocaleString()} 张</span>}</div>
-      <div className="rm-actions"><Button aria-expanded={filtersOpen} onClick={onFilters}><SlidersHorizontal size={15} />图片筛选</Button>{currentCluster && <Menu label="重复项操作" items={clusterActions(currentCluster)} />}</div>
+    {albumOpen ? <header className="r-page-head r-group-detail-header">
+      <div className="r-group-detail-title"><Button variant="ghost" size="icon" aria-label="返回所有重复项" title="返回所有重复项" onClick={() => setLayout("shelf")}><ArrowLeft size={20} /></Button><h1 className="r-page-title" title={currentCluster ? clusterLabel(currentCluster) : opened}>{currentCluster ? clusterLabel(currentCluster) : opened}</h1>{currentCluster && <span className="r-page-count">{currentCluster.memberCount.toLocaleString()} 张</span>}</div>
+      <div className="r-page-actions"><Button className="is-toggle" aria-expanded={filtersOpen} onClick={onFilters}><SlidersHorizontal size={15} />图片筛选</Button>{currentCluster && <Menu label="重复项操作" items={clusterActions(currentCluster)} />}</div>
     </header> : <>
-      <header className="r-album-header"><h1 className="r-album-heading">重复项 <span className="r-album-heading-count" aria-label={`${state.clusters.length.toLocaleString()} 组重复项`}>{state.clusters.length.toLocaleString()}</span></h1><Button aria-expanded={filtersOpen} onClick={onFilters}><SlidersHorizontal size={15} />图片筛选</Button></header>
-      <div className="r-group-album-toolbar"><Select label="重复项依据" value={state.mode} onChange={mode => { clearActive(); setDuplicateMode(mode); }} options={[["artists", "按画师串"], ["positivePrompt", "按正向提示词"], ["vibes", "按 VIBE 引用"]]} /><Select label="重复项顺序" value={state.sortByCount ? "count" : "name"} onChange={value => useDuplicates.setState({ sortByCount: value === "count" })} options={[["count", "按图片数排序"], ["name", "按名称排序"]]} /><span style={{ flex: 1 }} /><Button aria-pressed={shelf} onClick={() => setLayout("shelf")}><LayoutGrid size={15} />书架</Button><Button aria-pressed={!shelf} onClick={() => setLayout("list")}><List size={15} />列表</Button></div>
+      <header className="r-page-head"><h1 className="r-page-title">重复项<span className="r-page-count" aria-label={`${state.clusters.length.toLocaleString()} 组重复项`}>{state.clusters.length.toLocaleString()}</span></h1><div className="r-page-actions"><Button className="is-toggle" aria-expanded={filtersOpen} onClick={onFilters}><SlidersHorizontal size={15} />图片筛选</Button></div></header>
+      <div className="r-page-toolbar"><Select pill label="重复项依据" value={state.mode} onChange={mode => { clearActive(); setDuplicateMode(mode); }} options={[["artists", "按画师串"], ["positivePrompt", "按正向提示词"], ["vibes", "按 VIBE 引用"]]} /><Select pill label="重复项顺序" value={state.sortByCount ? "count" : "name"} onChange={value => useDuplicates.setState({ sortByCount: value === "count" })} options={[["count", "按图片数排序"], ["name", "按名称排序"]]} /><span className="r-toolbar-spacer" /><Segmented label="重复项布局" value={shelf ? "shelf" : "list"} onChange={value => setLayout(value)} options={[{ value: "shelf", label: "书架", icon: <LayoutGrid size={14} /> }, { value: "list", label: "列表", icon: <List size={14} /> }]} /></div>
     </>}
+    <FilterChips />
     {state.loading && <p className="r-group-status" role="status">正在加载重复项…</p>}
     {state.error && <div className="r-group-status" role="alert"><p className="r-group-error">加载失败：{state.error}</p><Button onClick={() => void loadClusters()}>重试</Button></div>}
     {!state.loading && !state.error && !state.clusters.length && <p className="r-group-status">{state.mode === "vibes" ? "未找到共用同一组 VIBE 引用的图片。" : "未找到重复项（所有条目均唯一）。"}</p>}

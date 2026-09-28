@@ -5,7 +5,8 @@ import { errorText } from "../../../lib/utils/format";
 import { loadGroupMembers, loadGroups, renameExistingGroup, syncGroups, toggleGroup, useGroups } from "../../state/groups";
 import { useLibrary, useRows } from "../../state/library";
 import { runTask, useTasks } from "../../state/tasks";
-import { Button, Input, Menu, Modal, Select, type MenuItem } from "../../ui/controls";
+import { Button, Input, Menu, Modal, SearchField, Segmented, Select, type MenuItem } from "../../ui/controls";
+import { FilterChips } from "../CanvasHeader";
 import { DeleteGroupDialog, GroupManageDialog } from "./GroupManageDialog";
 import { SectionHeader, SectionList, SectionMembersGrid } from "./SectionParts";
 import { GroupAlbumShelf } from "./GroupAlbumShelf";
@@ -47,13 +48,14 @@ export function GroupBrowseView({ filtersOpen, onFilters }: { filtersOpen: boole
     catch (cause) { setError(errorText(cause)); } finally { setBusy(false); }
   }
   return <div ref={motion.root} className={`r-section-view${albumOpen ? " r-group-album-detail" : ""}`}>
-    {albumOpen ? <header className="r-album-header r-group-detail-header">
-      <div className="r-group-detail-title"><Button variant="ghost" size="icon" aria-label="返回所有分组" title="返回所有分组" onClick={returnToShelf}><ArrowLeft size={20} /></Button><h1 title={albumName}>{albumName}</h1>{albumCount !== undefined && <span className="r-album-heading-count">{albumCount.toLocaleString()} 张</span>}</div>
-      <div className="rm-actions"><Button aria-expanded={filtersOpen} onClick={onFilters}><SlidersHorizontal size={15} />图片筛选</Button>{currentGroup && <Menu label="分组操作" items={groupActions(currentGroup)} />}</div>
+    {albumOpen ? <header className="r-page-head r-group-detail-header">
+      <div className="r-group-detail-title"><Button variant="ghost" size="icon" aria-label="返回所有分组" title="返回所有分组" onClick={returnToShelf}><ArrowLeft size={20} /></Button><h1 className="r-page-title" title={albumName}>{albumName}</h1>{albumCount !== undefined && <span className="r-page-count">{albumCount.toLocaleString()} 张</span>}</div>
+      <div className="r-page-actions"><Button className="is-toggle" aria-expanded={filtersOpen} onClick={onFilters}><SlidersHorizontal size={15} />图片筛选</Button>{currentGroup && <Menu label="分组操作" items={groupActions(currentGroup)} />}</div>
     </header> : <>
-    <header className="r-album-header"><h1 className="r-album-heading">分组 <span className="r-album-heading-count" aria-label={`${groups.list.length.toLocaleString()} 个分组`}>{groups.list.length.toLocaleString()}</span></h1><div className="rm-actions"><Button aria-expanded={filtersOpen} onClick={onFilters}><SlidersHorizontal size={15} />图片筛选</Button><Button variant="primary" onClick={() => setManaging(true)}>新建 / 管理分组</Button></div></header>
-    <div className="r-group-album-toolbar"><Input aria-label="搜索分组名称" placeholder="搜索分组名称…" value={search} onChange={event => setSearch(event.target.value)} /><Select label="分组顺序" value={groups.sortByCount ? "count" : "default"} onChange={value => useGroups.setState({ sortByCount: value === "count" })} options={[["default", "默认顺序"], ["count", "按图片数排序"]]} /><Button aria-pressed={shelf} onClick={returnToShelf}><LayoutGrid size={15} />书架</Button><Button aria-pressed={!shelf} onClick={() => setShelf(false)}><List size={15} />列表</Button></div>
+    <header className="r-page-head"><h1 className="r-page-title">分组<span className="r-page-count" aria-label={`${groups.list.length.toLocaleString()} 个分组`}>{groups.list.length.toLocaleString()}</span></h1><div className="r-page-actions"><Button className="is-toggle" aria-expanded={filtersOpen} onClick={onFilters}><SlidersHorizontal size={15} />图片筛选</Button><Button variant="primary" onClick={() => setManaging(true)}>新建 / 管理分组</Button></div></header>
+    <div className="r-page-toolbar"><SearchField aria-label="搜索分组名称" placeholder="搜索分组名称…" value={search} onChange={event => setSearch(event.target.value)} onClear={() => setSearch("")} clearLabel="清除分组搜索" /><Select pill label="分组顺序" value={groups.sortByCount ? "count" : "default"} onChange={value => useGroups.setState({ sortByCount: value === "count" })} options={[["default", "默认顺序"], ["count", "按图片数排序"]]} /><span className="r-toolbar-spacer" /><Segmented label="分组布局" value={shelf ? "shelf" : "list"} onChange={value => { if (value === "shelf") returnToShelf(); else setShelf(false); }} options={[{ value: "shelf", label: "书架", icon: <LayoutGrid size={14} /> }, { value: "list", label: "列表", icon: <List size={14} /> }]} /></div>
     </>}
+    <FilterChips />
     {groups.error && <div className="r-group-status" role="alert"><p className="r-group-error">加载失败：{groups.error}</p><Button onClick={() => void loadGroups()}>重试</Button></div>}
     {groups.loading && !groups.list.length && <p className="r-group-status" role="status">正在加载分组…</p>}
     <SectionList key={positionKey} positionKey={positionKey} loading={groups.loading || groups.expanded.some(key => !groups.members[key] || groups.members[key].loading)} version={groups.version}>

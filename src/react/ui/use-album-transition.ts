@@ -52,12 +52,19 @@ export function useAlbumTransition() {
     };
     const sheets = () => [...album()?.querySelectorAll<HTMLElement>(".r-album-sheet") ?? []];
     const cards = () => [...node.querySelectorAll<HTMLElement>(".r-section-card")].filter(visible);
+    // Shared covers travel as bare thumbnails; the file name stays with the page layer.
+    const thumb = (card: HTMLElement) => card.querySelector<HTMLElement>(".r-section-thumb") ?? card;
     const identify = (element: HTMLElement) => element.querySelector<HTMLElement>("[data-image-row]")?.dataset.imageRow;
     const focusDestination = () => {
       const target = direction === "enter" ? node.querySelector<HTMLElement>(".r-group-detail-title button") : album()?.querySelector<HTMLElement>(".r-album-trigger");
       target?.focus({ preventScroll: true });
     };
     const apply = () => { if (!cancelled && !applied) { applied = true; flushSync(update); } };
+    // Transition layers stack in DOM order; keep the fanned sheets' own z-order while they fly.
+    const stack = (sheet: HTMLElement, name: string) => {
+      const z = Number.parseInt(getComputedStyle(sheet).zIndex, 10);
+      if (Number.isFinite(z)) rules.sheet?.insertRule(`:root[data-album-motion]::view-transition-group(${name}){z-index:${8 + z}}`);
+    };
     try {
       // Start the request immediately, but never make navigation wait on slow storage.
       if (prepare) {
@@ -84,8 +91,8 @@ export function useAlbumTransition() {
       // bookshelf, so text never morphs or travels between the two layouts.
       if (direction === "leave") mark(node.querySelector<HTMLElement>(".r-group-detail-title"), "album-heading");
       // At most three shared covers; other visible tiles spread out in a short wave.
-      if (direction === "enter") origin.slice(0, 3).forEach((element, index) => mark(element, `album-photo-${index}`));
-      else origin.slice(0, 24).forEach((element, index) => mark(element, `album-tile-${index}`));
+      if (direction === "enter") origin.slice(0, 3).forEach((element, index) => { mark(element, `album-photo-${index}`); stack(element, `album-photo-${index}`); });
+      else origin.slice(0, 24).forEach((element, index) => mark(thumb(element), `album-tile-${index}`));
       transition = document.startViewTransition(async () => {
         apply();
         if (cancelled) return;
@@ -106,14 +113,26 @@ export function useAlbumTransition() {
         ]).finally(() => clearTimeout(decodeTimer));
         if (cancelled || !node.isConnected) return;
         if (direction === "enter") mark(node.querySelector<HTMLElement>(".r-group-detail-title"), "album-heading");
+        const pairedOrigins = new Set<number>();
         destination.slice(0, direction === "enter" ? 24 : 3).forEach((element, index) => {
           const id = identify(element), match = id ? ids.indexOf(id) : -1;
-          const paired = match >= 0 && match < (direction === "enter" ? 3 : 24);
-          mark(element, paired ? `album-${direction === "enter" ? "photo" : "tile"}-${match}` : `album-arrival-${index}`);
-          if (!paired) rules.sheet?.insertRule(`:root[data-album-motion]::view-transition-new(album-arrival-${index}){animation:album-tile-unfold 360ms cubic-bezier(.2,.8,.2,1) ${Math.min(index * 16, 144)}ms both}`);
+          const paired = match >= 0 && match < (direction === "enter" ? 3 : 24) && !pairedOrigins.has(match);
+          if (paired) pairedOrigins.add(match);
+          if (paired) {
+            const name = `album-${direction === "enter" ? "photo" : "tile"}-${match}`;
+            mark(direction === "enter" ? thumb(element) : element, name);
+            if (direction === "leave") stack(element, name);
+          } else {
+            mark(element, `album-arrival-${index}`);
+            // Arrivals wait until the outgoing page has faded so the two layouts never double-expose.
+            rules.sheet?.insertRule(`:root[data-album-motion]::view-transition-new(album-arrival-${index}){animation:album-tile-unfold 340ms cubic-bezier(.2,.8,.2,1) ${120 + Math.min(index * 18, 162)}ms both}`);
+          }
         });
-        if (direction === "leave") origin.slice(0, 24).forEach((_, index) => {
-          if (!ids[index] || !destination.some(element => identify(element) === ids[index])) rules.sheet?.insertRule(`:root[data-album-motion]::view-transition-old(album-tile-${index}){animation:album-tile-fold 260ms cubic-bezier(.4,0,.6,1) ${Math.min(index * 8, 80)}ms both}`);
+        // Old layers without a partner must leave on their own instead of waiting to be covered.
+        origin.slice(0, direction === "enter" ? 3 : 24).forEach((_, index) => {
+          if (pairedOrigins.has(index)) return;
+          const name = `album-${direction === "enter" ? "photo" : "tile"}-${index}`;
+          rules.sheet?.insertRule(`:root[data-album-motion]::view-transition-old(${name}){animation:album-tile-fold 180ms cubic-bezier(.2,0,0,1) ${Math.min(index * 10, 60)}ms both}`);
         });
       });
       // A skipped/unsupported snapshot still runs the state update. Never run it twice.

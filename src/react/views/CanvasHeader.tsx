@@ -13,16 +13,9 @@ const sortOptions = [
   { value: "recentlyUpdated", label: "最近更新", hint: "最近编辑或整理的图片在前" },
 ] as const;
 
-export function CanvasHeader({ filtersOpen, onFilters }: { filtersOpen: boolean; onFilters: () => void }) {
-  const view = useWorkspace(state => state.viewMode);
-  const cardSize = useWorkspace(state => state.galleryCardSize);
-  const rowHeight = useWorkspace(state => state.tableRowHeight);
-  const setSize = useWorkspace(state => state.setSize);
+export function FilterChips() {
   const query = useRows(state => state.query);
-  const total = useRows(state => state.total);
-  const isTable = view === "table";
   const groups = useGroups(state => state.list);
-  const ordinary = view === "gallery" || isTable;
   const chips = [
     ...(query.search ? [{ label: `“${query.search}”`, remove: () => setQuery({ search: "" }) }] : []),
     ...query.tags.map(tag => ({ label: tag, remove: () => setQuery({ tags: query.tags.filter(value => value !== tag) }) })),
@@ -34,11 +27,22 @@ export function CanvasHeader({ filtersOpen, onFilters }: { filtersOpen: boolean;
     ...(query.hideGrouped ? [{ label: "隐藏已分组", remove: () => setQuery({ hideGrouped: false }) }] : []),
     ...query.filters.map((filter, index) => ({ label: libraryFilterLabel(filter, groups), remove: () => setQuery({ filters: query.filters.filter((_, cursor) => cursor !== index) }) })),
   ];
-  return <>{ordinary && <div className="r-canvas-head"><h1>{viewLabel(view)}</h1><span className="r-count">{formatCount(total)} 张符合条件</span><div className="r-canvas-controls">
-    {ordinary && <div className="r-size-control"><Grid2X2 size={10} /><Slider aria-label={isTable ? "行高" : "卡片大小"} value={[isTable ? rowHeight : cardSize]} min={isTable ? 40 : 120} max={isTable ? 128 : 400} step={1} onValueChange={values => setSize(values[0])} /><Grid2X2 size={13} /></div>}
-    {ordinary && <Menu className="r-sort-trigger" label={sortOptions.find(option => option.value === query.sort)?.label ?? "时间正序"} heading="选择图片顺序" items={sortOptions.map(option => ({ ...option, checked: option.value === query.sort, action: () => setQuery({ sort: option.value }) }))} />}
-    <Button aria-expanded={filtersOpen} onClick={onFilters}><SlidersHorizontal size={15} />图片筛选</Button>
-  </div></div>}
-    {chips.length > 0 && <div className="r-chips">{chips.map(chip => <span className="r-filter-chip" key={chip.label}><span title={chip.label}>{chip.label}</span><Button variant="ghost" size="icon" aria-label={`移除筛选 ${chip.label}`} onClick={chip.remove}><X size={12} /></Button></span>)}<button type="button" className="r-text-action" onClick={clearFilters}>清除全部</button></div>}
-  </>;
+  if (!chips.length) return null;
+  return <div className="r-chips">{chips.map(chip => <span className="r-filter-chip" key={chip.label}><span title={chip.label}>{chip.label}</span><Button variant="ghost" size="icon" aria-label={`移除筛选 ${chip.label}`} onClick={chip.remove}><X size={12} /></Button></span>)}<button type="button" className="r-text-action" onClick={clearFilters}>清除全部</button></div>;
+}
+
+export function CanvasHeader({ filtersOpen, onFilters }: { filtersOpen: boolean; onFilters: () => void }) {
+  const view = useWorkspace(state => state.viewMode);
+  const cardSize = useWorkspace(state => state.galleryCardSize);
+  const rowHeight = useWorkspace(state => state.tableRowHeight);
+  const setSize = useWorkspace(state => state.setSize);
+  const query = useRows(state => state.query);
+  const total = useRows(state => state.total);
+  const isTable = view === "table";
+  if (view !== "gallery" && !isTable) return null;
+  return <><header className="r-page-head"><h1 className="r-page-title">{viewLabel(view)}<span className="r-page-count">{formatCount(total)} 张符合条件</span></h1><div className="r-page-actions">
+    <div className="r-size-control"><Grid2X2 size={11} aria-hidden="true" /><Slider aria-label={isTable ? "行高" : "卡片大小"} value={[isTable ? rowHeight : cardSize]} min={isTable ? 40 : 120} max={isTable ? 128 : 400} step={1} onValueChange={values => setSize(values[0])} /><Grid2X2 size={15} aria-hidden="true" /></div>
+    <Menu className="r-sort-trigger" label={sortOptions.find(option => option.value === query.sort)?.label ?? "时间正序"} heading="选择图片顺序" items={sortOptions.map(option => ({ ...option, checked: option.value === query.sort, action: () => setQuery({ sort: option.value }) }))} />
+    <Button className="is-toggle" aria-expanded={filtersOpen} onClick={onFilters}><SlidersHorizontal size={15} />图片筛选</Button>
+  </div></header><FilterChips /></>;
 }
