@@ -80,8 +80,9 @@ export function useAlbumTransition() {
       mark(node, "album-page");
       const origin = direction === "enter" ? sheets() : cards();
       const ids = origin.map(identify);
-      const sourceTitle = direction === "enter" ? album()?.querySelector<HTMLElement>(".r-album-title") : node.querySelector<HTMLElement>(".r-group-detail-title h1");
-      mark(sourceTitle, "album-title");
+      // Only the detail heading gets its own layer. Shelf names stay with the
+      // bookshelf, so text never morphs or travels between the two layouts.
+      if (direction === "leave") mark(node.querySelector<HTMLElement>(".r-group-detail-title"), "album-heading");
       // At most three shared covers; other visible tiles spread out in a short wave.
       if (direction === "enter") origin.slice(0, 3).forEach((element, index) => mark(element, `album-photo-${index}`));
       else origin.slice(0, 24).forEach((element, index) => mark(element, `album-tile-${index}`));
@@ -104,8 +105,7 @@ export function useAlbumTransition() {
           new Promise<void>(resolve => { decodeTimer = setTimeout(resolve, 80); }),
         ]).finally(() => clearTimeout(decodeTimer));
         if (cancelled || !node.isConnected) return;
-        const targetTitle = direction === "enter" ? node.querySelector<HTMLElement>(".r-group-detail-title h1") : album()?.querySelector<HTMLElement>(".r-album-title");
-        if (direction === "enter" || targetTitle && visible(targetTitle)) mark(targetTitle, "album-title");
+        if (direction === "enter") mark(node.querySelector<HTMLElement>(".r-group-detail-title"), "album-heading");
         destination.slice(0, direction === "enter" ? 24 : 3).forEach((element, index) => {
           const id = identify(element), match = id ? ids.indexOf(id) : -1;
           const paired = match >= 0 && match < (direction === "enter" ? 3 : 24);

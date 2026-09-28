@@ -5,8 +5,10 @@
 :root[data-album-motion]::view-transition-new(root){animation:none;mix-blend-mode:normal}
 :root[data-album-motion]::view-transition-image-pair(*){isolation:isolate}
 :root[data-album-motion]::view-transition-old(*),:root[data-album-motion]::view-transition-new(*){mix-blend-mode:normal;animation-duration:360ms;object-fit:cover;overflow:clip}
-:root[data-album-motion]::view-transition-group(album-title){z-index:10}
-:root[data-album-motion]::view-transition-old(album-title),:root[data-album-motion]::view-transition-new(album-title){object-fit:contain;object-position:left center}
+:root[data-album-motion]::view-transition-group(album-heading){z-index:10;animation:none}
+:root[data-album-motion]::view-transition-old(album-heading),:root[data-album-motion]::view-transition-new(album-heading){object-fit:contain;object-position:left center}
+:root[data-album-motion=enter]::view-transition-new(album-heading){animation:album-heading-in 150ms ease-out 80ms both}
+:root[data-album-motion=leave]::view-transition-old(album-heading){animation:album-heading-out 150ms ease-out both}
 .r-group-album .r-album-title{width:fit-content;max-width:calc(100% - 24px);margin-left:auto;margin-right:auto}
 [data-album-motion] .r-album-sheet,[data-album-motion] .r-section-thumb,[data-album-motion] .r-section-model{transition:none}
 :root[data-album-motion]::view-transition-group(album-photo-0),:root[data-album-motion]::view-transition-group(album-photo-1),:root[data-album-motion]::view-transition-group(album-photo-2){z-index:8}
@@ -18,6 +20,8 @@
 @keyframes album-page-open{from{opacity:0;transform:translateY(18px) scale(.985)}to{opacity:1;transform:none}}
 @keyframes album-page-close{to{opacity:0;transform:translateY(12px) scale(.985)}}
 @keyframes album-shelf-return{from{opacity:.2;transform:scale(1.025)}to{opacity:1;transform:none}}
+@keyframes album-heading-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+@keyframes album-heading-out{to{opacity:0}}
 @keyframes album-tile-unfold{from{opacity:0;transform:translateY(30px) scale(.87) rotate(2deg)}to{opacity:1;transform:none}}
 @keyframes album-tile-fold{to{opacity:0;transform:translateY(-18px) scale(.88) rotate(-2deg)}}
 @media(prefers-reduced-motion:reduce){:root[data-album-motion]::view-transition-group(*),:root[data-album-motion]::view-transition-old(*),:root[data-album-motion]::view-transition-new(*){animation-duration:1ms!important;animation-delay:0ms!important}}
