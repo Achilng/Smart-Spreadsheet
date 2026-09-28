@@ -1,6 +1,17 @@
-# 云端发布 Windows 版本
+# 发布 Windows 版本
 
 GitHub Actions 使用 Windows 云端机器完成测试、编译、NSIS 打包、更新签名及 Release 发布。本机只需修改代码、版本和更新说明后推送，不需要编译安装包。
+
+## 用户要求本机编译时
+
+1. 同步下文所列的五处版本号，并写好对应的 `.github/release-notes/v_数字.md`。在本机运行 `npm.cmd run test:unit` 和 `cargo test --workspace --lib --locked`。
+2. 把进程的 `TEMP` / `TMP`、npm 缓存和 Node 编译缓存指向 `D:/Agent/Agent_temp`。沿用已安装的 Node、Rust、NSIS 和现有更新签名密钥，不升级环境。
+3. 设置与云端工作流一致的 `VITE_STYLE_EXTRACTOR_URL` 和 `VITE_STYLE_REVIEW_URL`，然后运行 `scripts/build-update-release.ps1 -ReleaseTag v_数字 -NotesPath .github/release-notes/v_数字.md`。脚本在本机编译、校正安装包类型标记、打包并签名，产物位于 `target/release/publish/v_数字/`。
+4. 发布提交消息包含 `[skip ci]`，防止推送发布标签时重复触发云端构建。推送代码及标签后，核查该提交没有正在运行的云端发布任务。
+5. 创建 Release 草稿，上传安装器、`.sig` 和 `latest.json`，核对更新清单的版本、下载地址、签名，以及三个资产的大小和 SHA-256，再公开并设为最新版本。可复用 `.github/scripts/publish-release.cjs` 的校验逻辑；不覆盖已公开版本。发布后重新获取公开更新清单并下载安装器核对哈希。
+6. 需要同时更新本机时，先备份 `D:/应用/智能表格/smart-spreadsheet.exe`，再替换为本次构建的程序；替换前确认该安装路径的进程已退出。直接使用未打包 exe 时需按构建脚本同样方式写入 NSIS 类型标记，校验安装文件、旧版备份和安装包中的程序，资料库继续使用原目录。
+
+GitHub CLI 的使用仍须遵循本机授权约定；发布请求本身不取消对 `gh` 命令的单独限制。
 
 ## 首次配置
 
