@@ -1,13 +1,13 @@
 (() => {
-  const host = document.createElement('section'); host.className = 'live-workspace'; host.setAttribute('aria-label', '并行工作区');
-  host.innerHTML = `<div class="live-heading"><strong>并行工作区</strong><span id="live-connection">等待任务</span></div><div class="live-lanes" id="live-lanes"></div><div class="live-note" id="live-note">开始后显示实时通道，点选通道查看原文。</div><section class="live-inspector" id="live-inspector" hidden><div class="live-inspector-head"><span id="live-title"></span><select id="live-item" aria-label="查看本批条目"><option value="">跟随当前输出</option></select><button id="live-close">收起详情</button></div><div class="live-inspector-body"><div><small>正向提示词原文</small><div class="live-text" id="live-source"></div></div><div><small id="live-status">提取片段</small><div class="live-text" id="live-result"></div></div></div></section>`;
+  const host = document.createElement('details'); host.className = 'live-workspace'; host.setAttribute('aria-label', '并行工作区');
+  host.innerHTML = `<summary class="live-heading"><strong>请求详情 · 点击展开</strong><span id="live-connection">等待任务</span></summary><div class="row"><button id="live-prev" type="button">上一页</button><small id="live-page"></small><button id="live-next" type="button">下一页</button></div><div class="live-lanes" id="live-lanes"></div><div class="live-note" id="live-note">开始后显示实时通道，点选通道查看原文。</div><section class="live-inspector" id="live-inspector" hidden><div class="live-inspector-head"><span id="live-title"></span><select id="live-item" aria-label="查看本批条目"><option value="">跟随当前输出</option></select><button id="live-close">收起详情</button></div><div class="live-inspector-body"><div><small>正向提示词原文</small><div class="live-text" id="live-source"></div></div><div><small id="live-status">提取片段</small><div class="live-text" id="live-result"></div></div></div></section>`;
   $('message').before(host);
   const lanes = new Map(), phases = {waiting:'等待输出',streaming:'正在输出',receiving:'已校验 · 继续接收',retry:'等待重试',completed:'本批完成',error:'本批有失败',paused:'已暂停'};
-  let jobId = '', connection, slot = null, snapshot, detailKey = '', detailSerial = 0, detailBusy = false;
+  let jobId = '', offset = 0, connectedOffset = -1, connection, slot = null, snapshot, detailKey = '', detailSerial = 0, detailBusy = false;
   function clear() { lanes.clear(); $('live-lanes').replaceChildren(); slot = null; snapshot = null; detailKey = ''; ++detailSerial; $('live-inspector').hidden = true; }
   function selectLane(number) { slot = slot === number ? null : number; $('live-item').value = ''; detailKey = ''; paint(snapshot); }
   function paint(data) {
-    if (!data) return; snapshot = data;
+    if (!data) return; if (offset && offset >= data.laneTotal) { offset = 0; return; } snapshot = data; $('live-page').textContent = `请求 ${data.laneTotal ? offset + 1 : 0}–${Math.min(offset + 40, data.laneTotal || 0)} / ${data.laneTotal || 0}`; $('live-prev').disabled = offset === 0; $('live-next').disabled = offset + 40 >= (data.laneTotal || 0);
     const active = new Set(data.lanes.map(l => l.slot));
     for (const [key, ui] of lanes) if (!active.has(key)) { ui.button.remove(); lanes.delete(key); }
     for (const lane of data.lanes) {
@@ -22,7 +22,7 @@
       const doneChanged = ui.done !== undefined && lane.done > ui.done && ui.call === lane.call;
       ui.done = lane.done; ui.call = lane.call;
       ui.button.dataset.state = lane.phase; ui.button.setAttribute('aria-pressed',String(slot === lane.slot));
-      ui.label.textContent = lane.current ? `第 ${lane.current.number} 条 · ${phases[lane.phase]}` : phases[lane.phase];
+      ui.label.textContent = (lane.channelName ? lane.channelName + ' · ' : '') + (lane.current ? `第 ${lane.current.number} 条 · ${phases[lane.phase]}` : phases[lane.phase]); ui.button.title = lane.model || '';
       ui.count.textContent = `${lane.done}/${lane.total}`;
       ui.preview.textContent = lane.current?.text || (lane.current?.state === 'none' ? '未发现画风提示词' : lane.mode === 'buffered' ? '接口不支持流式 · 等待整批返回' : lane.phase === 'retry' ? '保留成功项，仅重试未完成内容' : '等待模型返回内容…');
       if (ui.segments.children.length !== lane.total) ui.segments.replaceChildren(...Array.from({length:lane.total},()=>{const s=document.createElement('span');s.className='live-segment';return s}));
@@ -38,7 +38,7 @@
         const previous = pick.value; pick.replaceChildren(new Option('跟随当前输出',''),...lane.states.map((_,i)=>new Option(`第 ${i+1} 条`,String(i))));
         pick.value = lane.attempt && Number(previous)<lane.total ? previous : ''; pick.dataset.batch = `${slot}:${lane.call}`;
       }
-      $('live-title').textContent = `通道 ${String(slot).padStart(2,'0')} · 第 ${lane.call} 次调用${lane.attempt ? ' · 重试 '+lane.attempt : ''}`;
+      $('live-title').textContent = `${lane.channelName || '请求'} · ${String(slot).padStart(2,'0')} · 第 ${lane.call} 次调用${lane.attempt ? ' · 重试 '+lane.attempt : ''}`;
       void detail(lane);
     }
   }
@@ -49,7 +49,7 @@
     detailBusy = true; const serial = ++detailSerial, requestedJob = jobId, requestedSlot = slot, index = $('live-item').value;
     try {
       const item = await api(`jobs/${jobId}/lane?slot=${slot}${index === '' ? '' : '&index='+index}`);
-      if (serial !== detailSerial || jobId !== requestedJob || slot !== requestedSlot || $('live-item').value !== index) return;
+      if ((item && item.call !== lane.call) || serial !== detailSerial || jobId !== requestedJob || slot !== requestedSlot || $('live-item').value !== index) return;
       detailKey = key;
       const source = $('live-source'); source.replaceChildren();
       if (!item) { source.textContent='等待第一条文本输出，或从上方选择本批条目。'; $('live-result').textContent=''; $('live-status').textContent='提取片段'; return; }
@@ -63,13 +63,15 @@
     } catch { /* The stream reconnect indicator covers connection failures. */ }
     finally { detailBusy = false; }
   }
+  $('live-prev').onclick=()=>{offset=Math.max(0,offset-40)};
+  $('live-next').onclick=()=>{offset+=40};
   $('live-close').onclick=()=>{slot=null;detailKey='';++detailSerial;paint(snapshot)};
   $('live-item').onchange=()=>{detailKey='';++detailSerial;paint(snapshot)};
   async function connect(id,signal) {
     while (!signal.aborted) {
       try {
         $('live-connection').textContent='连接实时进度…';
-        const res=await fetch(`/api/jobs/${id}/events`,{headers:{'X-Session-Token':token},signal});
+        const res=await fetch(`/api/jobs/${id}/events?offset=${offset}`,{headers:{'X-Session-Token':token},signal});
         if(res.status===403){location.reload();return} if(!res.ok)throw Error('连接失败');
         $('live-connection').textContent='实时连接';
         const reader=res.body.getReader(),decoder=new TextDecoder();let pending='';
@@ -83,7 +85,7 @@
     }
   }
   setInterval(()=>{
-    if(selected!==jobId){connection?.abort();jobId=selected;clear();if(jobId){connection=new AbortController();void connect(jobId,connection.signal)}}
+    if(selected!==jobId || offset!==connectedOffset){connection?.abort();if(selected!==jobId)offset=0;jobId=selected;connectedOffset=offset;clear();if(jobId){connection=new AbortController();void connect(jobId,connection.signal)}}
     else if(slot!==null&&snapshot)void detail(snapshot.lanes.find(l=>l.slot===slot));
   },250);
 })();

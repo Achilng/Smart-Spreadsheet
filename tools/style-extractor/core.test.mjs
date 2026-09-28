@@ -201,7 +201,7 @@ for (const stop of ['pause', 'quota']) test(`concurrent ${stop} drains all worke
 test('legacy tasks default to one concurrency, and invalid values do not change saved results', async () => {
   const dir = directory(), manager = new JobManager(dir);
   const job = manager.create(request(['A'])); assert.equal(job.settings.concurrency, 1);
-  for (const concurrency of [0, -1, 1.5, 33, 'invalid']) assert.throws(() => manager.create(request(['B']), { concurrency }), /并发数/);
+  for (const concurrency of [0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1, 'invalid']) assert.throws(() => manager.create(request(['B']), { concurrency }), /并发数/);
   await assert.rejects(manager.start(job.id, true, { concurrency: 0 }), /并发数/);
   const filename = path.join(dir, job.id + '.json'), saved = JSON.parse(fs.readFileSync(filename, 'utf8'));
   delete saved.settings.concurrency; fs.writeFileSync(filename, JSON.stringify(saved), 'utf8');
