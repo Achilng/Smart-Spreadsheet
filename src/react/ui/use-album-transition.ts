@@ -55,6 +55,18 @@ export function useAlbumTransition() {
     const cards = () => [...node.querySelectorAll<HTMLElement>(".r-section-card")].filter(visible);
     // Shared covers travel as bare thumbnails; the file name stays with the page layer.
     const thumb = (card: HTMLElement) => card.querySelector<HTMLElement>(".r-section-thumb") ?? card;
+    // Page chrome swaps instantly and stays on top with a solid ground, like a fixed title bar:
+    // images move underneath it instead of showing through or covering it.
+    const heads = () => [...node.querySelectorAll<HTMLElement>(":scope > .r-page-head, :scope > .r-page-toolbar")];
+    const swapHeads = (side: "old" | "new") => heads().forEach((element, index) => {
+      const name = `album-chrome-${side}-${index}`;
+      mark(element, name);
+      if (side === "old") rules.sheet?.insertRule(`:root[data-album-motion]::view-transition-old(${name}){display:none}`);
+      else {
+        rules.sheet?.insertRule(`:root[data-album-motion]::view-transition-group(${name}){z-index:30;animation:none}`);
+        rules.sheet?.insertRule(`:root[data-album-motion]::view-transition-new(${name}){animation:none;background:var(--bg)}`);
+      }
+    });
     const identify = (element: HTMLElement) => element.querySelector<HTMLElement>("[data-image-row]")?.dataset.imageRow;
     const focusDestination = () => {
       const target = direction === "enter" ? node.querySelector<HTMLElement>(".r-group-detail-title button") : album()?.querySelector<HTMLElement>(".r-album-trigger");
@@ -88,9 +100,7 @@ export function useAlbumTransition() {
       mark(node, "album-page");
       const origin = direction === "enter" ? sheets() : cards();
       const ids = origin.map(identify);
-      // Only the detail heading gets its own layer. Shelf names stay with the
-      // bookshelf, so text never morphs or travels between the two layouts.
-      if (direction === "leave") mark(node.querySelector<HTMLElement>(".r-group-detail-title"), "album-heading");
+      swapHeads("old");
       // At most three shared covers; other visible tiles spread out in a short wave.
       if (direction === "enter") origin.slice(0, 3).forEach((element, index) => { mark(element, `album-photo-${index}`); stack(element, `album-photo-${index}`); });
       else origin.slice(0, 24).forEach((element, index) => mark(thumb(element), `album-tile-${index}`));
@@ -113,7 +123,7 @@ export function useAlbumTransition() {
           new Promise<void>(resolve => { decodeTimer = setTimeout(resolve, 80); }),
         ]).finally(() => clearTimeout(decodeTimer));
         if (cancelled || !node.isConnected) return;
-        if (direction === "enter") mark(node.querySelector<HTMLElement>(".r-group-detail-title"), "album-heading");
+        swapHeads("new");
         const pairedOrigins = new Set<number>();
         const matches = destination.slice(0, direction === "enter" ? 24 : 3).map(element => {
           const id = identify(element), match = id ? ids.indexOf(id) : -1;
@@ -135,16 +145,18 @@ export function useAlbumTransition() {
             mark(element, `album-arrival-${index}`);
             // With a bridge, arrivals wait until the outgoing page has faded so the layouts never double-expose.
             rules.sheet?.insertRule(`:root[data-album-motion]::view-transition-new(album-arrival-${index}){animation:album-tile-unfold 340ms cubic-bezier(.2,.8,.2,1) ${(bridged ? 120 : 40) + Math.min(index * 18, 162)}ms both}`);
+            // Without a bridge the arriving images belong in front of the covers that are leaving.
+            if (!bridged) rules.sheet?.insertRule(`:root[data-album-motion]::view-transition-group(album-arrival-${index}){z-index:20}`);
           }
         });
         // Old layers without a partner must leave on their own instead of waiting to be covered.
         origin.slice(0, direction === "enter" ? 3 : 24).forEach((_, index) => {
           if (pairedOrigins.has(index)) return;
           const name = `album-${direction === "enter" ? "photo" : "tile"}-${index}`;
-          // Unmatched covers leave with their shelf; the front sheet goes last so the fan never looks see-through.
+          // Unmatched covers leave with their shelf; the back sheets clear first so the fan never looks see-through.
           rules.sheet?.insertRule(bridged
             ? `:root[data-album-motion]::view-transition-old(${name}){animation:album-tile-fold 180ms cubic-bezier(.2,0,0,1) ${Math.min(index * 10, 60)}ms both}`
-            : `:root[data-album-motion]::view-transition-old(${name}){animation:album-page-out ${index ? 150 : 170}ms ease-out ${direction === "enter" && !index ? 60 : 0}ms both}`);
+            : `:root[data-album-motion]::view-transition-old(${name}){animation:album-page-out ${index ? 110 : 160}ms ease-out both}`);
         });
       });
       // A skipped/unsupported snapshot still runs the state update. Never run it twice.

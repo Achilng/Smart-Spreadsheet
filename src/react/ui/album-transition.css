@@ -1,7 +1,7 @@
 /*
  * Album open/close choreography. Only the album surface participates; the rail stays still.
- * Sequence: the outgoing page clears in ~140ms, shared covers fly for 460ms, and the incoming
- * page and heading start at ~100ms, so the two layouts never sit on top of each other.
+ * Sequence: title bars swap instantly, the outgoing page clears in ~140ms, shared covers fly
+ * for 460ms, and the incoming page starts at ~100ms, so the two layouts never sit on top of each other.
  */
 :root[data-album-motion]::view-transition{pointer-events:none}
 :root[data-album-motion]::view-transition-group(*){animation-duration:460ms;animation-timing-function:cubic-bezier(.2,.8,.2,1)}
@@ -13,10 +13,6 @@
 :root[data-album-motion]::view-transition-old(*){animation:album-fade-out 160ms ease-in 200ms both}
 :root[data-album-motion]::view-transition-new(*){animation:album-fade-in 200ms ease-out both}
 
-:root[data-album-motion]::view-transition-group(album-heading){z-index:10;animation:none}
-:root[data-album-motion]::view-transition-old(album-heading),:root[data-album-motion]::view-transition-new(album-heading){object-fit:contain;object-position:left center}
-:root[data-album-motion=enter]::view-transition-new(album-heading){animation:album-heading-in 220ms cubic-bezier(.2,.8,.2,1) 110ms both}
-:root[data-album-motion=leave]::view-transition-old(album-heading){animation:album-fade-out 120ms ease-out both}
 :root[data-album-motion]::view-transition-group(album-photo-0),:root[data-album-motion]::view-transition-group(album-photo-1),:root[data-album-motion]::view-transition-group(album-photo-2){z-index:8}
 
 :root[data-album-motion]::view-transition-old(album-page){animation:album-page-out 140ms ease-out both}
@@ -26,7 +22,6 @@
 :root[data-album-pairs=none]::view-transition-old(album-page){animation:album-page-out 220ms ease-out both}
 :root[data-album-pairs=none][data-album-motion=enter]::view-transition-new(album-page){animation:album-page-open 300ms cubic-bezier(.2,.8,.2,1) both}
 :root[data-album-pairs=none][data-album-motion=leave]::view-transition-new(album-page){animation:album-shelf-return 300ms cubic-bezier(.2,.8,.2,1) both}
-:root[data-album-pairs=none][data-album-motion=enter]::view-transition-new(album-heading){animation-delay:40ms}
 
 .r-group-album .r-album-title{width:fit-content;max-width:calc(100% - 24px);margin-left:auto;margin-right:auto}
 [data-album-motion] .r-album-sheet,[data-album-motion] .r-section-thumb,[data-album-motion] .r-section-check{transition:none}
@@ -38,7 +33,6 @@
 @keyframes album-page-out{to{opacity:0;transform:scale(.985)}}
 @keyframes album-page-open{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 @keyframes album-shelf-return{from{opacity:0;transform:scale(1.015)}to{opacity:1;transform:none}}
-@keyframes album-heading-in{from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:none}}
 @keyframes album-tile-unfold{from{opacity:0;transform:translateY(14px) scale(.94)}to{opacity:1;transform:none}}
 @keyframes album-tile-fold{to{opacity:0;transform:translateY(-6px) scale(.94)}}
 @media(prefers-reduced-motion:reduce){:root[data-album-motion]::view-transition-group(*),:root[data-album-motion]::view-transition-old(*),:root[data-album-motion]::view-transition-new(*){animation-duration:1ms!important;animation-delay:0ms!important}}
