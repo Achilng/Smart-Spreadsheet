@@ -1,5 +1,5 @@
-import { useId, useLayoutEffect, useRef, type ComponentProps, type ReactElement, type ReactNode } from "react";
-import { Checkbox as CheckboxPrimitive, Dialog, DropdownMenu, Select as SelectPrimitive, Slider as SliderPrimitive, Slot, Tooltip } from "radix-ui";
+import { Fragment, useId, useLayoutEffect, useRef, type ComponentProps, type ReactElement, type ReactNode } from "react";
+import { Checkbox as CheckboxPrimitive, ContextMenu, Dialog, DropdownMenu, Select as SelectPrimitive, Slider as SliderPrimitive, Slot, Tooltip } from "radix-ui";
 import { Check, ChevronDown, Minus, Search, X } from "lucide-react";
 import { cn } from "./cn";
 
@@ -107,6 +107,18 @@ function MenuEntry({ item }: { item: MenuItem }) {
     {item.checked === undefined ? <DropdownMenu.Item {...props}>{content}</DropdownMenu.Item>
       : <DropdownMenu.CheckboxItem checked={item.checked} {...props}>{content}</DropdownMenu.CheckboxItem>}
   </>;
+}
+
+/** Right-click counterpart of Menu; renders children unchanged when there are no items. */
+export function RightClickMenu({ items, children }: { items?: MenuItem[]; children: ReactElement }) {
+  if (!items?.length) return children;
+  return <ContextMenu.Root><ContextMenu.Trigger asChild>{children}</ContextMenu.Trigger><ContextMenu.Portal>
+    <ContextMenu.Content className="r-menu" collisionPadding={8}>
+      {items.map(item => <Fragment key={item.label}>{item.separator && <ContextMenu.Separator className="r-menu-separator" />}
+        <ContextMenu.Item disabled={item.disabled} className={cn("r-menu-item", item.danger && "is-danger")} onSelect={item.action}><span className="r-menu-copy"><span>{item.label}</span>{item.hint && <small>{item.hint}</small>}</span></ContextMenu.Item>
+      </Fragment>)}
+    </ContextMenu.Content>
+  </ContextMenu.Portal></ContextMenu.Root>;
 }
 
 export function Modal({ open, onClose, title, description, busy = false, width = 440, children, footer, onEscapeKeyDown }: {

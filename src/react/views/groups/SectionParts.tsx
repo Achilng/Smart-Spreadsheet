@@ -1,5 +1,4 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { ContextMenu } from "radix-ui";
 import { ChevronRight, ImageOff, MoreHorizontal } from "lucide-react";
 import type { RowRecord } from "../../../lib/api";
 import { modelVersionBadge } from "../../../lib/utils/model-version";
@@ -10,15 +9,14 @@ import { useRows } from "../../state/library";
 import { isSelected, selectedCount, toggleOrderedRow, useSelection } from "../../state/selection";
 import type { SectionMembers } from "../../state/groups";
 import { beginFileDrag } from "../../state/file-drag";
-import { Button, Checkbox, Menu, type MenuItem } from "../../ui/controls";
+import { Button, Checkbox, Menu, RightClickMenu, type MenuItem } from "../../ui/controls";
 import { Thumbnail } from "../../ui/Thumbnail";
 import { RowContextMenu } from "../../ui/RowContextMenu";
 import { useNavigation } from "../../state/navigation";
 
 export function SectionHeader({ label, count, expanded, onToggle, items, suffix }: { label: string; count?: number; expanded: boolean; onToggle: () => void; items?: MenuItem[]; suffix?: string }) {
   const content = <div className="r-section-header"><button type="button" aria-expanded={expanded} onClick={onToggle}><ChevronRight size={14} className={expanded ? "is-expanded" : ""} /><span title={label}>{label}</span>{suffix && <small title={suffix}>{suffix}</small>}{count !== undefined && <em>{count.toLocaleString()} 张</em>}</button>{items && <Menu label={<><MoreHorizontal size={15} /><span className="sr-only">{label}操作</span></>} items={items} />}</div>;
-  if (!items) return content;
-  return <ContextMenu.Root><ContextMenu.Trigger asChild>{content}</ContextMenu.Trigger><ContextMenu.Portal><ContextMenu.Content className="r-menu" collisionPadding={8}>{items.map(item => <ContextMenu.Item key={item.label} className={`r-menu-item${item.danger ? " is-danger" : ""}`} disabled={item.disabled} onSelect={item.action}>{item.label}</ContextMenu.Item>)}</ContextMenu.Content></ContextMenu.Portal></ContextMenu.Root>;
+  return <RightClickMenu items={items}>{content}</RightClickMenu>;
 }
 export function SectionList({ positionKey, loading, version, children }: { positionKey: string; loading: boolean; version: number; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null), restoring = useRef(true);

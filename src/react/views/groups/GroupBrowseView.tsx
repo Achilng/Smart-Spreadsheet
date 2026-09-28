@@ -7,7 +7,7 @@ import { useLibrary, useRows } from "../../state/library";
 import { runTask, useTasks } from "../../state/tasks";
 import { Button, Input, Menu, Modal, SearchField, Segmented, Select, type MenuItem } from "../../ui/controls";
 import { FilterChips } from "../CanvasHeader";
-import { DeleteGroupDialog, GroupManageDialog } from "./GroupManageDialog";
+import { DeleteGroupDialog, GroupManageDialog, MergeGroupDialog } from "./GroupManageDialog";
 import { SectionHeader, SectionList, SectionMembersGrid } from "./SectionParts";
 import { GroupAlbumShelf } from "./GroupAlbumShelf";
 import { clearSelection } from "../../state/selection";
@@ -18,7 +18,7 @@ export function GroupBrowseView({ filtersOpen, onFilters }: { filtersOpen: boole
   const motion = useAlbumTransition();
   const groups = useGroups(), rows = useRows(), directory = useLibrary(state => state.snapshot?.dataDirectory);
   const taskBusy = useTasks(state => state.busy);
-  const [managing, setManaging] = useState(false), [deleting, setDeleting] = useState<GroupSummary | null>(null), [renaming, setRenaming] = useState<GroupSummary | null>(null);
+  const [managing, setManaging] = useState(false), [deleting, setDeleting] = useState<GroupSummary | null>(null), [renaming, setRenaming] = useState<GroupSummary | null>(null), [merging, setMerging] = useState<GroupSummary | null>(null);
   const [name, setName] = useState(""), [error, setError] = useState<string | null>(null), [busy, setBusy] = useState(false);
   const shelf = groups.layout === "shelf", search = groups.search;
   const setShelf = (value: boolean) => useGroups.setState({ layout: value ? "shelf" : "list" });
@@ -36,6 +36,10 @@ export function GroupBrowseView({ filtersOpen, onFilters }: { filtersOpen: boole
   function returnToShelf() { const update = () => { clearSelection(); useRows.setState({ activeRow: null }); useGroups.setState({ expanded: [] }); setShelf(true); }; if (albumOpen) void motion.navigate("leave", opened, update); else update(); }
   function groupActions(group: GroupSummary): MenuItem[] {
     return [{ label: "重命名", disabled: taskBusy, action: () => { setRenaming(group); setName(group.name); setError(null); } }, { label: "删除分组", danger: true, disabled: taskBusy, action: () => setDeleting(group) }];
+  }
+  function albumActions(group: GroupSummary): MenuItem[] {
+    const [rename, remove] = groupActions(group);
+    return [rename, { label: "合并到…", disabled: taskBusy || groups.list.length < 2, action: () => setMerging(group) }, { ...remove, separator: true }];
   }
   // Range selection must include only the groups rendered in this mode.
   const keys = shelf ? (opened ? [opened] : []) : [...sorted.map(group => String(group.id)), "ungrouped"];
@@ -60,11 +64,11 @@ export function GroupBrowseView({ filtersOpen, onFilters }: { filtersOpen: boole
     {groups.loading && !groups.list.length && <p className="r-group-status" role="status">正在加载分组…</p>}
     <SectionList key={positionKey} positionKey={positionKey} loading={groups.loading || groups.expanded.some(key => !groups.members[key] || groups.members[key].loading)} version={groups.version}>
       {!albumOpen && !groups.list.length && !groups.loading && !groups.error && <p className="r-group-status">暂无分组。可选择图片后创建分组。</p>}
-      {shelf ? opened ? <SectionMembersGrid data={groups.members[opened]} scope="groups" order={order} limit={groups.renderLimits[opened] ?? 40} onReveal={() => reveal(opened)} onLoad={more => void loadGroupMembers(opened, more)} /> : <GroupAlbumShelf groups={sorted} version={groups.version} onOpen={openAlbum} /> : <>
+      {shelf ? opened ? <SectionMembersGrid data={groups.members[opened]} scope="groups" order={order} limit={groups.renderLimits[opened] ?? 40} onReveal={() => reveal(opened)} onLoad={more => void loadGroupMembers(opened, more)} /> : <GroupAlbumShelf groups={sorted} version={groups.version} onOpen={openAlbum} menuFor={albumActions} /> : <>
       {sorted.map(group => { const key = String(group.id), expanded = groups.expanded.includes(key); return <section key={key} className="r-browse-section"><SectionHeader label={group.name} count={group.memberCount} expanded={expanded} onToggle={() => toggleGroup(key)} items={groupActions(group)} />{expanded && <SectionMembersGrid data={groups.members[key]} scope="groups" order={order} limit={groups.renderLimits[key] ?? 40} onReveal={() => reveal(key)} onLoad={more => void loadGroupMembers(key, more)} />}</section>; })}
       <section className="r-browse-section"><SectionHeader label="未分组" count={groups.members.ungrouped?.totalCount} expanded={groups.expanded.includes("ungrouped")} onToggle={() => toggleGroup("ungrouped")} />{groups.expanded.includes("ungrouped") && <SectionMembersGrid data={groups.members.ungrouped} scope="groups" order={order} limit={groups.renderLimits.ungrouped ?? 40} onReveal={() => reveal("ungrouped")} onLoad={more => void loadGroupMembers("ungrouped", more)} />}</section></>}
     </SectionList>
-    <GroupManageDialog open={managing} onOpenChange={setManaging} /><DeleteGroupDialog group={deleting} onClose={() => setDeleting(null)} />
+    <GroupManageDialog open={managing} onOpenChange={setManaging} /><DeleteGroupDialog group={deleting} onClose={() => setDeleting(null)} /><MergeGroupDialog group={merging} onClose={() => setMerging(null)} />
     <Modal open={Boolean(renaming)} onClose={() => setRenaming(null)} title="重命名分组" busy={busy} footer={<><Button disabled={busy} onClick={() => setRenaming(null)}>取消</Button><Button variant="primary" disabled={busy || taskBusy || !name.trim()} onClick={() => void rename()}>保存</Button></>}><Input aria-label="分组名称" value={name} disabled={busy} onChange={event => setName(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.nativeEvent.isComposing) void rename(); }} />{error && <p role="alert" className="r-group-error">{error}</p>}</Modal>
   </div>;
 }
