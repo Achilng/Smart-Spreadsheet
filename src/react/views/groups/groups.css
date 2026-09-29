@@ -94,20 +94,6 @@
 .r-section-badges { position: absolute; top: 6px; right: 6px; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 3px; max-width: calc(100% - 34px); pointer-events: none; }
 .r-section-badges > span { height: 18px; padding: 0 6px; box-shadow: 0 1px 3px rgb(0 0 0 / 14%); }
 .r-section-badges > .vibe-badge { background: var(--on-image); }
-.r-section-tags {
-  position: absolute;
-  left: 6px;
-  right: 6px;
-  bottom: 6px;
-  padding: 1px 6px;
-  overflow: hidden;
-  border-radius: var(--radius-xs);
-  background: var(--on-image);
-  font-size: var(--font-xs);
-  text-align: left;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 .r-section-label, .r-section-resolution {
   display: block;
   align-self: center;
