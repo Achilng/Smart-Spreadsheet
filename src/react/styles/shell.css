@@ -107,22 +107,40 @@
 .r-sort-trigger { padding-right: 10px; }
 
 /* ---- Library filter panel ---- */
-/* The panel stays mounted: its width animates and the sidebar keeps a fixed width pinned to the right edge, so it slides out from the left instead of squeezing. */
-.r-library-filter-panel {
+/* Reserve the final content width once. Only transforms animate, so the gallery's
+   ResizeObserver does not rebuild its virtual layout on every animation frame.
+   Clip both sliding layers at the navigation/detail boundaries. */
+.r-library-content {
   --filter-panel-w: 232px;
+  --filter-motion-duration: var(--dur-base);
+  position: relative;
   display: flex;
-  flex: none;
-  justify-content: flex-end;
-  width: var(--filter-panel-w);
+  flex: 1;
+  min-width: 0;
   min-height: 0;
   overflow: hidden;
-  transition: width var(--dur-slow) var(--ease-emphasized), opacity var(--dur-base) var(--ease-out), visibility 0s;
+}
+.r-library-content[data-filters-open="true"] { --filter-motion-duration: var(--dur-slow); }
+.r-library-filter-panel {
+  position: absolute;
+  inset: 0 auto 0 0;
+  display: flex;
+  width: var(--filter-panel-w);
+  transform: translateX(0);
+  transition: transform var(--filter-motion-duration) var(--ease-emphasized), visibility 0s;
 }
 .r-library-filter-panel[data-open="false"] {
-  width: 0;
-  opacity: 0;
+  transform: translateX(-100%);
   visibility: hidden;
-  transition: width var(--dur-base) var(--ease-emphasized), opacity var(--dur-fast) var(--ease-out), visibility 0s linear var(--dur-base);
+  transition: transform var(--filter-motion-duration) var(--ease-emphasized), visibility 0s linear var(--filter-motion-duration);
+}
+.r-library-content > .r-main-area {
+  transform: translateX(0);
+  transition: transform var(--filter-motion-duration) var(--ease-emphasized);
+}
+.r-library-content[data-filters-open="true"] > .r-main-area {
+  margin-right: var(--filter-panel-w);
+  transform: translateX(var(--filter-panel-w));
 }
 .r-sidebar { display: flex; flex: none; flex-direction: column; width: var(--filter-panel-w); min-height: 0; border-right: 1px solid var(--border); background: var(--surface); }
 .r-sidebar-header { flex: none; padding: 22px 16px 12px 20px; }
@@ -409,7 +427,7 @@
 
 /* ---- Responsive frame ---- */
 @media (max-width: 1080px) {
-  .r-library-filter-panel { --filter-panel-w: 200px; }
+  .r-library-content { --filter-panel-w: 200px; }
 }
 @media (max-width: 1000px) {
   .r-brand small { display: none; }
