@@ -6,6 +6,9 @@ import { fileURLToPath } from 'node:url';
 import { setMaxListeners } from 'node:events';
 import { ItemStream, readSse } from './streaming.mjs';
 import { codexStream } from './codex-stream.mjs';
+import { normalizeBaseUrl, validateConcurrency, normalizeChannels, totalConcurrency } from './channels.mjs';
+import { runChannels } from './channel-runner.mjs';
+export { normalizeBaseUrl } from './channels.mjs';
 
 export const root = path.dirname(fileURLToPath(import.meta.url));
 export const REQUEST = 'smart-spreadsheet.style-extraction.request';
@@ -89,17 +92,12 @@ export function resolveCodex({ env = process.env, platform = process.platform, r
   }
   throw Error('没有找到可用的 Codex CLI；请先安装并登录，或设置 STYLE_CODEX_BIN 为 codex.exe 的完整路径。');
 }
-export function normalizeBaseUrl(value) {
-  const url = new URL(value);
-  if ((url.protocol !== 'https:' && !(url.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname))) || url.username || url.password || url.search || url.hash) throw Error('Base URL 需要 HTTPS 地址，或本机 HTTP 地址；不能包含账号、参数或片段。');
-  return url.toString().replace(/\/+$/, '');
-}
-export async function listApiModels(baseUrl, apiKey) {
+export async function listApiModels(baseUrl, apiKey, request = fetch) {
   const base = normalizeBaseUrl(baseUrl), key = typeof apiKey === 'string' ? apiKey.trim() : '';
   if (!key) throw Error('请先填写或保存当前接口的 API Key。');
   let response;
   try {
-    response = await fetch(base + '/models', { redirect: 'error', signal: AbortSignal.timeout(15000), headers: { Authorization: 'Bearer ' + key, Accept: 'application/json' } });
+    response = await request(base + '/models', { redirect: 'error', signal: AbortSignal.timeout(15000), headers: { Authorization: 'Bearer ' + key, Accept: 'application/json' } });
   } catch (error) { throw Error(error.name === 'TimeoutError' ? '获取模型列表超时，请重试。' : '无法连接模型列表接口，请检查 Base URL 和网络。'); }
   let data;
   try { data = await response.json(); } catch { throw Error(`模型列表接口未返回 JSON（HTTP ${response.status}），可手动填写模型名。`); }
@@ -134,7 +132,7 @@ export async function callApi(batch, options, signal, log, emit = () => {}) {
   };
   // Some compatible gateways do not implement schema or reasoning parameters.
   for (let pass = 0; pass < 4; pass++) {
-    const response = await fetch(base + '/chat/completions', { method: 'POST', redirect: 'error', signal: AbortSignal.any([signal, AbortSignal.timeout(180000)]), headers: { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const response = await (options.fetch || fetch)(base + '/chat/completions', { method: 'POST', redirect: 'error', signal: AbortSignal.any([signal, AbortSignal.timeout(180000)]), headers: { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     if (!response.ok) {
       const text = await response.text();
       let data; try { data = JSON.parse(text); } catch { data = { message: text }; }
@@ -142,7 +140,9 @@ export async function callApi(batch, options, signal, log, emit = () => {}) {
       if (response.status === 400 && /response_format|json_schema|structured.output/i.test(detail) && body.response_format) { delete body.response_format; log('该接口不支持结构化输出参数，改为提示词约束 JSON，并保留本地校验'); continue; }
       if (response.status === 400 && /reasoning_effort|reasoning effort/i.test(detail) && body.reasoning_effort) { delete body.reasoning_effort; log('该接口不支持推理等级参数，使用服务端默认值'); continue; }
       if (response.status === 400 && /stream/i.test(detail) && body.stream) { body.stream = false; log('该接口不支持流式输出，等待整批返回后展示'); continue; }
-      throw Error(`API 调用失败（${response.status}）：${detail}`);
+      const retry = response.headers.get('retry-after');
+      const retryAfterMs = retry && (Number.isFinite(Number(retry)) ? Number(retry) * 1000 : Date.parse(retry) - Date.now());
+      throw Object.assign(Error(`API 调用失败（${response.status}）：${detail}`), { status: response.status, retryAfterMs: Number.isFinite(retryAfterMs) ? Math.max(0, retryAfterMs) : 0 });
     }
     const parser = modelStream(batch, emit);
     if (response.headers.get('content-type')?.includes('text/event-stream')) {
@@ -192,17 +192,12 @@ export async function callCodex(batch, options, signal, log, emit = () => {}) {
     input: JSON.stringify({ items }), schema: modelSchema(items), signal, onText: text => parser.push(text) });
   return restoreModelReply(batch, parser.finish(), log);
 }
-function validateConcurrency(value = 1) {
-  const concurrency = Number(value);
-  if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 32) throw Error('并发数应为 1–32 的整数。');
-  return concurrency;
-}
 export class JobManager {
   constructor(directory, runner = (batch, options, signal, log, emit) => options.provider === 'api' ? callApi(batch, options, signal, log, emit) : callCodex(batch, options, signal, log, emit)) {
     this.directory = directory; this.runner = runner; this.jobs = new Map(); this.active = null; this.live = new Map();
     fs.mkdirSync(directory, { recursive: true });
     for (const name of fs.readdirSync(directory).filter(x => /^[a-f0-9-]{36}\.json$/.test(x))) {
-      try { const job = JSON.parse(fs.readFileSync(path.join(directory, name), 'utf8')); if (job.id + '.json' !== name) continue; job.request ??= JSON.parse(fs.readFileSync(path.join(directory, job.id + '.request.json'), 'utf8')); validateRequest(job.request); if (job.version !== 1 || !Array.isArray(job.results)) continue; job.settings.concurrency = validateConcurrency(job.settings.concurrency); if (job.state === 'running') { job.state = 'paused'; job.message = '上次运行中断，点击继续即可恢复。'; } this.jobs.set(job.id, job); } catch { /* Keep unreadable files intact. */ }
+      try { const job = JSON.parse(fs.readFileSync(path.join(directory, name), 'utf8')); if (job.id + '.json' !== name) continue; job.request ??= JSON.parse(fs.readFileSync(path.join(directory, job.id + '.request.json'), 'utf8')); validateRequest(job.request); if (job.version !== 1 || !Array.isArray(job.results)) continue; job.settings.concurrency = job.settings.channels ? totalConcurrency(normalizeChannels(job.settings.channels)) : validateConcurrency(job.settings.concurrency); if (job.state === 'running') { job.state = 'paused'; job.message = '上次运行中断，点击继续即可恢复。'; } this.jobs.set(job.id, job); } catch { /* Keep unreadable files intact. */ }
     }
   }
   save(job) {
@@ -213,20 +208,24 @@ export class JobManager {
   }
   create(request, settings = {}) {
     validateRequest(request);
-    const concurrency = validateConcurrency(settings.concurrency);
-    const batchSize = Number(settings.batchSize ?? 10), effort = settings.effort ?? 'high', provider = settings.provider ?? 'codex';
+    const channels = settings.channels ? normalizeChannels(settings.channels) : undefined;
+    if (channels && !channels.some(x => x.enabled)) throw Error('请至少启用一个渠道。');
+    const concurrency = channels ? totalConcurrency(channels) : validateConcurrency(settings.concurrency);
+    const batchSize = Number(settings.batchSize ?? 10), effort = settings.effort ?? 'high', provider = channels ? 'api' : settings.provider ?? 'codex';
     if (!Number.isInteger(batchSize) || batchSize < 1 || batchSize > 100 || !['low', 'medium', 'high'].includes(effort)) throw Error('每批数量应为 1–100，推理等级应为 low / medium / high。');
     if (!['codex', 'api'].includes(provider)) throw Error('调用方式无效');
     const model = provider === 'api' ? String(settings.model || MODEL) : MODEL;
     if (!model.length || model.length > 128 || /[\s\x00-\x1f\x7f]/u.test(model)) throw Error('模型名应为 1–128 个字符，不能包含空白或控制字符');
-    const baseUrl = provider === 'api' ? normalizeBaseUrl(settings.baseUrl) : undefined;
+    const baseUrl = provider === 'api' && !channels ? normalizeBaseUrl(settings.baseUrl) : undefined;
     const job = { version: 1, id: randomUUID(), request, model, promptVersion: PROMPT_VERSION, promptHash, settings: { batchSize, concurrency, effort, provider, model, ...(baseUrl ? { baseUrl } : {}) }, createdAt: new Date().toISOString(), elapsedMs: 0, calls: 0, state: 'paused', message: '任务已保存，等待开始', results: [], logs: [] };
+    if (channels) { job.settings.channels = channels; job.model = job.settings.model = [...new Set(channels.map(x => x.model))].join(' / '); }
     this.jobs.set(job.id, job); this.save(job); return this.summary(job);
   }
   get(id) { const job = this.jobs.get(id); if (!job) throw Error('任务不存在'); return job; }
-  snapshot(id) {
+  snapshot(id, offset = 0, limit = 40) {
     const job = this.get(id);
-    return { job: this.summary(job), lanes: (this.live.get(id) || []).map(lane => ({
+    return { job: this.summary(job), laneTotal: (this.live.get(id) || []).length, lanes: (this.live.get(id) || []).slice(offset, offset + limit).map(lane => ({
+      channelId: lane.channelId, channelName: lane.channelName, model: lane.model,
       slot: lane.slot, call: lane.call, attempt: lane.attempt, phase: lane.phase, mode: lane.mode,
       total: lane.items.length, done: lane.items.filter(x => ['ok', 'none'].includes(x.state)).length,
       states: lane.items.map(x => x.state), revision: lane.revision,
@@ -239,20 +238,21 @@ export class JobManager {
     if (!lane) return null;
     const selected = Number.isInteger(index) ? index : lane.current;
     const item = lane.items[selected];
-    return item ? { slot, number: selected + 1, phase: lane.phase, ...item, revision: lane.revision } : null;
+    return item ? { slot, call: lane.call, channelName: lane.channelName, model: lane.model, number: selected + 1, phase: lane.phase, ...item, revision: lane.revision } : null;
   }
   summary(job) {
     const ok = job.results.filter(x => x.status === 'ok').length, none = job.results.filter(x => x.status === 'none').length, errors = job.results.filter(x => x.status === 'error').length;
-    return { sampledAt: Date.now(), runId: this.active?.id === job.id ? this.active.runId : null, id: job.id, exportId: job.request.export_id, settings: job.settings, createdAt: job.createdAt, elapsedMs: job.elapsedMs + (this.active?.id === job.id ? Date.now() - this.active.lastTick : 0), calls: job.calls, inFlight: this.active?.id === job.id ? this.active.inFlight : 0, state: job.state, message: job.message, total: job.request.items.length, ok, none, errors, pending: job.request.items.length - ok - none - errors, logs: job.logs, failures: job.results.filter(x => x.status === 'error').slice(0,100).map(x => ({ id: x.id, error: x.error })) };
+    return { sampledAt: Date.now(), runId: this.active?.id === job.id ? this.active.runId : null, id: job.id, exportId: job.request.export_id, settings: job.settings, channels: this.active?.id === job.id && this.active.stats ? this.active.stats() : job.channelStats || [], createdAt: job.createdAt, elapsedMs: job.elapsedMs + (this.active?.id === job.id ? Date.now() - this.active.lastTick : 0), calls: job.calls, inFlight: this.active?.id === job.id ? this.active.inFlight : 0, state: job.state, message: job.message, total: job.request.items.length, ok, none, errors, pending: job.request.items.length - ok - none - errors, logs: job.logs, failures: job.results.filter(x => x.status === 'error').slice(0,100).map(x => ({ id: x.id, error: x.error })) };
   }
   list() { return [...this.jobs.values()].sort((a,b) => b.createdAt.localeCompare(a.createdAt)).map(x => this.summary(x)); }
-  result(id) { const j = this.get(id); const results = new Map(j.results.map(x => [x.id, x])); return { format: RESULT, version: 1, export_id: j.request.export_id, processor: { model: j.model, prompt_version: j.promptVersion, prompt_hash: j.promptHash }, items: j.request.items.map(input => ({ ...input, ...(results.get(input.id) ?? { status: 'error', artist_string: '', error: '尚未处理' }) })) }; }
+  result(id) { const j = this.get(id); const results = new Map(j.results.map(x => [x.id, x])); return { format: RESULT, version: 1, export_id: j.request.export_id, processor: { model: [...new Set(j.results.map(x => x.model || j.model))].join(' / ') || j.model, prompt_version: j.promptVersion, prompt_hash: j.promptHash }, items: j.request.items.map(input => ({ ...input, ...(results.get(input.id) ?? { status: 'error', artist_string: '', error: '尚未处理' }) })) }; }
   log(job, message) { job.message = message; job.logs.push({ time: new Date().toISOString(), message }); job.logs = job.logs.slice(-100); this.save(job); }
   pause(id) { if (this.active?.id === id) { this.active.controller.abort(); this.log(this.get(id), '正在暂停，已完成结果已保存'); } }
   async start(id, retryErrors = false, credentials = {}) {
     if (this.active) throw Error('已有任务正在运行，请先暂停。');
     const job = this.get(id);
     if (job.promptHash !== promptHash) throw Error('提示词已变化，请创建新任务。旧任务结果仍可下载。');
+    if (credentials.channels || job.settings.channels) return runChannels(this, job, retryErrors, credentials.channels || job.settings.channels);
     if (job.settings.provider === 'api' && !credentials.apiKey?.trim()) throw Error('请填写该任务的 API Key 后继续。');
     job.settings.concurrency = validateConcurrency(credentials.concurrency ?? job.settings.concurrency);
     if (retryErrors) job.results = job.results.filter(x => x.status !== 'error');
