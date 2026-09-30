@@ -2,6 +2,18 @@ use super::{AppRuntime, AppRuntimeError};
 use crate::db::{MutableRowState, RowSelection};
 
 impl AppRuntime {
+    pub(crate) fn set_artist_representative(
+        &self,
+        row_id: i64,
+        artists: &str,
+        enabled: bool,
+        expected_representative_id: Option<i64>,
+    ) -> Result<crate::db::ArtistRepresentativeResult, AppRuntimeError> {
+        self.with_database_mut(|db| {
+            db.set_artist_representative(row_id, artists, enabled, expected_representative_id)
+        })
+    }
+
     pub(crate) fn set_favorite(&self, row_id: i64, favorite: bool) -> Result<u64, AppRuntimeError> {
         self.with_database_mut(|db| db.set_favorite(row_id, favorite))
     }

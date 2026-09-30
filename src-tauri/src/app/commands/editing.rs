@@ -4,6 +4,19 @@ use crate::db::{MutableRowState, PromptEditResult, RowSelection, SinglePromptEdi
 use tauri::State;
 
 #[tauri::command]
+pub(crate) fn set_artist_representative(
+    row_id: i64,
+    artists: String,
+    enabled: bool,
+    expected_representative_id: Option<i64>,
+    runtime: State<'_, AppRuntime>,
+) -> Result<crate::db::ArtistRepresentativeResult, String> {
+    runtime
+        .set_artist_representative(row_id, &artists, enabled, expected_representative_id)
+        .map_err(error_text)
+}
+
+#[tauri::command]
 pub(crate) fn set_favorite(
     row_id: i64,
     favorite: bool,

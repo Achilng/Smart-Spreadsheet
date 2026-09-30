@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { snapshotQueryFilters } from "../../lib/utils/library-query";
 import { emitTo, listen } from "@tauri-apps/api/event";
-import { getAppSnapshot, getRowIndex, getRowsByIds } from "../../lib/api";
+import { getAppSnapshot } from "../../lib/api";
 import type { MainStateChange } from "../../lib/windows/library-events";
 import { installCloseGuards, registerCloseGuard } from "../../lib/stores/close-guard";
 import { installNavigation, navigateHistory } from "../state/navigation";
@@ -13,33 +13,16 @@ import { useWorkspace } from "../state/workspace";
 import { notify } from "../state/notices";
 import { errorText } from "../../lib/utils/format";
 import { hasFieldDrafts } from "./FieldEditor";
-import { defaultFilters, reloadRows, useLibrary, useRows } from "../state/library";
+import { useLibrary, useRows } from "../state/library";
 import { refreshLibrary } from "../state/library-changes";
 import { connectLibrary, runStartupMaintenance, useMaintenance } from "../state/library-session";
 import { listenDragDrop } from "../state/drop-import";
 import { cancelPendingFileDrag } from "../state/file-drag";
 import { requestDelete } from "../state/row-actions";
-import { captureScrollSnapshot } from "../../lib/stores/view-state";
-import { galleryCellPosition, galleryLayout } from "../../lib/images/gallery-layout";
+import { revealRow } from "../state/reveal-row";
 import { syncGroups } from "../state/groups";
 import { syncDuplicates } from "../state/duplicates";
 
-async function revealRow(rowId: number): Promise<void> {
-  const directory = useLibrary.getState().snapshot?.dataDirectory;
-  const sort = useRows.getState().query.sort;
-  const [rows, index] = await Promise.all([getRowsByIds([rowId]), getRowIndex(rowId, sort)]);
-  if (directory !== useLibrary.getState().snapshot?.dataDirectory) return;
-  if (!rows[0] || index < 0) throw new Error("图片记录已不存在");
-  useWorkspace.setState({ viewMode: "gallery", detailOpen: true });
-  const width = document.querySelector(".r-main-area")?.clientWidth ?? 600;
-  const top = galleryCellPosition(index, galleryLayout(width, useWorkspace.getState().galleryCardSize, Math.max(index + 1, useRows.getState().total))).y;
-  const scroll = captureScrollSnapshot();
-  scroll.positions = [["gallery", Math.max(0, top - 16)]];
-  scroll.ranges = [["gallery", { first: index, last: index }]];
-  scroll.unfilteredPositions = null; scroll.unfilteredRanges = null; scroll.filtered = false;
-  useRows.setState({ query: { ...defaultFilters, sort }, activeRow: rows[0] }); clearSelection();
-  await reloadRows({ navigation: scroll, keepActive: true });
-}
 
 export function useWorkspaceLifecycle(): void {
   useEffect(() => {

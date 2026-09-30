@@ -74,7 +74,7 @@ export function GroupSectionCard({ row, order, scope }: { row: RowRecord; order:
       else useRows.setState({ activeRow: row });
     }}>
       <div className="r-section-thumb">{hasImage ? <Thumbnail rowId={row.id} alt={label} /> : <span className="r-section-no-image"><ImageOff size={22} /><small>无图片</small></span>}{(badge || Boolean(vibeRefs)) && <span className="r-section-badges">{badge && <span className={`version-badge r-section-model ${badge.className}`} title={`作画模型：${row.generationModel}`}>{badge.label}</span>}{Boolean(vibeRefs) && <span className="vibe-badge">VIBE ×{vibeRefs}</span>}</span>}{scope !== "groups" && row.tags.length > 0 && <span className="r-section-tags">{row.tags.slice(0, 2).join(" · ")}{row.tags.length > 2 ? ` +${row.tags.length - 2}` : ""}</span>}</div>
-      <span className="r-section-label">{label}</span>{resolution && <span className="r-section-resolution">{resolution}</span>}
+      <span className="r-section-label">{row.artistRepresentative && <span className="r-representative-label">代表图 · </span>}{label}</span>{resolution && <span className="r-section-resolution">{resolution}</span>}
     </button>
   </div></RowContextMenu>;
 }

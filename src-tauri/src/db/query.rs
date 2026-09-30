@@ -84,6 +84,7 @@ pub struct RowQuery {
 pub struct RowRecord {
     pub id: i64,
     pub favorite: bool,
+    pub artist_representative: bool,
     pub batch_id: i64,
     pub source_ordinal: u32,
     pub time: Option<String>,
@@ -786,18 +787,24 @@ pub(super) fn populate_filtered_rows(
                     DedupeMode::Vibes => "vibe_signature",
                     DedupeMode::None => unreachable!(),
                 };
+                let representative = if dedupe == DedupeMode::Artists {
+                    "CASE WHEN rows.id IN (SELECT row_id FROM artist_representatives) THEN rows.id END"
+                } else {
+                    "NULL"
+                };
                 connection.execute(
                     &format!(
                         "INSERT INTO {target_table}(id)
                          WITH filtered_rows AS (
                              SELECT rows.id,
-                                    NULLIF(TRIM(COALESCE(rows.{column}, '')), '') AS dedupe_key
+                                    NULLIF(TRIM(COALESCE(rows.{column}, '')), '') AS dedupe_key,
+                                    {representative} AS representative_id
                              FROM rows
                              WHERE {predicate}
                          )
                          SELECT id FROM filtered_rows WHERE dedupe_key IS NULL
                          UNION ALL
-                         SELECT MIN(id)
+                         SELECT COALESCE(MIN(representative_id), MIN(id))
                          FROM filtered_rows
                          WHERE dedupe_key IS NOT NULL
                          GROUP BY dedupe_key"
@@ -869,7 +876,8 @@ pub(super) fn query_page_metadata(connection: &Connection) -> Result<Vec<RowReco
                 rows.generation_model, rows.generation_sampler, rows.generation_steps,
                 rows.generation_seed, rows.generation_scale,
                 rows.generation_cfg_rescale, rows.generation_noise_schedule,
-                rows.metadata_failed, rows.vibe_reference_count, rows.group_id, groups.name, rows.artist_llm, rows.favorite
+                rows.metadata_failed, rows.vibe_reference_count, rows.group_id, groups.name, rows.artist_llm, rows.favorite,
+                rows.id IN (SELECT row_id FROM artist_representatives)
          FROM {PAGE_ROWS_TABLE} AS page
          JOIN rows ON rows.id = page.id
          LEFT JOIN groups ON groups.id = rows.group_id
@@ -909,6 +917,7 @@ pub(super) fn query_page_metadata(connection: &Connection) -> Result<Vec<RowReco
                 group_name: row.get(24)?,
                 artist_llm: row.get(25)?,
                 favorite: row.get(26)?,
+                artist_representative: row.get(27)?,
                 tags: Vec::new(),
             })
         })?
