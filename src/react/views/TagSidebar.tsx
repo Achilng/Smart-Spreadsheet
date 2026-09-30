@@ -1,4 +1,4 @@
-import { ChevronRight, ListFilter } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { ContextMenu, RadioGroup } from "radix-ui";
 import { hasActiveFilters, refreshTags, setQuery, useLibrary, useRows } from "../state/library";
@@ -23,9 +23,9 @@ export function TagSidebar({ onFilter }: { onFilter: () => void }) {
       {([ ["positivePrompt", "按正向提示词去重"], ["artists", "按画师串去重"] ] as const).map(([mode, label]) => <label key={mode} className="r-check-row">
         <Checkbox disabled={view === "group"} checked={query.dedupe === mode} onCheckedChange={checked => setQuery({ dedupe: checked ? mode : "none" })} /><span>{label}</span>
       </label>)}
-      <button type="button" className="r-filter-launch" data-active={conditionCount > 0} aria-haspopup="dialog" onClick={onFilter}>
-        <span className="r-filter-launch-icon"><ListFilter size={16} /></span>
-        <span className="r-filter-launch-text"><strong>过滤</strong><small>{conditionCount > 0 ? `已应用 ${conditionCount} 项条件` : "选择条件"}</small></span>
+      <button type="button" className="r-filter-launch" data-active={conditionCount > 0} aria-haspopup="dialog" aria-label={conditionCount > 0 ? `过滤，已应用 ${conditionCount} 项条件` : "过滤"} onClick={onFilter}>
+        <span className="r-filter-launch-label">过滤</span>
+        {conditionCount > 0 && <span className="r-filter-launch-count">{conditionCount} 项</span>}
         <ChevronRight className="r-filter-launch-arrow" size={16} />
       </button>
     </section>
