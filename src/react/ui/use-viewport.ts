@@ -12,11 +12,15 @@ export function useViewport(key: "gallery" | "table") {
   useLayoutEffect(() => {
     const node = viewport.current;
     if (!node) return;
-    const measure = () => setSize(previous => ({ ...previous, width: node.clientWidth, height: node.clientHeight }));
+    const measure = () => {
+      // Table columns resize in CSS; width changes do not affect its virtual rows.
+      const width = key === "gallery" ? node.clientWidth : 0, height = node.clientHeight;
+      setSize(previous => previous.width === width && previous.height === height ? previous : { ...previous, width, height });
+    };
     const observer = new ResizeObserver(measure);
     observer.observe(node); measure();
     return () => observer.disconnect();
-  }, []);
+  }, [key]);
   useLayoutEffect(() => {
     const node = viewport.current;
     if (!node || loading || size.height <= 0) return;

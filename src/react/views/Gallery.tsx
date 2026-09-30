@@ -1,6 +1,6 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { memo, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { Star } from "lucide-react";
-import { setFavorite, type RowRecord } from "../../lib/api";
+import { setFavorite, type RowRecord, type TagSummary } from "../../lib/api";
 import { notify } from "../state/notices";
 import { errorText } from "../../lib/utils/format";
 import { notifyToolboxLibraryChanged } from "../../lib/windows/library-events";
@@ -49,9 +49,32 @@ function FavoriteButton({ row }: { row: RowRecord }) {
   </button>;
 }
 
+// Geometry changes every animation frame. Keep the interactive card subtree
+// stable while its lightweight outer frame follows the available gallery width.
+const GalleryCardContent = memo(function GalleryCardContent({ row, index, checked, active, pickingMaterial, tags }: {
+  row: RowRecord; index: number; checked: boolean; active: boolean; pickingMaterial: boolean; tags: TagSummary[];
+}) {
+  const dragged = useRef(false);
+  const badge = modelVersionBadge(row.generationModel);
+  return <RowContextMenu row={row}><div className="r-card-content" onContextMenu={() => useRows.setState({ activeRow: row })}>
+    {!pickingMaterial && <Checkbox aria-label={`选择第 ${row.sourceOrdinal} 行`} className="r-card-checkbox" checked={checked} onClick={event => toggleRow(row.id, index, event.shiftKey)} />}
+    <FavoriteButton row={row} />
+    <button type="button" className="r-thumb" aria-label={`查看第 ${row.sourceOrdinal} 行详情`} aria-pressed={active} onMouseDown={event => { dragged.current = false; if (row.imagePath || row.storedImagePath) beginFileDrag(event.nativeEvent, row.id, () => { dragged.current = true; }); }} onClick={event => {
+      if (dragged.current) { dragged.current = false; return; }
+      if (!pickingMaterial && (event.ctrlKey || event.metaKey || (event.shiftKey && useSelection.getState().anchor !== null))) toggleRow(row.id, index, event.shiftKey);
+      else useRows.setState({ activeRow: row });
+    }}>
+      <Thumbnail enhanced hasImage={Boolean(row.imagePath || row.storedImagePath)} rowId={row.id} alt={`第 ${row.sourceOrdinal} 行缩略图`} />
+      {row.tags.length > 0 && <span className="r-card-tags" title={row.tags.join("、")}>{row.tags.slice(0, 2).map(tag => {
+        const tone = tagColorFor(tag, tags); return <span key={tag} style={{ background: tone.background, color: tone.text }}>{tag}</span>;
+      })}{row.tags.length > 2 && <span className="r-tag-more">+{row.tags.length - 2}</span>}</span>}
+    </button>
+    <div className="r-card-meta"><div title={rowFileName(row) ?? undefined}>{row.artistRepresentative && <span className="r-representative-label">代表图 · </span>}{rowFileName(row) ?? `#${row.sourceOrdinal}`}</div><small><span>{rowResolution(row) ?? `#${row.sourceOrdinal}`}</span>{(badge || !!row.vibeReferenceCount) && <span className="r-card-badges">{badge && <span className={`version-badge ${badge.className}`} title={`作画模型：${row.generationModel}`}>{badge.label}</span>}{!!row.vibeReferenceCount && <span className="vibe-badge" title={`包含 ${row.vibeReferenceCount} 个 VIBE 引用`}>VIBE ×{row.vibeReferenceCount}</span>}</span>}</small></div>
+  </div></RowContextMenu>;
+});
+
 export function Gallery() {
   const pickingMaterial = useMaterials(state => !!state.galleryPick);
-  const dragged = useRef(false);
   const { viewport, size, onScroll } = useViewport("gallery");
   const cardSize = useWorkspace(state => state.galleryCardSize);
   const pages = useRows(state => state.pages);
@@ -83,23 +106,10 @@ export function Gallery() {
         const position = galleryCellPosition(index, layout);
         const style = { left: position.x, top: position.y, width: layout.cardWidth, "--image-height": `${layout.imageHeight}px` } as CSSProperties;
         if (!row) return <div key={`placeholder-${index}`} className="r-card r-card-skeleton" style={style}><div className="r-thumb r-image-placeholder" /></div>;
-        const badge = modelVersionBadge(row.generationModel);
         const checked = !pickingMaterial && isSelected(row.id, selection);
-        return <RowContextMenu key={row.id} row={row}><div onContextMenu={() => useRows.setState({ activeRow: row })} role="listitem" className="r-card" data-active={activeId === row.id} data-checked={checked} data-selecting={selectionActive} style={style}>
-          {!pickingMaterial && <Checkbox aria-label={`选择第 ${row.sourceOrdinal} 行`} className="r-card-checkbox" checked={checked} onClick={event => toggleRow(row.id, index, event.shiftKey)} />}
-          <FavoriteButton row={row} />
-          <button type="button" className="r-thumb" aria-label={`查看第 ${row.sourceOrdinal} 行详情`} aria-pressed={activeId === row.id} onMouseDown={event => { dragged.current = false; if (row.imagePath || row.storedImagePath) beginFileDrag(event.nativeEvent, row.id, () => { dragged.current = true; }); }} onClick={event => {
-            if (dragged.current) { dragged.current = false; return; }
-            if (!pickingMaterial && (event.ctrlKey || event.metaKey || (event.shiftKey && selection.anchor !== null))) toggleRow(row.id, index, event.shiftKey);
-            else useRows.setState({ activeRow: row });
-          }}>
-            <Thumbnail enhanced hasImage={Boolean(row.imagePath || row.storedImagePath)} rowId={row.id} alt={`第 ${row.sourceOrdinal} 行缩略图`} />
-            {row.tags.length > 0 && <span className="r-card-tags" title={row.tags.join("、")}>{row.tags.slice(0, 2).map(tag => {
-              const tone = tagColorFor(tag, tags); return <span key={tag} style={{ background: tone.background, color: tone.text }}>{tag}</span>;
-            })}{row.tags.length > 2 && <span className="r-tag-more">+{row.tags.length - 2}</span>}</span>}
-          </button>
-          <div className="r-card-meta"><div title={rowFileName(row) ?? undefined}>{row.artistRepresentative && <span className="r-representative-label">代表图 · </span>}{rowFileName(row) ?? `#${row.sourceOrdinal}`}</div><small><span>{rowResolution(row) ?? `#${row.sourceOrdinal}`}</span>{(badge || !!row.vibeReferenceCount) && <span className="r-card-badges">{badge && <span className={`version-badge ${badge.className}`} title={`作画模型：${row.generationModel}`}>{badge.label}</span>}{!!row.vibeReferenceCount && <span className="vibe-badge" title={`包含 ${row.vibeReferenceCount} 个 VIBE 引用`}>VIBE ×{row.vibeReferenceCount}</span>}</span>}</small></div>
-        </div></RowContextMenu>;
+        return <div key={row.id} role="listitem" className="r-card" data-active={activeId === row.id} data-checked={checked} data-selecting={selectionActive} style={style}>
+          <GalleryCardContent row={row} index={index} checked={checked} active={activeId === row.id} pickingMaterial={pickingMaterial} tags={tags} />
+        </div>;
       })}</div>}
     {error && total > 0 && <div className="r-inline-error" role="alert"><span>{error}</span><Button size="sm" onClick={() => void reloadRows()}>重试</Button></div>}
   </div>;
