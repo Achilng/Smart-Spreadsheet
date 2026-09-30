@@ -9,6 +9,7 @@ import { clearHistory, undoLastAction, redoLastAction } from "../state/history";
 import { clearSelection, selectedCount, selectionDto, useSelection } from "../state/selection";
 import { selectAllCurrentView } from "../state/view-selection";
 import { useTasks } from "../state/tasks";
+import { useMaterials, finishMaterialGalleryPick } from "../state/materials";
 import { useWorkspace } from "../state/workspace";
 import { notify } from "../state/notices";
 import { errorText } from "../../lib/utils/format";
@@ -75,6 +76,10 @@ export function useWorkspaceLifecycle(): void {
       if (target?.closest('input, textarea, select, [contenteditable="true"]') || event.isComposing || document.querySelector('[role="dialog"]')) return;
       if (event.altKey && (event.key === "ArrowLeft" || event.key === "ArrowRight")) { event.preventDefault(); if (!event.repeat) void navigateHistory(event.key === "ArrowLeft" ? -1 : 1); return; }
       if (["materials", "promptDocs"].includes(useWorkspace.getState().viewMode)) return;
+      if (useMaterials.getState().galleryPick) {
+        if (event.key === "Escape") { event.preventDefault(); finishMaterialGalleryPick(); return; }
+        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") { event.preventDefault(); return; }
+      }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") { event.preventDefault(); void (event.shiftKey ? redoLastAction() : undoLastAction()); }
       else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "y") { event.preventDefault(); void redoLastAction(); }
       else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
