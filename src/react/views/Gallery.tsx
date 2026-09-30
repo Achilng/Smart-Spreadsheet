@@ -1,4 +1,5 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { motion, MotionConfig } from "motion/react";
 import { Star } from "lucide-react";
 import { setFavorite, type RowRecord, type TagSummary } from "../../lib/api";
 import { notify } from "../state/notices";
@@ -16,6 +17,7 @@ import { modelVersionBadge } from "../../lib/utils/model-version";
 import { tagColorFor } from "../../lib/utils/tag-colors";
 import { thumbnails } from "../ui/use-image";
 import { useViewport } from "../ui/use-viewport";
+import { useReducedMotionPreference } from "../ui/use-reduced-motion";
 import { rememberVisibleRange } from "../../lib/stores/view-state";
 
 import { RowContextMenu } from "../ui/RowContextMenu";
@@ -51,8 +53,8 @@ function FavoriteButton({ row }: { row: RowRecord }) {
 
 // Geometry changes every animation frame. Keep the interactive card subtree
 // stable while its lightweight outer frame follows the available gallery width.
-const GalleryCardContent = memo(function GalleryCardContent({ row, index, checked, active, pickingMaterial, tags }: {
-  row: RowRecord; index: number; checked: boolean; active: boolean; pickingMaterial: boolean; tags: TagSummary[];
+const GalleryCardContent = memo(function GalleryCardContent({ row, index, checked, active, pickingMaterial, tags, layoutKey }: {
+  row: RowRecord; index: number; checked: boolean; active: boolean; pickingMaterial: boolean; tags: TagSummary[]; layoutKey: string;
 }) {
   const dragged = useRef(false);
   const badge = modelVersionBadge(row.generationModel);
@@ -69,11 +71,12 @@ const GalleryCardContent = memo(function GalleryCardContent({ row, index, checke
         const tone = tagColorFor(tag, tags); return <span key={tag} style={{ background: tone.background, color: tone.text }}>{tag}</span>;
       })}{row.tags.length > 2 && <span className="r-tag-more">+{row.tags.length - 2}</span>}</span>}
     </button>
-    <div className="r-card-meta"><div title={rowFileName(row) ?? undefined}>{row.artistRepresentative && <span className="r-representative-label">代表图 · </span>}{rowFileName(row) ?? `#${row.sourceOrdinal}`}</div><small><span>{rowResolution(row) ?? `#${row.sourceOrdinal}`}</span>{(badge || !!row.vibeReferenceCount) && <span className="r-card-badges">{badge && <span className={`version-badge ${badge.className}`} title={`作画模型：${row.generationModel}`}>{badge.label}</span>}{!!row.vibeReferenceCount && <span className="vibe-badge" title={`包含 ${row.vibeReferenceCount} 个 VIBE 引用`}>VIBE ×{row.vibeReferenceCount}</span>}</span>}</small></div>
+    <motion.div layout="position" layoutDependency={layoutKey} className="r-card-meta"><div title={rowFileName(row) ?? undefined}>{row.artistRepresentative && <span className="r-representative-label">代表图 · </span>}{rowFileName(row) ?? `#${row.sourceOrdinal}`}</div><small><span>{rowResolution(row) ?? `#${row.sourceOrdinal}`}</span>{(badge || !!row.vibeReferenceCount) && <span className="r-card-badges">{badge && <span className={`version-badge ${badge.className}`} title={`作画模型：${row.generationModel}`}>{badge.label}</span>}{!!row.vibeReferenceCount && <span className="vibe-badge" title={`包含 ${row.vibeReferenceCount} 个 VIBE 引用`}>VIBE ×{row.vibeReferenceCount}</span>}</span>}</small></motion.div>
   </div></RowContextMenu>;
 });
 
 export function Gallery() {
+  const reducedMotion = useReducedMotionPreference();
   const pickingMaterial = useMaterials(state => !!state.galleryPick);
   const { viewport, size, onScroll } = useViewport("gallery");
   const cardSize = useWorkspace(state => state.galleryCardSize);
@@ -98,7 +101,9 @@ export function Gallery() {
   }, [pageKey, refreshing, loading]);
   const visibleIds = indices.map(index => pages.get(Math.floor(index / PAGE_SIZE))?.[index % PAGE_SIZE]?.id).filter((id): id is number => id !== undefined).join(",");
   useEffect(() => { thumbnails.retain(new Set(visibleIds ? visibleIds.split(",").map(Number) : [])); }, [visibleIds]);
-  return <div className="r-gallery" ref={viewport} role="list" tabIndex={0} aria-label="图片画廊" aria-busy={loading || refreshing} onScroll={onScroll}>
+  // Motion caches its own OS preference at mount. Supply a live duration instead,
+  // including when the user changes the setting while the gallery is open.
+  return <MotionConfig reducedMotion="never" transition={{ layout: { duration: reducedMotion ? 0 : .28, ease: [.22, 1, .36, 1] } }}><motion.div layoutScroll className="r-gallery" ref={viewport} role="list" tabIndex={0} aria-label="图片画廊" aria-busy={loading || refreshing} onScroll={onScroll}>
     {loading ? <div className="r-state-message" role="status">正在加载图片…</div> : error && total === 0 ? <div className="r-state-message"><p>{error}</p><Button onClick={() => void reloadRows()}>重试</Button></div>
       : total === 0 ? <div className="r-state-message"><p>没有符合条件的图片</p><Button variant="ghost" onClick={clearFilters}>清除筛选</Button></div>
       : <div className="r-gallery-spacer" style={{ height: layout.spacerHeight }}>{indices.map(index => {
@@ -107,10 +112,13 @@ export function Gallery() {
         const style = { left: position.x, top: position.y, width: layout.cardWidth, "--image-height": `${layout.imageHeight}px` } as CSSProperties;
         if (!row) return <div key={`placeholder-${index}`} className="r-card r-card-skeleton" style={style}><div className="r-thumb r-image-placeholder" /></div>;
         const checked = !pickingMaterial && isSelected(row.id, selection);
-        return <div key={row.id} role="listitem" className="r-card" data-active={activeId === row.id} data-checked={checked} data-selecting={selectionActive} style={style}>
-          <GalleryCardContent row={row} index={index} checked={checked} active={activeId === row.id} pickingMaterial={pickingMaterial} tags={tags} />
-        </div>;
+        // Measure only real rearrangements. Sidebar width changes between column
+        // boundaries still resize cards live without restarting a layout animation.
+        const layoutKey = `${layout.columns}:${index}:${reducedMotion}`;
+        return <motion.div key={row.id} layout layoutDependency={layoutKey} initial={false} role="listitem" className="r-card" data-active={activeId === row.id} data-checked={checked} data-selecting={selectionActive} style={style}>
+          <GalleryCardContent row={row} index={index} checked={checked} active={activeId === row.id} pickingMaterial={pickingMaterial} tags={tags} layoutKey={layoutKey} />
+        </motion.div>;
       })}</div>}
     {error && total > 0 && <div className="r-inline-error" role="alert"><span>{error}</span><Button size="sm" onClick={() => void reloadRows()}>重试</Button></div>}
-  </div>;
+  </motion.div></MotionConfig>;
 }
