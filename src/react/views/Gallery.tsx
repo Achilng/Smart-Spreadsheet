@@ -6,6 +6,7 @@ import { errorText } from "../../lib/utils/format";
 import { notifyToolboxLibraryChanged } from "../../lib/windows/library-events";
 import { galleryCellPosition, galleryLayout, galleryVisibleIndices } from "../../lib/images/gallery-layout";
 import { clearFilters, ensurePage, PAGE_SIZE, patchRowFields, reloadRows, useLibrary, useRows } from "../state/library";
+import { useMaterials } from "../state/materials";
 import { useWorkspace } from "../state/workspace";
 import { isSelected, selectedCount, toggleRow, useSelection } from "../state/selection";
 import { Thumbnail } from "../ui/Thumbnail";
@@ -49,6 +50,7 @@ function FavoriteButton({ row }: { row: RowRecord }) {
 }
 
 export function Gallery() {
+  const pickingMaterial = useMaterials(state => !!state.galleryPick);
   const dragged = useRef(false);
   const { viewport, size, onScroll } = useViewport("gallery");
   const cardSize = useWorkspace(state => state.galleryCardSize);
@@ -63,7 +65,7 @@ export function Gallery() {
   const layout = galleryLayout(size.width, cardSize, total);
   const indices = galleryVisibleIndices(layout, size.top, size.height, total);
   const pageKey = [...new Set(indices.map(index => Math.floor(index / PAGE_SIZE)))].join(",");
-  const selectionActive = selectedCount(selection) > 0;
+  const selectionActive = !pickingMaterial && selectedCount(selection) > 0;
   const first = indices[0] ?? 0;
   const last = indices[indices.length - 1] ?? -1;
   useLayoutEffect(() => { if (!loading && !refreshing && last >= first) rememberVisibleRange("gallery", first, last); }, [first, last, loading, refreshing]);
@@ -82,13 +84,13 @@ export function Gallery() {
         const style = { left: position.x, top: position.y, width: layout.cardWidth, "--image-height": `${layout.imageHeight}px` } as CSSProperties;
         if (!row) return <div key={`placeholder-${index}`} className="r-card r-card-skeleton" style={style}><div className="r-thumb r-image-placeholder" /></div>;
         const badge = modelVersionBadge(row.generationModel);
-        const checked = isSelected(row.id, selection);
+        const checked = !pickingMaterial && isSelected(row.id, selection);
         return <RowContextMenu key={row.id} row={row}><div onContextMenu={() => useRows.setState({ activeRow: row })} role="listitem" className="r-card" data-active={activeId === row.id} data-checked={checked} data-selecting={selectionActive} style={style}>
-          <Checkbox aria-label={`选择第 ${row.sourceOrdinal} 行`} className="r-card-checkbox" checked={checked} onClick={event => toggleRow(row.id, index, event.shiftKey)} />
+          {!pickingMaterial && <Checkbox aria-label={`选择第 ${row.sourceOrdinal} 行`} className="r-card-checkbox" checked={checked} onClick={event => toggleRow(row.id, index, event.shiftKey)} />}
           <FavoriteButton row={row} />
           <button type="button" className="r-thumb" aria-label={`查看第 ${row.sourceOrdinal} 行详情`} aria-pressed={activeId === row.id} onMouseDown={event => { dragged.current = false; if (row.imagePath || row.storedImagePath) beginFileDrag(event.nativeEvent, row.id, () => { dragged.current = true; }); }} onClick={event => {
             if (dragged.current) { dragged.current = false; return; }
-            if (event.ctrlKey || event.metaKey || (event.shiftKey && selection.anchor !== null)) toggleRow(row.id, index, event.shiftKey);
+            if (!pickingMaterial && (event.ctrlKey || event.metaKey || (event.shiftKey && selection.anchor !== null))) toggleRow(row.id, index, event.shiftKey);
             else useRows.setState({ activeRow: row });
           }}>
             <Thumbnail enhanced hasImage={Boolean(row.imagePath || row.storedImagePath)} rowId={row.id} alt={`第 ${row.sourceOrdinal} 行缩略图`} />
