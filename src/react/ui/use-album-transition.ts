@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { flushSync } from "react-dom";
 import "./album-transition.css";
 
@@ -10,7 +10,7 @@ export function useAlbumTransition() {
   const active = useRef<(() => void) | null>(null);
   useEffect(() => () => active.current?.(), []);
 
-  async function navigate(direction: Direction, key: string, update: () => void, prepare?: () => Promise<void>) {
+  const navigate = useCallback(async (direction: Direction, key: string, update: () => void, prepare?: () => Promise<void>) => {
     if (active.current) return;
     const node = root.current;
     if (!node || matchMedia("(prefers-reduced-motion: reduce)").matches) { update(); return; }
@@ -167,6 +167,6 @@ export function useAlbumTransition() {
     } catch {
       apply();
     } finally { clean(); }
-  }
+  }, []);
   return { root, navigate };
 }

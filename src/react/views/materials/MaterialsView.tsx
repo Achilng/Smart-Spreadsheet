@@ -1,56 +1,27 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
-import { motion, MotionConfig } from "motion/react";
-import { useReducedMotionPreference } from "../../ui/use-reduced-motion";
+import { useEffect, useState } from "react";
 import { Copy, Edit3, Grid2X2, PanelRightClose, PanelRightOpen, Trash2, SlidersHorizontal, Plus, ImagePlus } from "lucide-react";
 import { materialAlbum } from "../../../lib/utils/material-album";
-import { GALLERY_GAP, GALLERY_PADDING, GALLERY_PADDING_TOP, galleryLayout, galleryCellPosition, galleryVisibleIndices } from "../../../lib/images/gallery-layout";
 import { useTasks } from "../../state/tasks";
 import { useWorkspace } from "../../state/workspace";
-import { useMaterials, initializeMaterials, loadMaterialPage, reloadMaterials, MATERIAL_PAGE_SIZE, materialThumbnails, materialCardVersionImages, materialCovers, materialVersionCovers, toggleMaterialTag, setMaterialUntagged, clearMaterialFilters, createMaterial, chooseMaterialImages, beginMaterialImport, editMaterial, copyMaterial, requestDeleteMaterial, confirmDeleteMaterial } from "../../state/materials";
+import { useMaterials, initializeMaterials, reloadMaterials, materialCovers, materialVersionCovers, toggleMaterialTag, setMaterialUntagged, clearMaterialFilters, createMaterial, chooseMaterialImages, beginMaterialImport, editMaterial, copyMaterial, requestDeleteMaterial, confirmDeleteMaterial } from "../../state/materials";
 import { Button, Checkbox, Input, Modal, Slider } from "../../ui/controls";
 import { MaterialImage } from "./MaterialImage";
 import { MaterialEditor } from "./MaterialEditor";
-import { MaterialCard } from "./MaterialCard";
+import { MaterialGrid } from "./MaterialGrid";
 import "./materials.css";
 
 export function MaterialsView({ active = true }: { active?: boolean }) {
-  const reducedMotion = useReducedMotionPreference();
   const state = useMaterials(); const busy = useTasks(value => value.busy);
   const [size, setSize] = useState(200), [filtersOpen, setFiltersOpen] = useState(false);
-  const viewport = useRef<HTMLDivElement>(null); const [bounds, setBounds] = useState({ width: 0, height: 0 }); const [tagSearch, setTagSearch] = useState("");
+  const [tagSearch, setTagSearch] = useState("");
   useEffect(() => { if (active) initializeMaterials(); }, [active, state.initialized]);
   useEffect(() => { if (!active || state.editorOpen || state.pendingDelete) useMaterials.setState({ openCardId: null }); }, [active, state.editorOpen, state.pendingDelete]);
   useEffect(() => { const handler = (event: Event) => { if (useWorkspace.getState().viewMode === "materials") beginMaterialImport((event as CustomEvent<string[]>).detail); }; window.addEventListener("material-path-drop", handler); return () => window.removeEventListener("material-path-drop", handler); }, []);
-  useLayoutEffect(() => { const node = viewport.current; if (!node) return; const observer = new ResizeObserver(entries => { const rect = entries[0].contentRect; setBounds(previous => previous.width === rect.width && previous.height === rect.height ? previous : { width: rect.width, height: rect.height }); }); observer.observe(node); node.scrollTop = useMaterials.getState().scrollTop; return () => observer.disconnect(); }, []);
-  useLayoutEffect(() => { if (viewport.current && viewport.current.scrollTop !== state.scrollTop) viewport.current.scrollTop = state.scrollTop; }, [state.scrollTop, active, bounds.height]);
-  const layout = galleryLayout(bounds.width, size, state.total);
-  // Room for the fanned sheets and labels; gallery geometry is unchanged.
-  layout.imageHeight = Math.ceil(Math.min(size * .65, layout.cardWidth * .58) * 1216 / 832) + 32;
-  layout.cellHeight = layout.imageHeight + 110;
-  layout.spacerHeight = layout.gridRows ? GALLERY_PADDING_TOP + GALLERY_PADDING + layout.gridRows * layout.cellHeight - GALLERY_GAP : 0;
-  const visible = active ? galleryVisibleIndices(layout, state.scrollTop, bounds.height, state.total) : [];
-  const first = visible[0] ?? 0; const last = visible.at(-1) ?? 0;
-  useEffect(() => {
-    if (!active) return;
-    const ids = new Set<number>();
-    const versionIds = new Set<number>();
-    for (let page = Math.floor(first / MATERIAL_PAGE_SIZE); page <= Math.floor(last / MATERIAL_PAGE_SIZE); page++) void loadMaterialPage(page);
-    for (const index of visible) {
-      const item = state.pages.get(Math.floor(index / MATERIAL_PAGE_SIZE))?.[index % MATERIAL_PAGE_SIZE];
-      if (!item) continue;
-      ids.add(item.id);
-      for (const image of materialAlbum(item, state.cardVersions[item.id]).previews) if (image.kind === "version") versionIds.add(image.id);
-    }
-    materialThumbnails.retain(ids);
-    materialCardVersionImages.retain(versionIds);
-  }, [first, last, state.pages, state.cardVersions, active]);
   const tags = [...state.tags, ...state.selectedTags.filter(name => !state.tags.some(tag => tag.name === name)).map(name => ({ name, rowCount: 0 }))].filter(tag => tag.name.toLowerCase().includes(tagSearch.toLowerCase()));
   return <section className="rm-workspace" style={active ? undefined : { display: "none" }}><div className="r-library-filter-panel" data-open={filtersOpen} inert={!filtersOpen}><aside className="rm-sidebar"><div className="rm-sidebar-heading"><strong>素材筛选</strong><span>同时匹配</span></div><label className="rm-inline"><Checkbox checked={state.untagged} onCheckedChange={value => setMaterialUntagged(value === true)} />无 Tag 素材</label>{(state.search || state.selectedTags.length > 0 || state.untagged) && <Button size="sm" variant="ghost" onClick={clearMaterialFilters}>清除全部筛选</Button>}<div className="rm-sidebar-heading"><strong>Tag</strong><span>{state.selectedTags.length} 个已选</span></div><Input aria-label="搜索素材 Tag" placeholder="搜索 Tag…" value={tagSearch} onChange={event => setTagSearch(event.target.value)} />{state.tagError && <p className="rm-error" role="alert">{state.tagError}<Button size="sm" onClick={() => void reloadMaterials()}>重试</Button></p>}<div className="rm-tag-list">{tags.length ? tags.map(tag => <label className="rm-inline" key={tag.name}><Checkbox checked={state.selectedTags.includes(tag.name)} onCheckedChange={() => toggleMaterialTag(tag.name)} /><span>{tag.name}</span><small>{tag.rowCount}</small></label>) : <p>还没有 Tag。编辑素材时可以添加。</p>}</div></aside></div>
     <main className="rm-main"><header className="r-page-head"><h1 className="r-page-title">素材<span className="r-page-count" aria-label={`${state.total.toLocaleString()} 份素材`}>{state.total.toLocaleString()}</span></h1><div className="r-page-actions"><div className="r-size-control"><Grid2X2 size={11} aria-hidden="true" /><Slider aria-label="素材卡片大小" min={200} max={400} step={10} value={[size]} onValueChange={values => setSize(values[0])} /><Grid2X2 size={15} aria-hidden="true" /></div><Button className="is-toggle" aria-expanded={filtersOpen} onClick={() => setFiltersOpen(value => !value)}><SlidersHorizontal size={15} />筛选</Button><Button disabled={busy || state.editorOpen} onClick={() => void chooseMaterialImages()}><ImagePlus size={15} />导入图片</Button><Button variant="primary" disabled={busy || state.editorOpen} onClick={createMaterial}><Plus size={15} />新建素材</Button></div></header><div className="r-page-toolbar rm-filter-pills" role="group" aria-label="按 Tag 筛选素材"><button type="button" className="r-pill" aria-pressed={!state.untagged && !state.selectedTags.length} onClick={clearMaterialFilters}>全部</button><button type="button" className="r-pill" aria-pressed={state.untagged} onClick={() => setMaterialUntagged(!state.untagged)}>无 Tag</button>{state.tags.slice(0, 10).map(tag => <button key={tag.name} type="button" className="r-pill" aria-pressed={state.selectedTags.includes(tag.name)} onClick={() => toggleMaterialTag(tag.name)}>{tag.name} <small>{tag.rowCount}</small></button>)}{state.tags.length > 10 && <button type="button" className="r-pill" onClick={() => setFiltersOpen(true)}>全部 Tag…</button>}</div>
       {state.selectedTags.length > 0 && <p className="rm-filter-summary">Tag：{state.selectedTags.join("、")}</p>}{state.error && <div className="rm-error" role="alert">{state.error}<Button onClick={() => void reloadMaterials()}>重试</Button></div>}
-      <MotionConfig reducedMotion="never" transition={{ layout: { duration: reducedMotion ? 0 : .28, ease: [.22, 1, .36, 1] } }}><motion.div layoutScroll className="rm-viewport" ref={viewport} aria-busy={state.loading} onScroll={event => { if (active) useMaterials.setState({ scrollTop: event.currentTarget.scrollTop }); }} tabIndex={0} aria-label="素材列表">
-        {state.total > 0 ? <div className="rm-grid" style={{ height: layout.spacerHeight }}>{visible.map(index => { const item = state.pages.get(Math.floor(index / MATERIAL_PAGE_SIZE))?.[index % MATERIAL_PAGE_SIZE]; const position = galleryCellPosition(index, layout); return <motion.div layout="position" layoutDependency={`${layout.columns}:${index}:${reducedMotion}`} initial={false} key={item ? `material-${item.id}-${state.revision}` : `placeholder-${index}-${state.revision}`} className="rm-cell" style={{ left: position.x, top: position.y, width: layout.cardWidth, height: layout.cellHeight - 12, "--album-stage-height": `${layout.imageHeight}px`, "--album-cover-max": `${size * .65}px` } as CSSProperties}>{item ? <MaterialCard material={item} active={state.selected?.id === item.id} open={active && !state.editorOpen && !state.pendingDelete && state.openCardId === item.id} /> : <div className="r-image-placeholder" />}</motion.div>; })}</div> : <div className="rm-empty"><h2>{state.loading ? "正在读取素材…" : state.error ? "素材读取失败" : state.search || state.selectedTags.length || state.untagged ? "没有匹配的素材" : "收藏你的第一份素材"}</h2>{!state.loading && !state.error && <p>新建素材可从图库选图，也可以将本地图片拖到这里导入。</p>}</div>}
-      </motion.div></MotionConfig>
+      <MaterialGrid active={active} size={size} />
     </main><MaterialDetailPanel active={active && !state.editorOpen && !state.pendingDelete} />
     {state.editorOpen && <MaterialEditor active={active} key={state.editorKey} />}
     <Modal open={active && state.pendingDelete !== null} busy={state.deleting} title={`删除素材「${state.pendingDelete?.title ?? ""}」？`} onClose={() => useMaterials.setState({ pendingDelete: null, deleteError: "" })} footer={<><Button disabled={state.deleting} onClick={() => useMaterials.setState({ pendingDelete: null, deleteError: "" })}>取消</Button><Button variant="danger" disabled={state.deleting} onClick={() => void confirmDeleteMaterial()}>{state.deleting ? "正在删除…" : "删除素材"}</Button></>}><p>该素材的全部 {state.pendingDelete?.versions.length ?? 0} 个版本、文本及展示图将一并删除，原始图片不会被修改。</p><p>删除后无法通过 Ctrl+Z 恢复。</p>{state.deleteError && <p className="rm-error" role="alert">{state.deleteError}</p>}</Modal>

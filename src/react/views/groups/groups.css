@@ -121,8 +121,11 @@
   gap: 20px 16px;
   padding: 8px var(--page-gutter) 24px;
 }
-.r-group-album { min-width: 0; container-type: inline-size; }
-.r-group-album .r-album-stack { height: calc(min(58cqi, 130px) * 1.46154 + 32px); }
+.r-group-album-frame { min-width: 0; }
+.r-group-album { min-width: 0; }
+/* Match the sheets' aspect ratio without a size-query container on every moving card. */
+.r-group-album .r-album-stack { height: auto; padding: 16px 0; }
+.r-group-album .r-album-stack::before { content: ""; display: block; width: 58%; max-width: 130px; aspect-ratio: 832 / 1216; }
 .r-group-cover-error { display: grid; gap: 8px; padding: 8px; color: var(--danger); font-size: var(--font-sm); overflow-wrap: anywhere; }
 
 /* ---- Album detail ---- */

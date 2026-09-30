@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowLeft, LayoutGrid, List, SlidersHorizontal } from "lucide-react";
 import type { GroupSummary } from "../../../lib/api";
 import { errorText } from "../../../lib/utils/format";
@@ -24,7 +24,7 @@ export function GroupBrowseView({ filtersOpen, onFilters }: { filtersOpen: boole
   const setShelf = (value: boolean) => useGroups.setState({ layout: value ? "shelf" : "list" });
   const setSearch = (value: string) => useGroups.setState({ search: value });
   useEffect(() => { syncGroups(); }, [rows.resetToken, rows.query, directory]);
-  const sorted = (groups.sortByCount ? [...groups.list].sort((a, b) => b.memberCount - a.memberCount) : groups.list).filter(group => group.name.toLocaleLowerCase().includes(search.toLocaleLowerCase().trim()));
+  const sorted = useMemo(() => (groups.sortByCount ? [...groups.list].sort((a, b) => b.memberCount - a.memberCount) : groups.list).filter(group => group.name.toLocaleLowerCase().includes(search.toLocaleLowerCase().trim())), [groups.list, groups.sortByCount, search]);
   const opened = groups.expanded[0];
   const albumOpen = shelf && Boolean(opened);
   // Remount the viewport per destination so layout clamping cannot overwrite the page we just left.
@@ -32,18 +32,20 @@ export function GroupBrowseView({ filtersOpen, onFilters }: { filtersOpen: boole
   const currentGroup = groups.list.find(group => String(group.id) === opened);
   const albumName = opened === "ungrouped" ? "未分组" : currentGroup?.name;
   const albumCount = opened === "ungrouped" ? groups.members.ungrouped?.totalCount : currentGroup?.memberCount;
-  function openAlbum(key: string) { void motion.navigate("enter", key, () => { clearSelection(); useRows.setState({ activeRow: null }); useGroups.setState({ expanded: [key] }); void loadGroupMembers(key); }, () => loadGroupMembers(key)); }
+  const openAlbum = useCallback((key: string) => { void motion.navigate("enter", key, () => { clearSelection(); useRows.setState({ activeRow: null }); useGroups.setState({ expanded: [key] }); void loadGroupMembers(key); }, () => loadGroupMembers(key)); }, [motion.navigate]);
   function returnToShelf() { const update = () => { clearSelection(); useRows.setState({ activeRow: null }); useGroups.setState({ expanded: [] }); setShelf(true); }; if (albumOpen) void motion.navigate("leave", opened, update); else update(); }
-  function groupActions(group: GroupSummary): MenuItem[] {
+  const groupActions = useCallback((group: GroupSummary): MenuItem[] => {
     return [{ label: "重命名", disabled: taskBusy, action: () => { setRenaming(group); setName(group.name); setError(null); } }, { label: "删除分组", danger: true, disabled: taskBusy, action: () => setDeleting(group) }];
-  }
-  function albumActions(group: GroupSummary): MenuItem[] {
+  }, [taskBusy]);
+  const albumActions = useCallback((group: GroupSummary): MenuItem[] => {
     const [rename, remove] = groupActions(group);
     return [rename, { label: "合并到…", disabled: taskBusy || groups.list.length < 2, action: () => setMerging(group) }, { ...remove, separator: true }];
-  }
+  }, [groupActions, taskBusy, groups.list.length]);
   // Range selection must include only the groups rendered in this mode.
-  const keys = shelf ? (opened ? [opened] : []) : [...sorted.map(group => String(group.id)), "ungrouped"];
-  const order = keys.flatMap(key => groups.expanded.includes(key) ? (groups.members[key]?.rows ?? []).slice(0, groups.renderLimits[key] ?? 40).map(row => row.id) : []);
+  const order = useMemo(() => {
+    const keys = shelf ? (opened ? [opened] : []) : [...sorted.map(group => String(group.id)), "ungrouped"];
+    return keys.flatMap(key => groups.expanded.includes(key) ? (groups.members[key]?.rows ?? []).slice(0, groups.renderLimits[key] ?? 40).map(row => row.id) : []);
+  }, [shelf, opened, sorted, groups.expanded, groups.members, groups.renderLimits]);
   const reveal = (key: string) => useGroups.setState(state => ({ renderLimits: { ...state.renderLimits, [key]: (state.renderLimits[key] ?? 40) + 40 } }));
   async function rename() {
     if (!renaming || !name.trim() || busy || taskBusy) return;
