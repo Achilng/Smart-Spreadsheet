@@ -107,8 +107,24 @@
 .r-sort-trigger { padding-right: 10px; }
 
 /* ---- Library filter panel ---- */
-.r-library-filter-panel { display: flex; flex: none; width: 232px; min-height: 0; animation: r-panel-in var(--dur-slow) var(--ease-emphasized); }
-.r-sidebar { display: flex; flex-direction: column; width: 100%; min-height: 0; border-right: 1px solid var(--border); background: var(--surface); }
+/* The panel stays mounted: its width animates and the sidebar keeps a fixed width pinned to the right edge, so it slides out from the left instead of squeezing. */
+.r-library-filter-panel {
+  --filter-panel-w: 232px;
+  display: flex;
+  flex: none;
+  justify-content: flex-end;
+  width: var(--filter-panel-w);
+  min-height: 0;
+  overflow: hidden;
+  transition: width var(--dur-slow) var(--ease-emphasized), opacity var(--dur-base) var(--ease-out), visibility 0s;
+}
+.r-library-filter-panel[data-open="false"] {
+  width: 0;
+  opacity: 0;
+  visibility: hidden;
+  transition: width var(--dur-base) var(--ease-emphasized), opacity var(--dur-fast) var(--ease-out), visibility 0s linear var(--dur-base);
+}
+.r-sidebar { display: flex; flex: none; flex-direction: column; width: var(--filter-panel-w); min-height: 0; border-right: 1px solid var(--border); background: var(--surface); }
 .r-sidebar-header { flex: none; padding: 22px 16px 12px 20px; }
 .r-sidebar-header h3 { font-size: var(--font-lg); font-weight: 600; }
 .r-sidebar-header p { margin-top: 2px; color: var(--text-3); font-size: var(--font-xs); }
@@ -393,7 +409,7 @@
 
 /* ---- Responsive frame ---- */
 @media (max-width: 1080px) {
-  .r-library-filter-panel { width: 200px; }
+  .r-library-filter-panel { --filter-panel-w: 200px; }
 }
 @media (max-width: 1000px) {
   .r-brand small { display: none; }
