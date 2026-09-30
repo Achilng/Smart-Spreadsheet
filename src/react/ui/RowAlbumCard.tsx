@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { motion } from "motion/react";
 import type { RowPage } from "../../lib/api";
 import { errorText } from "../../lib/utils/format";
 import { AlbumStack } from "./AlbumStack";
@@ -24,7 +25,8 @@ function limited<T>(run: () => Promise<T>): Promise<T> {
 }
 
 /** Mount with a new key when the source query changes; keep loadPreview stable. */
-export function RowAlbumCard({ albumKey, previewKey, label, count, actionLabel, loadPreview, initialPreview, onOpen, menu }: {
+export function RowAlbumCard({ albumKey, previewKey, label, count, actionLabel, loadPreview, initialPreview, onOpen, menu, layoutKey }: {
+  layoutKey?: string;
   albumKey: string; previewKey: string; label: string; count?: number; actionLabel: string; loadPreview: () => Promise<RowPage>; initialPreview?: Preview; onOpen: () => void; menu?: MenuItem[];
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -47,11 +49,11 @@ export function RowAlbumCard({ albumKey, previewKey, label, count, actionLabel, 
     return () => { cancelled = true; };
   }, [visible, count, loadPreview, attempt, page]);
   const total = count ?? page?.totalCount;
-  return <div ref={ref} role="listitem" className="r-group-album" data-album-key={albumKey}>
+  return <motion.div layout={layoutKey ? "position" : false} layoutDependency={layoutKey} initial={false} ref={ref} role="listitem" className="r-group-album" data-album-key={albumKey}>
     <RightClickMenu items={menu}><button className="r-album-trigger" type="button" aria-label={actionLabel} onClick={onOpen}>
       <AlbumStack images={visible ? (page?.rows ?? []).map(row => <Thumbnail key={row.id} rowId={row.id} hasImage={Boolean(row.imagePath?.trim() || row.storedImagePath?.trim())} alt={label} />) : []} empty={error ? "封面加载失败" : total === 0 ? "空相册" : !page ? "正在加载…" : "暂无图片"} />
       <span className="r-album-title" title={label}>{label}</span><span className="r-album-meta">{total === undefined ? "待整理的图片" : `${total.toLocaleString()} 张图片`}</span>
     </button></RightClickMenu>
     {error && <div className="r-group-cover-error"><span role="alert">{error}</span><Button size="sm" onClick={() => setAttempt(value => value + 1)}>重试封面</Button></div>}
-  </div>;
+  </motion.div>;
 }

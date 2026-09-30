@@ -10,12 +10,11 @@
   flex: none;
   flex-direction: column;
   gap: 12px;
-  width: 232px;
+  width: var(--filter-panel-w);
   min-height: 0;
   padding: 22px 16px 16px;
   border-right: 1px solid var(--border);
   background: var(--surface);
-  animation: r-panel-in var(--dur-slow) var(--ease-emphasized);
 }
 .rm-sidebar-heading { display: flex; align-items: center; justify-content: space-between; font-size: var(--font-sm); }
 .rm-sidebar-heading strong { font-weight: 600; }
@@ -125,7 +124,6 @@
 .rm-gallery-pick strong { font-size: var(--font-sm); font-weight: 600; }
 .rm-gallery-pick span { color: var(--text-3); font-size: var(--font-xs); }
 @media (max-width: 1080px) {
-  .rm-sidebar { width: 200px; }
 }
 @media (max-width: 700px) {
   .rm-editor { grid-template-columns: 1fr; }
