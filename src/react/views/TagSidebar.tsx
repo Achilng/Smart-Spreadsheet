@@ -1,4 +1,4 @@
-import { ListFilter } from "lucide-react";
+import { ChevronRight, ListFilter } from "lucide-react";
 import { useState } from "react";
 import { ContextMenu, RadioGroup } from "radix-ui";
 import { hasActiveFilters, refreshTags, setQuery, useLibrary, useRows } from "../state/library";
@@ -15,6 +15,7 @@ export function TagSidebar({ onFilter }: { onFilter: () => void }) {
   const view = useWorkspace(state => state.viewMode);
   const [editing, setEditing] = useState<{ name: string; mode: "rename" | "delete" } | null>(null);
   const filtered = hasActiveFilters(query);
+  const conditionCount = query.filters.filter(filter => filter.type !== "favorite").length;
   const entries = [...tags, ...query.tags.filter(name => !tags.some(tag => tag.name === name)).map(name => ({ name, rowCount: 0 }))];
   return <aside className="r-sidebar"><header className="r-sidebar-header"><h3>筛选</h3><p>{filtered ? "已启用筛选" : "未启用筛选"}</p></header>
     <section className="r-filter-group" aria-label="去重与筛选"><h4>显示</h4>
@@ -22,7 +23,11 @@ export function TagSidebar({ onFilter }: { onFilter: () => void }) {
       {([ ["positivePrompt", "按正向提示词去重"], ["artists", "按画师串去重"] ] as const).map(([mode, label]) => <label key={mode} className="r-check-row">
         <Checkbox disabled={view === "group"} checked={query.dedupe === mode} onCheckedChange={checked => setQuery({ dedupe: checked ? mode : "none" })} /><span>{label}</span>
       </label>)}
-      <Button className="r-filter-launch" onClick={onFilter}><ListFilter size={15} /><strong>过滤</strong><small>选择条件</small></Button>
+      <button type="button" className="r-filter-launch" data-active={conditionCount > 0} aria-haspopup="dialog" onClick={onFilter}>
+        <span className="r-filter-launch-icon"><ListFilter size={16} /></span>
+        <span className="r-filter-launch-text"><strong>过滤</strong><small>{conditionCount > 0 ? `已应用 ${conditionCount} 项条件` : "选择条件"}</small></span>
+        <ChevronRight className="r-filter-launch-arrow" size={16} />
+      </button>
     </section>
     <div className="r-tag-heading"><h4>Tag</h4><RadioGroup.Root className="r-tag-mode" aria-label="Tag 匹配方式" orientation="horizontal" value={query.tagMode} onValueChange={mode => { if (mode === "and" || mode === "or") setQuery({ tagMode: mode }); }}>
       <Hint text="同时包含全部所选 Tag"><RadioGroup.Item className="r-tag-mode-option" value="and" aria-label="AND：同时包含全部所选 Tag">AND</RadioGroup.Item></Hint>
