@@ -31,6 +31,7 @@ function rowDto(row: MockRow): RowRecord {
     batchId: 1,
     sourceOrdinal: row.id,
     favorite: false,
+    artistRepresentative: false,
     time: row.time ?? "2026-08-01 12:00",
     positivePrompt: row.positivePrompt ?? null,
     characterPrompt: row.characterPrompt ?? null,
@@ -400,9 +401,12 @@ export function installIpcMock(): void {
   const clusterKey = (row: RowRecord, mode: unknown) => mode === "artists" ? row.artists?.trim() || null : mode === "positivePrompt" ? row.positivePrompt?.trim() || null : mode === "vibes" && row.vibeReferenceCount ? `mock-vibe-${row.vibeReferenceCount}` : null;
   const representativeRows = (query: Partial<RowQuery>) => {
     const seen = new Set<string>();
-    return filteredRows(query).filter(row => {
+    const filtered = filteredRows(query);
+    const marked = new Map(filtered.filter(row => row.artistRepresentative).map(row => [row.artists?.trim(), row.id]));
+    return filtered.filter(row => {
       const key = query.groupView ? row.groupId === null ? null : `group:${row.groupId}` : clusterKey(row, query.dedupe);
       if (key === null) return true;
+      if (!query.groupView && query.dedupe === "artists" && marked.has(key)) return marked.get(key) === row.id;
       if (seen.has(key)) return false;
       seen.add(key); return true;
     });
@@ -500,6 +504,18 @@ export function installIpcMock(): void {
         case "get_rows_by_ids": return structuredClone(libraryRows.filter(row => (payload.rowIds as number[]).includes(row.id)));
         case "count_selected_rows": return selectedRows(payload.selection as RowSelection).length;
         case "selected_row_ids": return selectedRows(payload.selection as RowSelection).map(row => row.id);
+        case "set_artist_representative": {
+          const row = libraryRows.find(item => item.id === payload.rowId);
+          if (!row) throw new Error("图片不存在");
+          const key = row.artists?.trim();
+          if (!key) throw new Error("没有画师串的图片不能设为代表图");
+          if (key !== String(payload.artists).trim()) throw new Error("图片的画师串已改变，请刷新后重试");
+          const current = libraryRows.find(item => item.artistRepresentative && item.artists?.trim() === key);
+          if (payload.enabled && current?.id !== row.id && (current?.id ?? null) !== payload.expectedRepresentativeId) return { conflict: true, representativeId: current?.id ?? null };
+          if (payload.enabled && current) current.artistRepresentative = false;
+          row.artistRepresentative = Boolean(payload.enabled);
+          return { conflict: false, representativeId: payload.enabled ? row.id : current?.id === row.id ? null : current?.id ?? null };
+        }
         case "update_positive_prompt":
         case "update_character_prompt":
         case "update_negative_prompt":
@@ -522,7 +538,7 @@ export function installIpcMock(): void {
           }
           return states.length;
         }
-        case "get_row_index": return libraryRows.findIndex(row => row.id === payload.rowId);
+        case "get_row_index": return (payload.sort === "timeDesc" ? [...libraryRows].reverse() : libraryRows).findIndex(row => row.id === payload.rowId);
         case "list_tags": return [...knownTags].map(name => ({ name, rowCount: libraryRows.filter(row => row.tags.includes(name)).length }));
         case "create_tag": { const name = String(payload.name).trim(); if (!name) throw new Error("Tag 不能为空"); const added = !knownTags.has(name); knownTags.add(name); return added; }
         case "delete_tag": { const name = String(payload.name); const removed = knownTags.delete(name); for (const item of [...libraryRows, ...materials]) item.tags = item.tags.filter(tag => tag !== name); return removed; }

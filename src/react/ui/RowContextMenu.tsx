@@ -7,6 +7,7 @@ import { copyRowPrompt, exportOriginalImage, filterByArtists, requestDelete, req
 import { isSelected, selectedCount, selectionDto, setExplicitSelection, useSelection } from "../state/selection";
 import { useTasks } from "../state/tasks";
 import { notify } from "../state/notices";
+import { markArtistRepresentative } from "../state/artist-representatives";
 
 export function RowContextMenu({ row, children }: { row: RowRecord; children: ReactElement }) {
   const busy = useTasks(state => state.busy);
@@ -27,6 +28,7 @@ export function RowContextMenu({ row, children }: { row: RowRecord; children: Re
       {action("对比", () => { void openCompareWindow(row.id).catch(error => notify(`打开对比窗口失败：${errorText(error)}`, "error")); })}
       {action("只看当前画师串", () => filterByArtists(row.artists ?? ""), !row.artists?.trim())}
       {action("选中相同画师串", () => void selectSameArtists(row.artists ?? ""), !row.artists?.trim())}
+      {action(row.artistRepresentative ? "取消画师串代表图" : "设为画师串代表图", () => void markArtistRepresentative(row, !row.artistRepresentative), busy || !row.artists?.trim())}
       <ContextMenu.Separator className="r-menu-separator" />
       {action("编辑 Tag", () => void requestTagEdit(target.selection, target.count), busy)}
       {action("移入分组", () => void requestGroupAssign(target.selection, target.count), busy)}

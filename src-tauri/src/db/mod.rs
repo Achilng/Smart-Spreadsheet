@@ -1,4 +1,6 @@
 mod artist_auto_prefix;
+mod artist_representatives;
+pub use artist_representatives::ArtistRepresentativeResult;
 mod artist_xml;
 pub mod style_extraction;
 mod automation_rules;
@@ -92,6 +94,10 @@ pub enum DatabaseError {
     CountOverflow,
     #[error("不存在的行 ID: {0}")]
     RowNotFound(i64),
+    #[error("图片的画师串已改变，请刷新后重新设置代表图")]
+    ArtistStringChanged,
+    #[error("没有画师串的图片不能设为代表图")]
+    EmptyArtists,
     #[error("不存在的导入批次 ID: {0}")]
     BatchNotFound(i64),
     #[error("导入批次包含重复的行身份键: {0}")]
@@ -405,6 +411,10 @@ fn apply_pending_migrations(
         transaction.execute_batch(migrations::MIGRATION_22)?;
         version = 22;
     }
+    if version == 22 {
+        transaction.execute_batch(migrations::MIGRATION_23)?;
+        version = 23;
+    }
     debug_assert_eq!(version, CURRENT_SCHEMA_VERSION);
     transaction.pragma_update(None, "user_version", version)?;
     transaction.commit()?;
@@ -551,6 +561,37 @@ mod tests {
     }
 
     #[test]
+    fn upgrades_v22_and_preserves_artist_representatives_after_reopening() {
+        let temporary = TemporaryDatabase::new();
+        {
+            let connection = Connection::open(&temporary.path).unwrap();
+            for sql in [SCHEMA_17, MIGRATION_18, migrations::MIGRATION_19,
+                migrations::MIGRATION_20, migrations::MIGRATION_21, migrations::MIGRATION_22] {
+                connection.execute_batch(sql).unwrap();
+            }
+            connection.execute_batch(
+                "INSERT INTO import_batches(id, source_type, source_path, imported_at, added_count, skipped_count)
+                 VALUES (1, 'folder', 'test', '2026-09-30', 1, 0);
+                 INSERT INTO rows(id, batch_id, source_ordinal, identity, artists, favorite)
+                 VALUES (1, 1, 1, 'representative-test', 'artist A', 1);
+                 PRAGMA user_version = 22;"
+            ).unwrap();
+        }
+        {
+            let mut database = Database::open(&temporary.path).unwrap();
+            assert_eq!(database.schema_version().unwrap(), CURRENT_SCHEMA_VERSION);
+            let row = database.get_rows_by_ids(&[1]).unwrap().remove(0);
+            assert!(row.favorite);
+            assert!(!row.artist_representative);
+            database.set_artist_representative(1, "artist A", true, None).unwrap();
+        }
+        let mut database = Database::open(&temporary.path).unwrap();
+        let row = database.get_rows_by_ids(&[1]).unwrap().remove(0);
+        assert!(row.artist_representative);
+        assert!(row.favorite);
+    }
+
+    #[test]
     fn initializes_current_schema_without_legacy_tables() {
         let database = Database::open_in_memory().unwrap();
 
@@ -572,6 +613,7 @@ mod tests {
         assert_eq!(
             tables,
             vec![
+                "artist_representatives",
                 "automation_rules",
                 "dedupe_aliases",
                 "groups",

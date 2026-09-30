@@ -1,4 +1,18 @@
-pub const CURRENT_SCHEMA_VERSION: u32 = 22;
+pub const CURRENT_SCHEMA_VERSION: u32 = 23;
+
+pub const MIGRATION_23: &str = r#"
+CREATE TABLE artist_representatives (
+    artist_key TEXT PRIMARY KEY CHECK (artist_key != '' AND artist_key = TRIM(artist_key)),
+    row_id INTEGER NOT NULL UNIQUE REFERENCES rows(id) ON DELETE CASCADE
+) STRICT;
+CREATE TRIGGER clear_changed_artist_representative AFTER UPDATE OF artists ON rows
+WHEN NEW.artist_llm IS NULL OR NEW.positive_prompt IS NOT OLD.positive_prompt
+ OR NEW.artists IS json_extract(NEW.artist_llm, '$.artistString')
+BEGIN
+    DELETE FROM artist_representatives
+    WHERE row_id = NEW.id AND artist_key IS NOT NULLIF(TRIM(COALESCE(NEW.artists, '')), '');
+END;
+"#;
 
 pub const MIGRATION_22: &str = r#"
 ALTER TABLE rows ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0 CHECK (favorite IN (0, 1));

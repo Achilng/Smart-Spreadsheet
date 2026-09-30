@@ -81,6 +81,7 @@ pub fn run() {
             app::commands::editing::update_negative_prompt,
             app::commands::editing::update_note,
             app::commands::editing::set_favorite,
+            app::commands::editing::set_artist_representative,
             app::commands::editing::find_replace_prompt,
             app::commands::editing::prepend_artist,
             app::commands::rows::query_rows,

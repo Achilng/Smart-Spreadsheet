@@ -86,6 +86,7 @@ export type SortMode = "timeAsc" | "timeDesc" | "recentlyUpdated";
 export interface RowRecord {
   id: number;
   favorite: boolean;
+  artistRepresentative: boolean;
   batchId: number;
   sourceOrdinal: number;
   time: string | null;

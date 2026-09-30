@@ -98,7 +98,7 @@ export function Gallery() {
               const tone = tagColorFor(tag, tags); return <span key={tag} style={{ background: tone.background, color: tone.text }}>{tag}</span>;
             })}{row.tags.length > 2 && <span className="r-tag-more">+{row.tags.length - 2}</span>}</span>}
           </button>
-          <div className="r-card-meta"><div title={rowFileName(row) ?? undefined}>{rowFileName(row) ?? `#${row.sourceOrdinal}`}</div><small><span>{rowResolution(row) ?? `#${row.sourceOrdinal}`}</span>{(badge || !!row.vibeReferenceCount) && <span className="r-card-badges">{badge && <span className={`version-badge ${badge.className}`} title={`作画模型：${row.generationModel}`}>{badge.label}</span>}{!!row.vibeReferenceCount && <span className="vibe-badge" title={`包含 ${row.vibeReferenceCount} 个 VIBE 引用`}>VIBE ×{row.vibeReferenceCount}</span>}</span>}</small></div>
+          <div className="r-card-meta"><div title={rowFileName(row) ?? undefined}>{row.artistRepresentative && <span className="r-representative-label">代表图 · </span>}{rowFileName(row) ?? `#${row.sourceOrdinal}`}</div><small><span>{rowResolution(row) ?? `#${row.sourceOrdinal}`}</span>{(badge || !!row.vibeReferenceCount) && <span className="r-card-badges">{badge && <span className={`version-badge ${badge.className}`} title={`作画模型：${row.generationModel}`}>{badge.label}</span>}{!!row.vibeReferenceCount && <span className="vibe-badge" title={`包含 ${row.vibeReferenceCount} 个 VIBE 引用`}>VIBE ×{row.vibeReferenceCount}</span>}</span>}</small></div>
         </div></RowContextMenu>;
       })}</div>}
     {error && total > 0 && <div className="r-inline-error" role="alert"><span>{error}</span><Button size="sm" onClick={() => void reloadRows()}>重试</Button></div>}

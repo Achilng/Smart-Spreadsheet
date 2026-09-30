@@ -12,6 +12,7 @@ import { runTask, useTasks } from "../state/tasks";
 import { notify } from "../state/notices";
 import { Button, Checkbox, Input, Modal } from "../ui/controls";
 import { TagAssignDialog } from "./TagAssignDialog";
+import { ArtistRepresentativeDialog } from "./ArtistRepresentativeDialog";
 import { GroupAssignDialog } from "./groups/GroupAssignDialog";
 import "./row-actions.css";
 
@@ -19,6 +20,7 @@ export function RowActionDialogs() {
   const state = useRowActions();
   const request = state.request;
   return <>
+    <ArtistRepresentativeDialog />
     {request?.kind === "tags" && <TagAssignDialog key={request.serial} selection={request.selection} count={request.count} onClose={closeRowAction} />}
     {request?.kind === "group" && <GroupAssignDialog key={request.serial} open selection={request.selection} onOpenChange={open => { if (!open) closeRowAction(); }} />}
     {request?.kind === "prompt" && <PromptEditDialog key={request.serial} selection={request.selection} count={request.count} onClose={closeRowAction} />}
