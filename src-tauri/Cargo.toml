@@ -1,6 +1,6 @@
 [package]
 name = "smart-spreadsheet"
-version = "0.12.16"
+version = "0.12.17"
 edition = "2024"
 
 [lib]
