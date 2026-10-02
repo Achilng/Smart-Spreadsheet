@@ -1,5 +1,5 @@
 use super::{AppRuntime, AppRuntimeError};
-use crate::db::{GroupSummary, RowPage, RowSelection};
+use crate::db::{GroupSummary, RowPage, RowSelection, SortMode};
 
 impl AppRuntime {
     pub(crate) fn create_group(&self, name: &str) -> Result<GroupSummary, AppRuntimeError> {
@@ -50,7 +50,8 @@ impl AppRuntime {
         group_id: i64,
         offset: u64,
         limit: u32,
+        sort: SortMode,
     ) -> Result<RowPage, AppRuntimeError> {
-        self.with_database(|db| db.get_group_members(group_id, offset, limit))
+        self.with_database(|db| db.get_group_members(group_id, offset, limit, sort))
     }
 }

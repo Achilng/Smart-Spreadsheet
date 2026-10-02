@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { ArrowLeft, LayoutGrid, List, SlidersHorizontal } from "lucide-react";
 import type { DedupeCluster } from "../../../lib/api";
 import { errorText } from "../../../lib/utils/format";
-import { clusterLabel, loadClusterMembers, loadClusters, renameCluster, setDuplicateMode, syncDuplicates, toggleCluster, useDuplicates } from "../../state/duplicates";
+import { clusterLabel, loadClusterMembers, loadClusters, renameCluster, setDuplicateMemberSort, setDuplicateMode, syncDuplicates, toggleCluster, useDuplicates } from "../../state/duplicates";
 import { useLibrary, useRows } from "../../state/library";
 import { clearSelection } from "../../state/selection";
 import { runTask, useTasks } from "../../state/tasks";
@@ -11,6 +11,7 @@ import { FilterChips } from "../CanvasHeader";
 import { SectionHeader, SectionList, SectionMembersGrid } from "../groups/SectionParts";
 import { DuplicateAlbumShelf } from "./DuplicateAlbumShelf";
 import { useAlbumTransition } from "../../ui/use-album-transition";
+import { ImageSortMenu } from "../../ui/ImageSortMenu";
 import "../groups/groups.css";
 
 export function DuplicateBrowseView({ filtersOpen, onFilters }: { filtersOpen: boolean; onFilters: () => void }) {
@@ -22,7 +23,7 @@ export function DuplicateBrowseView({ filtersOpen, onFilters }: { filtersOpen: b
   const opened = shelf ? state.expanded[0] : undefined;
   const currentCluster = state.clusters.find(cluster => cluster.key === opened);
   const albumOpen = opened !== undefined;
-  const positionKey = JSON.stringify(albumOpen ? ["duplicates", state.mode, "album", opened] : ["duplicates", state.mode, state.layout, state.sortByCount]);
+  const positionKey = JSON.stringify(albumOpen ? ["duplicates", state.mode, "album", opened, state.memberSort] : ["duplicates", state.mode, state.layout, state.sortByCount, shelf ? null : state.memberSort]);
   const sorted = state.sortByCount ? [...state.clusters].sort((a, b) => b.memberCount - a.memberCount) : [...state.clusters].sort((a, b) => clusterLabel(a).localeCompare(clusterLabel(b)));
   const visibleClusters = shelf ? sorted.filter(cluster => cluster.key === opened) : sorted;
   const order = visibleClusters.flatMap(cluster => state.expanded.includes(cluster.key) ? (state.members[cluster.key]?.rows ?? []).slice(0, state.renderLimits[cluster.key] ?? 40).map(row => row.id) : []);
@@ -48,6 +49,7 @@ export function DuplicateBrowseView({ filtersOpen, onFilters }: { filtersOpen: b
       <header className="r-page-head"><h1 className="r-page-title">重复项<span className="r-page-count" aria-label={`${state.clusters.length.toLocaleString()} 组重复项`}>{state.clusters.length.toLocaleString()}</span></h1><div className="r-page-actions"><Button className="is-toggle" aria-expanded={filtersOpen} onClick={onFilters}><SlidersHorizontal size={15} />图片筛选</Button></div></header>
       <div className="r-page-toolbar"><Select pill label="重复项依据" value={state.mode} onChange={mode => { clearActive(); setDuplicateMode(mode); }} options={[["artists", "按画师串"], ["positivePrompt", "按正向提示词"], ["vibes", "按 VIBE 引用"]]} /><Select pill label="重复项顺序" value={state.sortByCount ? "count" : "name"} onChange={value => useDuplicates.setState({ sortByCount: value === "count" })} options={[["count", "按图片数排序"], ["name", "按名称排序"]]} /><span className="r-toolbar-spacer" /><Segmented label="重复项布局" value={shelf ? "shelf" : "list"} onChange={value => setLayout(value)} options={[{ value: "shelf", label: "书架", icon: <LayoutGrid size={14} /> }, { value: "list", label: "列表", icon: <List size={14} /> }]} /></div>
     </>}
+    {(albumOpen || !shelf) && <div className="r-page-toolbar"><span>组内图片排序</span><ImageSortMenu value={state.memberSort} onChange={sort => { clearActive(); setDuplicateMemberSort(sort); }} /></div>}
     <FilterChips />
     {state.loading && <p className="r-group-status" role="status">正在加载重复项…</p>}
     {state.error && <div className="r-group-status" role="alert"><p className="r-group-error">加载失败：{state.error}</p><Button onClick={() => void loadClusters()}>重试</Button></div>}

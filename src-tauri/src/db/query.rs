@@ -286,6 +286,7 @@ impl Database {
         group_id: i64,
         offset: u64,
         limit: u32,
+        sort: SortMode,
     ) -> Result<RowPage, DatabaseError> {
         if limit == 0 || limit > MAX_PAGE_SIZE {
             return Err(DatabaseError::InvalidPageSize {
@@ -309,7 +310,7 @@ impl Database {
             SCRATCH_ROWS_TABLE,
             limit,
             offset_i64,
-            SortMode::TimeAsc,
+            sort,
         )?;
 
         let total_count = query_total_count(&transaction, SCRATCH_ROWS_TABLE)?;
@@ -495,6 +496,7 @@ impl Database {
         hide_grouped: bool,
         offset: u64,
         limit: u32,
+        sort: SortMode,
     ) -> Result<RowPage, DatabaseError> {
         if limit == 0 || limit > MAX_PAGE_SIZE {
             return Err(DatabaseError::InvalidPageSize {
@@ -561,7 +563,7 @@ impl Database {
             SCRATCH_ROWS_TABLE,
             limit,
             offset_i64,
-            SortMode::TimeAsc,
+            sort,
         )?;
 
         let total_count = query_total_count(&transaction, SCRATCH_ROWS_TABLE)?;
@@ -1059,6 +1061,65 @@ mod tests {
         assert_eq!(page.rows[0].tags, vec!["Common", "red"]);
         assert_eq!(page.rows[1].tags, vec!["Blue", "Red"]);
         assert!(page.has_more());
+    }
+
+    #[test]
+    fn group_and_duplicate_members_sort_before_pagination() {
+        let mut database = database_with_rows(5);
+        let group = database.create_group("sorted group").unwrap();
+        database
+            .connection
+            .execute("UPDATE rows SET group_id = ?1 WHERE id <= 4", [group.id])
+            .unwrap();
+        database
+            .add_tags_to_rows(&[1, 2, 3, 5], &["Keep".into()])
+            .unwrap();
+        database.connection.execute_batch(
+            "UPDATE rows SET artists = CASE WHEN id <= 4 THEN 'artist:shared' ELSE 'other' END,
+                positive_prompt = CASE WHEN id <= 4 THEN 'shared prompt' ELSE 'other' END,
+                vibe_signature = CASE WHEN id <= 4 THEN 'shared-vibe' ELSE 'other' END;
+             -- Content updates touch updated_at via a trigger; set fixture times afterwards.
+             UPDATE rows SET updated_at = CASE id
+                    WHEN 1 THEN '2026-01-01T00:00:00.000Z'
+                    WHEN 2 THEN '2026-03-01T00:00:00.000Z'
+                    WHEN 3 THEN '2026-03-01T00:00:00.000Z'
+                    ELSE '2025-01-01T00:00:00.000Z' END;",
+        ).unwrap();
+        for (sort, expected, filtered) in [
+            (SortMode::TimeAsc, vec![1, 2, 3, 4], vec![1, 2, 3]),
+            (SortMode::TimeDesc, vec![4, 3, 2, 1], vec![3, 2, 1]),
+            (SortMode::RecentlyUpdated, vec![3, 2, 1, 4], vec![3, 2, 1]),
+        ] {
+            let mut ids = Vec::new();
+            for offset in [0, 2] {
+                let page = database
+                    .get_group_members(group.id, offset, 2, sort)
+                    .unwrap();
+                assert_eq!(page.total_count, 4);
+                assert_eq!(page.has_more(), offset == 0);
+                ids.extend(page.rows.into_iter().map(|row| row.id));
+            }
+            assert_eq!(ids, expected);
+            for (mode, key) in [
+                (DedupeMode::Artists, "artist:shared"),
+                (DedupeMode::PositivePrompt, "shared prompt"),
+                (DedupeMode::Vibes, "shared-vibe"),
+            ] {
+                let mut ids = Vec::new();
+                for offset in [0, 2] {
+                    let page = database
+                        .get_dedupe_cluster_members(
+                            mode, key, &["Keep".into()], TagMatchMode::And,
+                            false, false, false, &[], false, offset, 2, sort,
+                        )
+                        .unwrap();
+                    assert_eq!(page.total_count, 3);
+                    assert_eq!(page.has_more(), offset == 0);
+                    ids.extend(page.rows.into_iter().map(|row| row.id));
+                }
+                assert_eq!(ids, filtered);
+            }
+        }
     }
 
     #[test]
@@ -1964,6 +2025,7 @@ mod tests {
                 false,
                 0,
                 100,
+                SortMode::TimeAsc,
             )
             .unwrap();
         assert_eq!(members.total_count, 2);
@@ -2266,6 +2328,7 @@ mod tests {
                 false,
                 0,
                 100,
+                SortMode::TimeAsc,
             )
             .unwrap();
         assert_eq!(members.rows.iter().map(|row| row.id).collect::<Vec<_>>(), vec![1, 2]);
@@ -2335,6 +2398,7 @@ mod tests {
                 false,
                 0,
                 100,
+                SortMode::TimeAsc,
             )
             .unwrap();
         assert_eq!(

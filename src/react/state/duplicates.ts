@@ -5,16 +5,17 @@ import { useLibrary, useRows } from "./library";
 import type { SectionMembers } from "./groups";
 import { recordHistory } from "./history";
 import { notifyToolboxLibraryChanged } from "../../lib/windows/library-events";
+import type { SortMode } from "../../lib/api";
 
 export type DuplicateMode = Exclude<DedupeMode, "none">;
-export const useDuplicates = create<{ mode: DuplicateMode; layout: "shelf" | "list"; sortByCount: boolean; clusters: DedupeCluster[]; expanded: string[]; members: Record<string, SectionMembers>; renderLimits: Record<string, number>; loading: boolean; error: string | null; version: number }>(() => ({ mode: "artists", layout: "shelf", sortByCount: true, clusters: [], expanded: [], members: {}, renderLimits: {}, loading: false, error: null, version: 0 }));
+export const useDuplicates = create<{ mode: DuplicateMode; memberSort: SortMode; layout: "shelf" | "list"; sortByCount: boolean; clusters: DedupeCluster[]; expanded: string[]; members: Record<string, SectionMembers>; renderLimits: Record<string, number>; loading: boolean; error: string | null; version: number }>(() => ({ mode: "artists", memberSort: "timeAsc", layout: "shelf", sortByCount: true, clusters: [], expanded: [], members: {}, renderLimits: {}, loading: false, error: null, version: 0 }));
 let signature = "", generation = 0, listGeneration = 0;
 let directory: string | null | undefined;
 function args(): Parameters<typeof listDedupeClusters> { const q = useRows.getState().query; return [useDuplicates.getState().mode, [...q.tags], q.tagMode, q.singleArtistOnly, q.hasVibe, q.untaggedOnly, structuredClone(q.filters), q.hideGrouped]; }
 export function syncDuplicates(force = false): void {
   const nextDirectory = useLibrary.getState().snapshot?.dataDirectory;
   const changedDirectory = directory !== nextDirectory;
-  const next = JSON.stringify([nextDirectory, useRows.getState().resetToken, ...args()]);
+  const next = JSON.stringify([nextDirectory, useRows.getState().resetToken, ...args(), useDuplicates.getState().memberSort]);
   if (!force && next === signature) return;
   directory = nextDirectory;
   signature = next; generation++;
@@ -23,6 +24,11 @@ export function syncDuplicates(force = false): void {
   for (const key of useDuplicates.getState().expanded) void loadClusterMembers(key);
 }
 export const invalidateDuplicates = () => syncDuplicates(true);
+export function setDuplicateMemberSort(memberSort: SortMode): void {
+  if (useDuplicates.getState().memberSort === memberSort) return;
+  useDuplicates.setState({ memberSort });
+  syncDuplicates();
+}
 export function setDuplicateMode(mode: DuplicateMode): void {
   if (useDuplicates.getState().mode === mode) return;
   useDuplicates.setState({ mode, expanded: [], clusters: [] }); syncDuplicates(true);
@@ -43,7 +49,7 @@ export async function loadClusterMembers(key: string, more = false): Promise<voi
   useDuplicates.setState(state => ({ members: { ...state.members, [key]: { rows: current?.rows ?? [], totalCount: current?.totalCount ?? 0, loading: true, error: null } } }));
   try {
     const [mode, ...filters] = args();
-    const page = await getDedupeClusterMembers(mode, key, ...filters, more ? current?.rows.length ?? 0 : 0, 200);
+    const page = await getDedupeClusterMembers(mode, key, ...filters, more ? current?.rows.length ?? 0 : 0, 200, useDuplicates.getState().memberSort);
     if (request !== generation) return;
     useDuplicates.setState(state => ({ members: { ...state.members, [key]: { rows: more ? [...(current?.rows ?? []), ...page.rows] : page.rows, totalCount: page.totalCount, loading: false, error: null } } }));
   } catch (error) { if (request === generation) useDuplicates.setState(state => ({ members: { ...state.members, [key]: { ...state.members[key], loading: false, error: errorText(error) } } })); }

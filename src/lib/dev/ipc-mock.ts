@@ -229,6 +229,8 @@ export function installIpcMock(): void {
   const requiredMaterial = (id: unknown) => { const item = materials.find(material => material.id === id); if (!item) throw new Error("素材不存在"); return item; };
   const normalizeTags = (values: string[]) => [...new Set(values.map(value => value.trim()).filter(Boolean))];
   const rowPage = (rows: RowRecord[], offset: number, limit: number) => ({ rows: rows.slice(offset, offset + limit), totalCount: rows.length, offset, limit, hasMore: offset + limit < rows.length });
+  // Mock rows share their update time, so recentlyUpdated uses the same ID tie-break as SQL.
+  const sortMemberRows = (rows: RowRecord[], sort: unknown) => [...rows].sort((a, b) => sort === "timeDesc" || sort === "recentlyUpdated" ? b.id - a.id : a.id - b.id);
   window.__mockCalls = [];
   window.__mockDelayMs = Number(new URLSearchParams(location.search).get("mockDelay") ?? 0);
   window.__mockFailNext = params.get("failNext") ?? undefined;
@@ -497,8 +499,7 @@ export function installIpcMock(): void {
           return { ...snapshot };
         case "query_rows": {
           const query = payload.query as RowQuery;
-          let rows = representativeRows(query);
-          if (payload.sort === "timeDesc") rows = [...rows].reverse();
+          const rows = sortMemberRows(representativeRows(query), payload.sort);
           return { rows: structuredClone(rows.slice(query.offset, query.offset + query.limit)), totalCount: rows.length, offset: query.offset, limit: query.limit, hasMore: query.offset + query.limit < rows.length };
         }
         case "get_rows_by_ids": return structuredClone(libraryRows.filter(row => (payload.rowIds as number[]).includes(row.id)));
@@ -661,9 +662,9 @@ export function installIpcMock(): void {
           if (command === "assign_rows_to_group" && !group) throw new Error("分组不存在");
           const rows = selectedRows(payload.selection as RowSelection); for (const row of rows) { row.groupId = group?.id ?? null; row.groupName = group?.name ?? null; } return rows.length;
         }
-        case "get_group_members": return rowPage(libraryRows.filter(row => row.groupId === payload.groupId), Number(payload.offset), Number(payload.limit));
+        case "get_group_members": return rowPage(sortMemberRows(libraryRows.filter(row => row.groupId === payload.groupId), payload.sort), Number(payload.offset), Number(payload.limit));
         case "list_dedupe_clusters": return [...clustersFor(payload as Partial<RowQuery>)].map(([key, rows]) => ({ key, memberCount: rows.length, alias: aliases.get(`${payload.dedupe}:${key}`) ?? null }));
-        case "get_dedupe_cluster_members": return rowPage(clustersFor(payload as Partial<RowQuery>).get(String(payload.key)) ?? [], Number(payload.offset), Number(payload.limit));
+        case "get_dedupe_cluster_members": return rowPage(sortMemberRows(clustersFor(payload as Partial<RowQuery>).get(String(payload.key)) ?? [], payload.sort), Number(payload.offset), Number(payload.limit));
         case "set_dedupe_alias": { const key = `${payload.dedupe}:${payload.key}`; const alias = String(payload.alias).trim(); if (alias) aliases.set(key, alias); else aliases.delete(key); return null; }
         case "list_distinct_artists": return ["artist:alpha", "artist:beta"];
         case "backfill_vibe_statuses":

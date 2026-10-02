@@ -1,7 +1,7 @@
 use super::dto::RowPageDto;
 use super::error_text;
 use crate::app::AppRuntime;
-use crate::db::{GroupSummary, RowSelection};
+use crate::db::{GroupSummary, RowSelection, SortMode};
 use tauri::State;
 
 #[tauri::command]
@@ -70,10 +70,11 @@ pub(crate) fn get_group_members(
     group_id: i64,
     offset: u64,
     limit: u32,
+    sort: Option<SortMode>,
     runtime: State<'_, AppRuntime>,
 ) -> Result<RowPageDto, String> {
     runtime
-        .get_group_members(group_id, offset, limit)
+        .get_group_members(group_id, offset, limit, sort.unwrap_or_default())
         .map(RowPageDto::from)
         .map_err(error_text)
 }

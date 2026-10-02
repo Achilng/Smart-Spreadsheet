@@ -4,13 +4,15 @@ import { errorText } from "../../lib/utils/format";
 import { beginHistoryGroup, captureSelectionStates, commitHistoryGroup, recordHistory, recordRowStateChange } from "./history";
 import { refreshTags, reloadRows, useLibrary, useRows } from "./library";
 import { notifyToolboxLibraryChanged } from "../../lib/windows/library-events";
+import type { SortMode } from "../../lib/api";
 
 export interface SectionMembers { rows: RowRecord[]; totalCount: number; loading: boolean; error: string | null }
 interface GroupsState {
+  memberSort: SortMode;
   list: GroupSummary[]; loading: boolean; error: string | null; sortByCount: boolean; layout: "shelf" | "list"; search: string;
   expanded: string[]; members: Record<string, SectionMembers>; renderLimits: Record<string, number>; version: number;
 }
-export const useGroups = create<GroupsState>(() => ({ list: [], loading: false, error: null, sortByCount: false, layout: "shelf", search: "", expanded: [], members: {}, renderLimits: {}, version: 0 }));
+export const useGroups = create<GroupsState>(() => ({ memberSort: "timeAsc", list: [], loading: false, error: null, sortByCount: false, layout: "shelf", search: "", expanded: [], members: {}, renderLimits: {}, version: 0 }));
 let generation = 0, listGeneration = 0;
 let signature = "";
 let directory: string | null | undefined;
@@ -25,7 +27,7 @@ export function syncGroups(force = false): Promise<void> {
   const rows = useRows.getState();
   const nextDirectory = useLibrary.getState().snapshot?.dataDirectory;
   const changedDirectory = nextDirectory !== directory;
-  const next = JSON.stringify([nextDirectory, rows.resetToken, rows.query]);
+  const next = JSON.stringify([nextDirectory, rows.resetToken, rows.query, useGroups.getState().memberSort]);
   if (!force && next === signature) return Promise.resolve();
   directory = nextDirectory;
   signature = next; generation++;
@@ -35,15 +37,20 @@ export function syncGroups(force = false): Promise<void> {
   return loading;
 }
 export const invalidateGroups = () => syncGroups(true);
+export function setGroupMemberSort(memberSort: SortMode): void {
+  if (useGroups.getState().memberSort === memberSort) return;
+  useGroups.setState({ memberSort });
+  void syncGroups();
+}
 export async function loadGroupMembers(key: string, more = false): Promise<void> {
   const current = useGroups.getState().members[key];
   if (current?.loading || (!more && current && !current.error) || (more && current && current.rows.length >= current.totalCount)) return;
-  const request = generation, offset = more ? current?.rows.length ?? 0 : 0;
+  const request = generation, offset = more ? current?.rows.length ?? 0 : 0, sort = useGroups.getState().memberSort;
   useGroups.setState(state => ({ members: { ...state.members, [key]: { rows: current?.rows ?? [], totalCount: current?.totalCount ?? 0, loading: true, error: null } } }));
   try {
     const page = key === "ungrouped"
-      ? await queryRows({ ...structuredClone(useRows.getState().query), offset, limit: 200, dedupe: "none", groupView: false, hideGrouped: true, sort: "timeAsc" })
-      : await getGroupMembers(Number(key), offset, 200);
+      ? await queryRows({ ...structuredClone(useRows.getState().query), offset, limit: 200, dedupe: "none", groupView: false, hideGrouped: true, sort })
+      : await getGroupMembers(Number(key), offset, 200, sort);
     if (request !== generation) return;
     useGroups.setState(state => ({ members: { ...state.members, [key]: { rows: more ? [...(current?.rows ?? []), ...page.rows] : page.rows, totalCount: page.totalCount, loading: false, error: null } } }));
   } catch (error) {

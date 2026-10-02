@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowLeft, LayoutGrid, List, SlidersHorizontal } from "lucide-react";
 import type { GroupSummary } from "../../../lib/api";
 import { errorText } from "../../../lib/utils/format";
-import { loadGroupMembers, loadGroups, renameExistingGroup, syncGroups, toggleGroup, useGroups } from "../../state/groups";
+import { loadGroupMembers, loadGroups, renameExistingGroup, setGroupMemberSort, syncGroups, toggleGroup, useGroups } from "../../state/groups";
 import { useLibrary, useRows } from "../../state/library";
 import { runTask, useTasks } from "../../state/tasks";
 import { Button, Input, Menu, Modal, SearchField, Segmented, Select, type MenuItem } from "../../ui/controls";
@@ -12,6 +12,7 @@ import { SectionHeader, SectionList, SectionMembersGrid } from "./SectionParts";
 import { GroupAlbumShelf } from "./GroupAlbumShelf";
 import { clearSelection } from "../../state/selection";
 import { useAlbumTransition } from "../../ui/use-album-transition";
+import { ImageSortMenu } from "../../ui/ImageSortMenu";
 import "./groups.css";
 
 export function GroupBrowseView({ filtersOpen, onFilters }: { filtersOpen: boolean; onFilters: () => void }) {
@@ -28,7 +29,7 @@ export function GroupBrowseView({ filtersOpen, onFilters }: { filtersOpen: boole
   const opened = groups.expanded[0];
   const albumOpen = shelf && Boolean(opened);
   // Remount the viewport per destination so layout clamping cannot overwrite the page we just left.
-  const positionKey = JSON.stringify(albumOpen ? ["groups", "album", opened] : ["groups", groups.layout, groups.sortByCount, search.trim().toLocaleLowerCase()]);
+  const positionKey = JSON.stringify(albumOpen ? ["groups", "album", opened, groups.memberSort] : ["groups", groups.layout, groups.sortByCount, search.trim().toLocaleLowerCase(), shelf ? null : groups.memberSort]);
   const currentGroup = groups.list.find(group => String(group.id) === opened);
   const albumName = opened === "ungrouped" ? "未分组" : currentGroup?.name;
   const albumCount = opened === "ungrouped" ? groups.members.ungrouped?.totalCount : currentGroup?.memberCount;
@@ -61,6 +62,7 @@ export function GroupBrowseView({ filtersOpen, onFilters }: { filtersOpen: boole
     <header className="r-page-head"><h1 className="r-page-title">分组<span className="r-page-count" aria-label={`${groups.list.length.toLocaleString()} 个分组`}>{groups.list.length.toLocaleString()}</span></h1><div className="r-page-actions"><Button className="is-toggle" aria-expanded={filtersOpen} onClick={onFilters}><SlidersHorizontal size={15} />图片筛选</Button><Button variant="primary" onClick={() => setManaging(true)}>新建 / 管理分组</Button></div></header>
     <div className="r-page-toolbar"><SearchField aria-label="搜索分组名称" placeholder="搜索分组名称…" value={search} onChange={event => setSearch(event.target.value)} onClear={() => setSearch("")} clearLabel="清除分组搜索" /><Select pill label="分组顺序" value={groups.sortByCount ? "count" : "default"} onChange={value => useGroups.setState({ sortByCount: value === "count" })} options={[["default", "默认顺序"], ["count", "按图片数排序"]]} /><span className="r-toolbar-spacer" /><Segmented label="分组布局" value={shelf ? "shelf" : "list"} onChange={value => { if (value === "shelf") returnToShelf(); else setShelf(false); }} options={[{ value: "shelf", label: "书架", icon: <LayoutGrid size={14} /> }, { value: "list", label: "列表", icon: <List size={14} /> }]} /></div>
     </>}
+    {(albumOpen || !shelf) && <div className="r-page-toolbar"><span>组内图片排序</span><ImageSortMenu value={groups.memberSort} onChange={sort => { clearSelection(); useRows.setState({ activeRow: null }); setGroupMemberSort(sort); }} /></div>}
     <FilterChips />
     {groups.error && <div className="r-group-status" role="alert"><p className="r-group-error">加载失败：{groups.error}</p><Button onClick={() => void loadGroups()}>重试</Button></div>}
     {groups.loading && !groups.list.length && <p className="r-group-status" role="status">正在加载分组…</p>}

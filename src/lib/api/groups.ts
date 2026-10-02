@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 
-import type { RowPage } from "./rows";
+import type { RowPage, SortMode } from "./rows";
 import type { RowSelection } from "./types";
 
 export interface GroupSummary {
@@ -49,6 +49,7 @@ export function getGroupMembers(
   groupId: number,
   offset: number,
   limit: number,
+  sort: SortMode = "timeAsc",
 ): Promise<RowPage> {
-  return invoke<RowPage>("get_group_members", { groupId, offset, limit });
+  return invoke<RowPage>("get_group_members", { groupId, offset, limit, sort });
 }

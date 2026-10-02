@@ -1,5 +1,5 @@
 use super::{AppRuntime, AppRuntimeError};
-use crate::db::{DedupeCluster, DedupeMode, LibraryFilter, RowPage, TagMatchMode};
+use crate::db::{DedupeCluster, DedupeMode, LibraryFilter, RowPage, SortMode, TagMatchMode};
 
 impl AppRuntime {
     #[allow(clippy::too_many_arguments)]
@@ -42,6 +42,7 @@ impl AppRuntime {
         hide_grouped: bool,
         offset: u64,
         limit: u32,
+        sort: SortMode,
     ) -> Result<RowPage, AppRuntimeError> {
         self.with_database(|db| {
             db.get_dedupe_cluster_members(
@@ -56,6 +57,7 @@ impl AppRuntime {
                 hide_grouped,
                 offset,
                 limit,
+                sort,
             )
         })
     }

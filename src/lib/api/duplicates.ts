@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 
-import type { RowPage } from "./rows";
+import type { RowPage, SortMode } from "./rows";
 import type { DedupeCluster, DedupeMode, LibraryFilter, TagMatchMode } from "./types";
 
 export function listDedupeClusters(
@@ -37,6 +37,7 @@ export function getDedupeClusterMembers(
   hideGrouped: boolean,
   offset: number,
   limit: number,
+  sort: SortMode = "timeAsc",
 ): Promise<RowPage> {
   return invoke<RowPage>("get_dedupe_cluster_members", {
     dedupe,
@@ -50,6 +51,7 @@ export function getDedupeClusterMembers(
     hideGrouped,
     offset,
     limit,
+    sort,
   });
 }
 

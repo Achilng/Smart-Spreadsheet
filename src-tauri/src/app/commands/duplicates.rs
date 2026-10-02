@@ -1,7 +1,7 @@
 use super::dto::{DedupeClusterDto, RowPageDto};
 use super::error_text;
 use crate::app::AppRuntime;
-use crate::db::{DedupeMode, LibraryFilter, TagMatchMode};
+use crate::db::{DedupeMode, LibraryFilter, SortMode, TagMatchMode};
 use tauri::State;
 
 #[tauri::command]
@@ -46,6 +46,7 @@ pub(crate) fn get_dedupe_cluster_members(
     hide_grouped: bool,
     offset: u64,
     limit: u32,
+    sort: Option<SortMode>,
     runtime: State<'_, AppRuntime>,
 ) -> Result<RowPageDto, String> {
     runtime
@@ -61,6 +62,7 @@ pub(crate) fn get_dedupe_cluster_members(
             hide_grouped,
             offset,
             limit,
+            sort.unwrap_or_default(),
         )
         .map(RowPageDto::from)
         .map_err(error_text)

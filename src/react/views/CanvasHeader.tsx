@@ -3,15 +3,10 @@ import { clearFilters, setQuery, useRows } from "../state/library";
 import { useWorkspace } from "../state/workspace";
 import { viewLabel } from "../../lib/utils/view-modes";
 import { formatCount } from "../../lib/utils/format";
-import { Button, Menu, Slider } from "../ui/controls";
+import { Button, Slider } from "../ui/controls";
+import { ImageSortMenu } from "../ui/ImageSortMenu";
 import { libraryFilterLabel } from "../../lib/utils/library-filters";
 import { useGroups } from "../state/groups";
-
-const sortOptions = [
-  { value: "timeAsc", label: "时间正序", hint: "早期导入在前，新图片在后" },
-  { value: "timeDesc", label: "时间倒序", hint: "新导入的图片优先显示" },
-  { value: "recentlyUpdated", label: "最近更新", hint: "最近编辑或整理的图片在前" },
-] as const;
 
 export function FilterChips() {
   const query = useRows(state => state.query);
@@ -42,7 +37,7 @@ export function CanvasHeader({ filtersOpen, onFilters }: { filtersOpen: boolean;
   if (view !== "gallery" && !isTable) return null;
   return <><header className="r-page-head"><h1 className="r-page-title">{viewLabel(view)}<span className="r-page-count">{formatCount(total)} 张符合条件</span></h1><div className="r-page-actions">
     <div className="r-size-control"><Grid2X2 size={11} aria-hidden="true" /><Slider aria-label={isTable ? "行高" : "卡片大小"} value={[isTable ? rowHeight : cardSize]} min={isTable ? 40 : 120} max={isTable ? 128 : 400} step={1} onValueChange={values => setSize(values[0])} /><Grid2X2 size={15} aria-hidden="true" /></div>
-    <Menu className="r-sort-trigger" label={sortOptions.find(option => option.value === query.sort)?.label ?? "时间正序"} heading="选择图片顺序" items={sortOptions.map(option => ({ ...option, checked: option.value === query.sort, action: () => setQuery({ sort: option.value }) }))} />
+    <ImageSortMenu value={query.sort} onChange={sort => setQuery({ sort })} />
     <Button className="is-toggle" aria-expanded={filtersOpen} onClick={onFilters}><SlidersHorizontal size={15} />图片筛选</Button>
   </div></header><FilterChips /></>;
 }
