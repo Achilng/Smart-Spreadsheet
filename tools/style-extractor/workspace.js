@@ -79,21 +79,23 @@ function render(j) {
   if (j && (j.id !== selected || clockSamples.get(j.id) > j.sampledAt)) return;
   if (j) clockSamples.set(j.id, j.sampledAt); syncClock(j); current = j;
   const otherRunning = runningJob && runningJob.id !== selected;
+  $('create').disabled = busy || (simpleMode && !!runningJob);
   $('runningNotice').hidden = !otherRunning;
   if (otherRunning) $('runningText').textContent = `任务 ${runningJob.id.slice(0,8)} 正在运行 · 已完成 ${runningJob.ok + runningJob.none} / ${runningJob.total} 条 · ${runningJob.inFlight || 0} 个请求进行中`;
   $('pauseRunning').disabled = busy; $('viewRunning').disabled = busy;
-  $('empty').classList.toggle('hidden', !!j); $('detail').classList.toggle('hidden', !j); if (!j) return;
+  $('empty').classList.toggle('hidden', !!j); $('detail').classList.toggle('hidden', !j); if (!j) { $('failureCard').classList.add('hidden'); return; }
   const isApi = j.settings.provider === 'api';
-  if (choiceJob !== j.id) { choiceJob = j.id; $('runConcurrency').value = j.settings.concurrency || 1; if (isApi) choices('runChannels', j); $('runSettings').open = j.state !== 'running'; }
+  if (choiceJob !== j.id) { choiceJob = j.id; $('runConcurrency').value = j.settings.concurrency || 1; if (isApi && !simpleMode) choices('runChannels', j); $('runSettings').open = j.state !== 'running'; }
   $('runApi').hidden = !isApi; $('runCodex').hidden = isApi; $('runConcurrency').disabled = busy || j.state === 'running';
   $('state').textContent = { running: '正在提取', paused: '已暂停 / 待开始', completed: '本轮完成' }[j.state];
   $('modelLabel').textContent = isApi ? (j.settings.channels ? j.settings.channels.filter(x => x.enabled).length : 1) + ' 个渠道' : 'Codex CLI';
-  $('identity').textContent = `任务 ${j.id.slice(0,8)} · 每次最多 ${j.settings.batchSize} 条 · ${j.settings.concurrency} 并发 · ${j.settings.effort}`;
+  $('identity').textContent = simpleMode ? `任务 ${j.id.slice(0,8)}` : `任务 ${j.id.slice(0,8)} · 每次最多 ${j.settings.batchSize} 条 · ${j.settings.concurrency} 并发 · ${j.settings.effort}`;
   $('done').textContent = `${j.ok + j.none} / ${j.total}`; $('none').textContent = j.none; $('errors').textContent = j.errors; drawClock();
   const p = Math.round((j.ok + j.none + j.errors) / j.total * 100); $('fill').style.width = p + '%'; $('progress').setAttribute('aria-valuenow', p);
-  $('percent').textContent = `${p}% 已处理 · ${j.pending} 条待处理`; $('calls').textContent = `${j.calls} 次调用 · ${j.inFlight || 0} 个请求进行中`; $('message').textContent = j.message;
+  $('percent').textContent = `${p}% 已处理 · ${j.pending} 条待处理`; $('calls').textContent = `${j.calls} 次调用 · ${j.inFlight || 0} 个请求进行中`; $('message').textContent = simpleMode && j.message.startsWith('开始处理 ·') ? '正在处理，结果会自动保存。' : j.message;
   $('start').disabled = busy || !!otherRunning || j.state === 'running' || !j.pending; $('pause').disabled = busy || j.state !== 'running'; $('retry').disabled = busy || !!otherRunning || j.state === 'running' || !j.errors;
   $('download').disabled = busy || !(j.ok + j.none + j.errors); $('applyChannels').disabled = busy || j.state !== 'running' || !j.settings.channels;
+  $('cancel').disabled = busy;
   $('logs').textContent = j.logs.slice(-14).map(x => new Date(x.time).toLocaleTimeString() + '  ' + x.message).join('\n');
   $('failureCard').classList.toggle('hidden', !j.errors); $('failures').replaceChildren(...j.failures.map(f => { const p = document.createElement('p'); p.textContent = f.id.slice(0,22) + '…\n' + f.error; return p; })); renderChannels(j);
 }
@@ -115,7 +117,7 @@ async function perform(fn) {
 async function startJob(retryErrors = false) {
   const id = selected; starting = { id, at: performance.now() }; drawClock();
   try {
-    const options = current.settings.provider === 'api' ? { channels: configs('runChannels', true) } : { concurrency: Number($('runConcurrency').value) };
+    const options = simpleMode ? {} : current.settings.provider === 'api' ? { channels: configs('runChannels', true) } : { concurrency: Number($('runConcurrency').value) };
     const j = await api('jobs/' + id + '/start', { retryErrors, ...options }); if (selected === id) render(j);
   } finally { starting = null; if (current) render(current); }
 }
@@ -123,14 +125,26 @@ $('create').onclick = () => perform(async () => {
   const file = $('file').files[0]; if (!file) throw Error('请先选择待处理 JSON');
   const request = JSON.parse((await file.text()).replace(/^\uFEFF/, ''));
   const settings = { provider: $('provider').value, batchSize: Number($('batch').value), effort: $('effort').value };
-  if (settings.provider === 'api') settings.channels = configs('newChannels'); else settings.concurrency = Number($('concurrency').value);
+  if (!simpleMode) { if (settings.provider === 'api') settings.channels = configs('newChannels'); else settings.concurrency = Number($('concurrency').value); }
   const j = await api('jobs', { request, settings }); selected = j.id; localStorage.setItem('style-job', selected); choiceJob = null;
+  if (simpleMode && !runningJob) await api('jobs/' + j.id + '/start', {});
 });
 $('jobs').onchange = () => { selected = $('jobs').value; $('error').textContent = ''; localStorage.setItem('style-job', selected); void refresh(); };
 $('viewRunning').onclick = () => { if (!runningJob) return; selected = runningJob.id; $('error').textContent = ''; localStorage.setItem('style-job', selected); void refresh(); };
 $('pauseRunning').onclick = () => { const id = runningJob?.id; if (id) void perform(() => api('jobs/' + id + '/pause', {})); };
 $('start').onclick = () => perform(() => startJob()); $('retry').onclick = () => perform(() => startJob(true));
 $('pause').onclick = () => perform(() => api('jobs/' + selected + '/pause', {}));
+$('cancel').onclick = () => {
+  const id = selected, count = current ? current.ok + current.none : 0;
+  if (!id || busy || !confirm(`取消任务 ${id.slice(0,8)}？\n将停止处理，并永久丢弃本任务及已保存的 ${count} 条结果，无法继续。\n如需保留结果，请选择“暂停”。`)) return;
+  void perform(async () => {
+    $('cancel').textContent = '正在取消…';
+    try {
+      await api('jobs/' + id + '/cancel', {});
+      if (selected === id) { selected = ''; current = null; choiceJob = null; localStorage.removeItem('style-job'); render(null); }
+    } finally { $('cancel').textContent = '取消任务并丢弃结果'; }
+  });
+};
 $('applyChannels').onclick = () => perform(() => api('jobs/' + selected + '/channels', { channels: configs('runChannels', true, true) }));
 $('download').onclick = () => perform(async () => {
   const doc = await api('jobs/' + selected + '/result'), url = URL.createObjectURL(new Blob([JSON.stringify(doc, null, 2)], { type: 'application/json' }));
@@ -138,7 +152,11 @@ $('download').onclick = () => perform(async () => {
 });
 $('provider').onchange = () => { $('newApi').hidden = $('provider').value !== 'api'; $('codexConcurrency').hidden = $('provider').value === 'api'; };
 $('providerField').hidden = serverManaged;
-function reloadChoices() { try { choices('newChannels'); if (current?.settings.provider === 'api') choices('runChannels', current); } catch (error) { $('error').textContent = error.message; } }
-window.addEventListener('storage', event => { if (event.key === channelStore.storageKey) reloadChoices(); });
+function reloadChoices() { if (simpleMode) return; try { choices('newChannels'); if (current?.settings.provider === 'api') choices('runChannels', current); } catch (error) { $('error').textContent = error.message; } }
+window.addEventListener('storage', event => { if (!simpleMode && event.key === channelStore.storageKey) reloadChoices(); });
 window.addEventListener('pageshow', reloadChoices);
 reloadChoices(); refresh(); setInterval(refresh, 1500);
+if (simpleMode) {
+  document.querySelector('header p').textContent = '上传待处理文件，自动提取，完成后下载结果。';
+  $('create').textContent = '上传并开始';
+}

@@ -1,6 +1,6 @@
 (() => {
   const host = document.createElement('details'); host.className = 'live-workspace'; host.setAttribute('aria-label', '并行工作区');
-  host.innerHTML = `<summary class="live-heading"><strong>请求详情 · 点击展开</strong><span id="live-connection">等待任务</span></summary><div class="row"><button id="live-prev" type="button">上一页</button><small id="live-page"></small><button id="live-next" type="button">下一页</button></div><div class="live-lanes" id="live-lanes"></div><div class="live-note" id="live-note">开始后显示实时通道，点选通道查看原文。</div><section class="live-inspector" id="live-inspector" hidden><div class="live-inspector-head"><span id="live-title"></span><select id="live-item" aria-label="查看本批条目"><option value="">跟随当前输出</option></select><button id="live-close">收起详情</button></div><div class="live-inspector-body"><div><small>正向提示词原文</small><div class="live-text" id="live-source"></div></div><div><small id="live-status">提取片段</small><div class="live-text" id="live-result"></div></div></div></section>`;
+  host.innerHTML = `<summary class="live-heading"><strong>请求详情 · 点击展开</strong><span id="live-connection">等待任务</span></summary><div class="row"><button id="live-prev" type="button">上一页</button><small id="live-page"></small><button id="live-next" type="button">下一页</button></div><div class="live-lanes" id="live-lanes"></div><div class="live-note" id="live-note">开始后显示实时通道，点选请求查看原文。</div><section class="live-inspector" id="live-inspector" hidden><div class="live-inspector-head"><span id="live-title"></span><select id="live-item" aria-label="查看本批条目"><option value="">跟随当前输出</option></select><button id="live-close">收起详情</button></div><div class="live-inspector-body"><div><small>正向提示词原文</small><div class="live-text" id="live-source"></div></div><div><small id="live-status">提取片段</small><div class="live-text" id="live-result"></div></div></div></section>`;
   $('message').before(host);
   const lanes = new Map(), phases = {waiting:'等待输出',streaming:'正在输出',receiving:'已校验 · 继续接收',retry:'等待重试',completed:'本批完成',error:'本批有失败',paused:'已暂停'};
   let jobId = '', offset = 0, connectedOffset = -1, connection, slot = null, snapshot, detailKey = '', detailSerial = 0, detailBusy = false;
@@ -22,7 +22,7 @@
       const doneChanged = ui.done !== undefined && lane.done > ui.done && ui.call === lane.call;
       ui.done = lane.done; ui.call = lane.call;
       ui.button.dataset.state = lane.phase; ui.button.setAttribute('aria-pressed',String(slot === lane.slot));
-      ui.label.textContent = (lane.channelName ? lane.channelName + ' · ' : '') + (lane.current ? `第 ${lane.current.number} 条 · ${phases[lane.phase]}` : phases[lane.phase]); ui.button.title = lane.model || '';
+      ui.label.textContent = (!simpleMode && lane.channelName ? lane.channelName + ' · ' : '') + (lane.current ? `第 ${lane.current.number} 条 · ${phases[lane.phase]}` : phases[lane.phase]); ui.button.title = simpleMode ? '' : lane.model || '';
       ui.count.textContent = `${lane.done}/${lane.total}`;
       ui.preview.textContent = lane.current?.text || (lane.current?.state === 'none' ? '未发现画风提示词' : lane.mode === 'buffered' ? '接口不支持流式 · 等待整批返回' : lane.phase === 'retry' ? '保留成功项，仅重试未完成内容' : '等待模型返回内容…');
       if (ui.segments.children.length !== lane.total) ui.segments.replaceChildren(...Array.from({length:lane.total},()=>{const s=document.createElement('span');s.className='live-segment';return s}));
@@ -30,7 +30,7 @@
       ui.button.setAttribute('aria-label',`通道 ${lane.slot}，${phases[lane.phase]}，已完成 ${lane.done}/${lane.total}`);
       if (doneChanged) { ui.preview.classList.remove('live-flash'); void ui.preview.offsetWidth; ui.preview.classList.add('live-flash'); }
     }
-    $('live-note').textContent = data.lanes.length ? '每条校验通过即保存 · 点选通道查看原文与提取片段' : data.job.state === 'running' ? '正在建立模型连接…' : '开始或继续后显示实时通道，已保存结果可下载查看。';
+    $('live-note').textContent = data.lanes.length ? '每条校验通过即保存 · 点选请求查看原文与提取片段' : data.job.state === 'running' ? '正在建立模型连接…' : '开始或继续后显示实时通道，已保存结果可下载查看。';
     const lane = data.lanes.find(l=>l.slot===slot); $('live-inspector').hidden = !lane;
     if (lane) {
       const pick = $('live-item');
@@ -38,7 +38,7 @@
         const previous = pick.value; pick.replaceChildren(new Option('跟随当前输出',''),...lane.states.map((_,i)=>new Option(`第 ${i+1} 条`,String(i))));
         pick.value = lane.attempt && Number(previous)<lane.total ? previous : ''; pick.dataset.batch = `${slot}:${lane.call}`;
       }
-      $('live-title').textContent = `${lane.channelName || '请求'} · ${String(slot).padStart(2,'0')} · 第 ${lane.call} 次调用${lane.attempt ? ' · 重试 '+lane.attempt : ''}`;
+      $('live-title').textContent = `${simpleMode ? '请求' : lane.channelName || '请求'} · ${String(slot).padStart(2,'0')} · 第 ${lane.call} 次调用${lane.attempt ? ' · 重试 '+lane.attempt : ''}`;
       void detail(lane);
     }
   }

@@ -46,3 +46,9 @@
 更新整个 `style-extractor` 代码目录中的源文件及网页资源（尤其是新增的 `channels.mjs`、`channel-runner.mjs`、`public-fetch.mjs`、`channels.html`、`channels.js`、`channel-store.js`、`workspace.js`、`app.css`），保持数据目录和服务环境不变。无需安装新依赖或升级 Node。部署前备份现有程序及任务数据；尽量在没有任务运行时重启提取服务。若需中断任务，先等待暂停完成，已保存条目不会重跑，重启后由浏览器重新提供 Key。
 
 检查 `/health`、`/`、`/channels` 和上述静态资源响应正常，确认历史任务仍可读取。原版按地址保存的浏览器 Key 自动迁移为独立渠道，原 CPA 公网地址仍映射到原服务连接。不在部署脚本、命令行参数或仓库中保存 SSH 密码 / API Key。
+
+## 2026-10-03 简化使用页
+
+生产环境设置 `STYLE_CHANNEL_CONFIG=/etc/style-tools/extractor-channels.json`，管理员在服务器编辑此文件；权限 0640、root:style-tools；上层 `/etc/style-tools` 为 root:style-tools、0710，允许服务用户进入但不能列出目录。当前默认 codex、原 CPA 地址、gpt-6-luna、20 并发、每批 10 条、high。配置修改在下次创建 / 开始任务时读取，无需重启；需要改变运行中任务时先暂停后继续。Key 仅在此受保护配置文件与运行内存中，不返回网页或写入任务数据。
+
+启用时，用户页面只上传、开始、暂停 / 继续、取消与下载；渠道页面和修改接口关闭，不接受用户传入的渠道配置。此前关于浏览器 Key 的说明适用于未设置此变量的开发者模式。取消会中止在途请求并等待退出，然后删除任务状态及上传文件，清除内存预览；已取消任务不会恢复，暂停则仍保留结果。

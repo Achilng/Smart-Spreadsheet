@@ -5,11 +5,12 @@ import { atomicJson } from './core.mjs';
 // Persist intent separately from job state: an explicit pause must never auto-resume.
 export class ResumeController {
   constructor(manager, enabled) {
-    this.manager = manager; this.enabled = enabled; this.stopping = false; this.running = null;
+    this.manager = manager; this.enabled = enabled; this.stopping = false; this.running = null; this.cancelling = new Map();
     this.file = path.join(manager.directory, '.resume.json');
   }
   clear() { if (this.enabled) atomicJson(this.file, { id: null }); }
   start(id, retry, credentials) {
+    if (this.cancelling.has(id)) throw Error('任务正在取消，请稍候。');
     if (this.manager.active) throw Error('已有任务正在运行，请先暂停。');
     if (this.stopping) throw Error('服务正在重启，请稍后重试。');
     const job = this.manager.get(id);
@@ -19,6 +20,14 @@ export class ResumeController {
     return this.running;
   }
   pause(id) { if (this.manager.active?.id === id) this.clear(); this.manager.pause(id); }
+  cancel(id) {
+    if (this.cancelling.has(id)) return this.cancelling.get(id);
+    this.manager.get(id);
+    const running = this.manager.active?.id === id ? this.running : null;
+    if (running) this.pause(id);
+    const work = Promise.resolve(running).then(() => this.manager.discard(id)).finally(() => this.cancelling.delete(id));
+    this.cancelling.set(id, work); return work;
+  }
   restore(credentials) {
     if (!this.enabled || !fs.existsSync(this.file)) return;
     const { id } = JSON.parse(fs.readFileSync(this.file, 'utf8'));

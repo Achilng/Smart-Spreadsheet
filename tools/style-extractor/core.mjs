@@ -222,6 +222,14 @@ export class JobManager {
     this.jobs.set(job.id, job); this.save(job); return this.summary(job);
   }
   get(id) { const job = this.jobs.get(id); if (!job) throw Error('任务不存在'); return job; }
+  discard(id) {
+    this.get(id);
+    if (this.active?.id === id) throw Error('任务仍在停止，请稍后重试。');
+    // Remove state first so an interrupted deletion cannot restore discarded results.
+    fs.rmSync(path.join(this.directory, id + '.json'), { force: true });
+    fs.rmSync(path.join(this.directory, id + '.request.json'), { force: true });
+    this.live.delete(id); this.jobs.delete(id);
+  }
   snapshot(id, offset = 0, limit = 40) {
     const job = this.get(id);
     return { job: this.summary(job), laneTotal: (this.live.get(id) || []).length, lanes: (this.live.get(id) || []).slice(offset, offset + limit).map(lane => ({
