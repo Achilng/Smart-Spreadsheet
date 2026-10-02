@@ -73,9 +73,109 @@ fn extract_legacy_artist_tags(positive_prompt: &str) -> Vec<String> {
     artists
 }
 
+/// LLM 已确认的画风串无需 artist: 前缀。拆分仅用于随机池，保持原文存储。
+/// 将跨逗号的数值权重分别包在每个片段外，避免随机抽取后出现半截权重。
+pub(crate) fn llm_artist_pool_fragments(value: &str) -> Vec<String> {
+    let mut weights: Vec<&str> = Vec::new();
+    let mut fragments = Vec::new();
+    for raw in value.split([',', '，', '\n', '\r']) {
+        let mut token = raw.trim();
+        loop {
+            if let Some(rest) = token.strip_prefix("::") {
+                weights.pop();
+                token = rest.trim_start();
+                continue;
+            }
+            if let Some((weight, rest)) = token.split_once("::")
+                && weight.trim().parse::<f64>().is_ok_and(f64::is_finite)
+            {
+                weights.push(weight.trim());
+                token = rest.trim_start();
+                continue;
+            }
+            break;
+        }
+        let mut closing_count = 0;
+        while closing_count < weights.len() {
+            let Some(rest) = token.strip_suffix("::") else {
+                break;
+            };
+            closing_count += 1;
+            token = rest.trim_end();
+        }
+        if !token.is_empty() {
+            let mut fragment = token.to_owned();
+            for weight in weights.iter().rev() {
+                fragment = format!("{weight}::{fragment}::");
+            }
+            fragments.push(fragment);
+        }
+        weights.truncate(weights.len() - closing_count);
+    }
+    fragments
+}
+
 #[cfg(test)]
 mod tests {
     use super::{artist_string, extract_artist_tags};
+
+    #[test]
+    fn llm_pool_splits_bare_names_and_keeps_each_weight_complete() {
+        let example = "0.5::ezu (e104mjd), noyu (noyu23386566)::, 0.8::fuzichoco, yumenouchi chiharu, torino aqua,, yukoring::, 0.7::sakinoji, alchemaniac::,,, year 2025, very aesthetic, masterpiece, no text,, ";
+        let fragments = super::llm_artist_pool_fragments(example);
+        assert_eq!(
+            fragments,
+            vec![
+                "0.5::ezu (e104mjd)::",
+                "0.5::noyu (noyu23386566)::",
+                "0.8::fuzichoco::",
+                "0.8::yumenouchi chiharu::",
+                "0.8::torino aqua::",
+                "0.8::yukoring::",
+                "0.7::sakinoji::",
+                "0.7::alchemaniac::",
+                "year 2025",
+                "very aesthetic",
+                "masterpiece",
+                "no text",
+            ]
+        );
+        // 与随机画师串现有的“只用干净片段”开关保持一致。
+        assert_eq!(
+            fragments
+                .iter()
+                .filter(|s| !s.contains("::"))
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            vec!["year 2025", "very aesthetic", "masterpiece", "no text"]
+        );
+    }
+
+    #[test]
+    fn llm_pool_handles_nested_weights_line_breaks_and_empty_fragments() {
+        assert_eq!(
+            super::llm_artist_pool_fragments(" ,\r\n，"),
+            Vec::<String>::new()
+        );
+        assert_eq!(
+            super::llm_artist_pool_fragments("Alice， artist:Bob\r\n,,Alice"),
+            vec!["Alice", "artist:Bob", "Alice"]
+        );
+        assert_eq!(
+            super::llm_artist_pool_fragments("-0.5::A, 1.2::B, C::, D::, E"),
+            vec![
+                "-0.5::A::",
+                "-0.5::1.2::B::::",
+                "-0.5::1.2::C::::",
+                "-0.5::D::",
+                "E"
+            ]
+        );
+        assert_eq!(
+            super::llm_artist_pool_fragments("0.8::, A,\r\n B, ::, C"),
+            vec!["0.8::A::", "0.8::B::", "C"]
+        );
+    }
 
     #[test]
     fn xml_artist_block_preserves_user_example_and_excludes_style() {

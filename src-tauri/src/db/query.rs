@@ -356,17 +356,22 @@ impl Database {
         Ok(summaries)
     }
 
-    /// 返回全库去重后的画师片段：逐行画师串按换行拆分，trim、去空、去重后排序。
+    /// LLM 结果按逗号/换行拆分并补全各片段权重；其它来源保留原有换行片段。
+    /// 仅构造随机画师池，不改写已保存的画师串和 LLM 来源。
     pub fn list_distinct_artists(&self) -> Result<Vec<String>, DatabaseError> {
         let mut statement = self.connection.prepare(
-            "SELECT artists FROM rows
+            "SELECT artists, artist_llm IS NOT NULL FROM rows
              WHERE artists IS NOT NULL AND TRIM(artists) != ''",
         )?;
         let stored = statement
-            .query_map([], |row| row.get::<_, String>(0))?
+            .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, bool>(1)?)))?
             .collect::<Result<Vec<_>, _>>()?;
         let mut set = std::collections::BTreeSet::new();
-        for value in stored {
+        for (value, is_llm) in stored {
+            if is_llm {
+                set.extend(crate::pipeline::llm_artist_pool_fragments(&value));
+                continue;
+            }
             for fragment in value.split('\n') {
                 let trimmed = fragment.trim();
                 if !trimmed.is_empty() {

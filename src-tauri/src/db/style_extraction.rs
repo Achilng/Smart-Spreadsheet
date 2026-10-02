@@ -384,6 +384,56 @@ mod tests {
         }
     }
     #[test]
+    fn llm_artist_pool_splits_existing_results_without_rewriting_source() {
+        let mut db = database_with_rows(2);
+        let value = "0.5::Alice, Bob::,, Carol，artist:Dan\r\nCarol, masterpiece,, ";
+        db.update_positive_prompt(1, value).unwrap();
+        db.update_positive_prompt(2, "0.7::artist:Legacy::, artist:Solo")
+            .unwrap();
+        let preview = db.preview_style_result(&document(value, value)).unwrap();
+        db.apply_style_changes(&preview.library_id, &preview.changes, false, false)
+            .unwrap();
+        let before = db.get_rows_by_ids(&[1]).unwrap().remove(0);
+        assert_eq!(
+            db.list_distinct_artists().unwrap(),
+            vec![
+                "0.5::Alice::",
+                "0.5::Bob::",
+                "0.7::artist:Legacy::",
+                "Carol",
+                "artist:Dan",
+                "artist:Solo",
+                "masterpiece",
+            ]
+        );
+        let after = db.get_rows_by_ids(&[1]).unwrap().remove(0);
+        assert_eq!(after.artists.as_deref(), Some(value));
+        assert_eq!(after.artist_llm, before.artist_llm);
+        assert_eq!(db.row_ids_with_artists(value).unwrap(), vec![1]);
+        assert_eq!(
+            db.preview_style_result(&document(value, value))
+                .unwrap()
+                .unchanged,
+            1
+        );
+        db.apply_style_changes(&preview.library_id, &preview.changes, true, true)
+            .unwrap();
+        assert!(db.get_rows_by_ids(&[1]).unwrap()[0].artist_llm.is_none());
+        assert!(
+            !db.list_distinct_artists()
+                .unwrap()
+                .contains(&"0.5::Bob::".to_owned())
+        );
+        db.apply_style_changes(&preview.library_id, &preview.changes, false, true)
+            .unwrap();
+        assert!(
+            db.list_distinct_artists()
+                .unwrap()
+                .contains(&"0.5::Bob::".to_owned())
+        );
+    }
+
+    #[test]
     fn exact_dedupe_apply_empty_protection_invalidation_and_undo() {
         let mut db = database_with_rows(3);
         db.update_positive_prompt(1, "artist:a, girl").unwrap();

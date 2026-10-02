@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 
-/** 全库去重后的画师片段列表（按换行拆分、trim、去重、排序）。 */
+/** 全库去重排序后的画师片段；LLM 结果按逗号/换行拆分并补全各片段权重。 */
 export function listDistinctArtists(): Promise<string[]> {
   return invoke<string[]>("list_distinct_artists");
 }
