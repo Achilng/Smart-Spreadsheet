@@ -6,16 +6,25 @@
   position: relative;
   display: block;
   width: 100%;
-  height: var(--album-stage-height, 228px);
+  height: var(--album-stage-height, auto);
+  padding: 16px 0;
   perspective: 850px;
   isolation: isolate;
+}
+/* Reserve the same cover geometry for every shelf, including empty albums. */
+.r-album-stack::before {
+  content: "";
+  display: block;
+  width: 65%;
+  max-width: var(--album-cover-max, 130px);
+  aspect-ratio: 832 / 1216;
 }
 .r-album-sheet {
   position: absolute;
   top: 20px;
   left: 50%;
   display: block;
-  width: 58%;
+  width: 65%;
   max-width: var(--album-cover-max, 130px);
   aspect-ratio: 832 / 1216;
   overflow: hidden;

@@ -8,7 +8,8 @@ import { MaterialCard } from "./MaterialCard";
 
 function materialLayout(width: number, size: number, total: number) {
   const layout = galleryLayout(width, size, total);
-  layout.imageHeight = Math.ceil(Math.min(size * .65, layout.cardWidth * .58) * 1216 / 832) + 32;
+  // Match the shared album.css cover width and stage padding at every slider size.
+  layout.imageHeight = Math.ceil(Math.min(size, layout.cardWidth) * .65 * 1216 / 832) + 32;
   layout.cellHeight = layout.imageHeight + 110;
   return layout;
 }
