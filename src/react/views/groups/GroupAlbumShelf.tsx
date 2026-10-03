@@ -1,17 +1,13 @@
 import { memo, useCallback } from "react";
-import { motion } from "motion/react";
 import { getGroupMembers, queryRows, type GroupSummary } from "../../../lib/api";
 import { useRows } from "../../state/library";
 import { useGroups } from "../../state/groups";
-import { useGridColumns } from "../../ui/use-grid-columns";
-import { useReducedMotionPreference } from "../../ui/use-reduced-motion";
+import { AlbumShelf } from "../../ui/AlbumShelf";
 import { RowAlbumCard } from "../../ui/RowAlbumCard";
 import type { MenuItem } from "../../ui/controls";
 
 export const GroupAlbumShelf = memo(function GroupAlbumShelf({ groups, version, onOpen, menuFor }: { groups: GroupSummary[]; version: number; onOpen: (key: string) => void; menuFor: (group: GroupSummary) => MenuItem[] }) {
-  const { ref, columns } = useGridColumns(200, 16);
-  const reducedMotion = useReducedMotionPreference();
-  return <div ref={ref} style={columns ? { gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` } : undefined} className="r-group-shelf" role="list" aria-label="分组相册">{groups.map((group, index) => <motion.div className="r-group-album-frame" layout="position" layoutDependency={`${columns}:${index}:${reducedMotion}`} initial={false} key={`${group.id}-${version}`}><GroupAlbum group={group} version={version} onOpen={onOpen} menuFor={menuFor} /></motion.div>)}<motion.div className="r-group-album-frame" layout="position" layoutDependency={`${columns}:${groups.length}:${reducedMotion}`} initial={false} key={`ungrouped-${version}`}><GroupAlbum version={version} onOpen={onOpen} /></motion.div></div>;
+  return <AlbumShelf label="分组相册">{groups.map(group => <div className="r-group-album-frame" data-album-reflow key={`${group.id}-${version}`}><GroupAlbum group={group} version={version} onOpen={onOpen} menuFor={menuFor} /></div>)}<div className="r-group-album-frame" data-album-reflow key={`ungrouped-${version}`}><GroupAlbum version={version} onOpen={onOpen} /></div></AlbumShelf>;
 });
 const GroupAlbum = memo(function GroupAlbum({ group, version, onOpen, menuFor }: { group?: GroupSummary; version: number; onOpen: (key: string) => void; menuFor?: (group: GroupSummary) => MenuItem[] }) {
   const id = group?.id;

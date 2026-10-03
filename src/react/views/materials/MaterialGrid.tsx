@@ -1,9 +1,8 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
-import { motion, MotionConfig } from "motion/react";
 import { materialAlbum } from "../../../lib/utils/material-album";
 import { GALLERY_GAP, GALLERY_PADDING, GALLERY_PADDING_TOP, galleryLayout, galleryVisibleIndices } from "../../../lib/images/gallery-layout";
 import { useMaterials, loadMaterialPage, MATERIAL_PAGE_SIZE, materialThumbnails, materialCardVersionImages } from "../../state/materials";
-import { useReducedMotionPreference } from "../../ui/use-reduced-motion";
+import { useAlbumReflow } from "../../ui/use-album-reflow";
 import { MaterialCard } from "./MaterialCard";
 
 function materialLayout(width: number, size: number, total: number) {
@@ -23,7 +22,6 @@ function applyGeometry(node: HTMLElement, layout: ReturnType<typeof materialLayo
 // Resize observations belong to the grid; sidebar controls and details stay stable.
 export const MaterialGrid = memo(function MaterialGrid({ active, size }: { active: boolean; size: number }) {
   const state = useMaterials();
-  const reducedMotion = useReducedMotionPreference();
   const viewport = useRef<HTMLDivElement>(null);
   const bounds = useRef({ width: 0, height: 0 });
   const [, updateWindow] = useState(0);
@@ -42,8 +40,8 @@ export const MaterialGrid = memo(function MaterialGrid({ active, size }: { activ
       const nextLayout = materialLayout(width, current.size, current.total);
       const next = current.active ? galleryVisibleIndices(nextLayout, useMaterials.getState().scrollTop, height, current.total) : [];
       const nextKey = `${nextLayout.columns}:${next[0] ?? 0}:${next.at(-1) ?? 0}:${height}`;
-      // Keep continuous resizing without rendering controls or Motion nodes every pixel.
-      // A column/window change must wait for React so Motion can snapshot the old layout.
+      // Keep continuous resizing without rendering cards or controls every pixel.
+      // Column/window changes go through React; the reflow hook retains old positions.
       if (nextKey !== windowKey.current) updateWindow(value => value + 1);
       else applyGeometry(node, nextLayout);
     });
@@ -57,6 +55,7 @@ export const MaterialGrid = memo(function MaterialGrid({ active, size }: { activ
     windowKey.current = `${layout.columns}:${first}:${last}:${bounds.current.height}`;
     if (viewport.current) applyGeometry(viewport.current, layout);
   });
+  useAlbumReflow(viewport);
   const gridStyle = {
     "--album-cover-max": `${size * .65}px`,
     height: `calc(${layout.gridRows} * var(--material-cell-height) + ${GALLERY_PADDING_TOP + GALLERY_PADDING - GALLERY_GAP}px)`,
@@ -75,7 +74,7 @@ export const MaterialGrid = memo(function MaterialGrid({ active, size }: { activ
     materialThumbnails.retain(ids);
     materialCardVersionImages.retain(versionIds);
   }, [first, last, state.pages, state.cardVersions, active]);
-  return <MotionConfig reducedMotion="never" transition={{ layout: { duration: reducedMotion ? 0 : .28, ease: [.22, 1, .36, 1] } }}><motion.div layoutScroll className="rm-viewport" ref={viewport} aria-busy={state.loading} onScroll={event => { if (active) useMaterials.setState({ scrollTop: event.currentTarget.scrollTop }); }} tabIndex={0} aria-label="素材列表">
-        {state.total > 0 ? <div className="rm-grid" style={gridStyle}>{visible.map(index => { const item = state.pages.get(Math.floor(index / MATERIAL_PAGE_SIZE))?.[index % MATERIAL_PAGE_SIZE]; return <motion.div layout="position" layoutDependency={`${layout.columns}:${index}:${reducedMotion}`} initial={false} key={item ? `material-${item.id}-${state.revision}` : `placeholder-${index}-${state.revision}`} className="rm-cell" style={{ left: `calc(${GALLERY_PADDING}px + ${index % layout.columns} * (var(--material-card-width) + ${GALLERY_GAP}px))`, top: `calc(${GALLERY_PADDING_TOP}px + ${Math.floor(index / layout.columns)} * var(--material-cell-height))` }}>{item ? <MaterialCard material={item} active={state.selected?.id === item.id} open={active && !state.editorOpen && !state.pendingDelete && state.openCardId === item.id} /> : <div className="r-image-placeholder" />}</motion.div>; })}</div> : <div className="rm-empty"><h2>{state.loading ? "正在读取素材…" : state.error ? "素材读取失败" : state.search || state.selectedTags.length || state.untagged ? "没有匹配的素材" : "收藏你的第一份素材"}</h2>{!state.loading && !state.error && <p>新建素材可从图库选图，也可以将本地图片拖到这里导入。</p>}</div>}
-      </motion.div></MotionConfig>;
+  return <div className="rm-viewport" ref={viewport} data-album-columns={layout.columns} aria-busy={state.loading} onScroll={event => { if (active) useMaterials.setState({ scrollTop: event.currentTarget.scrollTop }); }} tabIndex={0} aria-label="素材列表">
+        {state.total > 0 ? <div className="rm-grid" style={gridStyle}>{visible.map(index => { const item = state.pages.get(Math.floor(index / MATERIAL_PAGE_SIZE))?.[index % MATERIAL_PAGE_SIZE]; return <div data-album-reflow key={item ? `material-${item.id}-${state.revision}` : `placeholder-${index}-${state.revision}`} className="rm-cell" style={{ left: `calc(${GALLERY_PADDING}px + ${index % layout.columns} * (var(--material-card-width) + ${GALLERY_GAP}px))`, top: `calc(${GALLERY_PADDING_TOP}px + ${Math.floor(index / layout.columns)} * var(--material-cell-height))` }}>{item ? <MaterialCard material={item} active={state.selected?.id === item.id} open={active && !state.editorOpen && !state.pendingDelete && state.openCardId === item.id} /> : <div className="r-image-placeholder" />}</div>; })}</div> : <div className="rm-empty"><h2>{state.loading ? "正在读取素材…" : state.error ? "素材读取失败" : state.search || state.selectedTags.length || state.untagged ? "没有匹配的素材" : "收藏你的第一份素材"}</h2>{!state.loading && !state.error && <p>新建素材可从图库选图，也可以将本地图片拖到这里导入。</p>}</div>}
+      </div>;
 });

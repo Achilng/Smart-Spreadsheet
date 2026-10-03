@@ -1,5 +1,10 @@
 /* Fanned album stack shared by group, duplicate and material shelves. */
 
+/* Reflow owns the outer frame's transform. Geometry must commit immediately,
+ * including under the global reduced-motion rule that gives all CSS transitions
+ * a tiny nonzero duration (and would otherwise animate left/top/width). */
+[data-album-reflow] { transition-property: none; }
+
 .r-album-stack {
   --album-rx: 0deg;
   --album-ry: 0deg;

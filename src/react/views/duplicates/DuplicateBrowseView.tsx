@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowLeft, LayoutGrid, List, SlidersHorizontal } from "lucide-react";
 import type { DedupeCluster } from "../../../lib/api";
 import { errorText } from "../../../lib/utils/format";
@@ -24,16 +24,16 @@ export function DuplicateBrowseView({ filtersOpen, onFilters }: { filtersOpen: b
   const currentCluster = state.clusters.find(cluster => cluster.key === opened);
   const albumOpen = opened !== undefined;
   const positionKey = JSON.stringify(albumOpen ? ["duplicates", state.mode, "album", opened, state.memberSort] : ["duplicates", state.mode, state.layout, state.sortByCount, shelf ? null : state.memberSort]);
-  const sorted = state.sortByCount ? [...state.clusters].sort((a, b) => b.memberCount - a.memberCount) : [...state.clusters].sort((a, b) => clusterLabel(a).localeCompare(clusterLabel(b)));
+  const sorted = useMemo(() => state.sortByCount ? [...state.clusters].sort((a, b) => b.memberCount - a.memberCount) : [...state.clusters].sort((a, b) => clusterLabel(a, state.mode).localeCompare(clusterLabel(b, state.mode))), [state.clusters, state.sortByCount, state.mode]);
   const visibleClusters = shelf ? sorted.filter(cluster => cluster.key === opened) : sorted;
   const order = visibleClusters.flatMap(cluster => state.expanded.includes(cluster.key) ? (state.members[cluster.key]?.rows ?? []).slice(0, state.renderLimits[cluster.key] ?? 40).map(row => row.id) : []);
   const reveal = (key: string) => useDuplicates.setState(value => ({ renderLimits: { ...value.renderLimits, [key]: (value.renderLimits[key] ?? 40) + 40 } }));
   function clearActive() { clearSelection(); useRows.setState({ activeRow: null }); }
-  function openAlbum(key: string) { void motion.navigate("enter", key, () => { clearActive(); useDuplicates.setState({ expanded: [key] }); void loadClusterMembers(key); }, () => loadClusterMembers(key)); }
+  const openAlbum = useCallback((key: string) => { void motion.navigate("enter", key, () => { clearSelection(); useRows.setState({ activeRow: null }); useDuplicates.setState({ expanded: [key] }); void loadClusterMembers(key); }, () => loadClusterMembers(key)); }, [motion.navigate]);
   function setLayout(layout: "shelf" | "list") { const update = () => { clearActive(); useDuplicates.setState({ layout, expanded: [] }); }; if (albumOpen && layout === "shelf") void motion.navigate("leave", opened, update); else update(); }
-  function clusterActions(cluster: DedupeCluster): MenuItem[] {
-    return [{ label: "重命名", disabled: taskBusy, action: () => { setRenaming(cluster); setName(cluster.alias ?? clusterLabel(cluster)); setError(null); } }];
-  }
+  const clusterActions = useCallback((cluster: DedupeCluster): MenuItem[] => {
+    return [{ label: "重命名", disabled: taskBusy, action: () => { setRenaming(cluster); setName(cluster.alias ?? clusterLabel(cluster, state.mode)); setError(null); } }];
+  }, [taskBusy, state.mode]);
   const members = (key: string) => <SectionMembersGrid data={state.members[key]} scope="duplicates" order={order} limit={state.renderLimits[key] ?? 40} onReveal={() => reveal(key)} onLoad={more => void loadClusterMembers(key, more)} />;
   async function rename() {
     if (!renaming || busy || taskBusy) return;

@@ -121,7 +121,14 @@
   gap: 20px 16px;
   padding: 8px var(--page-gutter) 24px;
 }
-.r-group-album-frame { min-width: 0; }
+/* Skip offscreen cover layout/paint as the shelf width changes. Keep the frame
+ * measurable for reflow and leave room for the fan and its hover shadow. */
+.r-group-album-frame {
+  min-width: 0;
+  content-visibility: auto;
+  contain-intrinsic-block-size: auto 286px;
+  overflow-clip-margin: 24px;
+}
 .r-group-album { min-width: 0; }
 .r-group-cover-error { display: grid; gap: 8px; padding: 8px; color: var(--danger); font-size: var(--font-sm); overflow-wrap: anywhere; }
 
