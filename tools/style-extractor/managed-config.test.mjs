@@ -23,7 +23,8 @@ test('simple server uses operator credentials, ignores browser configuration and
   }).listen(0,'127.0.0.1'); await once(upstream,'listening');
   const reservation=http.createServer().listen(0,'127.0.0.1');await once(reservation,'listening');const port=reservation.address().port;await new Promise(r=>reservation.close(r));
   const base=`http://127.0.0.1:${port}`, channel={id:'codex',name:'codex',baseUrl:'https://configured.example/v1',model:'operator-model',concurrency:2,apiKey:'operator-secret'};
-  const writeConfig=()=>fs.writeFileSync(configFile,JSON.stringify({channels:[channel],batchSize:1,effort:'high'}));writeConfig();
+  let batchSize=1;
+  const writeConfig=()=>fs.writeFileSync(configFile,JSON.stringify({channels:[channel],batchSize,effort:'high'}));writeConfig();
   let child,token;
   const start=async()=>{
     child=spawn(process.execPath,[path.join(path.dirname(fileURLToPath(import.meta.url)),'server.mjs')],{windowsHide:true,stdio:'ignore',env:{...process.env,STYLE_PORT:String(port),STYLE_PUBLIC_ORIGIN:base,STYLE_CHANNEL_CONFIG:configFile,STYLE_DATA_DIR:path.join(dir,'data'),STYLE_API_PUBLIC_BASE:channel.baseUrl,STYLE_SERVER_API_BASE:`http://127.0.0.1:${upstream.address().port}/v1`}});
@@ -41,7 +42,9 @@ test('simple server uses operator credentials, ignores browser configuration and
     for(let n=0;n<100&&(await api(`jobs/${job.id}`)).data.state==='running';n++)await delay(20);
     assert.equal(seen[0].key,'Bearer operator-secret');assert.equal(seen[0].model,'operator-model');assert.equal((await api(`jobs/${job.id}`)).data.none,1);
     for(const name of fs.readdirSync(path.join(dir,'data')))assert.equal(fs.readFileSync(path.join(dir,'data',name),'utf8').includes('operator-secret'),false);
-    hold=true;channel.apiKey='changed-secret';writeConfig();const busy=await create();await api(`jobs/${busy.id}/start`,{});
+    hold=true;channel.apiKey='changed-secret';writeConfig();const busy=await create();
+    batchSize=20;writeConfig();const resumed=await api(`jobs/${busy.id}/start`,{batchSize:99});
+    assert.equal(resumed.data.id,busy.id);assert.equal(resumed.data.settings.batchSize,20);
     for(let n=0;n<100&&seen.length<2;n++)await delay(20);assert.equal(seen.at(-1).key,'Bearer changed-secret');
     const events=await fetch(base+`/api/jobs/${busy.id}/events`,{headers:{'X-Session-Token':token}}), reader=events.body.getReader();await reader.read();
     assert.equal((await api(`jobs/${busy.id}/cancel`,{})).data.cancelled,true);

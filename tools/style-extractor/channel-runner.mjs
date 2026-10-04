@@ -41,7 +41,8 @@ export async function runChannels(manager, job, retryErrors, values) {
   const queue = job.request.items.filter(x => !saved.has(x.id));
   const attempts = new Map(), tasks = new Set(), lanes = [];
   manager.live.set(job.id, lanes); manager.active = active; job.state = 'running';
-  const save = () => { job.results = [...saved.values()]; manager.save(job); };
+  const syncResults = () => { job.results = [...saved.values()]; };
+  const save = () => { syncResults(); manager.save(job); };
   const tick = () => { const now = Date.now(); job.elapsedMs += now - active.lastTick; active.lastTick = now; save(); };
   const fatal = error => { stopReason = clean(error.message); controller.abort(); wake(); };
   const timer = setInterval(() => { try { tick(); } catch (error) { fatal(error); } }, 5000);
@@ -65,10 +66,14 @@ export async function runChannels(manager, job, retryErrors, values) {
     const provenance = { channel_id: config.id, channel_name: config.name, model: config.model };
     const put = result => {
       const previous = saved.get(result.id);
+      if (result.status === 'error' && !previous) return;
+      if (previous && previous.status === result.status && previous.artist_string === result.artist_string && previous.channel_id === config.id && previous.model === config.model) return;
+      const next = result.status === 'error' ? null : { ...result, ...provenance, processed_at: new Date().toISOString() };
+      manager.recordResult(job, result.id, next);
       if (previous && previous.status !== 'error') state.success--;
       if (result.status === 'error') saved.delete(result.id);
-      else { saved.set(result.id, { ...result, ...provenance, processed_at: new Date().toISOString() }); state.success++; }
-      save();
+      else { saved.set(result.id, next); state.success++; }
+      syncResults();
     };
     const emit = event => {
       if (controller.signal.aborted) return;
@@ -91,6 +96,7 @@ export async function runChannels(manager, job, retryErrors, values) {
         if (currentConfig() && rateEpoch === state.rateEpoch && !state.disabled) { state.rateFailures = 0; state.error = ''; state.until = 0; }
       }
     } catch (error) {
+      if (error.storageFailure) throw error;
       if (!controller.signal.aborted) {
         message = clean(error.message);
         const rate = error.status === 429 || /rate limit|429/i.test(message);
@@ -127,11 +133,14 @@ export async function runChannels(manager, job, retryErrors, values) {
         // a chance to process its unfinished items, without exhausting item retries.
         if (channelFault) attempts.set(item.id, Math.max(0, attempts.get(item.id) - 1));
         if ((attempts.get(item.id) || 0) < 3) queue.push(item);
-        else saved.set(item.id, { id: item.id, status: 'error', artist_string: '', error: message, ...provenance, processed_at: new Date().toISOString() });
+        else {
+          const result = { id: item.id, status: 'error', artist_string: '', error: message, ...provenance, processed_at: new Date().toISOString() };
+          manager.recordResult(job, item.id, result); saved.set(item.id, result);
+        }
       }
       // Network / invalid-response retries are bounded and briefly back off this channel.
       if (pending.length && !channelFault && currentConfig()) state.until = Math.max(state.until || 0, Date.now() + 1000);
-      save();
+      syncResults();
     }
     lane.phase = controller.signal.aborted ? 'paused' : pending.length ? 'error' : 'completed'; lane.revision++;
   }

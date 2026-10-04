@@ -92,7 +92,8 @@ const server = http.createServer(async (req, res) => {
       if (manager.active) return send(409, { error: `任务 ${manager.active.id.slice(0, 8)} 正在运行，请先查看或暂停该任务。`, activeJobId: manager.active.id });
       // start executes synchronously through validation before its first await.
       if (managed && job.settings.provider !== 'api') throw Error('服务器仅支持 API 渠道。');
-      resume.start(id, !!body.retryErrors, simpleMode ? { channels: readManagedConfig(configFile).channels } : { apiKey: typeof body.apiKey === 'string' ? body.apiKey.trim() : '', concurrency: body.concurrency, channels: body.channels });
+      const defaults = simpleMode ? readManagedConfig(configFile) : null;
+      resume.start(id, !!body.retryErrors, defaults ? { channels: defaults.channels, batchSize: defaults.batchSize } : { apiKey: typeof body.apiKey === 'string' ? body.apiKey.trim() : '', concurrency: body.concurrency, channels: body.channels });
       await Promise.resolve(); if (!manager.active && job.state !== 'completed') throw Error(job.message);
       return send(200, manager.summary(job));
     }

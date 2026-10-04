@@ -8,6 +8,7 @@ import { ItemStream, readSse } from './streaming.mjs';
 import { codexStream } from './codex-stream.mjs';
 import { normalizeBaseUrl, validateConcurrency, normalizeChannels, totalConcurrency } from './channels.mjs';
 import { runChannels } from './channel-runner.mjs';
+import { appendResult, replayResults, clearResults } from './result-journal.mjs';
 export { normalizeBaseUrl } from './channels.mjs';
 
 export const root = path.dirname(fileURLToPath(import.meta.url));
@@ -197,7 +198,7 @@ export class JobManager {
     this.directory = directory; this.runner = runner; this.jobs = new Map(); this.active = null; this.live = new Map();
     fs.mkdirSync(directory, { recursive: true });
     for (const name of fs.readdirSync(directory).filter(x => /^[a-f0-9-]{36}\.json$/.test(x))) {
-      try { const job = JSON.parse(fs.readFileSync(path.join(directory, name), 'utf8')); if (job.id + '.json' !== name) continue; job.request ??= JSON.parse(fs.readFileSync(path.join(directory, job.id + '.request.json'), 'utf8')); validateRequest(job.request); if (job.version !== 1 || !Array.isArray(job.results)) continue; job.settings.concurrency = job.settings.channels ? totalConcurrency(normalizeChannels(job.settings.channels)) : validateConcurrency(job.settings.concurrency); if (job.state === 'running') { job.state = 'paused'; job.message = '上次运行中断，点击继续即可恢复。'; } this.jobs.set(job.id, job); } catch { /* Keep unreadable files intact. */ }
+      try { const job = JSON.parse(fs.readFileSync(path.join(directory, name), 'utf8')); if (job.id + '.json' !== name) continue; job.request ??= JSON.parse(fs.readFileSync(path.join(directory, job.id + '.request.json'), 'utf8')); validateRequest(job.request); if (job.version !== 1 || !Array.isArray(job.results)) continue; job.settings.concurrency = job.settings.channels ? totalConcurrency(normalizeChannels(job.settings.channels)) : validateConcurrency(job.settings.concurrency); if (job.state === 'running') { job.state = 'paused'; job.message = '上次运行中断，点击继续即可恢复。'; } const recovered = replayResults(this.journalPath(job.id), job.results); if (recovered) { job.results = recovered; this.save(job); } this.jobs.set(job.id, job); } catch { /* Keep unreadable files intact. */ }
     }
   }
   save(job) {
@@ -205,7 +206,10 @@ export class JobManager {
     if (!fs.existsSync(inputPath)) atomicJson(inputPath, job.request);
     const { request, ...state } = job;
     atomicJson(path.join(this.directory, job.id + '.json'), state);
+    clearResults(this.journalPath(job.id));
   }
+  journalPath(id) { return path.join(this.directory, id + '.results.jsonl'); }
+  recordResult(job, id, result) { appendResult(this.journalPath(job.id), id, result); }
   create(request, settings = {}) {
     validateRequest(request);
     const channels = settings.channels ? normalizeChannels(settings.channels) : undefined;
@@ -228,6 +232,7 @@ export class JobManager {
     // Remove state first so an interrupted deletion cannot restore discarded results.
     fs.rmSync(path.join(this.directory, id + '.json'), { force: true });
     fs.rmSync(path.join(this.directory, id + '.request.json'), { force: true });
+    fs.rmSync(this.journalPath(id), { force: true });
     this.live.delete(id); this.jobs.delete(id);
   }
   snapshot(id, offset = 0, limit = 40) {
@@ -260,6 +265,11 @@ export class JobManager {
     if (this.active) throw Error('已有任务正在运行，请先暂停。');
     const job = this.get(id);
     if (job.promptHash !== promptHash) throw Error('提示词已变化，请创建新任务。旧任务结果仍可下载。');
+    if (credentials.batchSize !== undefined) {
+      const value = Number(credentials.batchSize);
+      if (!Number.isInteger(value) || value < 1 || value > 100) throw Error('每批数量应为 1–100。');
+      job.settings.batchSize = value;
+    }
     if (credentials.channels || job.settings.channels) return runChannels(this, job, retryErrors, credentials.channels || job.settings.channels);
     if (job.settings.provider === 'api' && !credentials.apiKey?.trim()) throw Error('请填写该任务的 API Key 后继续。');
     job.settings.concurrency = validateConcurrency(credentials.concurrency ?? job.settings.concurrency);
