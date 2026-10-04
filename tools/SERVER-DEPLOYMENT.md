@@ -49,7 +49,7 @@
 
 ## 2026-10-03 简化使用页
 
-生产环境设置 `STYLE_CHANNEL_CONFIG=/etc/style-tools/extractor-channels.json`，管理员在服务器编辑此文件；权限 0640、root:style-tools；上层 `/etc/style-tools` 为 root:style-tools、0710，允许服务用户进入但不能列出目录。当前默认 codex、原 CPA 地址、gpt-6-luna、20 并发、每批 20 条、high。配置修改在下次创建 / 开始任务时读取，无需重启；需要改变运行中任务时先暂停后继续。Key 仅在此受保护配置文件与运行内存中，不返回网页或写入任务数据。
+生产环境设置 `STYLE_CHANNEL_CONFIG=/etc/style-tools/extractor-channels.json`，管理员在服务器编辑此文件；权限 0640、root:style-tools；上层 `/etc/style-tools` 为 root:style-tools、0710，允许服务用户进入但不能列出目录。当前启用 codex（原 CPA 地址，gpt-6-luna，20 并发）和大宇宙站（https://oneapi.hakoyu.com/v1，gpt-6-luna【神秘】，5 并发），合计 25 并发、每批最多 20 条、high。配置修改在下次创建 / 开始任务时读取，无需重启；需要改变运行中任务时先暂停后继续。Key 仅在此受保护配置文件与运行内存中，不返回网页或写入任务数据。
 
 启用时，用户页面只上传、开始、暂停 / 继续、取消与下载；渠道页面和修改接口关闭，不接受用户传入的渠道配置。此前关于浏览器 Key 的说明适用于未设置此变量的开发者模式。取消会中止在途请求并等待退出，然后删除任务状态及上传文件，清除内存预览；已取消任务不会恢复，暂停则仍保留结果。
 
