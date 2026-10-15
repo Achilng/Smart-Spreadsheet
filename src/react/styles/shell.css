@@ -361,6 +361,9 @@
 }
 .r-task-progress progress { width: 140px; height: 5px; accent-color: var(--accent); }
 .r-task-progress small { color: var(--text-3); white-space: nowrap; }
+.r-topbar:has(.r-llm-status) { grid-template-columns:max-content minmax(140px,1fr) auto; }
+.r-llm-status { align-self:center; font-size:13px; color:var(--text-2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:220px; margin-right:12px; }
+@media(max-width:900px) { .r-llm-status { max-width:150px; } }
 
 /* ---- Startup and single-purpose flows ---- */
 .r-flow { display: flex; flex-direction: column; height: 100%; background: var(--surface-2); }

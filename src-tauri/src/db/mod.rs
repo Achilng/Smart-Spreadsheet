@@ -3,6 +3,7 @@ mod artist_representatives;
 pub use artist_representatives::ArtistRepresentativeResult;
 mod artist_xml;
 pub mod style_extraction;
+pub(crate) mod llm;
 mod automation_rules;
 mod batches;
 mod compare;
@@ -415,6 +416,10 @@ fn apply_pending_migrations(
         transaction.execute_batch(migrations::MIGRATION_23)?;
         version = 23;
     }
+    if version == 23 {
+        transaction.execute_batch(migrations::MIGRATION_24)?;
+        version = 24;
+    }
     debug_assert_eq!(version, CURRENT_SCHEMA_VERSION);
     transaction.pragma_update(None, "user_version", version)?;
     transaction.commit()?;
@@ -618,6 +623,8 @@ mod tests {
                 "dedupe_aliases",
                 "groups",
                 "import_batches",
+                "llm_items",
+                "llm_jobs",
                 "material_tags",
                 "material_versions",
                 "materials",

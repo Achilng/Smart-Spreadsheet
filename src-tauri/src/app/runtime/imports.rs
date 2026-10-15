@@ -21,6 +21,22 @@ impl AppRuntime {
         // 导入可能持续较久，提前释放状态锁，避免阻塞查询等其他操作。
         drop(state);
         let outcome = directory.import_images(path.as_ref(), progress)?;
+        // Queue only this import's new rows, after import rules have finished.
+        // An extraction setup error must never turn a successful import into a failure.
+        if outcome.added > 0 {
+            let mut current = self.lock_state()?;
+            if current.active.as_ref().is_some_and(|active| active.root() == directory.root()) {
+                let db = current.database()?;
+                let queued = db.row_ids_for_batch(outcome.batch_id).and_then(|row_ids| {
+                    db.llm_create(Some(&RowSelection::Explicit { row_ids }), false, false, vec![], true)
+                });
+                if let Err(error) = queued {
+                    let _ = db.set_setting("local_llm_enqueue_error", &error.to_string());
+                } else {
+                    let _ = db.set_setting("local_llm_enqueue_error", "");
+                }
+            }
+        }
         // 导入走独立连接写库，常驻连接上的查询缓存必须失效。
         self.lock_state()?.invalidate_query_cache();
         Ok((self.snapshot()?, outcome))

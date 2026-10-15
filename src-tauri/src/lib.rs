@@ -20,9 +20,19 @@ pub fn run() {
             let locator_path = app.path().app_config_dir()?.join("state.json");
             let default_data_dir = app.path().app_local_data_dir()?.join("data");
             app.manage(app::AppRuntime::load(locator_path, default_data_dir));
+            app.manage(app::llm::Engine::default());
+            app::llm::start(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            app::commands::llm::llm_snapshot,
+            app::commands::llm::llm_save_settings,
+            app::commands::llm::llm_estimate,
+            app::commands::llm::llm_create,
+            app::commands::llm::llm_action,
+            app::commands::llm::llm_items,
+            app::commands::llm::llm_models,
+            app::commands::llm::llm_export,
             app::commands::web_tools::open_style_web_tool,
             app::commands::style_extraction::export_style_request,
             app::commands::style_extraction::preview_style_result,

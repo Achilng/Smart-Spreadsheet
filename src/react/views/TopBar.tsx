@@ -8,8 +8,15 @@ import { WindowControls } from "../ui/WindowControls";
 import { navigateHistory, useNavigation } from "../state/navigation";
 import { useSelection } from "../state/selection";
 import { setMaterialSearch, useMaterials } from "../state/materials";
+import { listenLlmProgress, useLlmProgress } from "../state/llm";
 
 export function TopBar() {
+  const llm = useLlmProgress(s => s.progress);
+  useEffect(() => {
+    let disposed = false; let stop: (() => void) | undefined;
+    void listenLlmProgress().then(fn => { if (disposed) fn(); else stop = fn; }).catch(() => {});
+    return () => { disposed = true; stop?.(); };
+  }, []);
   const view = useWorkspace(state => state.viewMode);
   const total = useLibrary(state => state.snapshot?.library?.rowCount ?? 0);
   useSelection();
@@ -47,6 +54,8 @@ export function TopBar() {
       onBlur={() => { if (!composing.current) commit(input); }}
       onKeyDown={event => { if (event.key === "Enter" && !event.nativeEvent.isComposing) commit(input); }}
       onClear={() => { setInput(""); commit(""); }} />}
-    <div className="r-topbar-end" data-tauri-drag-region><WindowControls /></div>
+    <div className="r-topbar-end" data-tauri-drag-region>{llm && (llm.running || llm.message) && <span className="r-llm-status" role="status" title={llm.message || `正在进行 ${llm.inFlight} 个请求；详细任务在工具箱 → LLM提取`}>
+      {llm.running ? `画风提取 ${llm.done} / ${llm.total}${llm.failed ? ` · 失败 ${llm.failed}` : ""}` : "LLM提取需要处理"}
+    </span>}<WindowControls /></div>
   </header>;
 }

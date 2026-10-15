@@ -10,6 +10,7 @@ import type { PromptDocDetail } from "../api/prompt-docs";
 import type { GroupSummary } from "../api/groups";
 import { emptyAutomationRuleDraft, type AutomationRule, type AutomationRuleDraft, type AutomationRuleImportInspection, type RuleCondition } from "../api/automation-rules";
 import { splitListText } from "../utils/list-text";
+import { createLlmMock } from "./llm-mock";
 
 interface MockRow {
   id: number;
@@ -422,6 +423,7 @@ export function installIpcMock(): void {
     { id: "positive", label: "正向提示词", text: libraryRows.find(row => row.id === id)?.positivePrompt ?? "scenery, mountains, soft light" },
     { id: "negative", label: "负向提示词", text: "lowres, worst quality" },
   ], warning: null });
+  const llmMock = createLlmMock();
   const internals = {
     metadata: { currentWindow: { label: windowLabel }, currentWebview: { label: windowLabel } },
     convertFileSrc(path: string): string { return assetUrls.get(path) ?? path; },
@@ -435,6 +437,7 @@ export function installIpcMock(): void {
     },
     async invoke(command: string, args: Record<string, unknown> | undefined): Promise<unknown> {
       const payload = args ?? {};
+      if (command.startsWith("llm_")) return llmMock(command, payload);
       window.__mockCalls?.push({ command, payload: structuredClone(payload) });
       if (!command.startsWith("plugin:")) {
         if (window.__mockDelayMs) await new Promise(resolve => setTimeout(resolve, window.__mockDelayMs));

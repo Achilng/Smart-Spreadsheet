@@ -1,6 +1,7 @@
 //! Active library lifecycle and shared database access.
 mod artists;
 mod style_extraction;
+mod llm;
 mod automation;
 mod compare;
 mod duplicates;

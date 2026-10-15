@@ -35,6 +35,7 @@ export function useWorkspaceLifecycle(): void {
     const stopGuard = registerCloseGuard(() => [useTasks.getState().busy ? `${useTasks.getState().label}正在进行中` : "", useMaintenance.getState().label ? "历史资料索引尚未完成，下次启动可继续" : "", hasFieldDrafts() ? "有未保存的图片编辑草稿" : ""].filter(Boolean).join("；") || null);
     const shareSelection = () => { void emitTo("toolbox", "main://selection-changed", { selection: selectionDto(), count: selectedCount(useSelection.getState()), filteredSelection: { kind: "filtered", ...snapshotQueryFilters(useRows.getState().query), excludedRowIds: [] } }).catch(() => {}); };
     cleanups.push(useSelection.subscribe((next, previous) => { if (next.version !== previous.version) shareSelection(); }));
+    cleanups.push(useRows.subscribe((next, previous) => { if (next.query !== previous.query) shareSelection(); }));
     retain(listen("toolbox://request-selection", shareSelection));
     retain(listen<{ rowId: number }>("toolbox://open-row", event => { void revealRow(event.payload.rowId).catch(error => notify(`无法定位图片：${errorText(error)}`, "error")); }));
     // Serialize notifications so a slow refresh cannot overwrite a later switch.
@@ -47,6 +48,20 @@ export function useWorkspaceLifecycle(): void {
         else { await connectLibrary(await getAppSnapshot()); void runStartupMaintenance(); notify(event.payload === "reset" ? "表格已重置，请重新导入数据。" : "数据目录已迁移，主窗口已重新连接。"); }
       }).catch(error => notify(`刷新资料库失败：${errorText(error)}`, "error"));
     }));
+    // Background extraction refreshes without clearing selection or taking the foreground task lock.
+    let llmTimer: ReturnType<typeof setTimeout> | undefined;
+    let llmRefreshing = false, llmDirty = false;
+    const refreshLlm = async () => {
+      llmTimer = undefined;
+      if (disposed) return;
+      if (llmRefreshing || useTasks.getState().busy || hasFieldDrafts()) { llmTimer = setTimeout(() => void refreshLlm(), 1200); return; }
+      llmRefreshing = true; llmDirty = false;
+      try { await refreshLibrary({ preserveSelection: true }); }
+      catch (error) { if (!disposed) notify(`刷新提取结果失败：${errorText(error)}`, "error"); }
+      finally { llmRefreshing = false; if (llmDirty && !disposed && !llmTimer) llmTimer = setTimeout(() => void refreshLlm(), 1200); }
+    };
+    retain(listen("llm://library-changed", () => { llmDirty = true; if (!llmTimer && !llmRefreshing) llmTimer = setTimeout(() => void refreshLlm(), 1200); }));
+    cleanups.push(() => clearTimeout(llmTimer));
     cleanups.push(listenDragDrop());
     const syncSections = () => { const snapshot = useLibrary.getState().snapshot; if (snapshot?.dataDirectory && !snapshot.startupError) { void syncGroups(); syncDuplicates(); } };
     cleanups.push(useRows.subscribe((next, previous) => { if (next.resetToken !== previous.resetToken) syncSections(); }));

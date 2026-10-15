@@ -1,4 +1,26 @@
-pub const CURRENT_SCHEMA_VERSION: u32 = 23;
+pub const CURRENT_SCHEMA_VERSION: u32 = 24;
+
+pub const MIGRATION_24: &str = r#"
+CREATE TABLE llm_jobs (
+ id TEXT PRIMARY KEY, created_at TEXT NOT NULL, state TEXT NOT NULL,
+ prompt_version TEXT NOT NULL, batch_size INTEGER NOT NULL,
+ reasoning TEXT NOT NULL, channel_ids TEXT NOT NULL, reuse INTEGER NOT NULL, message TEXT NOT NULL DEFAULT '',
+ total INTEGER NOT NULL DEFAULT 0, done INTEGER NOT NULL DEFAULT 0, failed INTEGER NOT NULL DEFAULT 0,
+ applied INTEGER NOT NULL DEFAULT 0, empty INTEGER NOT NULL DEFAULT 0
+) STRICT;
+CREATE TABLE llm_items (
+ job_id TEXT NOT NULL REFERENCES llm_jobs(id) ON DELETE CASCADE,
+ hash TEXT NOT NULL, prompt TEXT NOT NULL, targets TEXT NOT NULL,
+ status TEXT NOT NULL DEFAULT 'pending', artists TEXT NOT NULL DEFAULT '',
+ model TEXT NOT NULL DEFAULT '', channel TEXT NOT NULL DEFAULT '',
+ error TEXT NOT NULL DEFAULT '', attempts INTEGER NOT NULL DEFAULT 0,
+ changes TEXT NOT NULL DEFAULT '[]',
+ PRIMARY KEY(job_id, hash)
+) STRICT;
+CREATE INDEX llm_items_pending ON llm_items(job_id, status);
+CREATE INDEX llm_items_cache ON llm_items(hash) WHERE status IN ('ok','none');
+CREATE INDEX llm_rows_cache ON rows(json_extract(artist_llm, '$.inputHash')) WHERE artist_llm IS NOT NULL;
+"#;
 
 pub const MIGRATION_23: &str = r#"
 CREATE TABLE artist_representatives (
