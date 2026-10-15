@@ -5,14 +5,19 @@ use crate::db::RowSelection;
 use std::path::{Path, PathBuf};
 use tauri::State;
 
+#[cfg(target_os = "windows")]
+#[path = "windows_explorer.rs"]
+mod windows_explorer;
+
 #[tauri::command]
-pub(crate) fn show_item_in_explorer(
+pub(crate) async fn show_item_in_explorer(
     row_id: i64,
     runtime: State<'_, AppRuntime>,
 ) -> Result<(), String> {
     let source = row_file_path(row_id, &runtime)?;
-    open_path_in_explorer(&source);
-    Ok(())
+    tauri::async_runtime::spawn_blocking(move || open_path_in_explorer(&source))
+        .await
+        .map_err(error_text)?
 }
 
 #[tauri::command]
@@ -44,7 +49,7 @@ pub(crate) fn open_rejected_images_directory(runtime: State<'_, AppRuntime>) -> 
         .map_err(error_text)?
         .unwrap_or_else(|| directory.default_rejected_images_directory());
     if rejected_dir.is_dir() {
-        open_path_in_explorer(&rejected_dir);
+        open_path_in_explorer(&rejected_dir)?;
     } else {
         return Err(format!("失败图片目录不存在: {}", rejected_dir.display()));
     }
@@ -128,36 +133,45 @@ pub(crate) fn prepare_file_drag(
     })
 }
 
-fn open_path_in_explorer(path: &Path) {
+fn open_path_in_explorer(path: &Path) -> Result<(), String> {
+    let metadata = std::fs::metadata(path).map_err(error_text)?;
     #[cfg(target_os = "windows")]
     {
-        if path.is_file() {
-            let _ = std::process::Command::new("explorer")
-                .arg("/select,")
-                .arg(path)
-                .spawn();
+        if metadata.is_file() {
+            windows_explorer::select_file(path)?;
         } else {
-            let _ = std::process::Command::new("explorer").arg(path).spawn();
+            std::process::Command::new("explorer")
+                .arg(path)
+                .spawn()
+                .map_err(error_text)?;
         }
     }
     #[cfg(target_os = "macos")]
     {
-        if path.is_file() {
-            let _ = std::process::Command::new("open")
+        if metadata.is_file() {
+            std::process::Command::new("open")
                 .arg("-R")
                 .arg(path)
-                .spawn();
+                .spawn()
+                .map_err(error_text)?;
         } else {
-            let _ = std::process::Command::new("open").arg(path).spawn();
+            std::process::Command::new("open")
+                .arg(path)
+                .spawn()
+                .map_err(error_text)?;
         }
     }
     #[cfg(target_os = "linux")]
     {
-        let target = if path.is_file() {
+        let target = if metadata.is_file() {
             path.parent().unwrap_or(path)
         } else {
             path
         };
-        let _ = std::process::Command::new("xdg-open").arg(target).spawn();
+        std::process::Command::new("xdg-open")
+            .arg(target)
+            .spawn()
+            .map_err(error_text)?;
     }
+    Ok(())
 }
