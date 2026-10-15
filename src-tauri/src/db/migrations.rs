@@ -1,4 +1,30 @@
-pub const CURRENT_SCHEMA_VERSION: u32 = 24;
+pub const CURRENT_SCHEMA_VERSION: u32 = 25;
+
+/// v24 的早期开发版没有任务计数字段，已打开的库不会重放 v24 建表语句。
+/// 兼容早期与完整 v24，保留任务 / 结果并从明细回填计数。
+pub(super) fn migrate_25(transaction: &rusqlite::Transaction<'_>) -> rusqlite::Result<()> {
+    let columns = {
+        let mut statement = transaction.prepare("PRAGMA table_info(llm_jobs)")?;
+        statement
+            .query_map([], |row| row.get::<_, String>(1))?
+            .collect::<rusqlite::Result<Vec<_>>>()?
+    };
+    for column in ["total", "done", "failed", "applied", "empty"] {
+        if !columns.iter().any(|existing| existing == column) {
+            transaction.execute_batch(&format!(
+                "ALTER TABLE llm_jobs ADD COLUMN {column} INTEGER NOT NULL DEFAULT 0;"
+            ))?;
+        }
+    }
+    transaction.execute_batch(r#"
+UPDATE llm_jobs SET
+ total = (SELECT COUNT(*) FROM llm_items WHERE job_id = llm_jobs.id),
+ done = (SELECT COUNT(*) FROM llm_items WHERE job_id = llm_jobs.id AND status IN ('ok', 'none')),
+ failed = (SELECT COUNT(*) FROM llm_items WHERE job_id = llm_jobs.id AND status = 'error'),
+ applied = (SELECT COALESCE(SUM(json_array_length(changes)), 0) FROM llm_items WHERE job_id = llm_jobs.id),
+ empty = (SELECT COUNT(*) FROM llm_items WHERE job_id = llm_jobs.id AND status = 'none');
+"#)
+}
 
 pub const MIGRATION_24: &str = r#"
 CREATE TABLE llm_jobs (

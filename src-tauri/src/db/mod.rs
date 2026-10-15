@@ -420,6 +420,10 @@ fn apply_pending_migrations(
         transaction.execute_batch(migrations::MIGRATION_24)?;
         version = 24;
     }
+    if version == 24 {
+        migrations::migrate_25(&transaction)?;
+        version = 25;
+    }
     debug_assert_eq!(version, CURRENT_SCHEMA_VERSION);
     transaction.pragma_update(None, "user_version", version)?;
     transaction.commit()?;
