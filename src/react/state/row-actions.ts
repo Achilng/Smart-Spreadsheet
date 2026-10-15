@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { save } from "@tauri-apps/plugin-dialog";
-import { deleteRows, exportRowImage, rowIdsWithArtists, selectedRowIds, showItemInExplorer, type RowRecord, type RowSelection } from "../../lib/api";
+import { deleteRows, exportRowImage, getRowFilePath, rowIdsWithArtists, selectedRowIds, showItemInExplorer, type RowRecord, type RowSelection } from "../../lib/api";
 import { errorText, formatCount } from "../../lib/utils/format";
 import { defaultFilters, setQuery, useLibrary, useRows } from "./library";
 import { refreshLibrary } from "./library-changes";
@@ -69,6 +69,13 @@ export async function copyRowPrompt(row: RowRecord): Promise<void> {
   if (!row.positivePrompt) return;
   try { await navigator.clipboard.writeText(row.positivePrompt); notify("已复制 Prompt 到剪贴板。"); }
   catch { notify("复制失败，请检查剪贴板权限。", "error"); }
+}
+export async function copyRowFilePath(row: RowRecord): Promise<void> {
+  try {
+    const path = await getRowFilePath(row.id);
+    await navigator.clipboard.writeText(path);
+    notify("已复制文件地址。");
+  } catch (error) { notify(`复制文件地址失败：${errorText(error)}`, "error"); }
 }
 export async function exportOriginalImage(row: RowRecord): Promise<void> {
   try {

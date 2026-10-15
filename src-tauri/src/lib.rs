@@ -156,6 +156,7 @@ pub fn run() {
             app::commands::compare::query_compare_same_style_all_models,
             app::commands::images::search_similar_images,
             app::commands::files::show_item_in_explorer,
+            app::commands::files::get_row_file_path,
             app::commands::files::open_rejected_images_directory,
             app::commands::files::prepare_file_drag,
             app::commands::images::get_row_vibe_status,

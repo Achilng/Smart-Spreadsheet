@@ -230,3 +230,7 @@ export function getRowVibeStatus(rowId: number): Promise<number | null> {
 export function showItemInExplorer(rowId: number): Promise<void> {
   return invoke<void>("show_item_in_explorer", { rowId });
 }
+
+export function getRowFilePath(rowId: number): Promise<string> {
+  return invoke<string>("get_row_file_path", { rowId });
+}

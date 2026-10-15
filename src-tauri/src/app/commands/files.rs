@@ -10,16 +10,30 @@ pub(crate) fn show_item_in_explorer(
     row_id: i64,
     runtime: State<'_, AppRuntime>,
 ) -> Result<(), String> {
+    let source = row_file_path(row_id, &runtime)?;
+    open_path_in_explorer(&source);
+    Ok(())
+}
+
+#[tauri::command]
+pub(crate) fn get_row_file_path(
+    row_id: i64,
+    runtime: State<'_, AppRuntime>,
+) -> Result<String, String> {
+    let source = row_file_path(row_id, &runtime)?;
+    let absolute = std::path::absolute(source).map_err(error_text)?;
+    Ok(absolute.to_string_lossy().into_owned())
+}
+
+fn row_file_path(row_id: i64, runtime: &AppRuntime) -> Result<PathBuf, String> {
     let directory = runtime.active_directory().map_err(error_text)?;
     let locator = directory
         .open_database()
         .map_err(error_text)?
         .row_image_locator(row_id)
         .map_err(error_text)?;
-    let source = crate::storage::resolve_image_source(&directory, &locator)
-        .ok_or_else(|| format!("第 {row_id} 行没有可用的图片文件"))?;
-    open_path_in_explorer(&source);
-    Ok(())
+    crate::storage::resolve_image_source(&directory, &locator)
+        .ok_or_else(|| format!("第 {row_id} 行没有可用的图片文件"))
 }
 
 #[tauri::command]
