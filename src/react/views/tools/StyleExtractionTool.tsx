@@ -1,15 +1,14 @@
 import { useEffect, useRef, useState } from "react";
-import { emitTo, listen } from "@tauri-apps/api/event";
 import { save } from "@tauri-apps/plugin-dialog";
 import { Plus, Settings2, Play, Pause, RotateCcw, CheckCircle2 } from "lucide-react";
 import { llmSnapshot, saveLlmSettings, estimateLlm, createLlm, actLlm, llmItems, llmModels, exportLlm, type LlmSnapshot, type LlmSettings, type LlmChannel, type LlmItem, type LlmEstimate, type LlmJob } from "../../../lib/api/local-llm";
-import type { ToolboxSelectionSnapshot } from "../../../lib/windows/toolbox";
+import { useToolboxSelection, toolboxScopeSelection } from "../../state/tools/use-toolbox-selection";
 import { errorText } from "../../../lib/utils/format";
 import { notify } from "../../state/notices";
 import { Button, Checkbox } from "../../ui/controls";
 import { ToolPage, ToolCard, ToolError, ToolMetrics } from "./shared";
 import StyleExchangeTool from "./StyleExchangeTool";
-import { DEFAULT_LLM_IGNORED_TAGS, refreshArtistMatching, type ArtistMatchingRefresh } from "../../../lib/api/local-llm";
+import { refreshArtistMatching, type ArtistMatchingRefresh } from "../../../lib/api/local-llm";
 import "./style-extraction.css";
 
 const states: Record<string, string> = { queued: "等待提取", running: "正在提取", paused: "已暂停", blocked: "需要处理", completed: "已完成", cancelled: "已结束", undone: "已撤销" };
@@ -24,7 +23,7 @@ export default function StyleExtractionTool({ active }: { active: boolean }) {
   const [snapshot, setSnapshot] = useState<LlmSnapshot | null>(null);
   const [draft, setDraft] = useState<LlmSettings | null>(null);
   const [dirty, setDirty] = useState(false), [tab, setTab] = useState("tasks"), [error, setError] = useState<string | null>(null), [busy, setBusy] = useState(false);
-  const [selection, setSelection] = useState<ToolboxSelectionSnapshot | null>(null);
+  const { selection, error: selectionError } = useToolboxSelection(active);
   const [scope, setScope] = useState("all"), [include, setInclude] = useState(false), [allMatching, setAllMatching] = useState(false);
   const [estimate, setEstimate] = useState<LlmEstimate | null>(null), [channels, setChannels] = useState<string[]>([]);
   const [channelId, setChannelId] = useState(""), [models, setModels] = useState<string[]>([]);
@@ -46,17 +45,13 @@ export default function StyleExtractionTool({ active }: { active: boolean }) {
       setChannelId(next.settings.channels[0]?.id ?? ""); setJobId(next.jobs[0]?.id ?? "");
     }
   }
-  useEffect(() => {
-    alive.current = true;
-    let stopped = false, stop: (() => void) | undefined;
-    void listen<ToolboxSelectionSnapshot>("main://selection-changed", event => { if (!stopped) { setSelection(event.payload); setEstimate(null); } }).then(fn => { if (stopped) fn(); else { stop = fn; void emitTo("main", "toolbox://request-selection"); } }).catch(e => setError(errorText(e)));
-    return () => { alive.current = false; stopped = true; stop?.(); };
-  }, []);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  useEffect(() => { setEstimate(null); }, [selection]);
   useEffect(() => {
     if (!active) return;
     let stopped = false, loading = false;
     const load = async () => { if (loading) return; loading = true; try { await refresh(); } catch (e) { if (!stopped) setError(errorText(e)); } finally { loading = false; } };
-    void load(); void emitTo("main", "toolbox://request-selection").catch(() => {});
+    void load();
     const timer = setInterval(() => void load(), 1500);
     return () => { stopped = true; clearInterval(timer); };
   }, [active, livePage]);
@@ -87,11 +82,7 @@ export default function StyleExtractionTool({ active }: { active: boolean }) {
     const saved = await saveLlmSettings(snapshot.libraryId, { ...snapshot.settings, [key]: value });
     setDraft(current => current && ({ ...current, [key]: value })); setSnapshot(current => current && ({ ...current, settings: saved }));
   }
-  function target() {
-    if (scope === "all") return null;
-    const value = scope === "selected" ? selection?.selection : selection?.filteredSelection;
-    if (!value) throw Error("尚未获取主窗口范围，请稍后重试。"); return value;
-  }
+  const target = () => toolboxScopeSelection(scope, selection);
   async function create() {
     if (!snapshot) return;
     const result = await createLlm(snapshot.libraryId, target(), include, allMatching, channels);
@@ -111,7 +102,7 @@ export default function StyleExtractionTool({ active }: { active: boolean }) {
   const channelsPicker = <div className="llm-channel-picks">{enabled.map(c => <label key={c.id}><Checkbox checked={channels.includes(c.id)} disabled={busy} onCheckedChange={value => setChannels(current => value ? [...current, c.id] : current.filter(id => id !== c.id))} />{c.name}<small>{c.model} · {c.concurrency} 并发</small></label>)}</div>;
 
   return <ToolPage><div className="llm-tabs" role="tablist" aria-label="LLM 工作台"><Button role="tab" aria-selected={tab === "tasks"} variant={tab === "tasks" ? "primary" : "ghost"} onClick={() => setTab("tasks")}>提取任务</Button><Button role="tab" aria-selected={tab === "settings"} variant={tab === "settings" ? "primary" : "ghost"} onClick={() => setTab("settings")}><Settings2 size={15} />渠道设置{dirty ? " · 未保存" : ""}</Button><Button role="tab" aria-selected={tab === "exchange"} variant={tab === "exchange" ? "primary" : "ghost"} onClick={() => setTab("exchange")}>JSON 导入 / 导出</Button><Button role="tab" aria-selected={tab === "matching"} variant={tab === "matching" ? "primary" : "ghost"} onClick={() => setTab("matching")}>复用白名单{dirty ? " · 未保存" : ""}</Button></div>
-    <ToolError error={error} />
+    <ToolError error={error ?? selectionError} />
     {snapshot && <ToolCard><div className="llm-preferences"><label><Checkbox checked={snapshot.settings.autoImport} disabled={busy} onCheckedChange={value => void perform(() => toggleSetting("autoImport", value === true))} /><span><strong>导入图片时自动提取</strong><small>只处理本次新增图片；忽略白名单后相同的正文共用结果，不重复调用。</small></span></label><label><Checkbox checked={snapshot.settings.autoResume} disabled={busy} onCheckedChange={value => void perform(() => toggleSetting("autoResume", value === true))} /><span><strong>默认继续未完成工作</strong><small>重新打开资料库后继续未完成任务，手动暂停的任务保持暂停。</small></span></label></div><p>任务在本机后台运行，关闭工具箱继续处理，退出软件后保存进度。校验通过的结果自动写入画师串，无画风结果会清空旧值；失败保留原值。</p></ToolCard>}
     {!snapshot && !error && <ToolCard><p>正在读取 LLM 工作台…</p></ToolCard>}
     {tab === "settings" && draft && <ToolCard><div className="rt-row"><div><h3>模型渠道</h3><p>配置随当前资料库保存；Key 使用当前 Windows 账户加密，换电脑后需重新填写。</p></div><Button onClick={() => { const id = crypto.randomUUID(); setDraft({ ...draft, channels: [...draft.channels, { id, name: `渠道 ${draft.channels.length + 1}`, baseUrl: "", model: "", concurrency: 1, enabled: true, hasKey: false }] }); setChannelId(id); setModels([]); setDirty(true); }} disabled={busy}><Plus size={15} />新增渠道</Button></div>
@@ -140,7 +131,7 @@ export default function StyleExtractionTool({ active }: { active: boolean }) {
       <ToolCard><h3>画风与提取复用白名单</h3><p>每行一个完整标签。空格与下划线视为相同分隔，例如 very aesthetic 与 very_aesthetic 只需填写一个。比较时忽略白名单标签（包括加权写法）、多余分隔和末尾逗号；保留其余内容、画师权重和顺序。</p>
         <label className="llm-whitelist-label">忽略标签<textarea className="r-input llm-whitelist" rows={8} spellCheck={false} value={draft.ignoredTags.join("\n")} onChange={e => { setDraft({ ...draft, ignoredTags: e.target.value.split(/\r?\n/) }); setDirty(true); }} /></label>
         <p>默认仅忽略已约定的通用品质与文字限制标签；年份、newest、细节描述、rating:general、location 和 no signature 等仍参与比较。保存后自动更新已有画风归类，后续 LLM 复用也遵循同一套规则。</p>
-        <div className="rt-actions"><Button variant="primary" disabled={busy || !dirty} onClick={() => void perform(saveSettings)}>保存设置</Button><Button disabled={busy} onClick={() => { setDraft({ ...draft, ignoredTags: [...DEFAULT_LLM_IGNORED_TAGS] }); setDirty(true); }}>恢复默认白名单</Button></div>
+        <div className="rt-actions"><Button variant="primary" disabled={busy || !dirty} onClick={() => void perform(saveSettings)}>保存设置</Button><Button disabled={busy || !snapshot} onClick={() => { setDraft({ ...draft, ignoredTags: [...(snapshot?.defaultIgnoredTags ?? [])] }); setDirty(true); }}>恢复默认白名单</Button></div>
       </ToolCard>
       <ToolCard><h3>刷新已有画风归类</h3><p>按已保存的规则重新整理整个资料库，让“只看当前画师串”“选中相同画师串”、按画师串去重、重复项及对比中的相同画师串得到一致结果。新导入和编辑会自动更新。</p>
         <p>不调用 LLM，不修改原文、历史提取结果或手动分组。合并后若有多个代表图，保留图片编号最小的一张；已有重复项名称优先沿用匹配后的名称，其余原名保留。仅剩被忽略标签的内容不作为同一画风归并。</p>

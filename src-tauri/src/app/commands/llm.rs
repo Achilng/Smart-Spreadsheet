@@ -14,6 +14,7 @@ use tauri::{Emitter, Manager};
 pub struct Snapshot {
     library_id: String,
     settings: Settings,
+    default_ignored_tags: Vec<String>,
     jobs: Vec<Job>,
     progress: Progress,
     live: Vec<LiveRequest>,
@@ -52,6 +53,7 @@ pub(crate) async fn llm_snapshot(
         Ok(Snapshot {
             library_id,
             settings: llm::public_settings(settings),
+            default_ignored_tags: crate::db::prompt_matching::default_ignored_tags(),
             jobs,
             progress,
             live,

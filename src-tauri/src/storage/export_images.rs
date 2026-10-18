@@ -238,49 +238,20 @@ impl DataDirectory {
         if rows.is_empty() {
             return Err(ImageFilesExportError::EmptySelection);
         }
-        let total = rows.len();
-        progress(ImageFilesProgress {
-            processed: 0,
-            total,
-        });
-
-        let output_dir = parent_dir.to_owned();
-        let mut exported = 0;
-        let mut hardlink_fallbacks = 0;
+        let mut jobs = Vec::with_capacity(rows.len());
+        let mut reserved = HashSet::with_capacity(rows.len());
         let mut missing = 0;
-
         for (index, row) in rows.iter().enumerate() {
-            match resolve_source(self, row) {
-                Some(source) => {
-                    let file_name = output_file_name(index + 1, &source);
-                    let target = unique_output_target(&output_dir, &file_name);
-                    match mode {
-                        ImageFileExportMode::Copy => {
-                            fs::copy(&source, &target)?;
-                        }
-                        ImageFileExportMode::Hardlink => {
-                            if fs::hard_link(&source, &target).is_err() {
-                                fs::copy(&source, &target)?;
-                                hardlink_fallbacks += 1;
-                            }
-                        }
-                    }
-                    exported += 1;
-                }
-                None => missing += 1,
-            }
-            let processed = index + 1;
-            if processed % PROGRESS_EVERY_FILES == 0 || processed == total {
-                progress(ImageFilesProgress { processed, total });
-            }
+            if let Some(source) = resolve_source(self, row) {
+                let name = output_file_name(index + 1, &source);
+                let target = reserve_unique_output_target(parent_dir, &name, &mut reserved);
+                jobs.push((source, target));
+            } else { missing += 1; }
         }
-
-        Ok(ImageFilesExportOutcome {
-            directory: output_dir,
-            exported,
-            hardlink_fallbacks,
-            missing,
-        })
+        execute_export_jobs(parent_dir, jobs, missing, match mode {
+            ImageFileExportMode::Copy => ExportOperation::Copy,
+            ImageFileExportMode::Hardlink => ExportOperation::Hardlink,
+        }, progress)
     }
 
     /// 按工具箱选项导出主窗口选中的图片。
@@ -331,7 +302,6 @@ impl DataDirectory {
         }
 
         let total = sources.len() + missing;
-        progress(ImageFilesProgress { processed: 0, total });
         let output_dir = parent_dir.to_owned();
         let nonce = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -353,36 +323,10 @@ impl DataDirectory {
             jobs.push((source, target));
         }
 
-        let exported = jobs.len();
-        let workers = adaptive_export_worker_count(&jobs, strip_metadata);
-        let results = parallel::parallel_map(
-            jobs,
-            workers,
-            |_, (source, target)| write_exported_copy(&source, &target, strip_metadata),
-            |completed| {
-                let processed = missing + completed;
-                if processed % PROGRESS_EVERY_FILES == 0 || processed == total {
-                    progress(ImageFilesProgress { processed, total });
-                }
-            },
-        );
-        if exported == 0 {
-            progress(ImageFilesProgress {
-                processed: total,
-                total,
-            });
-        }
-        for result in results {
-            result?;
-        }
-
-        Ok(ImageFilesExportOutcome {
-            directory: output_dir,
-            exported,
-            hardlink_fallbacks: 0,
-            missing,
-        })
+        execute_export_jobs(&output_dir, jobs, missing,
+            if strip_metadata { ExportOperation::StripMetadata } else { ExportOperation::Copy }, progress)
     }
+
 }
 
 impl DataDirectory {
@@ -610,31 +554,6 @@ fn sanitize_file_name_character(character: char) -> char {
     }
 }
 
-fn unique_output_target(directory: &Path, file_name: &str) -> PathBuf {
-    let first = directory.join(file_name);
-    if !first.exists() {
-        return first;
-    }
-
-    let path = Path::new(file_name);
-    let stem = path
-        .file_stem()
-        .map(|value| value.to_string_lossy().into_owned())
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| "image".to_owned());
-    let suffix = path
-        .extension()
-        .map(|value| format!(".{}", value.to_string_lossy()))
-        .unwrap_or_default();
-    for index in 2_usize.. {
-        let candidate = directory.join(format!("{stem}_{index}{suffix}"));
-        if !candidate.exists() {
-            return candidate;
-        }
-    }
-    unreachable!("unbounded file numbering always finds a candidate")
-}
-
 fn reserve_unique_output_target(
     directory: &Path,
     file_name: &str,
@@ -725,47 +644,78 @@ fn export_worker_limit(
     cpu_limit.min(memory_limit)
 }
 
+#[derive(Clone, Copy)]
+enum ExportOperation { Copy, Hardlink, StripMetadata }
+
+fn execute_export_jobs(
+    directory: &Path,
+    jobs: Vec<(PathBuf, PathBuf)>,
+    missing: usize,
+    operation: ExportOperation,
+    progress: impl Fn(ImageFilesProgress) + Sync,
+) -> Result<ImageFilesExportOutcome, ImageFilesExportError> {
+    let total = jobs.len() + missing;
+    progress(ImageFilesProgress { processed: 0, total });
+    let strip_metadata = matches!(operation, ExportOperation::StripMetadata);
+    let workers = adaptive_export_worker_count(&jobs, strip_metadata);
+    let results = parallel::parallel_map(jobs, workers, |_, (source, target)| {
+        if matches!(operation, ExportOperation::Hardlink) && fs::hard_link(&source, &target).is_ok() {
+            return Ok(false);
+        }
+        write_exported_copy(&source, &target, strip_metadata)
+            .map(|()| matches!(operation, ExportOperation::Hardlink))
+    }, |completed| {
+        let processed = completed + missing;
+        if processed % PROGRESS_EVERY_FILES == 0 || processed == total {
+            progress(ImageFilesProgress { processed, total });
+        }
+    });
+    if results.is_empty() { progress(ImageFilesProgress { processed: total, total }); }
+    let mut exported = 0;
+    let mut hardlink_fallbacks = 0;
+    let mut failures = Vec::new();
+    for result in results {
+        match result {
+            Ok(fallback) => { exported += 1; hardlink_fallbacks += usize::from(fallback); }
+            Err(error) => failures.push(error.to_string()),
+        }
+    }
+    if let Some(first) = failures.first() {
+        return Err(io::Error::other(format!("已导出 {exported} 张，{} 张失败，{missing} 张源文件不可用；首个错误：{first}", failures.len())).into());
+    }
+    Ok(ImageFilesExportOutcome { directory: directory.to_owned(), exported, hardlink_fallbacks, missing })
+}
+
 fn write_exported_copy(
     source: &Path,
     target: &Path,
     strip_metadata: bool,
 ) -> Result<(), ImageFilesExportError> {
-    if !strip_metadata {
-        fs::copy(source, target)?;
-        return Ok(());
-    }
-
-    let reader = image::ImageReader::open(source)?.with_guessed_format()?;
-    let format = reader.format().ok_or_else(|| {
-        io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!("无法识别图片格式: {}", source.display()),
-        )
-    })?;
-    let image = reader.decode()?;
-    if format == image::ImageFormat::Png {
-        let mut rgba = image.to_rgba8();
-        crate::pipeline::stealth_png::scrub_stealth_alpha_lsb(&mut rgba);
-        let mut writer = BufWriter::new(File::create(target)?);
-        let encoder =
-            PngEncoder::new_with_quality(&mut writer, CompressionType::Fast, FilterType::Sub);
-        if let Err(error) = encoder.write_image(
-            rgba.as_raw(),
-            rgba.width(),
-            rgba.height(),
-            image::ExtendedColorType::Rgba8,
-        ) {
-            let _ = fs::remove_file(target);
-            return Err(error.into());
+    // An external writer may create a reserved name before this worker starts.
+    // Never truncate it; the guard only owns a file successfully created here.
+    let file = fs::OpenOptions::new().write(true).create_new(true).open(target)?;
+    let mut guard = crate::fsx::TemporaryFile::new(target.to_owned());
+    let written = (|| -> Result<(), ImageFilesExportError> {
+        let mut writer = BufWriter::new(file);
+        if !strip_metadata {
+            io::copy(&mut File::open(source)?, &mut writer)?;
+        } else {
+            let reader = image::ImageReader::open(source)?.with_guessed_format()?;
+            let format = reader.format().ok_or_else(|| io::Error::new(
+                io::ErrorKind::InvalidData, format!("无法识别图片格式: {}", source.display())))?;
+            let image = reader.decode()?;
+            if format == image::ImageFormat::Png {
+                let mut rgba = image.to_rgba8();
+                crate::pipeline::stealth_png::scrub_stealth_alpha_lsb(&mut rgba);
+                PngEncoder::new_with_quality(&mut writer, CompressionType::Fast, FilterType::Sub)
+                    .write_image(rgba.as_raw(), rgba.width(), rgba.height(), image::ExtendedColorType::Rgba8)?;
+            } else { image.write_to(&mut writer, format)?; }
         }
-        if let Err(error) = writer.flush() {
-            drop(writer);
-            let _ = fs::remove_file(target);
-            return Err(error.into());
-        }
-    } else {
-        image.save_with_format(target, format)?;
-    }
+        writer.flush()?;
+        Ok(())
+    })();
+    written?;
+    guard.commit();
     Ok(())
 }
 

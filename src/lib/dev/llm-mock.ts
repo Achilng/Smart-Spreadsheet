@@ -1,15 +1,16 @@
 /** Development-only IPC fixture for reviewing the embedded workbench without model calls. */
 import type { LlmChannel, LlmItem, LlmJob, LlmSettings, LlmSnapshot } from "../api/local-llm";
-import { DEFAULT_LLM_IGNORED_TAGS } from "../api/local-llm";
+// Fixture values only; production defaults always come from llm_snapshot.
+const mockIgnoredTags = ["mock quality", "mock resolution"];
 
 export function createLlmMock() {
-  let settings: LlmSettings = { autoImport: false, autoResume: true, batchSize: 10, reasoning: "medium", channels: [], ignoredTags: [...DEFAULT_LLM_IGNORED_TAGS] };
+  let settings: LlmSettings = { autoImport: false, autoResume: true, batchSize: 10, reasoning: "medium", channels: [], ignoredTags: [...mockIgnoredTags] };
   const jobs: LlmJob[] = [];
   const results = new Map<string, LlmItem[]>();
   return (command: string, payload: Record<string, unknown>): unknown => {
     switch (command) {
       case "llm_snapshot": return {
-        libraryId: "mock-library", settings: structuredClone(settings), jobs: structuredClone(jobs),
+        libraryId: "mock-library", defaultIgnoredTags: [...mockIgnoredTags], settings: structuredClone(settings), jobs: structuredClone(jobs),
         progress: { libraryId: "mock-library", jobId: jobs.find(j => j.state === "running")?.id ?? "", total: 8, done: 3, failed: 0, inFlight: 1, queued: 0, message: "", running: jobs.some(j => j.state === "running") },
         live: jobs.some(j => j.state === "running") ? [{ id: 1, channel: settings.channels[0]?.name ?? "示例渠道", model: settings.channels[0]?.model ?? "example-model", count: 5, text: '{"items":[{"id":"1","status":"ok","artist_string":"artist:alpha, watercolor"' }] : [],
         liveTotal: jobs.some(j => j.state === "running") ? 1 : 0,
