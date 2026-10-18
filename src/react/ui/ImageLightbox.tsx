@@ -28,7 +28,11 @@ function useDecodedImage(url: string | null) {
 interface View { fitted: boolean; scale: number; pan: ImagePoint }
 const fittedView = (): View => ({ fitted: true, scale: 1, pan: { x: 0, y: 0 } });
 
-export function DetailLightbox({ row, onClose }: { row: RowRecord; onClose: () => void }) {
+export function ImageLightbox(props: { row: RowRecord; onClose: () => void }) {
+  return <ImageLightboxContent key={props.row.id} {...props} />;
+}
+
+function ImageLightboxContent({ row, onClose }: { row: RowRecord; onClose: () => void }) {
   const original = useImage(originalImages, row.id, true), preview = useProgressiveImage(row.id);
   const full = useDecodedImage(original.url), fallback = useDecodedImage(preview.url);
   const display = full?.image ?? fallback?.image;
@@ -48,6 +52,10 @@ export function DetailLightbox({ row, onClose }: { row: RowRecord; onClose: () =
   const status = failed ? (display ? "原图加载失败 · 当前为预览图" : "原图加载失败") : full?.image ? "完整原图" : "正在加载原图…";
 
   useLayoutEffect(() => { opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; }, []);
+  useEffect(() => {
+    originalImages.retain(new Set([row.id]));
+    return () => originalImages.retain(new Set());
+  }, [row.id]);
   // The portal mounts after this component: observe the actual node, not an empty ref on the first effect.
   useLayoutEffect(() => {
     if (!stage) return;
