@@ -95,9 +95,13 @@ export function resetLibraryRows(): void {
   useRows.setState(state => ({ query: { ...defaultFilters, sort: state.query.sort }, pages: new Map(), total: 0, loading: false, refreshing: false, error: null, activeRow: null, resetToken: state.resetToken + 1 }));
 }
 
+let tagsGeneration = 0;
 export async function refreshTags(): Promise<void> {
-  try { useLibrary.setState({ tags: await listTags(), tagError: null }); }
-  catch (error) { useLibrary.setState({ tagError: errorText(error) }); }
+  const request = ++tagsGeneration;
+  const directory = useLibrary.getState().snapshot?.dataDirectory;
+  const current = () => request === tagsGeneration && directory === useLibrary.getState().snapshot?.dataDirectory;
+  try { const tags = await listTags(); if (current()) useLibrary.setState({ tags, tagError: null }); }
+  catch (error) { if (current()) useLibrary.setState({ tagError: errorText(error) }); }
 }
 
 export function setQuery(patch: Partial<Filters>, searchSession?: number): void {
@@ -185,7 +189,7 @@ export function rowAt(index: number): RowRecord | undefined {
   return useRows.getState().pages.get(Math.floor(index / PAGE_SIZE))?.[index % PAGE_SIZE];
 }
 
-export function patchRowFields(rowId: number, fields: Partial<RowRecord>, options: { resetScroll?: boolean } = {}): void {
+export function patchRowFields(rowId: number, fields: Partial<RowRecord>, options: { resetScroll?: boolean; reload?: boolean } = {}): void {
   const state = useRows.getState();
   const pages = new Map(state.pages);
   for (const [key, rows] of pages) {
@@ -193,5 +197,5 @@ export function patchRowFields(rowId: number, fields: Partial<RowRecord>, option
   }
   useRows.setState({ pages, activeRow: state.activeRow?.id === rowId ? { ...state.activeRow, ...fields } : state.activeRow });
   // Prompt, tag and note edits can change filter membership and duplicate groups.
-  void reloadRows({ resetScroll: options.resetScroll ?? state.query.sort === "recentlyUpdated", keepActive: true });
+  if (options.reload !== false) void reloadRows({ resetScroll: options.resetScroll ?? state.query.sort === "recentlyUpdated", keepActive: true });
 }

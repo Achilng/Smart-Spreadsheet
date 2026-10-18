@@ -1,11 +1,10 @@
 import { create } from "zustand";
 import { getRowsByIds, mutableRowState, restoreMutableRowStates, selectedRowIds, type MutableRowState, type RowSelection } from "../../lib/api";
-import { refreshTags, reloadRows, useRows } from "./library";
+import { afterLibraryMutation } from "./library-changes";
 import { notify } from "./notices";
 import { runTask, useTasks } from "./tasks";
 import { errorText } from "../../lib/utils/format";
 import { registerHistoryClearer } from "../../lib/stores/history-context";
-import { notifyMainStateChanged, notifyToolboxLibraryChanged } from "../../lib/windows/library-events";
 
 export interface HistoryAction { label: string; undo: () => Promise<void>; redo: () => Promise<void> }
 const undoStack: HistoryAction[] = [];
@@ -66,14 +65,7 @@ export async function captureSelectionStates(selection: RowSelection): Promise<M
 export async function restoreRowStates(states: MutableRowState[]): Promise<void> {
   if (!states.length) return;
   await restoreMutableRowStates(states);
-  if (new URLSearchParams(window.location.search).get("window") === "toolbox") await notifyMainStateChanged("libraryEdited");
-  else notifyToolboxLibraryChanged("main");
-  const activeId = useRows.getState().activeRow?.id;
-  await Promise.all([refreshTags(), reloadRows({ keepActive: true })]);
-  if (activeId !== undefined && useRows.getState().activeRow?.id === activeId) {
-    const rows = await getRowsByIds([activeId]);
-    if (useRows.getState().activeRow?.id === activeId) useRows.setState({ activeRow: rows[0] ?? null });
-  }
+  await afterLibraryMutation();
 }
 export async function recordRowStateChange(label: string, before: MutableRowState[]): Promise<boolean> {
   if (!before.length) return false;

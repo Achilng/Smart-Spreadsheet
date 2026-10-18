@@ -6,7 +6,7 @@ use crate::db::{Database, DatabaseError};
 use crate::pipeline::prompt_text::{
     combined_artists, normalize_artist_name, prefix_artist_tag_in_prompt,
 };
-use rusqlite::{Connection, TransactionBehavior, params};
+use rusqlite::{Connection, TransactionBehavior};
 use std::collections::HashSet;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -58,27 +58,7 @@ impl Database {
         let changes = artist_prefix_changes(&transaction, &artist_name)?;
         let prompt_fields_changed = changes.iter().map(changed_prompt_field_count).sum::<u64>();
 
-        let mut update = transaction.prepare(
-            "UPDATE rows
-             SET positive_prompt = ?2,
-                 character_prompt = ?3,
-                 negative_prompt = ?4,
-                 artists = ?5,
-                 style_signature = ?6, artist_llm = ?7
-             WHERE id = ?1",
-        )?;
-        for change in &changes {
-            update.execute(params![
-                change.row_id,
-                &change.new_positive_prompt,
-                &change.new_character_prompt,
-                &change.new_negative_prompt,
-                &change.new_artists,
-                crate::pipeline::style_signature_of(change.new_positive_prompt.as_deref()),
-                &change.new_artist_llm,
-            ])?;
-        }
-        drop(update);
+        crate::db::artist_prefix_write::write_changes(&transaction, &changes, true)?;
         transaction.commit()?;
         self.bump_data_version();
 
@@ -119,51 +99,7 @@ impl Database {
         let transaction = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let mut update = transaction.prepare(
-            "UPDATE rows
-             SET positive_prompt = ?2,
-                 character_prompt = ?3,
-                 negative_prompt = ?4,
-                 artists = ?5,
-                 style_signature = ?6, artist_llm = ?7
-             WHERE id = ?1",
-        )?;
-        let mut changed = 0_u64;
-        for change in &changes {
-            let (positive, character, negative, artists) = if reapply {
-                (
-                    &change.new_positive_prompt,
-                    &change.new_character_prompt,
-                    &change.new_negative_prompt,
-                    &change.new_artists,
-                )
-            } else {
-                (
-                    &change.previous_positive_prompt,
-                    &change.previous_character_prompt,
-                    &change.previous_negative_prompt,
-                    &change.previous_artists,
-                )
-            };
-            let updated = update.execute(params![
-                change.row_id,
-                positive,
-                character,
-                negative,
-                artists,
-                crate::pipeline::style_signature_of(positive.as_deref()),
-                if reapply {
-                    &change.new_artist_llm
-                } else {
-                    &change.previous_artist_llm
-                },
-            ])?;
-            if updated == 0 {
-                return Err(QuickEditError::UnknownRow(change.row_id));
-            }
-            changed += u64::try_from(updated).map_err(|_| DatabaseError::CountOverflow)?;
-        }
-        drop(update);
+        let changed = crate::db::artist_prefix_write::write_changes(&transaction, &changes, reapply)?;
         transaction.commit()?;
         self.bump_data_version();
         Ok(changed)

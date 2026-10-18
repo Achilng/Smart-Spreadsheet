@@ -1,4 +1,5 @@
 mod artist_auto_prefix;
+mod artist_prefix_write;
 mod artist_representatives;
 pub use artist_representatives::ArtistRepresentativeResult;
 mod artist_xml;

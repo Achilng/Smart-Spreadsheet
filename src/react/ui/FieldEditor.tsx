@@ -7,7 +7,7 @@ import { runTask, useTasks } from "../state/tasks";
 import { notify } from "../state/notices";
 import { errorText } from "../../lib/utils/format";
 import { Button, Hint, Modal, Textarea } from "./controls";
-import { notifyToolboxLibraryChanged } from "../../lib/windows/library-events";
+import { afterLibraryMutation } from "../state/library-changes";
 
 type Field = "positivePrompt" | "characterPrompt" | "negativePrompt" | "note";
 const drafts = new Map<string, string>();
@@ -43,15 +43,13 @@ export function FieldEditor({ row, field, label }: { row: RowRecord; field: Fiel
       await runTask(`保存${label}`, async () => {
         if (field === "positivePrompt" || field === "characterPrompt") {
           const result = await (field === "positivePrompt" ? updatePositivePrompt : updateCharacterPrompt)(row.id, saved);
-          patchRowFields(row.id, { [field]: saved, artists: result.newArtists, artistLlm: result.artistLlm ?? null });
+          patchRowFields(row.id, { [field]: saved, artists: result.newArtists, artistLlm: result.artistLlm ?? null }, { reload: false });
         } else {
           await (field === "negativePrompt" ? updateNegativePrompt : updateNote)(row.id, saved);
-          patchRowFields(row.id, { [field]: field === "note" ? saved.trim() || null : saved });
+          patchRowFields(row.id, { [field]: field === "note" ? saved.trim() || null : saved }, { reload: false });
         }
         drafts.delete(key); setEditing(false); setRestored(false);
-        notifyToolboxLibraryChanged("main");
-        try { await recordRowStateChange(`编辑${label}`, [before]); }
-        catch (historyError) { notify(`操作已完成，但未能记录撤销历史：${errorText(historyError)}`, "error"); }
+        await afterLibraryMutation({ history: () => recordRowStateChange(`编辑${label}`, [before]) });
       });
     } catch (failure) { setError(errorText(failure)); }
     finally { setSaving(false); }

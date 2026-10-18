@@ -220,29 +220,9 @@ impl Database {
                 changes.push(change);
             }
         }
-        {
-            let mut update = transaction.prepare(
-                "UPDATE rows
-                 SET positive_prompt = ?2,
-                     character_prompt = ?3,
-                     negative_prompt = ?4,
-                     artists = ?5,
-                     style_signature = ?6, artist_llm = ?7
-                 WHERE id = ?1",
-            )?;
-            for change in &changes {
-                update.execute(rusqlite::params![
-                    change.row_id,
-                    change.new_positive_prompt,
-                    change.new_character_prompt,
-                    change.new_negative_prompt,
-                    change.new_artists,
-                    crate::pipeline::style_signature_of(change.new_positive_prompt.as_deref()),
-                    &change.new_artist_llm,
-                ])?;
-            }
-        }
+        super::artist_prefix_write::write_changes(&transaction, &changes, true)?;
         transaction.commit()?;
+        self.bump_data_version();
 
         let prompt_fields_changed = changes.iter().map(changed_prompt_field_count).sum::<u64>();
         let changed_rows = u64::try_from(changes.len())
@@ -301,29 +281,9 @@ impl Database {
             .filter_map(|row| automatic_change(row, &known_names))
             .collect::<Vec<_>>();
 
-        {
-            let mut update = transaction.prepare(
-                "UPDATE rows
-                 SET positive_prompt = ?2,
-                     character_prompt = ?3,
-                     negative_prompt = ?4,
-                     artists = ?5,
-                     style_signature = ?6, artist_llm = ?7
-                 WHERE id = ?1",
-            )?;
-            for change in &changes {
-                update.execute(rusqlite::params![
-                    change.row_id,
-                    change.new_positive_prompt,
-                    change.new_character_prompt,
-                    change.new_negative_prompt,
-                    change.new_artists,
-                    crate::pipeline::style_signature_of(change.new_positive_prompt.as_deref()),
-                    &change.new_artist_llm,
-                ])?;
-            }
-        }
+        super::artist_prefix_write::write_changes(&transaction, &changes, true)?;
         transaction.commit()?;
+        self.bump_data_version();
 
         let prompt_fields_changed = changes.iter().map(changed_prompt_field_count).sum::<u64>();
         let changed_rows = u64::try_from(changes.len())

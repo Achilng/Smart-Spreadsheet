@@ -1,20 +1,31 @@
 import { create } from "zustand";
-import { assignRowsToGroup, createGroup, deleteEmptyGroups, deleteGroup, getGroupMembers, getRowsByIds, listGroups, mutableRowState, queryRows, renameGroup, restoreGroup, restoreMutableRowStates, ungroupRows, type GroupSummary, type MutableRowState, type RowRecord, type RowSelection } from "../../lib/api";
+import { assignRowsToGroup, createGroup, deleteEmptyGroups, deleteGroup, getGroupMembers, listGroups, mutableRowState, queryRows, renameGroup, restoreGroup, restoreMutableRowStates, ungroupRows, type GroupSummary, type MutableRowState, type RowSelection } from "../../lib/api";
 import { errorText } from "../../lib/utils/format";
 import { beginHistoryGroup, captureSelectionStates, commitHistoryGroup, recordHistory, recordRowStateChange } from "./history";
-import { refreshTags, reloadRows, useLibrary, useRows } from "./library";
-import { notifyToolboxLibraryChanged } from "../../lib/windows/library-events";
+import { useLibrary, useRows } from "./library";
+import { afterLibraryMutation } from "./library-changes";
 import type { SortMode } from "../../lib/api";
 
-export interface SectionMembers { rows: RowRecord[]; totalCount: number; loading: boolean; error: string | null }
+import { createSectionPager, type SectionMembers } from "./section-members";
+export type { SectionMembers } from "./section-members";
 interface GroupsState {
   memberSort: SortMode;
   list: GroupSummary[]; loading: boolean; error: string | null; sortByCount: boolean; layout: "shelf" | "list"; search: string;
   expanded: string[]; members: Record<string, SectionMembers>; renderLimits: Record<string, number>; version: number;
 }
 export const useGroups = create<GroupsState>(() => ({ memberSort: "timeAsc", list: [], loading: false, error: null, sortByCount: false, layout: "shelf", search: "", expanded: [], members: {}, renderLimits: {}, version: 0 }));
-let generation = 0, listGeneration = 0;
-let signature = "";
+const memberPager = createSectionPager({
+  read: key => useGroups.getState().members[key],
+  write: (key, value) => useGroups.setState(state => ({ members: { ...state.members, [key]: value } })),
+  clear: () => useGroups.setState({ members: {} }),
+  fetch: (key, offset, limit) => {
+    const sort = useGroups.getState().memberSort;
+    return key === "ungrouped"
+      ? queryRows({ ...structuredClone(useRows.getState().query), offset, limit, dedupe: "none", groupView: false, hideGrouped: true, sort })
+      : getGroupMembers(Number(key), offset, limit, sort);
+  },
+});
+let listGeneration = 0;
 let directory: string | null | undefined;
 export async function loadGroups(): Promise<void> {
   const request = ++listGeneration;
@@ -28,10 +39,9 @@ export function syncGroups(force = false): Promise<void> {
   const nextDirectory = useLibrary.getState().snapshot?.dataDirectory;
   const changedDirectory = nextDirectory !== directory;
   const next = JSON.stringify([nextDirectory, rows.resetToken, rows.query, useGroups.getState().memberSort]);
-  if (!force && next === signature) return Promise.resolve();
+  if (!memberPager.sync(next, force)) return Promise.resolve();
   directory = nextDirectory;
-  signature = next; generation++;
-  useGroups.setState(state => ({ members: {}, renderLimits: {}, version: state.version + 1, ...(changedDirectory ? { list: [], expanded: [], search: "" } : {}) }));
+  useGroups.setState(state => ({ renderLimits: {}, version: state.version + 1, ...(changedDirectory ? { list: [], expanded: [], search: "" } : {}) }));
   const loading = loadGroups();
   for (const key of useGroups.getState().expanded) void loadGroupMembers(key);
   return loading;
@@ -42,21 +52,7 @@ export function setGroupMemberSort(memberSort: SortMode): void {
   useGroups.setState({ memberSort });
   void syncGroups();
 }
-export async function loadGroupMembers(key: string, more = false): Promise<void> {
-  const current = useGroups.getState().members[key];
-  if (current?.loading || (!more && current && !current.error) || (more && current && current.rows.length >= current.totalCount)) return;
-  const request = generation, offset = more ? current?.rows.length ?? 0 : 0, sort = useGroups.getState().memberSort;
-  useGroups.setState(state => ({ members: { ...state.members, [key]: { rows: current?.rows ?? [], totalCount: current?.totalCount ?? 0, loading: true, error: null } } }));
-  try {
-    const page = key === "ungrouped"
-      ? await queryRows({ ...structuredClone(useRows.getState().query), offset, limit: 200, dedupe: "none", groupView: false, hideGrouped: true, sort })
-      : await getGroupMembers(Number(key), offset, 200, sort);
-    if (request !== generation) return;
-    useGroups.setState(state => ({ members: { ...state.members, [key]: { rows: more ? [...(current?.rows ?? []), ...page.rows] : page.rows, totalCount: page.totalCount, loading: false, error: null } } }));
-  } catch (error) {
-    if (request === generation) useGroups.setState(state => ({ members: { ...state.members, [key]: { ...state.members[key], loading: false, error: errorText(error) } } }));
-  }
-}
+export const loadGroupMembers = memberPager.load;
 export function toggleGroup(key: string): void {
   const state = useGroups.getState();
   const expanded = state.expanded.includes(key) ? state.expanded.filter(item => item !== key) : [...state.expanded, key];
@@ -64,14 +60,7 @@ export function toggleGroup(key: string): void {
   if (expanded.includes(key)) void loadGroupMembers(key);
 }
 export async function refreshGroupsAfterMutation(): Promise<void> {
-  notifyToolboxLibraryChanged("main");
-  const activeId = useRows.getState().activeRow?.id;
-  await Promise.all([refreshTags(), reloadRows({ keepActive: true })]);
-  if (activeId !== undefined && useRows.getState().activeRow?.id === activeId) {
-    const active = await getRowsByIds([activeId]);
-    if (useRows.getState().activeRow?.id === activeId) useRows.setState({ activeRow: active[0] ?? null });
-  }
-  await syncGroups(true);
+  await afterLibraryMutation({ afterRefresh: () => syncGroups(true) });
 }
 export async function createNewGroup(name: string): Promise<GroupSummary> {
   const group = await createGroup(name.trim());
@@ -113,8 +102,11 @@ export async function cleanEmptyGroups(): Promise<number> {
 export async function assignToGroup(selection: RowSelection, group: GroupSummary | null): Promise<number> {
   const before = await captureSelectionStates(selection);
   const count = group ? await assignRowsToGroup(selection, group.id) : await ungroupRows(selection);
-  await recordRowStateChange(group ? `分配到分组「${group.name}」` : "取消分组", before);
-  await refreshGroupsAfterMutation(); return count;
+  await afterLibraryMutation({
+    history: () => recordRowStateChange(group ? `分配到分组「${group.name}」` : "取消分组", before),
+    afterRefresh: () => syncGroups(true),
+  });
+  return count;
 }
 export async function mergeGroups(source: GroupSummary, target: GroupSummary): Promise<number> {
   if (source.id === target.id) throw new Error("不能合并到同一个分组。");

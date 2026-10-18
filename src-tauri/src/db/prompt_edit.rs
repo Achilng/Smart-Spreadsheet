@@ -171,37 +171,35 @@ impl Database {
 
         let target = super::tags::TARGET_ROWS_TABLE;
         let mut stmt = transaction.prepare(&format!(
-            "SELECT r.id, r.positive_prompt, r.character_prompt FROM rows r
+            "SELECT r.id, r.positive_prompt, r.character_prompt, r.negative_prompt, r.artists, r.artist_llm FROM rows r
              INNER JOIN {target} t ON t.id = r.id"
         ))?;
-        let rows_to_update: Vec<(i64, Option<String>, Option<String>)> = stmt
-            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+        let rows_to_update = stmt
+            .query_map([], |row| Ok(super::quick_edit::QuickArtistPrefixChange {
+                row_id: row.get(0)?, previous_positive_prompt: row.get(1)?,
+                new_positive_prompt: row.get(1)?, previous_character_prompt: row.get(2)?,
+                new_character_prompt: row.get(2)?, previous_negative_prompt: row.get(3)?,
+                new_negative_prompt: row.get(3)?, previous_artists: row.get(4)?,
+                new_artists: row.get(4)?, previous_artist_llm: row.get(5)?, new_artist_llm: row.get(5)?,
+            }))?
             .collect::<Result<Vec<_>, _>>()?;
         drop(stmt);
 
-        let mut update = transaction
-            .prepare("UPDATE rows SET positive_prompt = ?2, artists = ?3, style_signature = ?4 WHERE id = ?1")?;
+        let mut writer = super::artist_prefix_write::ArtistPrefixWriter::new(&transaction)?;
         let mut count = 0u64;
-        for (id, prompt, character_prompt) in &rows_to_update {
-            let Some(old) = prompt.as_deref() else {
-                continue;
-            };
-            let Some(new_prompt) = prefix_artist_tag_in_prompt(old, artist_name) else {
-                continue;
-            };
-            let artists_str = combined_artists(&new_prompt, character_prompt.as_deref());
-            update.execute(rusqlite::params![
-                id,
-                new_prompt,
-                artists_str,
-                crate::pipeline::style_signature_of(Some(&new_prompt))
-            ])?;
-            count += 1;
+        for mut change in rows_to_update {
+            let Some(old) = change.previous_positive_prompt.as_deref() else { continue; };
+            let Some(new_prompt) = prefix_artist_tag_in_prompt(old, artist_name) else { continue; };
+            change.new_artists = combined_artists(&new_prompt, change.new_character_prompt.as_deref());
+            change.new_positive_prompt = Some(new_prompt);
+            change.new_artist_llm = None;
+            count += writer.write_change(&change, true)? as u64;
         }
-        drop(update);
 
+        drop(writer);
         drop_selection_tables(&transaction)?;
         transaction.commit()?;
+        self.bump_data_version();
         Ok(PromptEditResult {
             affected_rows: count,
         })

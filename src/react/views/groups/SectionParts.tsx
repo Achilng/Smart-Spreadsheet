@@ -42,7 +42,7 @@ export function SectionMembersGrid({ data, scope, order, limit, onReveal, onLoad
     {data?.error && <div className="r-group-status" role="alert"><p className="r-group-error">加载失败：{data.error}</p><Button onClick={() => onLoad(Boolean(data.rows.length))}>重试</Button></div>}
     {data && !data.loading && !data.error && !data.rows.length && <p className="r-group-status">没有符合条件的图片。</p>}
     {data && limit < data.rows.length && <RevealMore onReveal={onReveal} />}
-    {data && !data.error && limit >= data.rows.length && data.rows.length < data.totalCount && <Button className="r-section-load" disabled={data.loading} onClick={() => onLoad(true)}>{data.loading ? "加载中…" : `加载更多（还有 ${(data.totalCount - data.rows.length).toLocaleString()} 张）`}</Button>}
+    {data && !data.error && !data.exhausted && limit >= data.rows.length && data.rows.length < data.totalCount && <Button className="r-section-load" disabled={data.loading} onClick={() => onLoad(true)}>{data.loading ? "加载中…" : `加载更多（还有 ${(data.totalCount - data.rows.length).toLocaleString()} 张）`}</Button>}
   </div>;
 }
 function RevealMore({ onReveal }: { onReveal: () => void }) {
