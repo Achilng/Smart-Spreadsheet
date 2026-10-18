@@ -279,20 +279,20 @@ impl Database {
         enabled: bool,
         expected_representative_id: Option<i64>,
     ) -> Result<ArtistRepresentativeResult, DatabaseError> {
+        let requested_key = self.artist_key(artists)?;
         let transaction = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         let key: Option<String> = transaction
             .query_row(
-                "SELECT NULLIF(TRIM(COALESCE(artists, '')), '') FROM rows WHERE id = ?1",
+                "SELECT artist_match_key FROM rows WHERE id = ?1",
                 [row_id],
                 |row| row.get(0),
             )
             .optional()?
             .ok_or(DatabaseError::RowNotFound(row_id))?;
         let key = key.ok_or(DatabaseError::EmptyArtists)?;
-        // Use the same ASCII-space normalization as SQLite TRIM and dedupe.
-        if key != artists.trim_matches(' ') {
+        if requested_key.as_deref() != Some(&key) {
             return Err(DatabaseError::ArtistStringChanged);
         }
         let current: Option<i64> = transaction

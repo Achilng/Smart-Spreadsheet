@@ -37,6 +37,9 @@ impl Database {
     }
 
     pub fn set_setting(&mut self, key: &str, value: &str) -> Result<(), DatabaseError> {
+        if key == super::llm::SETTINGS_KEY {
+            return self.save_matching_settings(value);
+        }
         self.connection.execute(
             "INSERT INTO settings(key, value) VALUES (?1, ?2)
              ON CONFLICT(key) DO UPDATE SET value = excluded.value",

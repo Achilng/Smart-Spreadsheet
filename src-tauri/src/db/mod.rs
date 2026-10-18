@@ -4,7 +4,9 @@ pub use artist_representatives::ArtistRepresentativeResult;
 mod artist_xml;
 pub mod style_extraction;
 pub(crate) mod llm;
-pub(crate) mod llm_matching;
+pub(crate) mod prompt_matching;
+mod artist_matching;
+pub use artist_matching::ArtistMatchingRefresh;
 mod automation_rules;
 mod batches;
 mod compare;
@@ -188,6 +190,7 @@ impl Database {
     }
 
     fn initialize(mut connection: Connection) -> Result<Self, DatabaseError> {
+        artist_matching::register(&connection)?;
         connection.busy_timeout(Duration::from_secs(5))?;
         connection.execute_batch(
             "PRAGMA foreign_keys = ON;
@@ -199,10 +202,12 @@ impl Database {
         repair_legacy_artist_strings(&mut connection)?;
         backfill_missing_artist_strings(&mut connection)?;
         artist_xml::repair_xml_artist_strings(&mut connection)?;
-        Ok(Self {
+        let mut database = Self {
             connection,
             query_cache: None,
-        })
+        };
+        database.refresh_artist_matching(false)?;
+        Ok(database)
     }
 }
 
@@ -428,6 +433,10 @@ fn apply_pending_migrations(
     if version == 25 {
         transaction.execute_batch(migrations::MIGRATION_26)?;
         version = 26;
+    }
+    if version == 26 {
+        transaction.execute_batch(migrations::MIGRATION_27)?;
+        version = 27;
     }
     debug_assert_eq!(version, CURRENT_SCHEMA_VERSION);
     transaction.pragma_update(None, "user_version", version)?;

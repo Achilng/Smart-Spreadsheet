@@ -9,7 +9,7 @@ import { notify } from "../../state/notices";
 import { Button, Checkbox } from "../../ui/controls";
 import { ToolPage, ToolCard, ToolError, ToolMetrics } from "./shared";
 import StyleExchangeTool from "./StyleExchangeTool";
-import { DEFAULT_LLM_IGNORED_TAGS } from "../../../lib/api/local-llm";
+import { DEFAULT_LLM_IGNORED_TAGS, refreshArtistMatching, type ArtistMatchingRefresh } from "../../../lib/api/local-llm";
 import "./style-extraction.css";
 
 const states: Record<string, string> = { queued: "等待提取", running: "正在提取", paused: "已暂停", blocked: "需要处理", completed: "已完成", cancelled: "已结束", undone: "已撤销" };
@@ -30,6 +30,7 @@ export default function StyleExtractionTool({ active }: { active: boolean }) {
   const [channelId, setChannelId] = useState(""), [models, setModels] = useState<string[]>([]);
   const [jobId, setJobId] = useState(""), [page, setPage] = useState(0), [items, setItems] = useState<LlmItem[]>([]);
   const [confirmUndo, setConfirmUndo] = useState(false), [livePage, setLivePage] = useState(0);
+  const [matchingResult, setMatchingResult] = useState<ArtistMatchingRefresh | null>(null);
   const initialized = useRef(false), pending = useRef(false), alive = useRef(true);
   const activeJob = snapshot?.jobs.find(job => job.id === jobId);
   const channel = draft?.channels.find(value => value.id === channelId);
@@ -79,7 +80,7 @@ export default function StyleExtractionTool({ active }: { active: boolean }) {
     if (!draft || !snapshot) return;
     const saved = await saveLlmSettings(snapshot.libraryId, draft);
     setDraft(saved); setDirty(false); setChannels(current => saved.channels.filter(c => c.enabled && (current.includes(c.id) || !snapshot.settings.channels.some(old => old.id === c.id))).map(c => c.id));
-    setEstimate(null); await refresh(); notify("LLM 设置已保存，后续处理使用最新配置。");
+    setEstimate(null); setMatchingResult(null); await refresh(); notify("设置已保存，画风归类和后续提取均使用最新匹配规则。");
   }
   async function toggleSetting(key: "autoImport" | "autoResume", value: boolean) {
     if (!snapshot) return;
@@ -135,7 +136,19 @@ export default function StyleExtractionTool({ active }: { active: boolean }) {
           <h4>提取结果</h4>{items.map(item => <details className="llm-result" key={item.hash}><summary><span>{item.status === "ok" && <CheckCircle2 size={14} />}{itemStates[item.status]} · {item.artists || item.error || (item.status === "none" ? "未识别到画风" : item.prompt)}</span><small>{item.channel}</small></summary><PromptHighlight item={item} />{item.error && <p className="llm-warning">{item.error}</p>}<small>{item.model || "尚未调用"}</small></details>)}<div className="rt-actions"><Button disabled={!page} onClick={() => setPage(p => p - 1)}>上一页</Button><small>{page + 1} / {Math.max(1, Math.ceil(activeJob.total / 20))}</small><Button disabled={(page + 1) * 20 >= activeJob.total} onClick={() => setPage(p => p + 1)}>下一页</Button></div>
         </section>}</>}
       </ToolCard></>}
-    {tab === "matching" && draft && <ToolCard><h3>复用匹配白名单</h3><p>每行一个完整标签。匹配正向提示词时忽略这些标签（包括加权写法）、多余空格、空标签和末尾逗号；其余内容、画师权重和顺序仍参与比较。原始提示词保持不变。</p><label className="llm-whitelist-label">忽略标签<textarea className="r-input llm-whitelist" rows={12} spellCheck={false} value={draft.ignoredTags.join("\n")} onChange={e => { setDraft({ ...draft, ignoredTags: e.target.value.split(/\r?\n/) }); setDirty(true); }} /></label><p>默认忽略上方通用品质与文字限制标签；年份、newest、细节描述、rating:general、location 和 no signature 等仍参与比较。调整后后续处理会按新白名单匹配历史结果。</p><div className="rt-actions"><Button variant="primary" disabled={busy || !dirty} onClick={() => void perform(saveSettings)}>保存设置</Button><Button disabled={busy} onClick={() => { setDraft({ ...draft, ignoredTags: [...DEFAULT_LLM_IGNORED_TAGS] }); setDirty(true); }}>恢复默认白名单</Button></div></ToolCard>}
+    {tab === "matching" && draft && <>
+      <ToolCard><h3>画风与提取复用白名单</h3><p>每行一个完整标签。空格与下划线视为相同分隔，例如 very aesthetic 与 very_aesthetic 只需填写一个。比较时忽略白名单标签（包括加权写法）、多余分隔和末尾逗号；保留其余内容、画师权重和顺序。</p>
+        <label className="llm-whitelist-label">忽略标签<textarea className="r-input llm-whitelist" rows={8} spellCheck={false} value={draft.ignoredTags.join("\n")} onChange={e => { setDraft({ ...draft, ignoredTags: e.target.value.split(/\r?\n/) }); setDirty(true); }} /></label>
+        <p>默认仅忽略已约定的通用品质与文字限制标签；年份、newest、细节描述、rating:general、location 和 no signature 等仍参与比较。保存后自动更新已有画风归类，后续 LLM 复用也遵循同一套规则。</p>
+        <div className="rt-actions"><Button variant="primary" disabled={busy || !dirty} onClick={() => void perform(saveSettings)}>保存设置</Button><Button disabled={busy} onClick={() => { setDraft({ ...draft, ignoredTags: [...DEFAULT_LLM_IGNORED_TAGS] }); setDirty(true); }}>恢复默认白名单</Button></div>
+      </ToolCard>
+      <ToolCard><h3>刷新已有画风归类</h3><p>按已保存的规则重新整理整个资料库，让“只看当前画师串”“选中相同画师串”、按画师串去重、重复项及对比中的相同画师串得到一致结果。新导入和编辑会自动更新。</p>
+        <p>不调用 LLM，不修改原文、历史提取结果或手动分组。合并后若有多个代表图，保留图片编号最小的一张；已有重复项名称优先沿用匹配后的名称，其余原名保留。仅剩被忽略标签的内容不作为同一画风归并。</p>
+        <Button disabled={busy || dirty || !snapshot} onClick={() => void perform(async () => { if (!snapshot) return; const result = await refreshArtistMatching(snapshot.libraryId); setMatchingResult(result); setEstimate(null); notify(`已刷新 ${result.rows} 张图片的画风归类。`); })}><RotateCcw size={14} />{busy ? "正在处理…" : "刷新画风归类"}</Button>
+        {dirty && <p>请先保存上方设置，再刷新。</p>}
+        {matchingResult && <div role="status"><ToolMetrics items={[[matchingResult.rows, "已检查图片"], [matchingResult.changedRows, "归类已更新"], [matchingResult.groupsBefore, "刷新前画风数"], [matchingResult.groupsAfter, "刷新后画风数"]]} /><p>{matchingResult.mergedRepresentatives ? `合并了 ${matchingResult.mergedRepresentatives} 个重复或失效的代表图设置，图片均保留。` : "代表图设置无冲突。"}归类已同步到主窗口。</p></div>}
+      </ToolCard>
+    </>}
     {tab === "exchange" && <StyleExchangeTool active={active} />}
   </ToolPage>;
 }

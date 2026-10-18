@@ -383,19 +383,18 @@ impl Database {
         Ok(set.into_iter().collect())
     }
 
-    /// 返回画师串与给定值完全相同的所有行 ID（全库，忽略 Tag 筛选）。
+    /// 返回共享画风匹配标识相同的所有行 ID（全库，忽略 Tag 筛选）。
     pub fn row_ids_with_artists(&self, artists: &str) -> Result<Vec<i64>, DatabaseError> {
-        let trimmed = artists.trim();
-        if trimmed.is_empty() {
+        let Some(key) = self.artist_key(artists)? else {
             return Ok(Vec::new());
-        }
+        };
         let mut statement = self.connection.prepare(
             "SELECT id FROM rows
-             WHERE NULLIF(TRIM(COALESCE(artists, '')), '') = ?1
+             WHERE artist_match_key = ?1
              ORDER BY id",
         )?;
         let ids = statement
-            .query_map(params![trimmed], |row| row.get::<_, i64>(0))?
+            .query_map(params![key], |row| row.get::<_, i64>(0))?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(ids)
     }
@@ -412,11 +411,8 @@ impl Database {
         filters: &[LibraryFilter],
         hide_grouped: bool,
     ) -> Result<Vec<DedupeCluster>, DatabaseError> {
-        let (column, mode_str) = match dedupe {
-            DedupeMode::PositivePrompt => ("positive_prompt", "positivePrompt"),
-            DedupeMode::Artists => ("artists", "artists"),
-            DedupeMode::Vibes => ("vibe_signature", "vibes"),
-            DedupeMode::None => return Ok(Vec::new()),
+        let Some((key_expression, mode_str)) = dedupe_identity(dedupe) else {
+            return Ok(Vec::new());
         };
         let normalized = normalize_tags(tags);
         let transaction = self.connection.transaction()?;
@@ -451,11 +447,11 @@ impl Database {
 
         let clusters = {
             let mut statement = transaction.prepare(&format!(
-                "SELECT g.dedupe_key, g.cnt, da.alias
+                "SELECT g.dedupe_key, g.cnt, NULLIF(da.alias, '')
                  FROM (
                      SELECT dedupe_key, COUNT(*) AS cnt
                      FROM (
-                         SELECT NULLIF(TRIM(COALESCE(rows.{column}, '')), '') AS dedupe_key
+                         SELECT {key_expression} AS dedupe_key
                          FROM rows
                          WHERE {predicate}
                      )
@@ -504,18 +500,18 @@ impl Database {
                 maximum: MAX_PAGE_SIZE,
             });
         }
-        let column = match dedupe {
-            DedupeMode::PositivePrompt => "positive_prompt",
-            DedupeMode::Artists => "artists",
-            DedupeMode::Vibes => "vibe_signature",
-            DedupeMode::None => {
-                return Ok(RowPage {
-                    rows: Vec::new(),
-                    total_count: 0,
-                    offset,
-                    limit,
-                })
-            }
+        let Some((key_expression, _)) = dedupe_identity(dedupe) else {
+            return Ok(RowPage {
+                rows: Vec::new(),
+                total_count: 0,
+                offset,
+                limit,
+            });
+        };
+        let key = if dedupe == DedupeMode::Artists {
+            self.artist_key(key)?
+        } else {
+            Some(key.to_owned())
         };
         let offset_i64 = i64::try_from(offset).map_err(|_| DatabaseError::OffsetOverflow)?;
         let normalized = normalize_tags(tags);
@@ -544,7 +540,7 @@ impl Database {
         if hide_grouped {
             predicate = format!("({predicate}) AND rows.group_id IS NULL");
         }
-        let mut filter_params = vec![Value::Text(key.to_owned())];
+        let mut filter_params = vec![key.map(Value::Text).unwrap_or(Value::Null)];
         predicate = append_library_filters(predicate, filters, &mut filter_params);
 
         create_filtered_rows_table(&transaction, SCRATCH_ROWS_TABLE)?;
@@ -552,7 +548,7 @@ impl Database {
             &format!(
                 "INSERT INTO {SCRATCH_ROWS_TABLE}(id)
                  SELECT rows.id FROM rows
-                 WHERE NULLIF(TRIM(COALESCE(rows.{column}, '')), '') = ?1
+                 WHERE {key_expression} = ?1
                    AND ({predicate})"
             ),
             params_from_iter(filter_params.iter()),
@@ -591,6 +587,11 @@ impl Database {
         key: &str,
         alias: &str,
     ) -> Result<(), DatabaseError> {
+        let key = if mode == DedupeMode::Artists {
+            self.artist_key(key)?.ok_or(DatabaseError::EmptyArtists)?
+        } else {
+            key.to_owned()
+        };
         let mode_str = match mode {
             DedupeMode::PositivePrompt => "positivePrompt",
             DedupeMode::Artists => "artists",
@@ -598,7 +599,9 @@ impl Database {
             DedupeMode::None => return Ok(()),
         };
         let alias = alias.trim();
-        if alias.is_empty() {
+        // An empty artist alias is an intentional reset; preserve it so refresh cannot
+        // resurrect an older alias retained during a merge.
+        if alias.is_empty() && mode != DedupeMode::Artists {
             self.connection.execute(
                 "DELETE FROM dedupe_aliases WHERE mode = ?1 AND key = ?2",
                 params![mode_str, key],
@@ -611,6 +614,20 @@ impl Database {
             )?;
         }
         Ok(())
+    }
+}
+
+/// All duplicate-group and dedupe queries share the same identity column/expression.
+fn dedupe_identity(mode: DedupeMode) -> Option<(&'static str, &'static str)> {
+    match mode {
+        DedupeMode::Artists => Some(("rows.artist_match_key", "artists")),
+        DedupeMode::PositivePrompt => Some((
+            "NULLIF(TRIM(COALESCE(rows.positive_prompt, '')), '')", "positivePrompt",
+        )),
+        DedupeMode::Vibes => Some((
+            "NULLIF(TRIM(COALESCE(rows.vibe_signature, '')), '')", "vibes",
+        )),
+        DedupeMode::None => None,
     }
 }
 
@@ -704,7 +721,7 @@ pub(super) fn populate_filtered_rows(
     if !artist_filter.is_empty() {
         let parameter = filter_params.len() + 1;
         predicate = format!(
-            "({predicate}) AND NULLIF(TRIM(COALESCE(rows.artists, '')), '') = ?{parameter}"
+            "({predicate}) AND rows.artist_match_key = style_match_key(?{parameter}, (SELECT value FROM settings WHERE key='local_llm_settings_v1'))"
         );
         filter_params.push(Value::Text(artist_filter));
     }
@@ -788,12 +805,7 @@ pub(super) fn populate_filtered_rows(
                 params_from_iter(filter_params.iter()),
             )?,
             DedupeMode::PositivePrompt | DedupeMode::Artists | DedupeMode::Vibes => {
-                let column = match dedupe {
-                    DedupeMode::PositivePrompt => "positive_prompt",
-                    DedupeMode::Artists => "artists",
-                    DedupeMode::Vibes => "vibe_signature",
-                    DedupeMode::None => unreachable!(),
-                };
+                let (key_expression, _) = dedupe_identity(dedupe).expect("dedupe mode checked");
                 let representative = if dedupe == DedupeMode::Artists {
                     "CASE WHEN rows.id IN (SELECT row_id FROM artist_representatives) THEN rows.id END"
                 } else {
@@ -804,7 +816,7 @@ pub(super) fn populate_filtered_rows(
                         "INSERT INTO {target_table}(id)
                          WITH filtered_rows AS (
                              SELECT rows.id,
-                                    NULLIF(TRIM(COALESCE(rows.{column}, '')), '') AS dedupe_key,
+                                    {key_expression} AS dedupe_key,
                                     {representative} AS representative_id
                              FROM rows
                              WHERE {predicate}

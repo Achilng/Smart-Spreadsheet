@@ -27,6 +27,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             app::commands::llm::llm_snapshot,
             app::commands::llm::llm_save_settings,
+            app::commands::llm::refresh_artist_matching,
             app::commands::llm::llm_estimate,
             app::commands::llm::llm_create,
             app::commands::llm::llm_action,

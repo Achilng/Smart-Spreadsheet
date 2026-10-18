@@ -72,6 +72,22 @@ pub(crate) async fn llm_save_settings(
         app.state::<Engine>()
             .revision
             .fetch_add(1, Ordering::SeqCst);
+        let _ = app.emit("llm://library-changed", &library_id);
+        let _ = app.emit("artist-matching://changed", &library_id);
+        Ok(result)
+    })
+    .await
+    .map_err(super::error_text)?
+}
+#[tauri::command]
+pub(crate) async fn refresh_artist_matching(
+    library_id: String,
+    app: tauri::AppHandle,
+) -> Result<crate::db::ArtistMatchingRefresh, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let result = app.state::<AppRuntime>().llm_db(&library_id, |db| db.refresh_artist_matching(true))?;
+        let _ = app.emit("llm://library-changed", &library_id);
+        let _ = app.emit("artist-matching://changed", &library_id);
         Ok(result)
     })
     .await

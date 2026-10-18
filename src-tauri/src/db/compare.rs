@@ -2,7 +2,7 @@
 //! 正常短持锁即可，不需要克隆数据目录。
 //!
 //! 匹配口径见 `对比功能实现计划.md` §1.3/§2：
-//! - 画师串整串精确相同（与“只看当前画师串”同一归一：首尾空白）；
+//! - 画师串使用共享匹配标识（与筛选、选中、去重同口径）；
 //! - vibe 分区比较 `vibe_signature`（整体精确），目标行的空串
 //!   “已扫描但不可读”标记视为未知，一律排除；
 //! - 画风分区的 `style_signature` 由 `pipeline::style_signature` 维护，
@@ -107,7 +107,7 @@ impl Database {
     fn compare_sample_keys(&self, row_id: i64) -> Result<SampleKeys, DatabaseError> {
         self.connection
             .query_row(
-                "SELECT artists, vibe_signature, style_signature FROM rows WHERE id = ?1",
+                "SELECT artist_match_key, vibe_signature, style_signature FROM rows WHERE id = ?1",
                 [row_id],
                 |row| {
                     Ok(SampleKeys {
@@ -121,7 +121,7 @@ impl Database {
             .ok_or(DatabaseError::RowNotFound(row_id))
     }
 
-    /// 分区①：画师串整串精确相同（首尾空白归一，与“只看当前画师串”同口径）。
+    /// 分区①：共享画风匹配标识相同，与“只看当前画师串”同口径。
     pub fn query_compare_same_artists(
         &mut self,
         row_id: i64,
@@ -133,7 +133,6 @@ impl Database {
         let Some(artists) = keys
             .artists
             .as_deref()
-            .map(str::trim)
             .filter(|value| !value.is_empty())
         else {
             // 样本没有画师串：如实空态，不隐藏分区。
@@ -141,7 +140,7 @@ impl Database {
         };
         let params: Vec<Value> = vec![Value::Integer(row_id), Value::Text(artists.to_owned())];
         let predicate = "rows.id != ?1
-             AND NULLIF(TRIM(COALESCE(rows.artists, '')), '') = ?2";
+             AND rows.artist_match_key = ?2";
         self.query_compare_section(predicate, &params, offset, limit, offset_i64)
     }
 

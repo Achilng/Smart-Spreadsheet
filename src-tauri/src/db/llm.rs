@@ -1,5 +1,5 @@
 //! Durable local extraction queue. Network calls never hold a database transaction.
-use super::llm_matching;
+use super::prompt_matching;
 use super::style_extraction::{LlmSource, StyleChange, prompt_hash};
 use super::{Database, DatabaseError, RowSelection};
 use rusqlite::{OptionalExtension, TransactionBehavior, params};
@@ -55,7 +55,7 @@ impl Default for Settings {
             batch_size: 10,
             reasoning: "medium".into(),
             channels: vec![],
-            ignored_tags: llm_matching::default_ignored_tags(),
+            ignored_tags: prompt_matching::default_ignored_tags(),
         }
     }
 }
@@ -123,9 +123,11 @@ impl Database {
             .ok_or_else(|| invalid("资料库缺少标识"))
     }
     pub fn llm_settings(&self) -> Result<Settings, DatabaseError> {
-        self.setting(SETTINGS_KEY)?
+        let mut settings: Settings = self.setting(SETTINGS_KEY)?
             .map(|x| decode(&x))
-            .unwrap_or_else(|| Ok(Settings::default()))
+            .unwrap_or_else(|| Ok(Settings::default()))?;
+        settings.ignored_tags = prompt_matching::clean_ignored_tags(&settings.ignored_tags);
+        Ok(settings)
     }
     fn llm_candidates(
         &mut self,
@@ -186,7 +188,7 @@ impl Database {
         if all_matching {
             let keys = grouped
                 .keys()
-                .map(|prompt| llm_matching::key(prompt, &ignored))
+                .map(|prompt| prompt_matching::key(prompt, &ignored))
                 .collect::<HashSet<_>>();
             for targets in grouped.values_mut() {
                 targets.clear();
@@ -200,7 +202,7 @@ impl Database {
                 {
                     continue;
                 }
-                if keys.contains(&llm_matching::key(&prompt, &ignored)) {
+                if keys.contains(&prompt_matching::key(&prompt, &ignored)) {
                     let targets = grouped.entry(prompt).or_default();
                     targets.push(Target {
                         row_id: id,
@@ -212,7 +214,7 @@ impl Database {
         }
         stats.unique_prompts = grouped
             .keys()
-            .map(|prompt| llm_matching::key(prompt, &ignored))
+            .map(|prompt| prompt_matching::key(prompt, &ignored))
             .collect::<HashSet<_>>()
             .len();
         stats.affected_rows = grouped.values().map(Vec::len).sum();
@@ -234,7 +236,7 @@ impl Database {
         };
         let mut seen = HashSet::new();
         for prompt in groups.keys() {
-            let key = llm_matching::key(prompt, &ignored);
+            let key = prompt_matching::key(prompt, &ignored);
             if !seen.insert(key.clone()) {
                 continue;
             }
@@ -307,7 +309,7 @@ impl Database {
         for (prompt, targets) in groups {
             tx.execute(
                 "INSERT INTO llm_items(job_id,hash,prompt,targets,match_key) VALUES (?1,?2,?3,?4,?5)",
-                params![id, prompt_hash(&prompt), prompt, json(&targets)?, llm_matching::key(&prompt, &settings.ignored_tags)],
+                params![id, prompt_hash(&prompt), prompt, json(&targets)?, prompt_matching::key(&prompt, &settings.ignored_tags)],
             )?;
         }
         tx.commit()?;
@@ -408,7 +410,7 @@ impl Database {
     }
     /// Indexed lookups include imported historical results. Rule changes rebuild derived keys only.
     pub fn llm_refresh_match_keys(&mut self, ignored: &[String]) -> Result<(), DatabaseError> {
-        let rules = llm_matching::rules_key(ignored);
+        let rules = prompt_matching::rules_key(ignored);
         let rebuild = self.setting("llm_match_rules")?.as_deref() != Some(&rules);
         if !rebuild {
             let pending: bool = self.connection.query_row("SELECT EXISTS(SELECT 1 FROM llm_items WHERE match_key IS NULL) OR EXISTS(SELECT 1 FROM rows WHERE artist_llm IS NOT NULL AND llm_match_key IS NULL)", [], |r| r.get(0))?;
@@ -438,7 +440,7 @@ impl Database {
             let mut update =
                 tx.prepare("UPDATE llm_items SET match_key=?3 WHERE job_id=?1 AND hash=?2")?;
             for (job, hash, prompt) in items {
-                update.execute(params![job, hash, llm_matching::key(&prompt, ignored)])?;
+                update.execute(params![job, hash, prompt_matching::key(&prompt, ignored)])?;
             }
         }
         let rows = {
@@ -449,7 +451,7 @@ impl Database {
         {
             let mut update = tx.prepare("UPDATE rows SET llm_match_key=?2 WHERE id=?1")?;
             for (id, prompt) in rows {
-                update.execute(params![id, llm_matching::key(&prompt, ignored)])?;
+                update.execute(params![id, prompt_matching::key(&prompt, ignored)])?;
             }
         }
         tx.execute("INSERT INTO settings(key,value) VALUES('llm_match_rules',?1) ON CONFLICT(key) DO UPDATE SET value=excluded.value",[rules])?;
@@ -465,7 +467,7 @@ impl Database {
         self.llm_refresh_match_keys(&ignored)?;
         self.llm_cached_prompt(
             &item.prompt,
-            &llm_matching::key(&item.prompt, &ignored),
+            &prompt_matching::key(&item.prompt, &ignored),
             &ignored,
             only_job,
         )
@@ -486,7 +488,7 @@ impl Database {
             if (status == "none") != artists.is_empty() {
                 continue;
             }
-            if let Some(projected) = llm_matching::project(&original, &artists, prompt, ignored) {
+            if let Some(projected) = prompt_matching::project(&original, &artists, prompt, ignored) {
                 return Ok(Some((projected, row.get(2)?, row.get(3)?)));
             }
         }
@@ -502,7 +504,7 @@ impl Database {
             let text: String = row.get(2)?;
             if let Some(source) = valid_source(&original, &artists, &text)
                 && let Some(projected) =
-                    llm_matching::project(&original, &source.artist_string, prompt, ignored)
+                    prompt_matching::project(&original, &source.artist_string, prompt, ignored)
             {
                 return Ok(Some((projected, source.model, "资料库已有结果".into())));
             }

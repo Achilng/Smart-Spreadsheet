@@ -1,15 +1,12 @@
-//! LLM reuse keys. Only the approved tags and separators are ignored; original text is never rewritten.
+//! Shared prompt/artist normalization. All consumers use this parser; original text is never rewritten.
 use super::style_extraction::prompt_hash;
 use std::{collections::HashSet, ops::Range};
 
 pub const DEFAULT_IGNORED_TAGS: &[&str] = &[
     "very aesthetic",
-    "very_aesthetic",
     "no text",
-    "no_text",
     "masterpiece",
     "best quality",
-    "best_quality",
     "amazing quality",
     "absurdres",
     "the image is very aesthetic",
@@ -24,18 +21,27 @@ pub fn default_ignored_tags() -> Vec<String> {
 }
 
 pub fn clean_tag(text: &str) -> String {
-    text.split_whitespace()
+    text.split(|ch: char| ch.is_whitespace() || ch == '_')
+        .filter(|part| !part.is_empty())
         .collect::<Vec<_>>()
         .join(" ")
         .to_lowercase()
 }
 
+pub fn clean_ignored_tags(tags: &[String]) -> Vec<String> {
+    let mut unique = HashSet::new();
+    tags.iter()
+        .map(|tag| clean_tag(tag))
+        .filter(|tag| !tag.is_empty() && unique.insert(tag.clone()))
+        .collect()
+}
+
 pub fn rules_key(tags: &[String]) -> String {
-    let mut tags = tags.iter().map(|s| clean_tag(s)).collect::<Vec<_>>();
+    let mut tags = clean_ignored_tags(tags);
     tags.sort();
     tags.dedup();
     prompt_hash(&format!(
-        "llm-match-v1:{}",
+        "llm-match-v2:{}",
         serde_json::to_string(&tags).unwrap()
     ))
 }
@@ -166,12 +172,13 @@ impl Mapped {
     }
     fn raw(&mut self, text: &str, range: Range<usize>) {
         let raw = &text[range.clone()];
-        let trim = raw.trim();
-        let offset = range.start + raw.len() - raw.trim_start().len();
+        let is_separator = |ch: char| ch.is_whitespace() || ch == '_';
+        let trim = raw.trim_matches(is_separator);
+        let offset = range.start + raw.len() - raw.trim_start_matches(is_separator).len();
         let mut whitespace: Option<Range<usize>> = None;
         for (i, ch) in trim.char_indices() {
             let span = offset + i..offset + i + ch.len_utf8();
-            if ch.is_whitespace() {
+            if is_separator(ch) {
                 if let Some(last) = whitespace.as_mut() {
                     last.end = span.end;
                 } else {
@@ -251,7 +258,13 @@ fn mapped(text: &str, ignored: &[String]) -> Mapped {
 }
 pub fn key(prompt: &str, ignored: &[String]) -> String {
     let result = mapped(prompt, ignored);
-    prompt_hash(&format!("llm-match-v1:{}:{}", result.literal, result.text))
+    prompt_hash(&format!("llm-match-v2:{}:{}", result.literal, result.text))
+}
+
+/// Readable identity for artist grouping. No remaining content means no comparable style.
+pub fn artist_key(artists: &str, ignored: &[String]) -> Option<String> {
+    let result = mapped(artists, ignored);
+    (!result.text.trim().is_empty()).then_some(result.text)
 }
 
 /// Map a validated continuous result to the corresponding original characters of the new prompt.

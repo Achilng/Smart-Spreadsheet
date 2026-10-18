@@ -437,7 +437,7 @@ export function installIpcMock(): void {
     },
     async invoke(command: string, args: Record<string, unknown> | undefined): Promise<unknown> {
       const payload = args ?? {};
-      if (command.startsWith("llm_")) return llmMock(command, payload);
+      if (command.startsWith("llm_") || command === "refresh_artist_matching") return llmMock(command, payload);
       window.__mockCalls?.push({ command, payload: structuredClone(payload) });
       if (!command.startsWith("plugin:")) {
         if (window.__mockDelayMs) await new Promise(resolve => setTimeout(resolve, window.__mockDelayMs));

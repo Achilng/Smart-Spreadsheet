@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { RowSelection } from "./types";
 
 export interface LlmChannel { id: string; name: string; baseUrl: string; model: string; concurrency: number; enabled: boolean; hasKey: boolean; key?: string }
-export const DEFAULT_LLM_IGNORED_TAGS = ["very aesthetic", "very_aesthetic", "no text", "no_text", "masterpiece", "best quality", "best_quality", "amazing quality", "absurdres", "the image is very aesthetic", "highres"];
+export const DEFAULT_LLM_IGNORED_TAGS = ["very aesthetic", "no text", "masterpiece", "best quality", "amazing quality", "absurdres", "the image is very aesthetic", "highres"];
 export interface LlmSettings { autoImport: boolean; autoResume: boolean; batchSize: number; reasoning: string; channels: LlmChannel[]; ignoredTags: string[] }
 export interface LlmJob { id: string; createdAt: string; state: string; promptVersion: string; batchSize: number; reasoning: string; channelIds: string[]; message: string; total: number; done: number; failed: number; applied: number; empty: number; reuse: boolean }
 export interface LlmProgress { libraryId: string; jobId: string; total: number; done: number; failed: number; inFlight: number; queued: number; message: string; running: boolean }
@@ -12,6 +12,8 @@ export interface LlmItem { hash: string; prompt: string; status: string; artists
 export interface LlmEstimate { rows: number; skipped: number; uniquePrompts: number; affectedRows: number; reusablePrompts: number; waitingPrompts: number; requestPrompts: number }
 export const llmSnapshot = (livePage = 0) => invoke<LlmSnapshot>("llm_snapshot", { livePage });
 export const saveLlmSettings = (libraryId: string, settings: LlmSettings) => invoke<LlmSettings>("llm_save_settings", { libraryId, settings });
+export interface ArtistMatchingRefresh { rows: number; changedRows: number; groupsBefore: number; groupsAfter: number; mergedRepresentatives: number }
+export const refreshArtistMatching = (libraryId: string) => invoke<ArtistMatchingRefresh>("refresh_artist_matching", { libraryId });
 export const estimateLlm = (libraryId: string, selection: RowSelection | null, includeProcessed: boolean, allMatching: boolean) => invoke<LlmEstimate>("llm_estimate", { libraryId, selection, includeProcessed, allMatching });
 export const createLlm = (libraryId: string, selection: RowSelection | null, includeProcessed: boolean, allMatching: boolean, channelIds: string[]) => invoke<string | null>("llm_create", { libraryId, selection, includeProcessed, allMatching, channelIds });
 export const actLlm = (libraryId: string, jobId: string, action: string, channelIds: string[]) => invoke<void>("llm_action", { libraryId, jobId, action, channelIds });

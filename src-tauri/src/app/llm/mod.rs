@@ -2,7 +2,7 @@ pub(crate) mod api;
 pub(crate) mod credentials;
 use super::AppRuntime;
 use crate::db::llm::*;
-use crate::db::llm_matching;
+use crate::db::prompt_matching;
 use serde::Serialize;
 use std::{
     collections::{HashMap, HashSet},
@@ -88,16 +88,7 @@ pub fn save_settings(
     if !["low", "medium", "high"].contains(&settings.reasoning.as_str()) {
         return Err("请选择有效的推理等级".into());
     }
-    settings.ignored_tags = settings
-        .ignored_tags
-        .iter()
-        .map(|tag| llm_matching::clean_tag(tag))
-        .filter(|tag| !tag.is_empty())
-        .collect();
-    let mut unique = HashSet::new();
-    settings
-        .ignored_tags
-        .retain(|tag| unique.insert(tag.clone()));
+    settings.ignored_tags = prompt_matching::clean_ignored_tags(&settings.ignored_tags);
     if settings.ignored_tags.len() > 256
         || settings.ignored_tags.iter().any(|tag| {
             tag.chars().count() > 160
@@ -414,7 +405,7 @@ pub(crate) async fn run(
         let mut occupied_keys = flights
             .iter()
             .flat_map(|f| f.items.iter())
-            .map(|i| llm_matching::key(&i.prompt, &settings.ignored_tags))
+            .map(|i| prompt_matching::key(&i.prompt, &settings.ignored_tags))
             .collect::<HashSet<_>>();
         // Fetch only enough pending work for actual capacity; large configured concurrency does not allocate workers.
         let channels = settings
@@ -477,7 +468,7 @@ pub(crate) async fn run(
                 },
                 Ok(None) => {
                     // Variants already queued in this scheduling round or in flight wait for its result.
-                    if occupied_keys.insert(llm_matching::key(&item.prompt, &settings.ignored_tags))
+                    if occupied_keys.insert(prompt_matching::key(&item.prompt, &settings.ignored_tags))
                     {
                         remaining.push(item);
                     }

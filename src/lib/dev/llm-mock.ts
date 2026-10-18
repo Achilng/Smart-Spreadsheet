@@ -16,6 +16,7 @@ export function createLlmMock() {
       } satisfies LlmSnapshot;
       case "llm_save_settings": {
         const next = structuredClone(payload.settings) as LlmSettings;
+        next.ignoredTags = [...new Set(next.ignoredTags.map(tag => tag.replace(/[_\s]+/g, " ").trim().toLowerCase()).filter(Boolean))];
         next.channels = next.channels.map(c => {
           const old = settings.channels.find(v => v.id === c.id && v.baseUrl === c.baseUrl);
           const { key, ...rest } = c;
@@ -23,6 +24,7 @@ export function createLlmMock() {
         }); settings = next; return structuredClone(settings);
       }
       case "llm_estimate": return { rows: 12, skipped: 2, uniquePrompts: 8, affectedRows: payload.allMatching ? 18 : 10, reusablePrompts: payload.includeProcessed ? 0 : 5, waitingPrompts: payload.includeProcessed ? 0 : 1, requestPrompts: payload.includeProcessed ? 8 : 2 };
+      case "refresh_artist_matching": return { rows: 12, changedRows: 4, groupsBefore: 6, groupsAfter: 3, mergedRepresentatives: 1 };
       case "llm_models": {
         const channel = payload.channel as LlmChannel;
         if (!channel.key && !channel.hasKey) throw Error("请先填写 API Key");

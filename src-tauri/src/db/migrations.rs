@@ -1,4 +1,29 @@
-pub const CURRENT_SCHEMA_VERSION: u32 = 26;
+pub const CURRENT_SCHEMA_VERSION: u32 = 27;
+
+/// Persist the shared artist identity; triggers also cover imports, edits, LLM writes and undo.
+pub(super) const MIGRATION_27: &str = r#"
+ALTER TABLE rows ADD COLUMN artist_match_key TEXT;
+CREATE INDEX rows_artist_match_key ON rows(artist_match_key, id);
+DROP TRIGGER clear_changed_artist_representative;
+CREATE TRIGGER clear_changed_artist_representative AFTER UPDATE OF artist_match_key ON rows
+WHEN OLD.artist_match_key IS NOT NEW.artist_match_key
+BEGIN
+ DELETE FROM artist_representatives WHERE row_id = NEW.id AND artist_key IS NOT NEW.artist_match_key;
+END;
+CREATE TRIGGER populate_artist_match_key AFTER INSERT ON rows
+BEGIN
+ UPDATE rows SET artist_match_key = style_match_key(artists,
+   (SELECT value FROM settings WHERE key = 'local_llm_settings_v1')) WHERE id = NEW.id;
+END;
+CREATE TRIGGER update_artist_match_key AFTER UPDATE OF artists ON rows
+WHEN OLD.artists IS NOT NEW.artists AND
+ (NEW.artist_llm IS NULL OR NEW.positive_prompt IS NOT OLD.positive_prompt
+  OR NEW.artists IS json_extract(NEW.artist_llm, '$.artistString'))
+BEGIN
+ UPDATE rows SET artist_match_key = style_match_key(artists,
+   (SELECT value FROM settings WHERE key = 'local_llm_settings_v1')) WHERE id = NEW.id;
+END;
+"#;
 
 /// Reuse indexes are derived data; original prompts, results and undo records remain intact.
 pub(super) const MIGRATION_26: &str = r#"

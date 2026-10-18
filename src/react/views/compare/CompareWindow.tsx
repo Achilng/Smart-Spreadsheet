@@ -33,6 +33,7 @@ export function CompareWindow() {
     const cleanups: (() => void)[] = [];
     const register = (promise: Promise<() => void>) => void promise.then(fn => { if (disposed) fn(); else cleanups.push(fn); }, error => { if (!disposed) notify(`窗口事件连接失败：${String(error)}`, "error"); });
     register(listen<number>("compare://set-sample", event => { if (!disposed) void setCompareSample(event.payload); }));
+    register(listen("artist-matching://changed", () => { if (!disposed && useCompare.getState().sample) void refreshCompare(); }));
     register(listen("main://library-reset", () => {
       if (disposed) return;
       resetCompare(); thumbnails.clear(); clearProgressiveImages();
