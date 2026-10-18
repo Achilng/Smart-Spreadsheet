@@ -1,7 +1,7 @@
 use crate::db::{NewRow, SourceType};
 use crate::pipeline::scan::SourceImage;
 use crate::pipeline::{
-    artist_string, metadata_fingerprint, parse_novelai_metadata, png_text, stealth_png,
+    artist_string, metadata_fingerprint, parse_novelai_metadata, read_metadata::read_novelai_metadata,
 };
 use chrono::{DateTime, Local};
 use std::fs;
@@ -43,23 +43,9 @@ pub(super) enum MetadataInspection {
 
 pub(super) fn inspect_metadata(image: SourceImage) -> MetadataInspection {
     let dimensions = ::image::image_dimensions(&image.absolute_path).ok();
-    let Ok(mut chunks) = png_text::read_png_text_chunks(&image.absolute_path) else {
-        return MetadataInspection::Rejected(image);
-    };
-    let mut metadata = parse_novelai_metadata(&chunks);
-    if metadata.positive_prompt.trim().is_empty()
-        && metadata.character_prompt.trim().is_empty()
-        && metadata.negative_prompt.trim().is_empty()
-    {
-        match stealth_png::read_stealth_png_metadata(&image.absolute_path) {
-            Ok(Some(stealth_chunks)) => {
-                chunks = stealth_chunks;
-                metadata = parse_novelai_metadata(&chunks);
-            }
-            Ok(None) => {}
-            Err(_) => return MetadataInspection::Rejected(image),
-        }
-    }
+    let read = read_novelai_metadata(&image.absolute_path, None);
+    let chunks = read.chunks;
+    let metadata = parse_novelai_metadata(&chunks);
     let metadata_fingerprint = metadata_fingerprint(&chunks);
     let artists = artist_string(&metadata.positive_prompt, Some(&metadata.character_prompt));
     let positive_prompt = nonempty_string(metadata.positive_prompt);

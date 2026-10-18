@@ -11,7 +11,7 @@ impl AppRuntime {
     ) -> Result<ExportSummary, AppRuntimeError> {
         let (document, summary) =
             self.with_database(|db| db.export_style_request(selection, include_processed))?;
-        std::fs::write(path, serde_json::to_vec_pretty(&document)?)?;
+        crate::fsx::write_output_file(path, &serde_json::to_vec_pretty(&document)?)?;
         Ok(summary)
     }
     pub(crate) fn preview_style_result(

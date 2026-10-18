@@ -1,5 +1,5 @@
 use super::{DataDirectory, StorageError, resolve_original_source};
-use crate::pipeline::{metadata_fingerprint, png_text};
+use crate::pipeline::{metadata_fingerprint, read_metadata::read_novelai_metadata};
 
 impl DataDirectory {
     /// 为仍可读取完整原件的历史行回填 NovelAI 完整元数据指纹。
@@ -14,9 +14,8 @@ impl DataDirectory {
             let Ok(path) = resolve_original_source(self, &locator) else {
                 continue;
             };
-            let Ok(chunks) = png_text::read_png_text_chunks(path) else {
-                continue;
-            };
+            let read = read_novelai_metadata(&path, None);
+            let chunks = read.chunks;
             if let Some(fingerprint) = metadata_fingerprint(&chunks) {
                 fingerprints.push((locator.row_id, fingerprint));
             }

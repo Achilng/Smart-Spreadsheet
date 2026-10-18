@@ -1,10 +1,8 @@
 use crate::automation::error::AutomationRuleError;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use std::fs::{self, OpenOptions};
-use std::io::Write;
+use std::fs;
 use std::path::Path;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 pub(crate) const MAX_AUTOMATION_RULE_FILE_BYTES: u64 = 2 * 1024 * 1024;
 
@@ -138,42 +136,7 @@ pub fn write_automation_rule_file(
         )));
     }
 
-    let nonce = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    let temporary = parent.join(format!(
-        ".smart-spreadsheet-rules-{}-{nonce}.tmp",
-        std::process::id()
-    ));
-    let backup = parent.join(format!(
-        ".smart-spreadsheet-rules-{}-{nonce}.bak",
-        std::process::id()
-    ));
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&temporary)?;
-    file.write_all(&contents)?;
-    file.sync_all()?;
-    drop(file);
-
-    let had_previous = path.exists();
-    if had_previous {
-        fs::rename(path, &backup)?;
-    }
-    if let Err(error) = fs::rename(&temporary, path) {
-        let _ = fs::remove_file(&temporary);
-        if had_previous && fs::rename(&backup, path).is_err() {
-            return Err(AutomationRuleError::InvalidRuleFile(
-                "替换目标文件失败，且无法自动恢复原文件；备份仍保留在目标目录".into(),
-            ));
-        }
-        return Err(error.into());
-    }
-    if had_previous {
-        let _ = fs::remove_file(backup);
-    }
+    crate::fsx::write_output_file(path, &contents)?;
     Ok(())
 }
 

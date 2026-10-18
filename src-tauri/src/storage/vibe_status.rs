@@ -1,7 +1,7 @@
 use serde::Serialize;
 
 use super::{resolve_image_source, DataDirectory, StorageError};
-use crate::pipeline::{generation_model_of, png_text, vibe_status};
+use crate::pipeline::{generation_model_of, read_metadata::read_novelai_metadata, vibe_status};
 
 /// VIBE 状态回填进度：total 为待扫描行数，unreadable 为原图不可读的行数。
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
@@ -48,7 +48,9 @@ impl DataDirectory {
         let mut unreadable = 0;
         for (index, locator) in candidates.into_iter().enumerate() {
             let scanned = resolve_image_source(self, &locator)
-                .and_then(|path| png_text::read_png_text_chunks(path).ok())
+                .map(|path| read_novelai_metadata(&path, None))
+                .filter(|read| !read.is_unreadable())
+                .map(|read| read.chunks)
                 .map(|chunks| {
                     let (count, signature) = vibe_status(&chunks);
                     (count, signature, generation_model_of(&chunks))

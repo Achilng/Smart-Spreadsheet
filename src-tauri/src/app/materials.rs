@@ -131,23 +131,11 @@ fn inspect(path: &Path) -> Result<MaterialInspection, String> {
         .format()
         == Some(ImageFormat::Png)
     {
-        match pipeline::png_text::read_png_text_chunks(path) {
-            Ok(value) => chunks = value,
-            Err(error) => {
-                warning = Some(format!("PNG 元数据读取失败：{error}。仍可手动填写文本。"))
-            }
+        let read = pipeline::read_metadata::read_novelai_metadata(path, Some(&image.to_rgba8()));
+        if !read.warnings.is_empty() {
+            warning = Some(format!("{}。仍可手动填写文本。", read.warnings.join("；")));
         }
-        match pipeline::stealth_png::read_stealth_png_metadata_from_rgba(&image.to_rgba8()) {
-            Ok(Some(hidden)) => {
-                for (key, value) in hidden {
-                    chunks.entry(key).or_insert(value);
-                }
-            }
-            Ok(None) => {}
-            Err(error) => {
-                warning = Some(format!("隐藏元数据读取失败：{error}。仍可手动填写文本。"))
-            }
-        }
+        chunks = read.chunks;
     } else {
         warning =
             Some("此格式可作为展示图；目前元数据提取支持 PNG（含 NovelAI 隐藏元数据）。".into());
