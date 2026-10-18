@@ -1,4 +1,19 @@
-pub const CURRENT_SCHEMA_VERSION: u32 = 25;
+pub const CURRENT_SCHEMA_VERSION: u32 = 26;
+
+/// Reuse indexes are derived data; original prompts, results and undo records remain intact.
+pub(super) const MIGRATION_26: &str = r#"
+ALTER TABLE llm_items ADD COLUMN match_key TEXT;
+ALTER TABLE rows ADD COLUMN llm_match_key TEXT;
+CREATE INDEX llm_items_match_cache ON llm_items(match_key) WHERE status IN ('ok','none');
+CREATE INDEX llm_items_unindexed ON llm_items(job_id,hash) WHERE match_key IS NULL;
+CREATE INDEX llm_rows_match_cache ON rows(llm_match_key) WHERE artist_llm IS NOT NULL;
+CREATE INDEX llm_rows_unindexed ON rows(id) WHERE artist_llm IS NOT NULL AND llm_match_key IS NULL;
+CREATE TRIGGER invalidate_llm_match_key AFTER UPDATE OF positive_prompt,artist_llm ON rows
+WHEN OLD.positive_prompt IS NOT NEW.positive_prompt OR OLD.artist_llm IS NOT NEW.artist_llm
+BEGIN
+ UPDATE rows SET llm_match_key = NULL WHERE id = NEW.id;
+END;
+"#;
 
 /// v24 的早期开发版没有任务计数字段，已打开的库不会重放 v24 建表语句。
 /// 兼容早期与完整 v24，保留任务 / 结果并从明细回填计数。

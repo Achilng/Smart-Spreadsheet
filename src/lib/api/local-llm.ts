@@ -2,13 +2,14 @@ import { invoke } from "@tauri-apps/api/core";
 import type { RowSelection } from "./types";
 
 export interface LlmChannel { id: string; name: string; baseUrl: string; model: string; concurrency: number; enabled: boolean; hasKey: boolean; key?: string }
-export interface LlmSettings { autoImport: boolean; autoResume: boolean; batchSize: number; reasoning: string; channels: LlmChannel[] }
+export const DEFAULT_LLM_IGNORED_TAGS = ["very aesthetic", "very_aesthetic", "no text", "no_text", "masterpiece", "best quality", "best_quality", "amazing quality", "absurdres", "the image is very aesthetic", "highres"];
+export interface LlmSettings { autoImport: boolean; autoResume: boolean; batchSize: number; reasoning: string; channels: LlmChannel[]; ignoredTags: string[] }
 export interface LlmJob { id: string; createdAt: string; state: string; promptVersion: string; batchSize: number; reasoning: string; channelIds: string[]; message: string; total: number; done: number; failed: number; applied: number; empty: number; reuse: boolean }
 export interface LlmProgress { libraryId: string; jobId: string; total: number; done: number; failed: number; inFlight: number; queued: number; message: string; running: boolean }
 export interface LlmLive { id: number; channel: string; model: string; count: number; text: string }
 export interface LlmSnapshot { libraryId: string; settings: LlmSettings; jobs: LlmJob[]; progress: LlmProgress; live: LlmLive[]; liveTotal: number }
 export interface LlmItem { hash: string; prompt: string; status: string; artists: string; model: string; channel: string; error: string; attempts: number; rowId: number | null }
-export interface LlmEstimate { rows: number; skipped: number; uniquePrompts: number; affectedRows: number }
+export interface LlmEstimate { rows: number; skipped: number; uniquePrompts: number; affectedRows: number; reusablePrompts: number; waitingPrompts: number; requestPrompts: number }
 export const llmSnapshot = (livePage = 0) => invoke<LlmSnapshot>("llm_snapshot", { livePage });
 export const saveLlmSettings = (libraryId: string, settings: LlmSettings) => invoke<LlmSettings>("llm_save_settings", { libraryId, settings });
 export const estimateLlm = (libraryId: string, selection: RowSelection | null, includeProcessed: boolean, allMatching: boolean) => invoke<LlmEstimate>("llm_estimate", { libraryId, selection, includeProcessed, allMatching });

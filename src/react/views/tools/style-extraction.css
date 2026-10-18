@@ -34,3 +34,5 @@
 .llm-confirm { padding:14px; background:var(--surface-2); border-radius:8px; margin:12px 0; }
 .llm-warning { color:#9a3412; }
 @media(max-width:760px) { .llm-channel-editor,.llm-live { grid-template-columns:1fr; } .llm-channel-list { flex-direction:row; flex-wrap:wrap; } }
+.llm-whitelist-label{display:grid;gap:8px}
+.llm-whitelist{width:100%;min-height:260px;resize:vertical;line-height:1.6}

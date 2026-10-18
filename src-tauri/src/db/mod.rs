@@ -4,6 +4,7 @@ pub use artist_representatives::ArtistRepresentativeResult;
 mod artist_xml;
 pub mod style_extraction;
 pub(crate) mod llm;
+pub(crate) mod llm_matching;
 mod automation_rules;
 mod batches;
 mod compare;
@@ -423,6 +424,10 @@ fn apply_pending_migrations(
     if version == 24 {
         migrations::migrate_25(&transaction)?;
         version = 25;
+    }
+    if version == 25 {
+        transaction.execute_batch(migrations::MIGRATION_26)?;
+        version = 26;
     }
     debug_assert_eq!(version, CURRENT_SCHEMA_VERSION);
     transaction.pragma_update(None, "user_version", version)?;

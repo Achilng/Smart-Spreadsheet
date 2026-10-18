@@ -2,6 +2,7 @@ pub(crate) mod api;
 pub(crate) mod credentials;
 use super::AppRuntime;
 use crate::db::llm::*;
+use crate::db::llm_matching;
 use serde::Serialize;
 use std::{
     collections::{HashMap, HashSet},
@@ -86,6 +87,28 @@ pub fn save_settings(
     }
     if !["low", "medium", "high"].contains(&settings.reasoning.as_str()) {
         return Err("请选择有效的推理等级".into());
+    }
+    settings.ignored_tags = settings
+        .ignored_tags
+        .iter()
+        .map(|tag| llm_matching::clean_tag(tag))
+        .filter(|tag| !tag.is_empty())
+        .collect();
+    let mut unique = HashSet::new();
+    settings
+        .ignored_tags
+        .retain(|tag| unique.insert(tag.clone()));
+    if settings.ignored_tags.len() > 256
+        || settings.ignored_tags.iter().any(|tag| {
+            tag.chars().count() > 160
+                || tag.contains([',', '{', '}', '[', ']', '\n', '\r'])
+                || tag.contains("::")
+        })
+    {
+        return Err(
+            "白名单每行填写一个完整标签，不填写逗号或权重外壳；最多 256 条，每条最多 160 字。"
+                .into(),
+        );
     }
     let old = runtime.llm_db(library, |db| db.llm_settings())?;
     let mut ids = HashSet::new();
@@ -388,6 +411,11 @@ pub(crate) async fn run(
             .iter()
             .flat_map(|f| f.items.iter().map(|i| i.hash.clone()))
             .collect::<HashSet<_>>();
+        let mut occupied_keys = flights
+            .iter()
+            .flat_map(|f| f.items.iter())
+            .map(|i| llm_matching::key(&i.prompt, &settings.ignored_tags))
+            .collect::<HashSet<_>>();
         // Fetch only enough pending work for actual capacity; large configured concurrency does not allocate workers.
         let channels = settings
             .channels
@@ -410,7 +438,7 @@ pub(crate) async fn run(
                 capacity
                     .saturating_mul(job.batch_size)
                     .saturating_add(busy.len())
-                    .max(1),
+                    .max(64),
             )
         }) {
             Ok(v) => v,
@@ -425,15 +453,12 @@ pub(crate) async fn run(
             .into_iter()
             .filter(|i| !busy.contains(&i.hash))
             .collect::<Vec<_>>();
-        // Reuse exact-text results, including successful empty results, across import tasks.
+        // Reuse before allocating requests. Keep each original prompt for safe writeback and export.
         let mut remaining = Vec::new();
+        let mut reused_any = false;
         for item in queue.drain(..) {
             match runtime.llm_db(&library, |db| {
-                if job.reuse {
-                    db.llm_cached(&item)
-                } else {
-                    Ok(None)
-                }
+                db.llm_cached(&item, (!job.reuse).then_some(job.id.as_str()))
             }) {
                 Ok(Some((artists, model, channel))) => match runtime.llm_db(&library, |db| {
                     db.llm_save_result(
@@ -441,13 +466,22 @@ pub(crate) async fn run(
                         &item,
                         &artists,
                         &model,
-                        &format!("{channel}（复用）"),
+                        &format!("{}（复用）", channel.trim_end_matches("（复用）")),
                     )
                 }) {
-                    Ok(n) => changed |= n > 0,
+                    Ok(n) => {
+                        changed |= n > 0;
+                        reused_any = true;
+                    }
                     Err(error) => fatal = Some(error),
                 },
-                Ok(None) => remaining.push(item),
+                Ok(None) => {
+                    // Variants already queued in this scheduling round or in flight wait for its result.
+                    if occupied_keys.insert(llm_matching::key(&item.prompt, &settings.ignored_tags))
+                    {
+                        remaining.push(item);
+                    }
+                }
                 Err(error) => fatal = Some(error),
             }
         }
@@ -459,6 +493,7 @@ pub(crate) async fn run(
             });
             continue;
         }
+        let needs_request = !remaining.is_empty();
         let mut queue = remaining.into_iter().peekable();
         let mut can_run = false;
         let mut waiting = String::new();
@@ -493,6 +528,9 @@ pub(crate) async fn run(
                 .filter(|f| f.channel.id == channel.id)
                 .count();
             for _ in used..channel.concurrency {
+                if engine.revision.load(Ordering::SeqCst) != revision {
+                    break;
+                }
                 if queue.peek().is_none() {
                     break;
                 }
@@ -581,7 +619,7 @@ pub(crate) async fn run(
                         },
                     )
                 });
-            } else if !can_run {
+            } else if !can_run && (needs_request || !reused_any) {
                 let _ = runtime.llm_db(&library, |db| {
                     db.llm_worker_state(
                         &job.id,

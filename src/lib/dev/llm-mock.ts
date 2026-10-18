@@ -1,8 +1,9 @@
 /** Development-only IPC fixture for reviewing the embedded workbench without model calls. */
 import type { LlmChannel, LlmItem, LlmJob, LlmSettings, LlmSnapshot } from "../api/local-llm";
+import { DEFAULT_LLM_IGNORED_TAGS } from "../api/local-llm";
 
 export function createLlmMock() {
-  let settings: LlmSettings = { autoImport: false, autoResume: true, batchSize: 10, reasoning: "medium", channels: [] };
+  let settings: LlmSettings = { autoImport: false, autoResume: true, batchSize: 10, reasoning: "medium", channels: [], ignoredTags: [...DEFAULT_LLM_IGNORED_TAGS] };
   const jobs: LlmJob[] = [];
   const results = new Map<string, LlmItem[]>();
   return (command: string, payload: Record<string, unknown>): unknown => {
@@ -21,7 +22,7 @@ export function createLlmMock() {
           return { ...rest, hasKey: key === undefined ? old?.hasKey ?? false : !!key.trim() };
         }); settings = next; return structuredClone(settings);
       }
-      case "llm_estimate": return { rows: 12, skipped: 2, uniquePrompts: 8, affectedRows: payload.allMatching ? 18 : 10 };
+      case "llm_estimate": return { rows: 12, skipped: 2, uniquePrompts: 8, affectedRows: payload.allMatching ? 18 : 10, reusablePrompts: payload.includeProcessed ? 0 : 5, waitingPrompts: payload.includeProcessed ? 0 : 1, requestPrompts: payload.includeProcessed ? 8 : 2 };
       case "llm_models": {
         const channel = payload.channel as LlmChannel;
         if (!channel.key && !channel.hasKey) throw Error("请先填写 API Key");

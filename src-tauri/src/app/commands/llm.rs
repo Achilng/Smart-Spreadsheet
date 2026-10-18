@@ -103,9 +103,6 @@ pub(crate) async fn llm_create(
     app: tauri::AppHandle,
 ) -> Result<Option<String>, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        if channel_ids.is_empty() {
-            return Err("请至少选择一个参与渠道".into());
-        }
         app.state::<AppRuntime>().llm_db(&library_id, |db| {
             db.llm_create(
                 selection.as_ref(),

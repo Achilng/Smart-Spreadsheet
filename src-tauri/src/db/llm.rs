@@ -1,4 +1,5 @@
 //! Durable local extraction queue. Network calls never hold a database transaction.
+use super::llm_matching;
 use super::style_extraction::{LlmSource, StyleChange, prompt_hash};
 use super::{Database, DatabaseError, RowSelection};
 use rusqlite::{OptionalExtension, TransactionBehavior, params};
@@ -44,6 +45,7 @@ pub struct Settings {
     pub batch_size: usize,
     pub reasoning: String,
     pub channels: Vec<Channel>,
+    pub ignored_tags: Vec<String>,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -53,6 +55,7 @@ impl Default for Settings {
             batch_size: 10,
             reasoning: "medium".into(),
             channels: vec![],
+            ignored_tags: llm_matching::default_ignored_tags(),
         }
     }
 }
@@ -101,6 +104,17 @@ pub struct Estimate {
     pub skipped: usize,
     pub unique_prompts: usize,
     pub affected_rows: usize,
+    pub reusable_prompts: usize,
+    pub waiting_prompts: usize,
+    pub request_prompts: usize,
+}
+
+fn valid_source(prompt: &str, artists: &Option<String>, text: &str) -> Option<LlmSource> {
+    let source: LlmSource = serde_json::from_str(text).ok()?;
+    (source.input_hash == prompt_hash(prompt)
+        && prompt.contains(&source.artist_string)
+        && artists.as_deref() == Some(source.artist_string.as_str()))
+    .then_some(source)
 }
 
 impl Database {
@@ -142,14 +156,24 @@ impl Database {
             skipped: 0,
             unique_prompts: 0,
             affected_rows: 0,
+            reusable_prompts: 0,
+            waiting_prompts: 0,
+            request_prompts: 0,
         };
+        let ignored = self.llm_settings()?.ignored_tags;
         let mut grouped: HashMap<String, Vec<Target>> = HashMap::new();
         for (id, prompt, artists, source) in &values {
             if selected.as_ref().is_some_and(|s| !s.contains(id)) {
                 continue;
             }
             stats.rows += 1;
-            if prompt.trim().is_empty() || (!include && source.is_some()) {
+            if prompt.trim().is_empty()
+                || (!include
+                    && source
+                        .as_deref()
+                        .and_then(|s| valid_source(prompt, artists, s))
+                        .is_some())
+            {
                 stats.skipped += 1;
                 continue;
             }
@@ -160,14 +184,24 @@ impl Database {
             });
         }
         if all_matching {
+            let keys = grouped
+                .keys()
+                .map(|prompt| llm_matching::key(prompt, &ignored))
+                .collect::<HashSet<_>>();
             for targets in grouped.values_mut() {
                 targets.clear();
             }
             for (id, prompt, artists, source) in values {
-                if !include && source.is_some() {
+                if !include
+                    && source
+                        .as_deref()
+                        .and_then(|s| valid_source(&prompt, &artists, s))
+                        .is_some()
+                {
                     continue;
                 }
-                if let Some(targets) = grouped.get_mut(&prompt) {
+                if keys.contains(&llm_matching::key(&prompt, &ignored)) {
+                    let targets = grouped.entry(prompt).or_default();
                     targets.push(Target {
                         row_id: id,
                         artists,
@@ -176,7 +210,11 @@ impl Database {
                 }
             }
         }
-        stats.unique_prompts = grouped.len();
+        stats.unique_prompts = grouped
+            .keys()
+            .map(|prompt| llm_matching::key(prompt, &ignored))
+            .collect::<HashSet<_>>()
+            .len();
         stats.affected_rows = grouped.values().map(Vec::len).sum();
         Ok((stats, grouped))
     }
@@ -186,7 +224,33 @@ impl Database {
         include: bool,
         all_matching: bool,
     ) -> Result<Estimate, DatabaseError> {
-        Ok(self.llm_candidates(selection, include, all_matching)?.0)
+        let (mut stats, groups) = self.llm_candidates(selection, include, all_matching)?;
+        let ignored = self.llm_settings()?.ignored_tags;
+        self.llm_refresh_match_keys(&ignored)?;
+        let waiting = {
+            let mut stmt = self.connection.prepare("SELECT DISTINCT i.match_key FROM llm_items i JOIN llm_jobs j ON j.id=i.job_id WHERE i.status='pending' AND j.state IN ('queued','running')")?;
+            stmt.query_map([], |r| r.get::<_, String>(0))?
+                .collect::<Result<HashSet<_>, _>>()?
+        };
+        let mut seen = HashSet::new();
+        for prompt in groups.keys() {
+            let key = llm_matching::key(prompt, &ignored);
+            if !seen.insert(key.clone()) {
+                continue;
+            }
+            if !include
+                && self
+                    .llm_cached_prompt(prompt, &key, &ignored, None)?
+                    .is_some()
+            {
+                stats.reusable_prompts += 1;
+            } else if !include && waiting.contains(&key) {
+                stats.waiting_prompts += 1;
+            } else {
+                stats.request_prompts += 1;
+            }
+        }
+        Ok(stats)
     }
     pub fn llm_create(
         &mut self,
@@ -242,8 +306,8 @@ impl Database {
         tx.execute("INSERT INTO llm_jobs(id,created_at,state,prompt_version,batch_size,reasoning,channel_ids,reuse,total) VALUES (?1,?2,'queued',?3,?4,?5,?6,?7,?8)", params![id, now(), PROMPT_VERSION, settings.batch_size as i64, settings.reasoning, json(&channels)?, !include,groups.len() as i64])?;
         for (prompt, targets) in groups {
             tx.execute(
-                "INSERT INTO llm_items(job_id,hash,prompt,targets) VALUES (?1,?2,?3,?4)",
-                params![id, prompt_hash(&prompt), prompt, json(&targets)?],
+                "INSERT INTO llm_items(job_id,hash,prompt,targets,match_key) VALUES (?1,?2,?3,?4,?5)",
+                params![id, prompt_hash(&prompt), prompt, json(&targets)?, llm_matching::key(&prompt, &settings.ignored_tags)],
             )?;
         }
         tx.commit()?;
@@ -342,23 +406,105 @@ impl Database {
         )?;
         Ok(())
     }
-    pub fn llm_cached(
-        &self,
-        item: &Item,
-    ) -> Result<Option<(String, String, String)>, DatabaseError> {
-        let result=self.connection.query_row("SELECT i.artists,i.model,i.channel FROM llm_items i JOIN llm_jobs j ON j.id=i.job_id WHERE i.hash=?1 AND i.prompt=?2 AND i.status IN ('ok','none') AND j.prompt_version=?3 ORDER BY j.created_at DESC LIMIT 1", params![item.hash,item.prompt,PROMPT_VERSION], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional()?;
-        if result.is_some() {
-            return Ok(result);
+    /// Indexed lookups include imported historical results. Rule changes rebuild derived keys only.
+    pub fn llm_refresh_match_keys(&mut self, ignored: &[String]) -> Result<(), DatabaseError> {
+        let rules = llm_matching::rules_key(ignored);
+        let rebuild = self.setting("llm_match_rules")?.as_deref() != Some(&rules);
+        if !rebuild {
+            let pending: bool = self.connection.query_row("SELECT EXISTS(SELECT 1 FROM llm_items WHERE match_key IS NULL) OR EXISTS(SELECT 1 FROM rows WHERE artist_llm IS NOT NULL AND llm_match_key IS NULL)", [], |r| r.get(0))?;
+            if !pending {
+                return Ok(());
+            }
         }
-        let source:Option<String>=self.connection.query_row("SELECT artist_llm FROM rows WHERE artist_llm IS NOT NULL AND json_extract(artist_llm,'$.inputHash')=?1 AND positive_prompt=?2 AND json_extract(artist_llm,'$.promptVersion')=?3 LIMIT 1",params![item.hash,item.prompt,PROMPT_VERSION],|r|r.get(0)).optional()?;
-        if let Some(source) = source {
-            let source: LlmSource = decode(&source)?;
-            if item.prompt.contains(&source.artist_string) {
-                return Ok(Some((
-                    source.artist_string,
-                    source.model,
-                    "资料库已有结果".into(),
-                )));
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        if rebuild {
+            tx.execute_batch("UPDATE llm_items SET match_key=NULL; UPDATE rows SET llm_match_key=NULL WHERE llm_match_key IS NOT NULL;")?;
+        }
+        let items = {
+            let mut stmt =
+                tx.prepare("SELECT job_id,hash,prompt FROM llm_items WHERE match_key IS NULL")?;
+            stmt.query_map([], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?
+        };
+        {
+            let mut update =
+                tx.prepare("UPDATE llm_items SET match_key=?3 WHERE job_id=?1 AND hash=?2")?;
+            for (job, hash, prompt) in items {
+                update.execute(params![job, hash, llm_matching::key(&prompt, ignored)])?;
+            }
+        }
+        let rows = {
+            let mut stmt = tx.prepare("SELECT id,COALESCE(positive_prompt,'') FROM rows WHERE artist_llm IS NOT NULL AND llm_match_key IS NULL")?;
+            stmt.query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))?
+                .collect::<Result<Vec<_>, _>>()?
+        };
+        {
+            let mut update = tx.prepare("UPDATE rows SET llm_match_key=?2 WHERE id=?1")?;
+            for (id, prompt) in rows {
+                update.execute(params![id, llm_matching::key(&prompt, ignored)])?;
+            }
+        }
+        tx.execute("INSERT INTO settings(key,value) VALUES('llm_match_rules',?1) ON CONFLICT(key) DO UPDATE SET value=excluded.value",[rules])?;
+        tx.commit()?;
+        Ok(())
+    }
+    pub fn llm_cached(
+        &mut self,
+        item: &Item,
+        only_job: Option<&str>,
+    ) -> Result<Option<(String, String, String)>, DatabaseError> {
+        let ignored = self.llm_settings()?.ignored_tags;
+        self.llm_refresh_match_keys(&ignored)?;
+        self.llm_cached_prompt(
+            &item.prompt,
+            &llm_matching::key(&item.prompt, &ignored),
+            &ignored,
+            only_job,
+        )
+    }
+    fn llm_cached_prompt(
+        &self,
+        prompt: &str,
+        key: &str,
+        ignored: &[String],
+        only_job: Option<&str>,
+    ) -> Result<Option<(String, String, String)>, DatabaseError> {
+        let mut stmt = self.connection.prepare("SELECT i.prompt,i.artists,i.model,i.channel,i.status FROM llm_items i JOIN llm_jobs j ON j.id=i.job_id WHERE i.match_key=?1 AND i.status IN ('ok','none') AND (?3 IS NULL OR i.job_id=?3) ORDER BY (i.prompt=?2) DESC,j.created_at DESC")?;
+        let mut results = stmt.query(params![key, prompt, only_job])?;
+        while let Some(row) = results.next()? {
+            let original: String = row.get(0)?;
+            let artists: String = row.get(1)?;
+            let status: String = row.get(4)?;
+            if (status == "none") != artists.is_empty() {
+                continue;
+            }
+            if let Some(projected) = llm_matching::project(&original, &artists, prompt, ignored) {
+                return Ok(Some((projected, row.get(2)?, row.get(3)?)));
+            }
+        }
+        // Forced work may reuse a fresh result from its own task, never an older result.
+        if only_job.is_some() {
+            return Ok(None);
+        }
+        let mut stmt = self.connection.prepare("SELECT positive_prompt,artists,artist_llm FROM rows WHERE artist_llm IS NOT NULL AND llm_match_key=?1 ORDER BY (positive_prompt=?2) DESC,id DESC")?;
+        let mut results = stmt.query(params![key, prompt])?;
+        while let Some(row) = results.next()? {
+            let original: String = row.get(0)?;
+            let artists: Option<String> = row.get(1)?;
+            let text: String = row.get(2)?;
+            if let Some(source) = valid_source(&original, &artists, &text)
+                && let Some(projected) =
+                    llm_matching::project(&original, &source.artist_string, prompt, ignored)
+            {
+                return Ok(Some((projected, source.model, "资料库已有结果".into())));
             }
         }
         Ok(None)
