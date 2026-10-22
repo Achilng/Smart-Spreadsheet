@@ -1,5 +1,14 @@
 # 项目计划
 
+## v_46 发布与本机安装（2026-10-22）
+
+- 已将版本统一为 `0.12.23`，发布源码为 `e29aa87`，包含本轮界面细节调整以及 v_45 之后的 LLM 工作台、画师匹配和模块复用改进。详细入口和用法记录在 `.github/release-notes/v_46.md`。
+- GitHub 正式版本：[v_46](https://github.com/Achilng/Smart-Spreadsheet/releases/tag/v_46)，已设为最新版本。安装包、更新签名与 `latest.json` 三个附件均已上传，远端文件大小及 SHA-256 与本地产物一致；更新清单的版本、说明、签名和下载地址已核对。
+- 前端 TypeScript 检查、生产构建、既有 45 项前端检查与 Rust Release 编译通过。未新增测试。签名打包成功后，旧版 PowerShell 的最终哈希输出命令未能加载；已用当前 PowerShell 独立完成全部产物校验，无需重新构建或更换产物。
+- 使用 NSIS 安装包静默更新 `D:/应用/智能表格`，退出码为 0。程序文件及卸载登记版本均为 `0.12.23`；已验证安装后的程序与带 NSIS 标记的本次构建一致。程序 SHA-256：`F6E59DF5DD13CE5D93ED0BCE9D4B307410DB84E02EE6910B4FBD72A01468E7AE`。
+- 旧程序备份：`D:/应用/智能表格/backups/smart-spreadsheet-0.12.22-before-v46-20261022.exe`，备份哈希与替换前原件一致。未主动启动安装版或操作资料库。
+- 本轮维护文件：根目录的 `package.json`、`package-lock.json`、`Cargo.lock`、`src-tauri/Cargo.toml`、`src-tauri/tauri.conf.json`、本文件和发布说明。生成内容位于 `dist/`、`target/`（含 D 盘打包工具缓存）、`node_modules/.vite-temp/`；临时构建脚本、日志和校验记录位于 `D:/Agent/Agent_temp/smart-spreadsheet-release-v46/`。安装程序更新了本机安装目录和卸载登记。原有 `AGENTS.md` 修改与三个文档删除未纳入提交。
+
 ## 视觉细节统一（2026-10-22）
 
 已按确认的三条规则检查并调整当前实际运行的 React 界面，覆盖主窗口六种视图、工具箱 11 个入口、对比窗口及公共弹窗。未接入当前构建入口的旧 Svelte 页面不作为本轮界面维护对象。
