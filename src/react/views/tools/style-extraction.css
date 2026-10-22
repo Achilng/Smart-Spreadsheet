@@ -4,11 +4,11 @@
 .llm-preferences strong,.llm-preferences small { display:block; }
 .llm-preferences small { color:var(--text-2); margin-top:5px; line-height:1.6; }
 .llm-channel-picks { display:flex; flex-wrap:wrap; gap:10px; margin:12px 0 18px; }
-.llm-channel-picks label { display:flex; align-items:center; gap:8px; padding:9px 12px; border:1px solid var(--border); border-radius:8px; }
+.llm-channel-picks label { display:flex; align-items:center; gap:8px; padding:9px 12px; border: 0; box-shadow: var(--elev-2); border-radius:8px; }
 .llm-channel-picks small { color:var(--text-2); }
 .llm-channel-editor { display:grid; grid-template-columns:minmax(140px,210px) minmax(0,1fr); gap:24px; margin:20px 0; }
 .llm-channel-list { display:flex; flex-direction:column; gap:6px; }
-.llm-channel-list button,.llm-job-list button { border:1px solid var(--border); border-radius:8px; background:var(--surface); padding:12px; text-align:left; color:var(--text-1); cursor:pointer; }
+.llm-channel-list button,.llm-job-list button { border: 0; box-shadow: var(--elev-2); border-radius:8px; background:var(--surface); padding:12px; text-align:left; color:var(--text-1); cursor:pointer; }
 .llm-channel-list button.is-active,.llm-job-list button.is-active { background:var(--accent-soft,#edf4ff); border-color:var(--accent,#3b82f6); }
 .llm-channel-list small,.llm-job-list small { display:block; color:var(--text-2); margin-top:4px; overflow-wrap:anywhere; }
 .llm-channel-fields { display:grid; gap:12px; }
@@ -18,13 +18,13 @@
 .llm-job-list { display:flex; flex-direction:column; gap:8px; max-height:300px; overflow:auto; }
 .llm-job-list button { display:flex; justify-content:space-between; gap:20px; }
 .llm-job-list button>span:last-child { text-align:right; }
-.llm-job-detail { border-top:1px solid var(--border); margin-top:20px; padding-top:20px; }
+.llm-job-detail { border-top: 0; margin-top:20px; padding-top:20px; }
 .llm-progress { width:100%; height:7px; accent-color:var(--accent); }
 .llm-live { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin:12px 0; }
-.llm-live section { border:1px solid var(--border); padding:12px; border-radius:8px; min-width:0; }
+.llm-live section { border: 0; box-shadow: var(--elev-2); padding:12px; border-radius:8px; min-width:0; }
 .llm-live small { display:block; color:var(--text-2); margin:5px 0; }
 .llm-live pre { white-space:pre-wrap; overflow-wrap:anywhere; max-height:140px; overflow:auto; font-size:13px; }
-.llm-result { border-top:1px solid var(--border); padding:12px 0; }
+.llm-result { border-top: 0; padding:12px 0; }
 .llm-result summary { display:flex; gap:12px; cursor:pointer; align-items:center; }
 .llm-result summary>span { flex:1; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
 .llm-result summary small { color:var(--text-2); flex-shrink:0; }

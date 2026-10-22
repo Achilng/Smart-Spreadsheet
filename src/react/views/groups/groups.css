@@ -13,7 +13,7 @@
   align-items: center;
   margin: 0 calc(var(--page-gutter) - 8px);
   padding-right: 4px;
-  border-bottom: 1px solid var(--border-faint);
+  border-bottom: 0;
   background: var(--surface);
 }
 .r-section-header > button {
@@ -47,10 +47,9 @@
   align-content: start;
   gap: 16px 12px;
   padding: 16px var(--page-gutter) 20px;
-  border-bottom: 1px solid var(--border-faint);
+  border-bottom: 0;
 }
 /* Album grids must not fade in: the album transition snapshots them immediately. */
-.r-browse-section .r-section-grid { animation: r-content-in var(--dur-base) var(--ease-out); }
 .r-section-card {
   position: relative;
   display: flex;
@@ -68,7 +67,7 @@
   height: 120px;
   border-radius: var(--radius-m);
   background: var(--surface-2);
-  box-shadow: var(--elev-1), inset 0 0 0 1px rgb(16 24 40 / 4%);
+  box-shadow: var(--elev-2);
   transition: transform var(--dur-base) var(--ease-emphasized), box-shadow var(--dur-base) var(--ease-out);
 }
 .r-section-thumb .r-image { width: 100%; height: 100%; overflow: hidden; border-radius: inherit; }
@@ -153,7 +152,7 @@
 .r-group-choices > .btn > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .r-group-choices small, .r-group-manage-row small { flex: none; color: var(--text-3); }
 .r-group-manage-list { min-width: 0; max-height: 50vh; overflow: auto; }
-.r-group-manage-row { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 8px 0; border-bottom: 1px solid var(--border-faint); }
+.r-group-manage-row { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 8px 0; border-bottom: 0; }
 .r-group-manage-row > span, .r-group-manage-row > .r-input { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .r-group-manage-row > .btn { flex: none; }
 

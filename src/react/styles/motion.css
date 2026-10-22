@@ -3,28 +3,114 @@
  * their anchor; exits are quicker than entrances. Album unfolding lives in album-transition.css.
  */
 
-/* Each view fades in when it mounts. No fill mode, so no transform lingers on scrollers. */
-.r-gallery,
-.r-table,
-.r-section-view,
-.rm-main,
-.r-prompt-docs,
-.r-view-enter {
-  animation: r-view-in var(--dur-slow) var(--ease-emphasized);
+/* Animate semantic parts, never a view/scroller and its entire contents together.
+ * Backwards fill hides delayed items before entry but releases transforms afterwards.
+ * Cap the wave at 140ms, including virtual lists with thousands of records.
+ * Reflow owns outer card transforms; entry belongs to their inner content. */
+:is(.r-gallery-spacer, .r-table-spacer, .r-section-grid, .r-group-shelf, .rm-grid,
+    .r-detail-scroll, .rm-detail-scroll, .r-dialog-body, .r-filter-sections,
+    .r-row-edit-fields, .rm-cover-column, .rm-fields, .rm-look-panel, .rm-look-options,
+    .automation-dialog, .r-group-manage-list, .r-group-choices, .r-tag-picker,
+    .r-menu, .r-select-menu [data-radix-select-viewport], .rd-tag-suggestions,
+    .r-inline-editor, .r-startup-card, .r-state-message, .rm-empty,
+    .rt-page, .rt-columns, .qe-rule-column, .automation-rules .editor-body,
+    .rc-section .section-grid, .rc-side .panes, .rc-side .inspector-scroll,
+    .r-pd-list, .r-pd-items, .r-pd-editor, .r-notices) > * {
+  --enter-index: 4;
+  &:nth-child(1) { --enter-index: 0; }
+  &:nth-child(2) { --enter-index: 1; }
+  &:nth-child(3) { --enter-index: 2; }
+  &:nth-child(4) { --enter-index: 3; }
 }
 
-@keyframes r-view-in { from { opacity: 0; transform: translateY(6px); } }
+:is(.r-card-content, .r-table-row, .r-section-card, .r-group-album, .rm-album-card,
+    .r-detail-scroll > *, .rm-detail-scroll > *, .r-inline-editor > *,
+    .r-startup-card > *, .r-state-message > :not(.r-startup-card), .rm-empty > *,
+    .rm-look-panel > :not(.rm-look-options), .rm-look-options > *, .rd-tag-suggestions > *,
+    .rt-page > :not(:is(.rt-columns, .qe-layout)), .rt-columns > *, .qe-rule-column > *, .qe-preview,
+    .automation-rules .editor-body > *, .automation-rules .sidebar-head,
+    .automation-rules .sidebar-transfer, .automation-rules .rule-list,
+    .rc-section > header, .rc-section > .model-options, .rc-section > .pagination,
+    .rc-section .section-grid > *, .rc-side > .head, .rc-side .panes > *,
+    .rc-side .inspector-head, .rc-side .diff-tabs, .rc-side .inspector-scroll > *,
+    .r-pd-list > :not(.r-pd-items), .r-pd-items > *, .r-pd-editor > :not(.r-pd-progress)) {
+  animation: r-content-in var(--dur-base) var(--ease-out) min(calc(var(--enter-index, 0) * var(--stagger-step)), var(--stagger-limit)) backwards;
+}
+
+/* Headers and actions are independent from the grid, including kept-alive tools. */
+:is(.r-page-head > *, .r-page-toolbar, .r-chips, .rt-content-header > *, .r-detail-header) {
+  animation: r-content-in var(--dur-base) var(--ease-out) backwards;
+}
+:is(.r-page-head > :nth-child(2), .rt-content-header > p) { animation-delay: var(--stagger-step); }
+.r-page-toolbar { animation-delay: calc(var(--stagger-step) * 2); }
+.r-chips { animation-delay: calc(var(--stagger-step) * 3); }
+.qe-preview { --enter-index: 2; }
+.automation-rules .sidebar-transfer, .rc-side .diff-tabs { --enter-index: 1; }
+.automation-rules .rule-list { --enter-index: 2; }
+.rc-section > .model-options { --enter-index: 1; }
+.rc-section > .pagination { --enter-index: 4; }
+.r-notices > .r-notice { animation-delay: min(calc(var(--enter-index, 0) * var(--stagger-step)), var(--stagger-limit)); animation-fill-mode: backwards; }
+
+/* The filter panel stays mounted: transition its groups on both open and close. */
+.r-library-filter-panel > :is(.r-sidebar, .rm-sidebar) > * {
+  opacity: 1;
+  transform: none;
+  transition: opacity var(--dur-fast) var(--ease-out), transform var(--dur-base) var(--ease-out);
+  transition-delay: min(calc(var(--enter-index, 2) * var(--stagger-step)), 70ms);
+  &:nth-child(1) { --enter-index: 0; }
+  &:nth-child(2) { --enter-index: 1; }
+}
+.r-library-filter-panel[data-open="false"] > :is(.r-sidebar, .rm-sidebar) > * {
+  opacity: 0;
+  transform: translateX(-6px);
+  transition-delay: min(calc(var(--enter-index, 2) * 20ms), 40ms);
+}
+
+/* Radix retains a closing shell until its own CSS animation ends (220ms).
+ * Keep shell opacity steady while the header, body items and footer leave in order. */
+.r-dialog-header { --enter-index: 0; }
+.r-dialog-footer { --enter-index: 4; }
+:is(.r-dialog-header, .r-dialog-footer,
+    .r-dialog-body > :not(:is(.r-filter-sections, .rm-editor, .r-row-edit-fields, .automation-dialog, .r-group-manage-list, .r-group-choices, .r-tag-picker)),
+    .r-dialog .r-filter-sections > *, .r-dialog .r-row-edit-fields > *,
+    .r-dialog .automation-dialog > *, .r-dialog .r-group-manage-list > *, .r-dialog .r-group-choices > *, .r-dialog .r-tag-picker > *,
+    .r-dialog .rm-cover-column > *, .r-dialog .rm-fields > *) {
+  animation: r-content-in var(--dur-base) var(--ease-out) min(calc((var(--enter-index, 0) + 1) * var(--stagger-step)), var(--stagger-limit)) backwards;
+}
+.r-dialog[data-state="closed"] :is(.r-dialog-header, .r-dialog-footer,
+    .r-dialog-body > :not(:is(.r-filter-sections, .rm-editor, .r-row-edit-fields, .automation-dialog, .r-group-manage-list, .r-group-choices, .r-tag-picker)),
+    .automation-dialog > *, .r-group-manage-list > *, .r-group-choices > *, .r-tag-picker > *,
+    .r-filter-sections > *, .r-row-edit-fields > *, .rm-cover-column > *, .rm-fields > *) {
+  animation: r-content-out 120ms var(--ease-in) min(calc((var(--enter-index, 0) + 1) * 20ms), 80ms) both;
+}
+.r-dialog[data-state="closed"] > .r-dialog-header { --enter-index: -1; }
+.r-dialog > .r-dialog-header { animation-delay: 0ms; }
+:is(.r-menu, .r-select-menu [data-radix-select-viewport]) > * {
+  animation: r-content-in var(--dur-fast) var(--ease-out) min(calc(var(--enter-index, 0) * 20ms), 80ms) backwards;
+}
+.r-menu[data-state="closed"] > *, .r-select-menu[data-state="closed"] [data-radix-select-viewport] > * {
+  animation: r-content-out 120ms var(--ease-in) min(calc(var(--enter-index, 0) * 20ms), 80ms) both;
+}
+.rd-lightbox-head, .rd-lightbox-stage, .rd-lightbox-footer {
+  animation: r-content-in var(--dur-base) var(--ease-out) backwards;
+}
+.rd-lightbox-stage { animation-delay: var(--stagger-step); }
+.rd-lightbox-footer { animation-delay: calc(var(--stagger-step) * 2); }
+
+/* An album navigation owns its snapshots; don't stack CSS entry on top of it. */
+[data-album-motion] :is(.r-group-album, .r-section-card, .r-page-head > *, .r-page-toolbar, .r-chips) { animation-duration: .01ms; animation-delay: 0ms; }
+
 @keyframes r-fade-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes r-fade-out { to { opacity: 0; } }
 @keyframes r-content-in { from { opacity: 0; transform: translateY(4px); } }
+@keyframes r-content-out { to { opacity: 0; transform: translateY(-3px); } }
+@keyframes r-surface-in { from { transform: scale(.985); } }
+@keyframes r-surface-out { from { transform: none; } to { transform: scale(.99); } }
 @keyframes r-pop-in { from { opacity: 0; transform: scale(.96); } }
-@keyframes r-pop-out { to { opacity: 0; transform: scale(.98); } }
 @keyframes r-check-in { from { opacity: 0; transform: scale(.6); } to { opacity: 1; transform: scale(1); } }
-@keyframes r-dialog-in { from { opacity: 0; transform: translate(-50%, calc(-50% + 10px)) scale(.98); } to { opacity: 1; transform: translate(-50%, -50%); } }
-@keyframes r-dialog-out { to { opacity: 0; transform: translate(-50%, calc(-50% + 4px)) scale(.99); } }
-@keyframes r-rise-in { from { opacity: 0; transform: translateY(12px); } }
-@keyframes r-drop-in { from { opacity: 0; transform: translate(-50%, -8px); } to { opacity: 1; transform: translate(-50%, 0); } }
-@keyframes r-panel-in { from { opacity: 0; transform: translateX(-10px); } }
+@keyframes r-dialog-in { from { transform: translate(-50%, calc(-50% + 6px)) scale(.99); } to { transform: translate(-50%, -50%); } }
+@keyframes r-dialog-out { to { transform: translate(-50%, calc(-50% + 4px)) scale(.99); } }
+@keyframes r-drop-in { from { transform: translate(-50%, -8px); } to { transform: translate(-50%, 0); } }
 @keyframes r-notice-in { from { opacity: 0; transform: translateX(16px); } }
 @keyframes r-shimmer { from { background-position: 150% 0; } to { background-position: -50% 0; } }
 @keyframes r-progress { from { transform: translateX(-100%); } to { transform: translateX(350%); } }

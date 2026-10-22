@@ -45,10 +45,10 @@
   --on-image: rgb(255 255 255 / 92%);
 
   /* ---- Elevation ---- */
-  --elev-1: 0 1px 2px rgb(16 24 40 / 5%);
-  --elev-2: 0 1px 3px rgb(16 24 40 / 6%), 0 4px 12px -4px rgb(16 24 40 / 6%);
-  --elev-3: 0 12px 32px -10px rgb(16 24 40 / 20%), 0 3px 8px -2px rgb(16 24 40 / 6%);
-  --elev-4: 0 28px 72px -18px rgb(16 24 40 / 30%), 0 6px 18px -4px rgb(16 24 40 / 8%);
+  --elev-1: 0 1px 3px rgb(16 24 40 / 6%), 0 3px 8px -2px rgb(16 24 40 / 5%);
+  --elev-2: 0 1px 3px rgb(16 24 40 / 6%), 0 4px 10px -3px rgb(16 24 40 / 7%), 0 10px 24px -8px rgb(16 24 40 / 5%);
+  --elev-3: 0 2px 5px rgb(16 24 40 / 5%), 0 8px 20px -5px rgb(16 24 40 / 9%), 0 20px 44px -12px rgb(16 24 40 / 12%);
+  --elev-4: 0 3px 8px rgb(16 24 40 / 5%), 0 12px 30px -8px rgb(16 24 40 / 10%), 0 32px 80px -20px rgb(16 24 40 / 18%);
   --focus-ring: 0 0 0 3px rgb(31 111 209 / 22%);
 
   /* Legacy aliases used by toolbox and compare styles. */
@@ -67,6 +67,16 @@
   --radius-m: 12px;
   --radius-l: 16px;
   --radius-full: 999px;
+  /* Concentric surfaces: outer radius = inner radius + inset, without a border. */
+  --menu-inset: 4px;
+  --menu-radius: calc(var(--radius-s) + var(--menu-inset));
+  --card-inset: 20px;
+  --card-radius: calc(var(--radius-s) + var(--card-inset));
+  --dialog-inset: 24px;
+  --dialog-radius: calc(var(--radius-s) + var(--dialog-inset));
+  --stagger-step: 35ms;
+  --stagger-limit: 140ms;
+  --edge-shadow: 0 1px 4px rgb(16 24 40 / 4%), 0 4px 14px -5px rgb(16 24 40 / 6%);
   --control-h: 32px;
   --control-h-sm: 28px;
 
@@ -146,5 +156,7 @@
     --dur-base: 0ms;
     --dur-slow: 0ms;
     --motion-panel: 0ms;
+    --stagger-step: 0ms;
+    --stagger-limit: 0ms;
   }
 }

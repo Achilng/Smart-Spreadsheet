@@ -10,7 +10,8 @@
 .rm-album-meta > button {
   height: 26px;
   padding: 0 9px;
-  border: 1px solid var(--border);
+  border: 0;
+  box-shadow: var(--elev-2);
   border-radius: var(--radius-full);
   background: var(--surface);
   color: var(--text-2);
@@ -28,12 +29,12 @@
   flex-direction: column;
   max-height: calc(100% - 28px);
   padding: 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-m);
+  border: 0;
+  border-radius: calc(var(--radius-s) + 10px);
   background: var(--surface);
   box-shadow: var(--elev-3);
   transform-origin: 50% 0;
-  animation: r-pop-in var(--dur-base) var(--ease-emphasized);
+  animation: r-surface-in var(--dur-base) var(--ease-emphasized);
 }
 .rm-look-panel header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; padding-left: 4px; font-size: var(--font-sm); }
 .rm-look-panel header strong { font-weight: 600; }
@@ -46,7 +47,7 @@
   margin-bottom: 8px;
   padding: 0 12px;
   border: 1px solid transparent;
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-s);
   background: var(--surface-2);
   font: inherit;
   font-size: var(--font-sm);

@@ -53,19 +53,26 @@ export function useAlbumTransition() {
     };
     const sheets = () => [...album()?.querySelectorAll<HTMLElement>(".r-album-sheet") ?? []];
     const cards = () => [...node.querySelectorAll<HTMLElement>(".r-section-card")].filter(visible);
-    // Shared covers travel as bare thumbnails; the file name stays with the page layer.
+    // Shared covers travel as bare thumbnails; labels have their own staggered layers.
     const thumb = (card: HTMLElement) => card.querySelector<HTMLElement>(".r-section-thumb") ?? card;
     // Snapshots ignore the list's scroll clipping, so a half-scrolled album or card is drawn whole.
     // Everything above the list (window bar, page header, filter chips) therefore sits on top with
     // a solid ground and swaps instantly, like a fixed frame the images move underneath.
     const heads = () => [...node.querySelectorAll<HTMLElement>(":scope > .r-page-head, :scope > .r-page-toolbar, :scope > .r-chips")];
+    const parts = () => [...node.querySelectorAll<HTMLElement>(".r-group-album, .r-section-card, .r-section-header, .r-group-status")].filter(visible);
+    const markParts = (side: "old" | "new") => parts().forEach((element, index) => {
+      const name = `album-content-${side}-${index}`;
+      mark(element, name);
+      const delay = Math.min(index * (side === "old" ? 12 : 18), side === "old" ? 60 : 140);
+      rules.sheet?.insertRule(`:root[data-album-motion]::view-transition-${side}(${name}){animation:album-content-${side === "old" ? "out" : "in"} ${side === "old" ? 140 : 220}ms ease-out ${delay}ms both}`);
+    });
     const swapHeads = (side: "old" | "new") => heads().forEach((element, index) => {
       const name = `album-chrome-${side}-${index}`;
       mark(element, name);
       if (side === "old") rules.sheet?.insertRule(`:root[data-album-motion]::view-transition-old(${name}){display:none}`);
       else {
-        rules.sheet?.insertRule(`:root[data-album-motion]::view-transition-group(${name}){z-index:30;animation:none}`);
-        rules.sheet?.insertRule(`:root[data-album-motion]::view-transition-new(${name}){animation:none;background:var(--bg)}`);
+        rules.sheet?.insertRule(`:root[data-album-motion]::view-transition-group(${name}){z-index:30;animation:none;background:var(--bg)}`);
+        rules.sheet?.insertRule(`:root[data-album-motion]::view-transition-new(${name}){animation:album-fade-in 160ms ease-out ${index * 35}ms backwards;background:var(--bg)}`);
       }
     });
     const identify = (element: HTMLElement) => element.querySelector<HTMLElement>("[data-image-row]")?.dataset.imageRow;
@@ -87,9 +94,20 @@ export function useAlbumTransition() {
       }
       if (cancelled || !node.isConnected) return;
       if (typeof document.startViewTransition !== "function") {
+        node.dataset.albumMotion = direction;
+        const wave = (elements: HTMLElement[], leaving: boolean) => elements.map((element, index) => {
+          const animation = element.animate(leaving
+            ? [{ opacity: 1, transform: "none" }, { opacity: 0, transform: "translateY(-3px)" }]
+            : [{ opacity: 0, transform: "translateY(6px)" }, { opacity: 1, transform: "none" }],
+          { duration: leaving ? 100 : 200, delay: Math.min(index * 18, leaving ? 54 : 126), easing: "cubic-bezier(.2,.8,.2,1)", fill: leaving ? "forwards" : "backwards" });
+          animations.push(animation);
+          return animation.finished.catch(() => {});
+        });
+        await Promise.all(wave([...heads(), ...parts()], true));
+        if (cancelled || !node.isConnected) return;
+        animations.forEach(animation => animation.cancel());
         apply(); focusDestination();
-        animations.push(node.animate([{ opacity: .35, transform: "translateY(14px) scale(.98)" }, { opacity: 1, transform: "none" }], { duration: 280, easing: "cubic-bezier(.2,.8,.2,1)" }));
-        await animations[0].finished.catch(() => {});
+        await Promise.all(wave([...heads(), ...parts()], false));
         return;
       }
       // Preserve the exact hover pose before disabling secondary CSS transitions.
@@ -98,11 +116,11 @@ export function useAlbumTransition() {
       node.dataset.albumMotion = direction;
       document.documentElement.dataset.albumMotion = direction;
       document.head.append(rules);
-      mark(node, "album-page");
       mark(document.querySelector<HTMLElement>(".r-topbar"), "album-window-bar");
       const origin = direction === "enter" ? sheets() : cards();
       const ids = origin.map(identify);
       swapHeads("old");
+      markParts("old");
       // At most three shared covers; other visible tiles spread out in a short wave.
       if (direction === "enter") origin.slice(0, 3).forEach((element, index) => { mark(element, `album-photo-${index}`); stack(element, `album-photo-${index}`); });
       else origin.slice(0, 24).forEach((element, index) => mark(thumb(element), `album-tile-${index}`));
@@ -126,6 +144,7 @@ export function useAlbumTransition() {
         ]).finally(() => clearTimeout(decodeTimer));
         if (cancelled || !node.isConnected) return;
         swapHeads("new");
+        markParts("new");
         const pairedOrigins = new Set<number>();
         const matches = destination.slice(0, direction === "enter" ? 24 : 3).map(element => {
           const id = identify(element), match = id ? ids.indexOf(id) : -1;
@@ -133,8 +152,8 @@ export function useAlbumTransition() {
           if (paired) pairedOrigins.add(match);
           return paired ? match : -1;
         });
-        // Without a shared cover nothing bridges the two pages, so they cross-fade instead of
-        // clearing one before the other (which reads as a blank flash).
+        // Without a shared cover, overlap individual outgoing and incoming tiles
+        // so the handoff never clears every visible item at once.
         const bridged = pairedOrigins.size > 0;
         if (!bridged) document.documentElement.dataset.albumPairs = "none";
         matches.forEach((match, index) => {
@@ -145,7 +164,7 @@ export function useAlbumTransition() {
             if (direction === "leave") stack(element, name);
           } else {
             mark(element, `album-arrival-${index}`);
-            // With a bridge, arrivals wait until the outgoing page has faded so the layouts never double-expose.
+            // With a bridge, arrivals wait for the outgoing tiles to start clearing.
             rules.sheet?.insertRule(`:root[data-album-motion]::view-transition-new(album-arrival-${index}){animation:album-tile-unfold 340ms cubic-bezier(.2,.8,.2,1) ${(bridged ? 120 : 40) + Math.min(index * 18, 162)}ms both}`);
             // Without a bridge the arriving images belong in front of the covers that are leaving.
             if (!bridged) rules.sheet?.insertRule(`:root[data-album-motion]::view-transition-group(album-arrival-${index}){z-index:20}`);

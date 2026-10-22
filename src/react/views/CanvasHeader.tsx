@@ -35,7 +35,7 @@ export function CanvasHeader({ filtersOpen, onFilters }: { filtersOpen: boolean;
   const total = useRows(state => state.total);
   const isTable = view === "table";
   if (view !== "gallery" && !isTable) return null;
-  return <><header className="r-page-head"><h1 className="r-page-title">{viewLabel(view)}<span className="r-page-count">{formatCount(total)} 张符合条件</span></h1><div className="r-page-actions">
+  return <><header key={view} className="r-page-head"><h1 className="r-page-title">{viewLabel(view)}<span className="r-page-count">{formatCount(total)} 张符合条件</span></h1><div className="r-page-actions">
     <div className="r-size-control"><Grid2X2 size={11} aria-hidden="true" /><Slider aria-label={isTable ? "行高" : "卡片大小"} value={[isTable ? rowHeight : cardSize]} min={isTable ? 40 : 120} max={isTable ? 128 : 400} step={1} onValueChange={values => setSize(values[0])} /><Grid2X2 size={15} aria-hidden="true" /></div>
     <ImageSortMenu value={query.sort} onChange={sort => setQuery({ sort })} />
     <Button className="is-toggle" aria-expanded={filtersOpen} onClick={onFilters}><SlidersHorizontal size={15} />图片筛选</Button>

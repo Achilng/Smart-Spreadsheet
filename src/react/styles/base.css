@@ -118,7 +118,8 @@ input[type="checkbox"].switch:checked::before { transform: translateX(14px); }
 
 /* ---- Native text fields and select ---- */
 input[type="text"], input[type="search"], input[type="number"], textarea {
-  border: 1px solid var(--border-strong);
+  border: 0;
+  box-shadow: var(--elev-2);
   border-radius: var(--radius-s);
   background: var(--surface);
   color: var(--text);
@@ -135,7 +136,8 @@ select {
   appearance: none;
   min-height: var(--control-h);
   padding: 5px 30px 5px 11px;
-  border: 1px solid var(--border-strong);
+  border: 0;
+  box-shadow: var(--elev-2);
   border-radius: var(--radius-s);
   background: var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%235d6673' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4.5 6.5 8 10l3.5-3.5'/%3E%3C/svg%3E") no-repeat right 9px center / 14px;
   color: var(--text);
@@ -167,7 +169,7 @@ select:disabled { opacity: .55; cursor: not-allowed; }
   font-variant-numeric: tabular-nums;
 }
 .vibe-badge { background: var(--surface-3); color: var(--text-2); }
-.version-badge { box-shadow: inset 0 0 0 1px rgb(0 0 0 / 6%); }
+.version-badge { box-shadow: var(--elev-1); }
 .version-badge.v5-full { background: #ece1f8; color: #6b21a8; }
 .version-badge.v5-curated { background: #f4eefb; color: #7c4ddb; }
 .version-badge.v5-plain { background: #f6f2fc; color: #7c4ddb; }
@@ -201,7 +203,7 @@ select:disabled { opacity: .55; cursor: not-allowed; }
 }
 
 .tool-card {
-  border: 1px solid var(--border);
+  border: 0;
   border-radius: var(--radius-m);
   background: var(--surface);
   box-shadow: var(--elev-1);
@@ -249,8 +251,9 @@ select:disabled { opacity: .55; cursor: not-allowed; }
   gap: 4px;
   min-width: 0;
   padding: 5px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-s);
+  border: 0;
+  box-shadow: var(--elev-2);
+  border-radius: calc(var(--radius-xs) + 5px);
   background: var(--surface);
   color: var(--text-3);
   font-size: var(--font-xs);
@@ -271,6 +274,8 @@ select:disabled { opacity: .55; cursor: not-allowed; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: .01ms !important;
+    animation-delay: 0ms !important;
+    transition-delay: 0ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: .01ms !important;
     scroll-behavior: auto !important;

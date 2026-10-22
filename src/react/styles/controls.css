@@ -8,7 +8,8 @@
   gap: 6px;
   min-height: var(--control-h);
   padding: 0 14px;
-  border: 1px solid var(--border-strong);
+  border: 0;
+  box-shadow: var(--elev-2);
   border-radius: var(--radius-full);
   background: var(--surface);
   color: var(--text);
@@ -25,7 +26,7 @@
     transform var(--dur-instant) var(--ease-out);
 }
 .btn > svg { flex: none; }
-.btn:hover:not(:disabled) { border-color: var(--border-hover); background: var(--surface-2); }
+.btn:hover:not(:disabled) { box-shadow: var(--elev-2); border-color: var(--border-hover); background: var(--surface-2); }
 .btn:active:not(:disabled) { background: var(--surface-3); transform: scale(.97); }
 .btn:disabled { opacity: .45; cursor: default; }
 .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -37,8 +38,8 @@
 .btn-danger { color: var(--danger); }
 .btn-danger:hover:not(:disabled) { border-color: color-mix(in srgb, var(--danger) 45%, var(--border-strong)); background: var(--danger-soft); }
 
-.btn-ghost { border-color: transparent; background: transparent; color: var(--text-2); }
-.btn-ghost:hover:not(:disabled) { border-color: transparent; background: var(--surface-3); color: var(--text); }
+.btn-ghost { box-shadow: none; border-color: transparent; background: transparent; color: var(--text-2); }
+.btn-ghost:hover:not(:disabled) { box-shadow: none; border-color: transparent; background: var(--surface-3); color: var(--text); }
 .btn-ghost:active:not(:disabled) { background: var(--border); }
 
 .btn-sm { min-height: var(--control-h-sm); padding: 0 10px; font-size: var(--font-xs); }
@@ -100,7 +101,8 @@
   min-width: 0;
   min-height: var(--control-h);
   padding: 5px 11px;
-  border: 1px solid var(--border-strong);
+  border: 0;
+  box-shadow: var(--elev-2);
   border-radius: var(--radius-s);
   background: var(--surface);
   color: var(--text);
@@ -145,13 +147,12 @@
   max-width: calc(100vw - 16px);
   max-height: var(--radix-select-content-available-height);
   overflow: hidden;
-  padding: 4px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-m);
+  padding: var(--menu-inset);
+  border: 0;
+  border-radius: var(--menu-radius);
   background: var(--surface);
   box-shadow: var(--elev-3);
   transform-origin: var(--radix-select-content-transform-origin);
-  animation: r-pop-in var(--dur-base) var(--ease-emphasized);
 }
 
 /* ---- Checkbox (Radix) ---- */
@@ -193,7 +194,8 @@
   align-items: flex-start;
   gap: 10px;
   padding: 12px;
-  border: 1px solid var(--border);
+  border: 0;
+  box-shadow: var(--elev-2);
   border-radius: var(--radius-m);
   background: var(--surface-2);
   cursor: pointer;
@@ -211,7 +213,7 @@
   display: block;
   width: 16px;
   height: 16px;
-  border: 1px solid var(--border-strong);
+  border: 0;
   border-radius: 50%;
   background: var(--surface);
   box-shadow: 0 1px 3px rgb(16 24 40 / 16%);
@@ -249,16 +251,16 @@
   max-width: min(340px, calc(100vw - 16px));
   max-height: var(--radix-dropdown-menu-content-available-height, 70vh);
   overflow-y: auto;
-  padding: 4px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-m);
+  padding: var(--menu-inset);
+  border: 0;
+  border-radius: var(--menu-radius);
   background: var(--surface);
   box-shadow: var(--elev-3);
   outline: none;
   transform-origin: var(--radix-dropdown-menu-content-transform-origin, var(--radix-context-menu-content-transform-origin));
 }
-.r-menu[data-state="open"] { animation: r-pop-in var(--dur-base) var(--ease-emphasized); }
-.r-menu[data-state="closed"] { animation: r-pop-out var(--dur-fast) var(--ease-in); }
+.r-menu[data-state="open"], .r-select-menu[data-state="open"] { animation: r-surface-in var(--dur-base) var(--ease-emphasized); }
+.r-menu[data-state="closed"], .r-select-menu[data-state="closed"] { animation: r-surface-out 220ms var(--ease-in); pointer-events: none; }
 .r-menu-item {
   display: flex;
   align-items: center;
@@ -287,7 +289,7 @@
 
 /* ---- Dialog ---- */
 .r-dialog-overlay { position: fixed; inset: 0; z-index: var(--z-modal); background: var(--overlay); animation: r-fade-in var(--dur-base) var(--ease-out); }
-.r-dialog-overlay[data-state="closed"] { animation: r-fade-out var(--dur-fast) var(--ease-in); }
+.r-dialog-overlay[data-state="closed"] { animation: r-fade-out 220ms var(--ease-in); }
 .r-dialog {
   position: fixed;
   top: 50%;
@@ -297,8 +299,8 @@
   flex-direction: column;
   max-width: calc(100vw - 48px);
   max-height: min(85vh, calc(100vh - 48px));
-  border: 1px solid var(--border);
-  border-radius: var(--radius-l);
+  border: 0;
+  border-radius: var(--dialog-radius);
   background: var(--surface);
   color: var(--text);
   box-shadow: var(--elev-4);
@@ -306,12 +308,13 @@
   transform: translate(-50%, -50%);
   animation: r-dialog-in var(--dur-slow) var(--ease-emphasized);
 }
-.r-dialog[data-state="closed"] { animation: r-dialog-out var(--dur-fast) var(--ease-in); }
-.r-dialog-header { display: flex; align-items: flex-start; justify-content: space-between; flex: none; gap: 12px; padding: 20px 16px 12px 24px; }
+.r-dialog[data-state="closed"] { animation: r-dialog-out 220ms var(--ease-in); pointer-events: none; }
+.r-dialog:has(.rm-editor, .r-explanation, .r-option-row) { --dialog-radius: calc(var(--radius-m) + var(--dialog-inset)); }
+.r-dialog-header { display: flex; align-items: flex-start; justify-content: space-between; flex: none; gap: 12px; padding: var(--dialog-inset) var(--dialog-inset) 12px; }
 .r-dialog-header > div { min-width: 0; }
 .r-dialog-title { margin: 0; font-size: var(--font-xl); font-weight: 600; line-height: 1.4; overflow-wrap: anywhere; }
 .r-dialog-description { margin-top: 4px; color: var(--text-3); font-size: var(--font-sm); line-height: 1.7; }
-.r-dialog-body { min-height: 0; padding: 8px 24px 20px; overflow-y: auto; overscroll-behavior: contain; }
+.r-dialog-body { min-height: 0; padding: 8px var(--dialog-inset) var(--dialog-inset); overflow-y: auto; overscroll-behavior: contain; }
 .r-dialog-footer {
   display: flex;
   flex: none;
@@ -320,8 +323,8 @@
   justify-content: flex-end;
   gap: 8px;
   padding: 14px 24px;
-  border-top: 1px solid var(--border-faint);
-  border-radius: 0 0 var(--radius-l) var(--radius-l);
+  border-top: 0;
+  border-radius: 0 0 var(--dialog-radius) var(--dialog-radius);
   background: var(--surface-2);
 }
 
@@ -339,7 +342,6 @@
   background: var(--accent-soft);
   color: var(--text);
   font-size: var(--font-sm);
-  animation: r-pop-in var(--dur-base) var(--ease-emphasized);
 }
 .r-filter-chip > span { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .r-filter-chip .btn { width: 22px; height: 22px; min-height: 22px; color: var(--text-3); }
