@@ -13,14 +13,15 @@ export function useImage(loader: ImageLoader, rowId: number | undefined, priorit
   useEffect(() => {
     let disposed = false;
     if (rowId === undefined) return;
+    const controller = new AbortController();
     const cached = loader.cached(rowId);
     setImage({ loader, id: rowId, version, url: cached, error: false });
-    if (enabled && !cached) void loader.load(rowId, priority).then(url => {
+    if (enabled && !cached) void loader.load(rowId, priority, controller.signal).then(url => {
       if (!disposed) setImage({ loader, id: rowId, version, url, error: false });
     }, error => {
       if (!disposed && !isImageLoadCancelled(error)) setImage({ loader, id: rowId, version, url: null, error: true });
     });
-    return () => { disposed = true; };
+    return () => { disposed = true; controller.abort(); };
   }, [loader, rowId, version, revision, priority, enabled]);
   // Cached tiers are available in the first render, without a placeholder frame.
   return { ...(image.loader === loader && image.id === rowId && image.version === version ? image : { id: rowId, url: rowId === undefined ? null : loader.cached(rowId), error: false }), retry };

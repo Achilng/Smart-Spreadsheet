@@ -7,7 +7,8 @@ import { RowAlbumCard } from "../../ui/RowAlbumCard";
 import type { MenuItem } from "../../ui/controls";
 
 export const GroupAlbumShelf = memo(function GroupAlbumShelf({ groups, version, onOpen, menuFor }: { groups: GroupSummary[]; version: number; onOpen: (key: string) => void; menuFor: (group: GroupSummary) => MenuItem[] }) {
-  return <AlbumShelf label="分组相册">{groups.map(group => <div className="r-group-album-frame" data-album-reflow key={`${group.id}-${version}`}><GroupAlbum group={group} version={version} onOpen={onOpen} menuFor={menuFor} /></div>)}<div className="r-group-album-frame" data-album-reflow key={`ungrouped-${version}`}><GroupAlbum version={version} onOpen={onOpen} /></div></AlbumShelf>;
+  return <AlbumShelf label="分组相册" count={groups.length + 1} itemKey={index => `${groups[index]?.id ?? "ungrouped"}-${version}`}
+    render={index => <GroupAlbum group={groups[index]} version={version} onOpen={onOpen} menuFor={menuFor} />} />;
 });
 const GroupAlbum = memo(function GroupAlbum({ group, version, onOpen, menuFor }: { group?: GroupSummary; version: number; onOpen: (key: string) => void; menuFor?: (group: GroupSummary) => MenuItem[] }) {
   const id = group?.id;

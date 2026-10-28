@@ -2,11 +2,11 @@ use super::dto::{DedupeClusterDto, RowPageDto};
 use super::error_text;
 use crate::app::AppRuntime;
 use crate::db::{DedupeMode, LibraryFilter, SortMode, TagMatchMode};
-use tauri::State;
+use tauri::{Manager, State};
 
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn list_dedupe_clusters(
+pub(crate) async fn list_dedupe_clusters(
     dedupe: DedupeMode,
     tags: Vec<String>,
     tag_mode: TagMatchMode,
@@ -15,26 +15,30 @@ pub(crate) fn list_dedupe_clusters(
     untagged_only: bool,
     filters: Vec<LibraryFilter>,
     hide_grouped: bool,
-    runtime: State<'_, AppRuntime>,
+    app: tauri::AppHandle,
 ) -> Result<Vec<DedupeClusterDto>, String> {
-    runtime
-        .list_dedupe_clusters(
-            dedupe,
-            &tags,
-            tag_mode,
-            single_artist_only,
-            has_vibe,
-            untagged_only,
-            &filters,
-            hide_grouped,
-        )
-        .map(|clusters| clusters.into_iter().map(DedupeClusterDto::from).collect())
-        .map_err(error_text)
+    tauri::async_runtime::spawn_blocking(move || {
+        app.state::<AppRuntime>()
+            .list_dedupe_clusters(
+                dedupe,
+                &tags,
+                tag_mode,
+                single_artist_only,
+                has_vibe,
+                untagged_only,
+                &filters,
+                hide_grouped,
+            )
+            .map(|clusters| clusters.into_iter().map(DedupeClusterDto::from).collect())
+            .map_err(error_text)
+    })
+    .await
+    .map_err(|error| format!("读取任务异常中止: {error}"))?
 }
 
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn get_dedupe_cluster_members(
+pub(crate) async fn get_dedupe_cluster_members(
     dedupe: DedupeMode,
     key: String,
     tags: Vec<String>,
@@ -47,25 +51,29 @@ pub(crate) fn get_dedupe_cluster_members(
     offset: u64,
     limit: u32,
     sort: Option<SortMode>,
-    runtime: State<'_, AppRuntime>,
+    app: tauri::AppHandle,
 ) -> Result<RowPageDto, String> {
-    runtime
-        .get_dedupe_cluster_members(
-            dedupe,
-            &key,
-            &tags,
-            tag_mode,
-            single_artist_only,
-            has_vibe,
-            untagged_only,
-            &filters,
-            hide_grouped,
-            offset,
-            limit,
-            sort.unwrap_or_default(),
-        )
-        .map(RowPageDto::from)
-        .map_err(error_text)
+    tauri::async_runtime::spawn_blocking(move || {
+        app.state::<AppRuntime>()
+            .get_dedupe_cluster_members(
+                dedupe,
+                &key,
+                &tags,
+                tag_mode,
+                single_artist_only,
+                has_vibe,
+                untagged_only,
+                &filters,
+                hide_grouped,
+                offset,
+                limit,
+                sort.unwrap_or_default(),
+            )
+            .map(RowPageDto::from)
+            .map_err(error_text)
+    })
+    .await
+    .map_err(|error| format!("读取任务异常中止: {error}"))?
 }
 
 #[tauri::command]

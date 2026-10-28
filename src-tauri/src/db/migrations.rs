@@ -1,4 +1,10 @@
-pub const CURRENT_SCHEMA_VERSION: u32 = 27;
+pub const CURRENT_SCHEMA_VERSION: u32 = 28;
+
+// Match dedupe_identity exactly, preserving whitespace/empty-key semantics.
+pub(super) const MIGRATION_28: &str = r#"
+CREATE INDEX rows_positive_dedupe_key ON rows(NULLIF(TRIM(COALESCE(positive_prompt, '')), ''));
+CREATE INDEX rows_vibe_dedupe_key ON rows(NULLIF(TRIM(COALESCE(vibe_signature, '')), ''));
+"#;
 
 /// Persist the shared artist identity; triggers also cover imports, edits, LLM writes and undo.
 pub(super) const MIGRATION_27: &str = r#"

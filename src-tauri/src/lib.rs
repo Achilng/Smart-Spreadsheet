@@ -19,6 +19,15 @@ pub fn run() {
 
             let locator_path = app.path().app_config_dir()?.join("state.json");
             let default_data_dir = app.path().app_local_data_dir()?.join("data");
+            // A development fixture must never open or migrate the installed library.
+            #[cfg(debug_assertions)]
+            let (locator_path, default_data_dir) = match std::env::var_os("SMART_SPREADSHEET_DEV_DATA") {
+                Some(root) => {
+                    let root = std::path::PathBuf::from(root);
+                    (root.join("state.json"), root.join("library"))
+                }
+                None => (locator_path, default_data_dir),
+            };
             app.manage(app::AppRuntime::load(locator_path, default_data_dir));
             app.manage(app::llm::Engine::default());
             app::llm::start(app.handle().clone());

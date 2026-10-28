@@ -9,6 +9,8 @@ interface QueuedRequest {
   promise: Promise<string>;
   resolve: (url: string) => void;
   reject: (error: unknown) => void;
+  consumers: Set<symbol>;
+  persistent: boolean;
 }
 
 type ImageFetcher = (rowId: number) => Promise<ArrayBuffer>;
@@ -30,7 +32,7 @@ export function isImageLoadCancelled(error: unknown): boolean {
 
 export class ImageLoader {
   readonly #cache = new Map<number, CachedImage>();
-  readonly #pending = new Map<number, Promise<string>>();
+  readonly #pending = new Map<number, QueuedRequest>();
   readonly #queue: QueuedRequest[] = [];
   readonly #fetch: ImageFetcher;
   readonly #maxConcurrentRequests: number;
@@ -62,7 +64,8 @@ export class ImageLoader {
     return cached.url;
   }
 
-  load(rowId: number, priority = false): Promise<string> {
+  load(rowId: number, priority = false, signal?: AbortSignal): Promise<string> {
+    if (signal?.aborted) return Promise.reject(new ImageLoadCancelled("图片已离开可视区域"));
     if (this.#disposed) {
       return Promise.reject(new Error("图片加载器已关闭"));
     }
@@ -72,7 +75,7 @@ export class ImageLoader {
     }
     const pending = this.#pending.get(rowId);
     if (pending) {
-      return pending;
+      return this.#subscribe(pending, signal);
     }
 
     let resolveRequest!: (url: string) => void;
@@ -87,15 +90,50 @@ export class ImageLoader {
       promise,
       resolve: resolveRequest,
       reject: rejectRequest,
+      consumers: new Set(),
+      persistent: false,
     };
-    this.#pending.set(rowId, promise);
+    this.#pending.set(rowId, request);
     if (priority) {
       this.#queue.unshift(request);
     } else {
       this.#queue.push(request);
     }
+    const subscribed = this.#subscribe(request, signal);
     this.#drain();
-    return promise;
+    return subscribed;
+  }
+
+  // Each component owns its demand. Unmounting one copy must not cancel another
+  // mounted copy, and queued requests with no remaining consumers never decode.
+  #subscribe(request: QueuedRequest, signal?: AbortSignal): Promise<string> {
+    if (!signal) {
+      request.persistent = true;
+      return request.promise;
+    }
+    const token = Symbol();
+    request.consumers.add(token);
+    return new Promise((resolve, reject) => {
+      const cleanup = () => {
+        signal.removeEventListener("abort", abort);
+        request.consumers.delete(token);
+      };
+      const abort = () => {
+        cleanup();
+        const error = new ImageLoadCancelled("图片已离开可视区域");
+        reject(error);
+        if (!request.persistent && request.consumers.size === 0) {
+          const index = this.#queue.indexOf(request);
+          if (index >= 0) {
+            this.#queue.splice(index, 1);
+            if (this.#pending.get(request.rowId) === request) this.#pending.delete(request.rowId);
+            request.reject(error);
+          }
+        }
+      };
+      signal.addEventListener("abort", abort, { once: true });
+      request.promise.then(url => { cleanup(); resolve(url); }, error => { cleanup(); reject(error); });
+    });
   }
 
   retain(rowIds: ReadonlySet<number>): void {
@@ -107,7 +145,7 @@ export class ImageLoader {
     }
     const retained: QueuedRequest[] = [];
     for (const request of this.#queue.splice(0)) {
-      if (rowIds.has(request.rowId)) {
+      if (rowIds.has(request.rowId) || request.consumers.size > 0) {
         retained.push(request);
       } else {
         this.#pending.delete(request.rowId);
@@ -176,7 +214,7 @@ export class ImageLoader {
     } catch (error) {
       request.reject(error);
     } finally {
-      if (this.#pending.get(request.rowId) === request.promise) {
+      if (this.#pending.get(request.rowId) === request) {
         this.#pending.delete(request.rowId);
       }
       this.#activeRequests -= 1;

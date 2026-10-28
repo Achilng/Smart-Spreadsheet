@@ -2,7 +2,7 @@ use super::dto::RowPageDto;
 use super::error_text;
 use crate::app::AppRuntime;
 use crate::db::{GroupSummary, RowSelection, SortMode};
-use tauri::State;
+use tauri::{Manager, State};
 
 #[tauri::command]
 pub(crate) fn create_group(
@@ -34,8 +34,12 @@ pub(crate) fn delete_empty_groups(runtime: State<'_, AppRuntime>) -> Result<u64,
 }
 
 #[tauri::command]
-pub(crate) fn list_groups(runtime: State<'_, AppRuntime>) -> Result<Vec<GroupSummary>, String> {
-    runtime.list_groups().map_err(error_text)
+pub(crate) async fn list_groups(app: tauri::AppHandle) -> Result<Vec<GroupSummary>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        app.state::<AppRuntime>().list_groups().map_err(error_text)
+    })
+    .await
+    .map_err(|error| format!("读取任务异常中止: {error}"))?
 }
 
 #[tauri::command]
@@ -66,15 +70,19 @@ pub(crate) fn restore_group(
 }
 
 #[tauri::command]
-pub(crate) fn get_group_members(
+pub(crate) async fn get_group_members(
     group_id: i64,
     offset: u64,
     limit: u32,
     sort: Option<SortMode>,
-    runtime: State<'_, AppRuntime>,
+    app: tauri::AppHandle,
 ) -> Result<RowPageDto, String> {
-    runtime
-        .get_group_members(group_id, offset, limit, sort.unwrap_or_default())
-        .map(RowPageDto::from)
-        .map_err(error_text)
+    tauri::async_runtime::spawn_blocking(move || {
+        app.state::<AppRuntime>()
+            .get_group_members(group_id, offset, limit, sort.unwrap_or_default())
+            .map(RowPageDto::from)
+            .map_err(error_text)
+    })
+    .await
+    .map_err(|error| format!("读取任务异常中止: {error}"))?
 }

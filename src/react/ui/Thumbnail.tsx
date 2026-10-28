@@ -19,9 +19,11 @@ export const Thumbnail = memo(function Thumbnail({ rowId, detail = false, enhanc
     };
     const observer = new IntersectionObserver(entries => {
       visible = entries.some(entry => entry.isIntersecting);
-      // Leaving the viewport only cancels a pending upgrade. Keep an already
-      // loaded preview while this virtual card remains mounted.
-      if (visible) settled(); else clearTimeout(timer);
+      if (visible) settled(); else {
+        clearTimeout(timer);
+        // Retain a loaded preview, but release queued work for offscreen cards.
+        if (!galleryPreviews.cached(rowId)) setReadyId(undefined);
+      }
     }, { root: scrollRoot });
     observer.observe(root.current);
     scrollRoot?.addEventListener("scroll", settled, { passive: true });

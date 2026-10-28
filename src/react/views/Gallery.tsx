@@ -1,4 +1,4 @@
-import { memo, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { motion, MotionConfig } from "motion/react";
 import { Star } from "lucide-react";
 import { setFavorite, type RowRecord, type TagSummary } from "../../lib/api";
@@ -75,6 +75,20 @@ const GalleryCardContent = memo(function GalleryCardContent({ row, index, checke
   </div></RowContextMenu>;
 });
 
+const GalleryCard = memo(function GalleryCard({ row, index, layout, reducedMotion, pickingMaterial, selecting, tags }: {
+  row: RowRecord; index: number; layout: ReturnType<typeof galleryLayout>; reducedMotion: boolean;
+  pickingMaterial: boolean; selecting: boolean; tags: TagSummary[];
+}) {
+  const checked = useSelection(state => !pickingMaterial && isSelected(row.id, state));
+  const active = useRows(state => state.activeRow?.id === row.id);
+  const position = galleryCellPosition(index, layout);
+  const style = { left: position.x, top: position.y, width: layout.cardWidth, "--image-height": `${layout.imageHeight}px` } as CSSProperties;
+  const layoutKey = `${layout.columns}:${index}:${reducedMotion}`;
+  return <motion.div layout layoutDependency={layoutKey} initial={false} role="listitem" className="r-card" data-active={active} data-checked={checked} data-selecting={selecting} style={style}>
+    <GalleryCardContent row={row} index={index} checked={checked} active={active} pickingMaterial={pickingMaterial} tags={tags} layoutKey={layoutKey} />
+  </motion.div>;
+});
+
 export function Gallery() {
   const reducedMotion = useReducedMotionPreference();
   const pickingMaterial = useMaterials(state => !!state.galleryPick);
@@ -85,13 +99,12 @@ export function Gallery() {
   const loading = useRows(state => state.loading);
   const refreshing = useRows(state => state.refreshing);
   const error = useRows(state => state.error);
-  const activeId = useRows(state => state.activeRow?.id);
-  const selection = useSelection();
+  const hasSelection = useSelection(state => selectedCount(state) > 0);
   const tags = useLibrary(state => state.tags);
-  const layout = galleryLayout(size.width, cardSize, total);
+  const layout = useMemo(() => galleryLayout(size.width, cardSize, total), [size.width, cardSize, total]);
   const indices = galleryVisibleIndices(layout, size.top, size.height, total);
   const pageKey = [...new Set(indices.map(index => Math.floor(index / PAGE_SIZE)))].join(",");
-  const selectionActive = !pickingMaterial && selectedCount(selection) > 0;
+  const selectionActive = !pickingMaterial && hasSelection;
   const first = indices[0] ?? 0;
   const last = indices[indices.length - 1] ?? -1;
   useLayoutEffect(() => { if (!loading && !refreshing && last >= first) rememberVisibleRange("gallery", first, last); }, [first, last, loading, refreshing]);
@@ -111,13 +124,7 @@ export function Gallery() {
         const position = galleryCellPosition(index, layout);
         const style = { left: position.x, top: position.y, width: layout.cardWidth, "--image-height": `${layout.imageHeight}px` } as CSSProperties;
         if (!row) return <div key={`placeholder-${index}`} className="r-card r-card-skeleton" style={style}><div className="r-thumb r-image-placeholder" /></div>;
-        const checked = !pickingMaterial && isSelected(row.id, selection);
-        // Measure only real rearrangements. Sidebar width changes between column
-        // boundaries still resize cards live without restarting a layout animation.
-        const layoutKey = `${layout.columns}:${index}:${reducedMotion}`;
-        return <motion.div key={row.id} layout layoutDependency={layoutKey} initial={false} role="listitem" className="r-card" data-active={activeId === row.id} data-checked={checked} data-selecting={selectionActive} style={style}>
-          <GalleryCardContent row={row} index={index} checked={checked} active={activeId === row.id} pickingMaterial={pickingMaterial} tags={tags} layoutKey={layoutKey} />
-        </motion.div>;
+        return <GalleryCard key={row.id} row={row} index={index} layout={layout} reducedMotion={reducedMotion} pickingMaterial={pickingMaterial} selecting={selectionActive} tags={tags} />;
       })}</div>}
     {error && total > 0 && <div className="r-inline-error" role="alert"><span>{error}</span><Button size="sm" onClick={() => void reloadRows()}>重试</Button></div>}
   </motion.div></MotionConfig>;

@@ -173,10 +173,11 @@ export function installIpcMock(): void {
   const params = new URLSearchParams(location.search);
   const windowLabel = params.get("window") ?? "main";
   const albumScroll = params.has("albumScroll");
-  const libraryRows = Array.from({ length: albumScroll ? 12_000 : params.has("large") ? 60_000 : 64 }, (_, index) => rowDto({
+  const largeSections = params.has("largeSections");
+  const libraryRows = Array.from({ length: largeSections ? 70_000 : albumScroll ? 12_000 : params.has("large") ? 70_000 : 64 }, (_, index) => rowDto({
     id: index + 1,
     imagePath: `D:\\mock\\${index % 7 === 0 ? "清晨的山谷与远处的群山_长文件名显示检查_" : "风景_"}${String(index + 1).padStart(3, "0")}.png`,
-    artists: albumScroll ? `artist:album-${String(Math.floor(index / 300) + 1).padStart(2, "0")}` : index % 2 === 0 ? "artist:alpha" : "artist:beta",
+    artists: largeSections ? `artist:album-${String(Math.floor(index / 2) + 1).padStart(5, "0")}` : albumScroll ? `artist:album-${String(Math.floor(index / 300) + 1).padStart(2, "0")}` : index % 2 === 0 ? "artist:alpha" : "artist:beta",
     positivePrompt: `masterpiece, scenery, mountains, soft light, ${index % 2 ? "sunset" : "morning"}, artist:${index % 2 ? "beta" : "alpha"}`,
     generationModel: "NovelAI Diffusion V4.5 Full",
     imageWidth: index % 3 === 0 ? 1216 : 832,
@@ -197,9 +198,10 @@ export function installIpcMock(): void {
     { id: 3, name: "待整理（空分组）", memberCount: 0, createdAt: "2026-09-20T10:00:00Z" },
   ];
   for (const row of libraryRows.slice(0, 20)) { const group = groups[row.id <= 12 ? 0 : 1]; row.groupId = group.id; row.groupName = group.name; }
-  if (albumScroll) {
-    groups.splice(0, groups.length, ...Array.from({ length: 40 }, (_, index) => ({ id: index + 1, name: `相册 ${String(index + 1).padStart(2, "0")}`, memberCount: 300, createdAt: "2026-09-27T08:00:00Z" })));
-    for (const row of libraryRows) { const group = groups[Math.floor((row.id - 1) / 300)]; row.groupId = group.id; row.groupName = group.name; }
+  if (albumScroll || largeSections) {
+    const perGroup = largeSections ? 2 : 300;
+    groups.splice(0, groups.length, ...Array.from({ length: libraryRows.length / perGroup }, (_, index) => ({ id: index + 1, name: `相册 ${String(index + 1).padStart(5, "0")}`, memberCount: perGroup, createdAt: "2026-09-27T08:00:00Z" })));
+    for (const row of libraryRows) { const group = groups[Math.floor((row.id - 1) / perGroup)]; row.groupId = group.id; row.groupName = group.name; }
   }
   let nextGroupId = groups.length + 1;
   const aliases = new Map<string, string>();
@@ -416,7 +418,12 @@ export function installIpcMock(): void {
   };
   const clustersFor = (query: Partial<RowQuery>) => {
     const clusters = new Map<string, RowRecord[]>();
-    for (const row of filteredRows(query)) { const key = clusterKey(row, query.dedupe); if (key) clusters.set(key, [...clusters.get(key) ?? [], row]); }
+    for (const row of filteredRows(query)) {
+      const key = clusterKey(row, query.dedupe);
+      if (!key) continue;
+      const members = clusters.get(key);
+      if (members) members.push(row); else clusters.set(key, [row]);
+    }
     return new Map([...clusters].filter(([, rows]) => rows.length > 1));
   };
   const inspection = async (title: string, id: number): Promise<MaterialInspection> => ({ title, preview: [...new Uint8Array(await previewPng(id))], sections: [
@@ -642,7 +649,11 @@ export function installIpcMock(): void {
           const owner = materials.find(item => item.versions.some(version => version.id === payload.id)); if (!owner) throw new Error("素材版本不存在");
           return previewPng(versionCovers.get(Number(payload.id)) ?? materialCovers.get(owner.id)!);
         }
-        case "list_groups": return groups.map(group => ({ ...group, memberCount: libraryRows.filter(row => row.groupId === group.id).length }));
+        case "list_groups": {
+          const counts = new Map<number, number>();
+          for (const row of libraryRows) if (row.groupId !== null) counts.set(row.groupId, (counts.get(row.groupId) ?? 0) + 1);
+          return groups.map(group => ({ ...group, memberCount: counts.get(group.id) ?? 0 }));
+        }
         case "create_group":
         case "restore_group": {
           const restored = command === "restore_group" ? payload.group as GroupSummary : null;

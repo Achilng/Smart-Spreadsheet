@@ -8,7 +8,7 @@ import { clearSelection } from "../../state/selection";
 import { runTask, useTasks } from "../../state/tasks";
 import { Button, Input, Menu, Modal, Segmented, Select, type MenuItem } from "../../ui/controls";
 import { FilterChips } from "../CanvasHeader";
-import { SectionHeader, SectionList, SectionMembersGrid } from "../groups/SectionParts";
+import { SectionBrowseList, SectionList, SectionMembersGrid, type BrowseSection } from "../groups/SectionParts";
 import { DuplicateAlbumShelf } from "./DuplicateAlbumShelf";
 import { useAlbumTransition } from "../../ui/use-album-transition";
 import { ImageSortMenu } from "../../ui/ImageSortMenu";
@@ -16,25 +16,36 @@ import "../groups/groups.css";
 
 export function DuplicateBrowseView({ filtersOpen, onFilters }: { filtersOpen: boolean; onFilters: () => void }) {
   const motion = useAlbumTransition();
-  const state = useDuplicates(), rows = useRows(), directory = useLibrary(value => value.snapshot?.dataDirectory), taskBusy = useTasks(value => value.busy);
+  const state = useDuplicates(), resetToken = useRows(value => value.resetToken), query = useRows(value => value.query), directory = useLibrary(value => value.snapshot?.dataDirectory), taskBusy = useTasks(value => value.busy);
   const [renaming, setRenaming] = useState<DedupeCluster | null>(null), [name, setName] = useState(""), [busy, setBusy] = useState(false), [error, setError] = useState<string | null>(null);
-  useEffect(() => { syncDuplicates(); }, [state.mode, rows.resetToken, rows.query, directory]);
+  useEffect(() => { syncDuplicates(); }, [state.mode, resetToken, query, directory]);
   const shelf = state.layout === "shelf";
   const opened = shelf ? state.expanded[0] : undefined;
   const currentCluster = state.clusters.find(cluster => cluster.key === opened);
   const albumOpen = opened !== undefined;
   const positionKey = JSON.stringify(albumOpen ? ["duplicates", state.mode, "album", opened, state.memberSort] : ["duplicates", state.mode, state.layout, state.sortByCount, shelf ? null : state.memberSort]);
   const sorted = useMemo(() => state.sortByCount ? [...state.clusters].sort((a, b) => b.memberCount - a.memberCount) : [...state.clusters].sort((a, b) => clusterLabel(a, state.mode).localeCompare(clusterLabel(b, state.mode))), [state.clusters, state.sortByCount, state.mode]);
-  const visibleClusters = shelf ? sorted.filter(cluster => cluster.key === opened) : sorted;
-  const order = visibleClusters.flatMap(cluster => state.expanded.includes(cluster.key) ? (state.members[cluster.key]?.rows ?? []).slice(0, state.renderLimits[cluster.key] ?? 40).map(row => row.id) : []);
-  const reveal = (key: string) => useDuplicates.setState(value => ({ renderLimits: { ...value.renderLimits, [key]: (value.renderLimits[key] ?? 40) + 40 } }));
+  const order = useMemo(() => {
+    const expanded = new Set(state.expanded);
+    const visible = shelf ? sorted.filter(cluster => cluster.key === opened) : sorted;
+    return visible.flatMap(cluster => expanded.has(cluster.key) ? (state.members[cluster.key]?.rows ?? []).map(row => row.id) : []);
+  }, [shelf, sorted, opened, state.expanded, state.members]);
   function clearActive() { clearSelection(); useRows.setState({ activeRow: null }); }
   const openAlbum = useCallback((key: string) => { void motion.navigate("enter", key, () => { clearSelection(); useRows.setState({ activeRow: null }); useDuplicates.setState({ expanded: [key] }); void loadClusterMembers(key); }, () => loadClusterMembers(key)); }, [motion.navigate]);
   function setLayout(layout: "shelf" | "list") { const update = () => { clearActive(); useDuplicates.setState({ layout, expanded: [] }); }; if (albumOpen && layout === "shelf") void motion.navigate("leave", opened, update); else update(); }
   const clusterActions = useCallback((cluster: DedupeCluster): MenuItem[] => {
     return [{ label: "重命名", disabled: taskBusy, action: () => { setRenaming(cluster); setName(cluster.alias ?? clusterLabel(cluster, state.mode)); setError(null); } }];
   }, [taskBusy, state.mode]);
-  const members = (key: string) => <SectionMembersGrid data={state.members[key]} scope="duplicates" order={order} limit={state.renderLimits[key] ?? 40} onReveal={() => reveal(key)} onLoad={more => void loadClusterMembers(key, more)} />;
+  const members = (key: string) => <SectionMembersGrid data={state.members[key]} scope="duplicates" order={order} onLoad={more => void loadClusterMembers(key, more)} />;
+  const sections = useMemo<BrowseSection[]>(() => {
+    if (shelf) return [];
+    const expanded = new Set(state.expanded);
+    return sorted.map(cluster => ({ key: cluster.key, label: clusterLabel(cluster, state.mode),
+      suffix: cluster.alias && state.mode !== "vibes" ? cluster.key : undefined,
+      count: cluster.memberCount, expanded: expanded.has(cluster.key), data: state.members[cluster.key], items: clusterActions(cluster),
+      onToggle: () => toggleCluster(cluster.key), onLoad: (more?: boolean) => void loadClusterMembers(cluster.key, more),
+    }));
+  }, [shelf, sorted, state.mode, state.expanded, state.members, clusterActions]);
   async function rename() {
     if (!renaming || busy || taskBusy) return;
     setBusy(true); setError(null);
@@ -55,10 +66,7 @@ export function DuplicateBrowseView({ filtersOpen, onFilters }: { filtersOpen: b
     {state.error && <div className="r-group-status" role="alert"><p className="r-group-error">加载失败：{state.error}</p><Button onClick={() => void loadClusters()}>重试</Button></div>}
     {!state.loading && !state.error && !state.clusters.length && <p className="r-group-status">{state.mode === "vibes" ? "未找到共用同一组 VIBE 引用的图片。" : "未找到重复项（所有条目均唯一）。"}</p>}
     <SectionList key={positionKey} positionKey={positionKey} loading={state.loading || state.expanded.some(key => !state.members[key] || state.members[key].loading)} version={state.version}>
-      {shelf ? opened !== undefined ? members(opened) : <DuplicateAlbumShelf clusters={sorted} mode={state.mode} version={state.version} onOpen={openAlbum} menuFor={clusterActions} /> : sorted.map(cluster => {
-        const expanded = state.expanded.includes(cluster.key);
-        return <section className="r-browse-section" key={cluster.key}><SectionHeader label={clusterLabel(cluster)} suffix={cluster.alias && state.mode !== "vibes" ? cluster.key : undefined} count={cluster.memberCount} expanded={expanded} onToggle={() => toggleCluster(cluster.key)} items={clusterActions(cluster)} />{expanded && members(cluster.key)}</section>;
-      })}
+      {shelf ? opened !== undefined ? members(opened) : <DuplicateAlbumShelf clusters={sorted} mode={state.mode} version={state.version} onOpen={openAlbum} menuFor={clusterActions} /> : <SectionBrowseList sections={sections} scope="duplicates" order={order} />}
     </SectionList>
     <Modal open={Boolean(renaming)} onClose={() => setRenaming(null)} title="重命名重复项" description="自定义名称方便识别；留空可恢复原来的名称。" busy={busy} footer={<><Button disabled={busy} onClick={() => setRenaming(null)}>取消</Button><Button variant="primary" disabled={busy || taskBusy} onClick={() => void rename()}>保存</Button></>}><Input aria-label="重复项名称" value={name} disabled={busy} onChange={event => setName(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.nativeEvent.isComposing) void rename(); }} />{error && <p role="alert" className="r-group-error">{error}</p>}</Modal>
   </div>;

@@ -1,5 +1,26 @@
 # 项目计划
 
+## 大图库浏览性能优化（2026-10-28）
+
+- 分组和重复项的书架、列表标题、组内图片改用 TanStack Virtual，只挂载可见区域与少量缓冲行。已加载的数据仍可用于范围选择；分页、失败重试、返回相册位置和列表标题吸顶继续可用。减少选区和详情变化引起的整页重算。
+- 分组/重复项的列表和成员查询移到后台线程。数据库升级至 schema 28，给正向提示词和 VIBE 的重复项匹配表达式添加索引，判定规则不变。
+- 画廊缩略图和各档预览复用运行时数据库连接，不再为每张图片重复打开、初始化数据库；取到图片路径后立即释放锁，文件读取和解码继续并行。
+- 图片加载器跟踪组件各自的请求需求：卸载或离屏取消尚未开始且无人使用的请求；同一张图片仍有其它组件使用时继续加载。已发出的后台读取仍会完成。画廊卡片外层复用稳定布局，选区/详情状态在卡片内部订阅，减少滚动和选图时的重复渲染。
+- 按用户要求保留独立桌面开发版及热更新。真实 SQLite 测试库位于 `D:/Agent/Agent_temp/large-library-20261028/fixture-70000/`：70,000 条记录，15,101 个分组，其中一个 20,000 张大组、100 个各 100 张中组、15,000 个双图小组和 10,000 张未分组图片。图片复用 96 张示例图。开发版通过仅 debug 构建生效的 `SMART_SPREADSHEET_DEV_DATA` 使用独立配置；正式安装版资料库不受影响。
+- 浏览器后台模拟另覆盖 35,000 个双图分组/重复项和近 70,000 张未分组相册。1440×900 验证中，书架约 30–40 张卡片、列表约 20 个标题；画廊滚动到第 70,000 张时挂载 20 张卡片。分组组内挂载约 77 张卡片，加载更多后仍保持有界。已检查滚动到末尾、打开返回位置、Shift 多选、详情切换、分页失败重试和吸顶标题。900×600 最小窗口无页面水平溢出。
+- 慢加载检查：给图片读取加入 800ms 模拟延迟，高清层开始两个请求后离开画廊，后续排队请求未再发出；返回后图片正常加载，未发现运行时异常。全部交互验证在独立无界面浏览器完成；用户要求不抢鼠标后不再操作桌面窗口或焦点。
+- 验证：`npm run build`（含类型检查）与已有 45 项前端检查通过；`cargo check --offline -q` 通过；已有数据库查询检查 31 项通过、2 项原有忽略，图片相关检查 32 项及运行时四档图片读取检查 1 项通过。未新增单元测试。构建仍有既有的大分包提示。
+- 查询样本复核确认新增索引被使用。模拟库的短查询与小图片不能代表用户的大尺寸原图、缓存未命中、慢磁盘或低配置电脑，因此不据此承诺实际帧率或整体加速倍数。本轮未发布安装包。
+
+源码改动清单：
+
+- `package.json`、`package-lock.json`、本文件。
+- `src/react/ui/VirtualRows.tsx`（新增）、`AlbumShelf.tsx`、`Thumbnail.tsx`、`use-image.ts`。
+- `src/react/views/Gallery.tsx`；`src/react/views/groups/GroupAlbumShelf.tsx`、`GroupBrowseView.tsx`、`SectionParts.tsx`、`groups.css`；`src/react/views/duplicates/DuplicateAlbumShelf.tsx`、`DuplicateBrowseView.tsx`。
+- `src/lib/images/image-loader.ts`、`src/lib/dev/ipc-mock.ts`。
+- `src-tauri/src/app/commands/groups.rs`、`duplicates.rs`；`src-tauri/src/app/runtime/images.rs`；`src-tauri/src/db/migrations.rs`、`mod.rs`；`src-tauri/src/images.rs`、`lib.rs`。
+- 生成内容位于 `node_modules/`、`dist/`、`target/`；测试库、开发配置、脚本、截图、浏览器配置和构建临时内容位于 `D:/Agent/Agent_temp/large-library-20261028/`，npm 缓存位于 `D:/Agent/Agent_temp/npm-cache/`，均不提交。原有 `AGENTS.md` 修改和三个文档删除保持原状，不纳入本轮提交。
+
 ## 去重切换闪烁修复（2026-10-28）
 
 - 单独切换「按画师串去重」或「按正向提示词去重」时，在当前浏览位置更新结果，不再先跳回首页；保留筛选前位置记忆及历史导航规则。查询期间继续显示已有图片，结果缩减时由滚动容器限制到有效位置。

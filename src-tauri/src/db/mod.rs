@@ -439,6 +439,10 @@ fn apply_pending_migrations(
         transaction.execute_batch(migrations::MIGRATION_27)?;
         version = 27;
     }
+    if version == 27 {
+        transaction.execute_batch(migrations::MIGRATION_28)?;
+        version = 28;
+    }
     debug_assert_eq!(version, CURRENT_SCHEMA_VERSION);
     transaction.pragma_update(None, "user_version", version)?;
     transaction.commit()?;

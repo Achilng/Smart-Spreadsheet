@@ -100,7 +100,7 @@ impl DataDirectory {
     }
 }
 
-fn load_row_image(
+pub(crate) fn load_row_image(
     directory: &DataDirectory,
     locator: &RowImageLocator,
     variant: ImageVariant,

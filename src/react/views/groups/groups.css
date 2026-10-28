@@ -129,6 +129,15 @@
   overflow-clip-margin: 24px;
 }
 .r-group-album { min-width: 0; }
+.r-virtual-shelf { display: block; }
+.r-virtual-shelf-row { display: grid; column-gap: 16px; padding-bottom: 20px; }
+.r-virtual-shelf .r-group-album-frame { height: 286px; content-visibility: visible; }
+.r-virtual-shelf .r-group-cover-error { position: absolute; inset: auto 8px 0; background: var(--surface); max-height: 90px; overflow: auto; }
+.r-virtual-shelf .r-group-album { position: relative; }
+.r-virtual-sections { padding: 0 var(--page-gutter); }
+.r-virtual-sections .r-section-header { margin: 0 -8px; }
+.r-section-grid.r-virtual-image-row { padding: 8px 0; }
+.r-section-footer { padding: 0 0 20px; }
 .r-group-cover-error { display: grid; gap: 8px; padding: 8px; color: var(--danger); font-size: var(--font-sm); overflow-wrap: anywhere; }
 
 /* ---- Album detail ---- */
