@@ -185,7 +185,7 @@
 
 /* ---- Main canvas ---- */
 .r-main-area { position: relative; display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; background: var(--bg); }
-.r-refresh-bar { position: absolute; top: 0; left: 0; right: 0; z-index: 5; height: 2px; overflow: hidden; pointer-events: none; }
+.r-refresh-bar { position: absolute; top: 0; left: 0; right: 0; z-index: 5; height: 2px; overflow: hidden; pointer-events: none; animation: r-fade-in 100ms linear 200ms backwards; }
 .r-refresh-bar::after { content: ""; position: absolute; width: 40%; height: 100%; border-radius: 2px; background: var(--accent); animation: r-progress 1s var(--ease-out) infinite; }
 
 .r-state-message {

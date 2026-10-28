@@ -111,13 +111,14 @@ export function setQuery(patch: Partial<Filters>, searchSession?: number): void 
   if (patch.untaggedOnly) next.tags = [];
   if (JSON.stringify(before) === JSON.stringify(next)) return;
   const tagModeOnly = before.tagMode !== next.tagMode && JSON.stringify({ ...before, tagMode: next.tagMode }) === JSON.stringify(next);
+  const dedupeOnly = before.dedupe !== next.dedupe && JSON.stringify({ ...before, dedupe: next.dedupe }) === JSON.stringify(next);
   useRows.setState({ query: next });
   if (patch.sort) {
     try { localStorage.setItem("smart-spreadsheet.image-sort", patch.sort); } catch (error) { notify(`无法记住图片顺序：${errorText(error)}`, "error"); }
   }
-  // Changing how the existing tags combine should refresh in place, including
-  // when zero or one tag is selected and the result set does not change at all.
-  void reloadRows({ resetScroll: !tagModeOnly, filterChange: !tagModeOnly && before.sort === next.sort, searchSession });
+  // Refresh display reductions in place. Resetting to the first page remounts
+  // visible cards even when deduplication returns exactly the same pictures.
+  void reloadRows({ resetScroll: !tagModeOnly, filterChange: !tagModeOnly && before.sort === next.sort, preserveFilterPosition: dedupeOnly, searchSession });
 }
 
 export function clearFilters(): void {
@@ -128,6 +129,7 @@ export function clearFilters(): void {
 interface ReloadOptions {
   resetScroll?: boolean;
   filterChange?: boolean;
+  preserveFilterPosition?: boolean;
   navigation?: ScrollSnapshot;
   keepActive?: boolean;
   searchSession?: number;
@@ -141,7 +143,7 @@ export async function reloadRows(options: ReloadOptions = {}): Promise<void> {
   incoming = new Map();
   keepActive = options.keepActive ?? false;
   if (options.navigation) pendingScroll = structuredClone(options.navigation);
-  else if (options.filterChange) pendingScroll = prepareFilterScrollSnapshot(hasActiveFilters());
+  else if (options.filterChange) pendingScroll = prepareFilterScrollSnapshot(hasActiveFilters(), options.preserveFilterPosition);
   else if (options.resetScroll) { clearScrollPositions(hasActiveFilters()); pendingScroll = captureScrollSnapshot(); }
   else pendingScroll ??= captureScrollSnapshot();
   const range = pendingScroll.ranges.find(([key]) => key === useWorkspace.getState().viewMode)?.[1];

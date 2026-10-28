@@ -75,17 +75,19 @@ export function prepareFilterScrollPositions(filtered: boolean): () => void {
 }
 
 /** The requested destination is also available while its rows are still loading. */
-export function prepareFilterScrollSnapshot(filtered: boolean): ScrollSnapshot {
+export function prepareFilterScrollSnapshot(filtered: boolean, preservePosition = false): ScrollSnapshot {
   if (filtered && !showingFilteredRows && unfilteredPositions === null) {
     unfilteredPositions = new Map(scrollPositions);
     unfilteredRanges = new Map(visibleRanges);
   }
-  const target = !filtered && unfilteredPositions !== null
+  // Deduplication changes the display mode in place, but must still maintain
+  // the original unfiltered position for later filters and history navigation.
+  const target = preservePosition ? new Map(scrollPositions) : !filtered && unfilteredPositions !== null
     ? new Map(unfilteredPositions)
     : new Map<string, number>();
   return structuredClone({
     positions: [...target],
-    ranges: !filtered && unfilteredRanges ? [...unfilteredRanges] : [],
+    ranges: preservePosition ? [...visibleRanges] : !filtered && unfilteredRanges ? [...unfilteredRanges] : [],
     unfilteredPositions: filtered && unfilteredPositions ? [...unfilteredPositions] : null,
     unfilteredRanges: filtered && unfilteredRanges ? [...unfilteredRanges] : null,
     filtered,
