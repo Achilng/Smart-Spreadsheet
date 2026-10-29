@@ -238,6 +238,10 @@ export function installIpcMock(): void {
   window.__mockDelayMs = Number(new URLSearchParams(location.search).get("mockDelay") ?? 0);
   window.__mockFailNext = params.get("failNext") ?? undefined;
   let brokenOriginal = params.has("brokenOriginal");
+  // Opt-in browser fixture: fail each preview tier once for one row, then retry normally.
+  const brokenPreviewRow = Number(params.get("brokenPreview"));
+  const failedPreviewTiers = new Set<string>();
+  let failedComparePage = false;
   const numeric = (value: number | null, comparison: FilterNumericComparison): boolean => {
     if (value === null) return false;
     const { operator, value: other, secondValue } = comparison;
@@ -719,6 +723,10 @@ export function installIpcMock(): void {
         case "query_compare_same_artists":
         case "query_compare_same_vibe_diff_style":
         case "query_compare_same_style_diff_vibe": {
+          if (params.has("failCompareOffset") && Number(payload.offset) === Number(params.get("failCompareOffset")) && !failedComparePage) {
+            failedComparePage = true;
+            throw new Error("模拟分页读取失败，请重试。");
+          }
           // 样本 2（空态样本）下分区如实返回空。
           if (Number(payload.rowId) === 2) {
             return sectionPage([], 0, Number(payload.limit));
@@ -757,6 +765,10 @@ export function installIpcMock(): void {
         case "get_row_thumbnail":
         case "get_row_gallery_preview":
         case "get_row_preview":
+          if (Number(payload.rowId) === brokenPreviewRow && !failedPreviewTiers.has(command)) {
+            failedPreviewTiers.add(command);
+            return new Uint8Array([0, 1, 2, 3]).buffer;
+          }
           return previewPng(Number(payload.rowId));
         case "get_row_original": {
           if (brokenOriginal) { brokenOriginal = false; return new Uint8Array([0, 1, 2, 3]).buffer; }

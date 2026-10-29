@@ -64,6 +64,14 @@ export class ImageLoader {
     return cached.url;
   }
 
+  /** Discard only the decoded URL that failed, without flushing other images. */
+  invalidate(rowId: number, expectedUrl: string): void {
+    const cached = this.#cache.get(rowId);
+    if (!cached || cached.url !== expectedUrl) return;
+    URL.revokeObjectURL(cached.url);
+    this.#cache.delete(rowId);
+  }
+
   load(rowId: number, priority = false, signal?: AbortSignal): Promise<string> {
     if (signal?.aborted) return Promise.reject(new ImageLoadCancelled("图片已离开可视区域"));
     if (this.#disposed) {
