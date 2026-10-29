@@ -3,6 +3,8 @@
 .r-pd-list > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .r-pd-list h2 { font-size: var(--font-lg); }
 .r-pd-items { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 6px; }
+.r-pd-items > .r-pd-virtual { flex: none; position: relative; animation: none; }
+.r-pd-virtual-row { position: absolute; top: 0; left: 0; width: 100%; padding-bottom: 6px; }
 .r-pd-item { flex: none; width: 100%; display: grid; gap: 3px; border: 1px solid transparent; border-radius: var(--radius-s); background: transparent; padding: 9px; text-align: left; position: relative; transition: background 140ms, border-color 140ms, transform 100ms; }
 .r-pd-item:active:not(:disabled) { transform: scale(.99); }
 .r-pd-item:hover:not(:disabled) { background: var(--surface-2); }
