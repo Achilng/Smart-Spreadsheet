@@ -78,6 +78,7 @@
 .rc-section .model-options .active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-hover); }
 .rc-card { min-width: 0; }
 .rc-card .thumb { position: relative; width: 100%; aspect-ratio: 4 / 5; background: var(--compare-stage); border-radius: 6px; overflow: hidden; }
+.rc-card .thumb .rc-image img { object-fit: cover; }
 .rc-card .card-open, .rc-side .image-open { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; border: 0; border-radius: inherit; padding: 0; background: transparent; }
 .rc-card .card-open:focus-visible, .rc-side .image-open:focus-visible { outline-offset: -3px; }
 .rc-card .card-open:hover { box-shadow: inset 0 0 0 1px var(--border-hover); }
