@@ -9,6 +9,7 @@ import { openRowInMainWindow } from "../../../lib/windows/toolbox";
 import type { compareNavigation } from "../../state/compare";
 import { notify } from "../../state/notices";
 import { PaneImage, OriginalLightbox } from "./CompareImages";
+import { CompareRowContextMenu } from "./CompareRowContextMenu";
 
 function Tokens({ items, quality }: { items: PromptToken[]; quality: boolean }) {
   return <ul className="tokens">{items.map((token, index) => <li key={index} className={`token ${quality && token.isQuality ? "quality" : ""}`}>{token.display}</li>)}</ul>;
@@ -52,7 +53,7 @@ export function SideBySide({ sample, target, relation, navigation, onMove, onBac
     const listener = (event: KeyboardEvent) => {
       if (event.defaultPrevented || originalRow || event.ctrlKey || event.metaKey || event.altKey) return;
       const element = event.target instanceof Element ? event.target : null;
-      if (element?.closest("input, textarea, select, [contenteditable='true'], [role='separator'], [role='dialog']")) return;
+      if (element?.closest("input, textarea, select, [contenteditable='true'], [role='separator'], [role='dialog'], [role='menu']")) return;
       if (event.key === "Escape") { event.preventDefault(); onBack(); }
       if ((event.key === "ArrowLeft" || event.key === "ArrowRight") && !window.getSelection()?.toString()) {
         event.preventDefault();
@@ -96,11 +97,11 @@ export function SideBySide({ sample, target, relation, navigation, onMove, onBac
           <div className="panes">{[{ label: "参考样本", mark: "A", row: sample }, { label: "对比目标", mark: "B", row: target }].map(pane => {
             const hasImage = Boolean(pane.row.imagePath?.trim() || pane.row.storedImagePath?.trim());
             const badge = modelVersionBadge(pane.row.generationModel);
-            return <figure className={`pane ${pane.mark === "B" ? "target" : ""}`} key={pane.mark}>
+            return <CompareRowContextMenu row={pane.row} key={pane.mark}><figure className={`pane ${pane.mark === "B" ? "target" : ""}`}>
               <figcaption><span className="mark">{pane.mark}</span><strong>{pane.label}</strong><span className="resolution">{rowResolution(pane.row) || "尺寸未知"}</span></figcaption>
               <div className="pane-media"><PaneImage key={pane.row.id} row={pane.row} />{badge && <span className={`version-badge ${badge.className}`}>{badge.label}</span>}<button className="image-open" disabled={!hasImage} onClick={() => setOriginalRow(pane.row)} aria-label={`查看${pane.mark === "A" ? "样本" : "目标"}原图`}>{hasImage && <span className="original-hint"><Maximize2 size={13} />查看原图</span>}</button></div>
               <div className="pane-footer"><p title={pane.row.imagePath || undefined}>{pane.row.note?.trim() || rowFileName(pane.row) || `#${pane.row.id}`}</p><button onClick={() => void locate(pane.row.id)} title="在主画廊定位" aria-label={`在主画廊定位${pane.mark === "A" ? "样本" : "目标"}`}><Crosshair size={13} />定位</button></div>
-            </figure>;
+            </figure></CompareRowContextMenu>;
           })}</div>
           <footer className="stage-note"><span>点击查看原图 · 保持原始比例</span><span>← → 切换目标<span className="shortcut-divider">·</span>Esc 返回</span></footer>
         </main>

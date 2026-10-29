@@ -11,10 +11,14 @@ import { thumbnails } from "../../ui/use-image";
 import { Button, Tooltip } from "../../ui/controls";
 import { Notices } from "../../ui/Notices";
 import { WindowControls } from "../../ui/WindowControls";
+import { notifyMainStateChanged, notifyToolboxLibraryChanged } from "../../../lib/windows/library-events";
+import type { AfterRowsDeleted } from "../../state/row-actions";
+import { DeleteRowsDialog } from "../DeleteRowsDialog";
 import { notify } from "../../state/notices";
 import { closeSideBySide, compareModelGroups, compareNavigation, loadCompareModels, loadCompareSectionPage, moveCompareTarget, openSideBySide, refreshCompare, resetCompare, selectCompareModel, selectCompareTab, setCompareModelOffset, setCompareSample, useCompare, type CompareSectionKey } from "../../state/compare";
 import { PaneImage } from "./CompareImages";
 import { SideBySide } from "./SideBySide";
+import { CompareRowContextMenu } from "./CompareRowContextMenu";
 import "./compare.css";
 
 const tabs = [
@@ -24,6 +28,15 @@ const tabs = [
   { key: "models", label: "不同模型", hint: "比较相同提示词下的模型表现", icon: SlidersHorizontal },
 ] as const;
 const rowTitle = (row: RowRecord) => row.note?.trim() || rowFileName(row) || `第 ${row.sourceOrdinal} 张`;
+
+const afterCompareDelete: AfterRowsDeleted = async (_result, selection) => {
+  thumbnails.clear(); clearProgressiveImages();
+  await notifyMainStateChanged("libraryEdited");
+  notifyToolboxLibraryChanged("main");
+  const sampleId = useCompare.getState().rowId;
+  if (sampleId !== null && selection.kind === "explicit" && selection.rowIds.includes(sampleId)) resetCompare();
+  else await refreshCompare();
+};
 
 export function CompareWindow() {
   const state = useCompare();
@@ -80,7 +93,7 @@ export function CompareWindow() {
                 {state.target && <SideBySide key={sample.row.id} sample={sample.row} target={state.target} relation={relation} navigation={navigation} onMove={moveCompareTarget} onBack={closeSideBySide} />}
               </>}
       </div>
-    </div><Notices />
+    </div><DeleteRowsDialog afterDelete={afterCompareDelete} /><Notices />
   </Tooltip.Provider>;
 }
 
@@ -91,12 +104,12 @@ function Badges({ row }: { row: RowRecord }) {
 async function copy(text: string) { try { await navigator.clipboard.writeText(text); notify("已复制到剪贴板。"); } catch { notify("复制失败，请重试。", "error"); } }
 
 function SampleCard({ row }: { row: RowRecord }) {
-  return <section className="rc-sample">
+  return <CompareRowContextMenu row={row}><section className="rc-sample">
     <div className="sample-overview"><div className="sample-media"><PaneImage row={row} tier="gallery" /></div>
       <div className="sample-meta"><h2 title={row.imagePath || undefined}>{rowTitle(row)}</h2><p className="facts">{rowResolution(row) || "尺寸未知"}</p><p className="facts">{row.time?.split(" ")[0] || "时间未知"}</p><div className="sample-badges"><Badges row={row} /></div></div>
     </div>
     {row.artists?.trim() && <div className="artists"><span title={row.artists.trim()}>{row.artists.trim()}</span><button className="icon-button" aria-label="复制画师串" onClick={() => void copy(row.artists!.trim())}><Copy size={13} /></button></div>}
-  </section>;
+  </section></CompareRowContextMenu>;
 }
 
 function SamplePrompts({ row }: { row: RowRecord }) {
@@ -108,10 +121,10 @@ function SamplePrompts({ row }: { row: RowRecord }) {
 }
 
 function CompareCard({ row }: { row: RowRecord }) {
-  return <article className="rc-card">
+  return <CompareRowContextMenu row={row}><article className="rc-card">
     <div className="thumb"><PaneImage row={row} tier="thumbnail" lazy /><div className="card-badges"><Badges row={row} /></div><button type="button" className="card-open" data-compare-id={row.id} aria-label={`对比这张：${rowTitle(row)}`} title={[rowFileName(row), rowResolution(row), row.imagePath].filter(Boolean).join("\n")} onClick={() => openSideBySide(row)}><span className="open-hint"><ArrowUpRight size={14} />对比这张</span></button></div>
     <div className="card-info"><span className="card-label" title={rowTitle(row)}>{rowTitle(row)}</span><span className="card-sub"><span>{rowResolution(row) || "尺寸未知"}</span><span>#{row.id}</span></span></div>
-  </article>;
+  </article></CompareRowContextMenu>;
 }
 
 function Pagination({ offset, count, total, loading, onPrevious, onNext }: { offset: number; count: number; total: number; loading?: boolean; onPrevious: () => void; onNext: () => void }) {

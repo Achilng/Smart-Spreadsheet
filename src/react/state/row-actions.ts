@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { save } from "@tauri-apps/plugin-dialog";
-import { deleteRows, exportRowImage, getRowFilePath, rowIdsWithArtists, selectedRowIds, showItemInExplorer, type RowRecord, type RowSelection } from "../../lib/api";
+import { deleteRows, exportRowImage, getRowFilePath, rowIdsWithArtists, selectedRowIds, showItemInExplorer, type DeleteResult, type RowRecord, type RowSelection } from "../../lib/api";
 import { errorText, formatCount } from "../../lib/utils/format";
 import { defaultFilters, setQuery, useLibrary, useRows } from "./library";
 import { refreshLibrary } from "./library-changes";
@@ -38,7 +38,9 @@ export const requestPromptEdit = (selection: RowSelection, count: number) => req
 export const requestDelete = (selection: RowSelection, count: number) => requestAction("delete", selection, count);
 export function closeRowAction(): void { if (!useRowActions.getState().deleting && !useTasks.getState().busy) useRowActions.setState({ request: null, error: null }); }
 
-export async function confirmDelete(): Promise<void> {
+export type AfterRowsDeleted = (result: DeleteResult, selection: RowSelection) => Promise<void>;
+
+export async function confirmDelete(afterDelete?: AfterRowsDeleted): Promise<void> {
   const state = useRowActions.getState();
   if (!state.request || state.request.kind !== "delete" || state.deleting) return;
   useRowActions.setState({ deleting: true, error: null });
@@ -58,7 +60,10 @@ export async function confirmDelete(): Promise<void> {
       }
       if (result.cleanupFailures) parts.push(`受管文件清理失败 ${formatCount(result.cleanupFailures)} 个`);
       notify(`${parts.join("，")}。`, result.originalFileFailures || result.cleanupFailures ? "error" : "success");
-      try { await refreshLibrary({ snapshot: result.snapshot }); }
+      try {
+        if (afterDelete) await afterDelete(result, state.request!.selection);
+        else await refreshLibrary({ snapshot: result.snapshot });
+      }
       catch (error) { notify(`删除已完成，但刷新资料库失败：${errorText(error)}`, "error"); }
     });
   } catch (error) { useRowActions.setState({ error: `删除失败：${errorText(error)}` }); }
