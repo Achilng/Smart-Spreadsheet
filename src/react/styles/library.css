@@ -162,6 +162,8 @@
   backdrop-filter: blur(6px);
 }
 .r-table-head > span { padding: 0 10px; overflow: hidden; color: var(--text-3); font-size: var(--font-xs); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+/* The image cell has no inset; keep its heading on the same left edge. */
+.r-table-head > span:nth-child(2) { padding-left: 0; }
 .r-table-spacer { position: relative; min-width: 690px; }
 .r-table-row {
   position: absolute;

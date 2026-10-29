@@ -1,4 +1,7 @@
 .llm-tabs { display:flex; gap:8px; flex-wrap:wrap; }
+.rt-fields.llm-settings-fields > label { display:grid; grid-template-columns:7em minmax(0,1fr); gap:12px; }
+.llm-settings-fields > label > span { white-space:nowrap; }
+.llm-settings-fields select { width:100%; min-width:0; font-size:var(--font-sm); }
 .llm-preferences { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:20px; }
 .llm-preferences label { display:flex; align-items:flex-start; gap:10px; }
 .llm-preferences strong,.llm-preferences small { display:block; }
