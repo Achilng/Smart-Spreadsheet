@@ -1,7 +1,40 @@
 use super::error_text;
 use crate::app::AppRuntime;
-use crate::db::{RowSelection, TagMutationResult, TagSelectionSummary, TagSummary};
-use tauri::State;
+use crate::db::{
+    RowSelection, TagChanges, TagEditResult, TagMutationResult, TagSelectionSummary, TagSummary,
+};
+use tauri::{Manager, State};
+
+#[tauri::command]
+pub(crate) async fn edit_selection_tags(
+    selection: RowSelection,
+    add: Vec<String>,
+    remove: Vec<String>,
+    app: tauri::AppHandle,
+) -> Result<TagEditResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        app.state::<AppRuntime>()
+            .edit_selection_tags(&selection, &add, &remove)
+            .map_err(error_text)
+    })
+    .await
+    .map_err(|error| format!("标签修改任务异常：{error}"))?
+}
+
+#[tauri::command]
+pub(crate) async fn apply_tag_changes(
+    changes: TagChanges,
+    reverse: bool,
+    app: tauri::AppHandle,
+) -> Result<usize, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        app.state::<AppRuntime>()
+            .apply_tag_changes(&changes, reverse)
+            .map_err(error_text)
+    })
+    .await
+    .map_err(|error| format!("标签恢复任务异常：{error}"))?
+}
 
 #[tauri::command]
 pub(crate) fn list_tags(runtime: State<'_, AppRuntime>) -> Result<Vec<TagSummary>, String> {

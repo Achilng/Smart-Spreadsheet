@@ -1,0 +1,540 @@
+{
+  "backend-70000.jsonl": [
+    {
+      "stage": "correctness",
+      "ms": 5.992909999999999,
+      "hwm": "VmHWM:\t   41956 kB",
+      "extra": {
+        "passed": true,
+        "cases": [
+          "delta",
+          "undo-redo",
+          "unrelated-data",
+          "noop",
+          "transaction-failure",
+          "missing-row-rollback",
+          "filtered-selection"
+        ]
+      }
+    },
+    {
+      "stage": "bulk_delta",
+      "ms": 227.026017,
+      "hwm": "VmHWM:\t   60364 kB",
+      "extra": {
+        "count": 70000,
+        "round": 1,
+        "jsonBytes": 408979
+      }
+    },
+    {
+      "stage": "bulk_delta",
+      "ms": 248.510915,
+      "hwm": "VmHWM:\t   64076 kB",
+      "extra": {
+        "count": 70000,
+        "round": 2,
+        "jsonBytes": 408979
+      }
+    },
+    {
+      "stage": "bulk_delta",
+      "ms": 269.538548,
+      "hwm": "VmHWM:\t   67772 kB",
+      "extra": {
+        "count": 70000,
+        "round": 3,
+        "jsonBytes": 408979
+      }
+    },
+    {
+      "stage": "bulk_undo_redo",
+      "ms": 1376.062886,
+      "hwm": "VmHWM:\t   69356 kB",
+      "extra": {
+        "passed": true,
+        "count": 70000
+      }
+    }
+  ],
+  "final_10000_256_r1.jsonl": [
+    {
+      "stage": "history_retained",
+      "count": 10000,
+      "ms": 39.602559000000014,
+      "memory": {
+        "rss": 59138048,
+        "heapTotal": 10215424,
+        "heapUsed": 7471288,
+        "external": 1462433,
+        "arrayBuffers": 10515
+      },
+      "maxRssKiB": 57784,
+      "eventLoopMaxMs": 10.190847,
+      "round": 1,
+      "undoCount": 1
+    },
+    {
+      "stage": "history_retained",
+      "count": 10000,
+      "ms": 35.45771100000002,
+      "memory": {
+        "rss": 63836160,
+        "heapTotal": 13344768,
+        "heapUsed": 10858136,
+        "external": 1717046,
+        "arrayBuffers": 10515
+      },
+      "maxRssKiB": 62340,
+      "eventLoopMaxMs": 10.166271,
+      "round": 2,
+      "undoCount": 2
+    },
+    {
+      "stage": "history_retained",
+      "count": 10000,
+      "ms": 35.976725000000016,
+      "memory": {
+        "rss": 67280896,
+        "heapTotal": 16211968,
+        "heapUsed": 13887248,
+        "external": 1717046,
+        "arrayBuffers": 10515
+      },
+      "maxRssKiB": 66616,
+      "eventLoopMaxMs": 10.190847,
+      "round": 3,
+      "undoCount": 3
+    },
+    {
+      "stage": "undo_redo_verified",
+      "count": 10000,
+      "ms": 64.27682700000003,
+      "memory": {
+        "rss": 72151040,
+        "heapTotal": 19283968,
+        "heapUsed": 17105952,
+        "external": 1717006,
+        "arrayBuffers": 10475
+      },
+      "maxRssKiB": 72188,
+      "eventLoopMaxMs": 17.022975,
+      "verified": true
+    }
+  ],
+  "final_10000_256_r1.summary.json": {
+    "label": "final_10000_256_r1",
+    "memoryMiB": 256,
+    "memorySwapMiB": 256,
+    "exitCode": 0,
+    "state": {
+      "Status": "exited",
+      "Running": false,
+      "Paused": false,
+      "Restarting": false,
+      "OOMKilled": false,
+      "Dead": false,
+      "Pid": 0,
+      "ExitCode": 0,
+      "Error": "",
+      "StartedAt": "2026-10-29T08:01:11.599575769Z",
+      "FinishedAt": "2026-10-29T08:01:12.008895736Z"
+    },
+    "hostMinAvailableMiB": 6807.32421875,
+    "seconds": 1.1720000000022992,
+    "guard": null,
+    "command": [
+      "docker",
+      "run",
+      "--name",
+      "smart-memory-lab-final-10000-256-r1",
+      "--read-only",
+      "--network",
+      "none",
+      "--memory",
+      "256m",
+      "--memory-swap",
+      "256m",
+      "--cpus",
+      "2",
+      "--pids-limit",
+      "128",
+      "--ulimit",
+      "core=0",
+      "--mount",
+      "type=bind,source=D:/Agent/Agent_temp/memory-optimize-20261029,target=/lab",
+      "-e",
+      "TMPDIR=/lab/tmp",
+      "--entrypoint",
+      "node",
+      "vinlic/doubao-free-api:latest",
+      "--max-old-space-size=192",
+      "/lab/final-bench.mjs",
+      "10000"
+    ]
+  },
+  "final_10000_256_r2.jsonl": [
+    {
+      "stage": "history_retained",
+      "count": 10000,
+      "ms": 37.146657,
+      "memory": {
+        "rss": 59899904,
+        "heapTotal": 10215424,
+        "heapUsed": 7663560,
+        "external": 1462433,
+        "arrayBuffers": 10515
+      },
+      "maxRssKiB": 58700,
+      "eventLoopMaxMs": 10.174463,
+      "round": 1,
+      "undoCount": 1
+    },
+    {
+      "stage": "history_retained",
+      "count": 10000,
+      "ms": 34.392572,
+      "memory": {
+        "rss": 64516096,
+        "heapTotal": 13344768,
+        "heapUsed": 11009664,
+        "external": 1717046,
+        "arrayBuffers": 10515
+      },
+      "maxRssKiB": 63004,
+      "eventLoopMaxMs": 10.190847,
+      "round": 2,
+      "undoCount": 2
+    },
+    {
+      "stage": "history_retained",
+      "count": 10000,
+      "ms": 35.38503399999999,
+      "memory": {
+        "rss": 68059136,
+        "heapTotal": 16211968,
+        "heapUsed": 14097680,
+        "external": 1717046,
+        "arrayBuffers": 10515
+      },
+      "maxRssKiB": 67368,
+      "eventLoopMaxMs": 10.149887,
+      "round": 3,
+      "undoCount": 3
+    },
+    {
+      "stage": "undo_redo_verified",
+      "count": 10000,
+      "ms": 58.52569100000002,
+      "memory": {
+        "rss": 72478720,
+        "heapTotal": 19283968,
+        "heapUsed": 16925328,
+        "external": 1717006,
+        "arrayBuffers": 10475
+      },
+      "maxRssKiB": 71904,
+      "eventLoopMaxMs": 12.197887,
+      "verified": true
+    }
+  ],
+  "final_10000_256_r2.summary.json": {
+    "label": "final_10000_256_r2",
+    "memoryMiB": 256,
+    "memorySwapMiB": 256,
+    "exitCode": 0,
+    "state": {
+      "Status": "exited",
+      "Running": false,
+      "Paused": false,
+      "Restarting": false,
+      "OOMKilled": false,
+      "Dead": false,
+      "Pid": 0,
+      "ExitCode": 0,
+      "Error": "",
+      "StartedAt": "2026-10-29T08:01:12.886173639Z",
+      "FinishedAt": "2026-10-29T08:01:13.153214414Z"
+    },
+    "hostMinAvailableMiB": 6521.65625,
+    "seconds": 0.6569999999992433,
+    "guard": null,
+    "command": [
+      "docker",
+      "run",
+      "--name",
+      "smart-memory-lab-final-10000-256-r2",
+      "--read-only",
+      "--network",
+      "none",
+      "--memory",
+      "256m",
+      "--memory-swap",
+      "256m",
+      "--cpus",
+      "2",
+      "--pids-limit",
+      "128",
+      "--ulimit",
+      "core=0",
+      "--mount",
+      "type=bind,source=D:/Agent/Agent_temp/memory-optimize-20261029,target=/lab",
+      "-e",
+      "TMPDIR=/lab/tmp",
+      "--entrypoint",
+      "node",
+      "vinlic/doubao-free-api:latest",
+      "--max-old-space-size=192",
+      "/lab/final-bench.mjs",
+      "10000"
+    ]
+  },
+  "final_70000_256_r1.jsonl": [
+    {
+      "stage": "history_retained",
+      "count": 70000,
+      "ms": 83.820548,
+      "memory": {
+        "rss": 81555456,
+        "heapTotal": 30818304,
+        "heapUsed": 27893704,
+        "external": 1462393,
+        "arrayBuffers": 10475
+      },
+      "maxRssKiB": 81968,
+      "eventLoopMaxMs": 10.141695,
+      "round": 1,
+      "undoCount": 1
+    },
+    {
+      "stage": "history_retained",
+      "count": 70000,
+      "ms": 84.047661,
+      "memory": {
+        "rss": 101175296,
+        "heapTotal": 48635904,
+        "heapUsed": 36391488,
+        "external": 1717006,
+        "arrayBuffers": 10475
+      },
+      "maxRssKiB": 102892,
+      "eventLoopMaxMs": 10.125311,
+      "round": 2,
+      "undoCount": 2
+    },
+    {
+      "stage": "history_retained",
+      "count": 70000,
+      "ms": 79.430386,
+      "memory": {
+        "rss": 108331008,
+        "heapTotal": 55902208,
+        "heapUsed": 36199376,
+        "external": 1717006,
+        "arrayBuffers": 10475
+      },
+      "maxRssKiB": 111856,
+      "eventLoopMaxMs": 10.117119,
+      "round": 3,
+      "undoCount": 3
+    },
+    {
+      "stage": "undo_redo_verified",
+      "count": 70000,
+      "ms": 252.65727800000002,
+      "memory": {
+        "rss": 109961216,
+        "heapTotal": 44392448,
+        "heapUsed": 31321928,
+        "external": 1714574,
+        "arrayBuffers": 10475
+      },
+      "maxRssKiB": 116644,
+      "eventLoopMaxMs": 46.661631,
+      "verified": true
+    }
+  ],
+  "final_70000_256_r1.summary.json": {
+    "label": "final_70000_256_r1",
+    "memoryMiB": 256,
+    "memorySwapMiB": 256,
+    "exitCode": 0,
+    "state": {
+      "Status": "exited",
+      "Running": false,
+      "Paused": false,
+      "Restarting": false,
+      "OOMKilled": false,
+      "Dead": false,
+      "Pid": 0,
+      "ExitCode": 0,
+      "Error": "",
+      "StartedAt": "2026-10-29T08:01:13.703882021Z",
+      "FinishedAt": "2026-10-29T08:01:14.318530672Z"
+    },
+    "hostMinAvailableMiB": 6171.48828125,
+    "seconds": 1.1570000000028813,
+    "guard": null,
+    "command": [
+      "docker",
+      "run",
+      "--name",
+      "smart-memory-lab-final-70000-256-r1",
+      "--read-only",
+      "--network",
+      "none",
+      "--memory",
+      "256m",
+      "--memory-swap",
+      "256m",
+      "--cpus",
+      "2",
+      "--pids-limit",
+      "128",
+      "--ulimit",
+      "core=0",
+      "--mount",
+      "type=bind,source=D:/Agent/Agent_temp/memory-optimize-20261029,target=/lab",
+      "-e",
+      "TMPDIR=/lab/tmp",
+      "--entrypoint",
+      "node",
+      "vinlic/doubao-free-api:latest",
+      "--max-old-space-size=192",
+      "/lab/final-bench.mjs",
+      "70000"
+    ]
+  },
+  "final_70000_256_r2.jsonl": [
+    {
+      "stage": "history_retained",
+      "count": 70000,
+      "ms": 83.03590299999999,
+      "memory": {
+        "rss": 81575936,
+        "heapTotal": 30818304,
+        "heapUsed": 27893648,
+        "external": 1462393,
+        "arrayBuffers": 10475
+      },
+      "maxRssKiB": 81944,
+      "eventLoopMaxMs": 10.149887,
+      "round": 1,
+      "undoCount": 1
+    },
+    {
+      "stage": "history_retained",
+      "count": 70000,
+      "ms": 88.286968,
+      "memory": {
+        "rss": 100671488,
+        "heapTotal": 48300032,
+        "heapUsed": 36386448,
+        "external": 1717006,
+        "arrayBuffers": 10475
+      },
+      "maxRssKiB": 102808,
+      "eventLoopMaxMs": 10.166271,
+      "round": 2,
+      "undoCount": 2
+    },
+    {
+      "stage": "history_retained",
+      "count": 70000,
+      "ms": 77.89870200000001,
+      "memory": {
+        "rss": 109445120,
+        "heapTotal": 56803328,
+        "heapUsed": 37745424,
+        "external": 1717006,
+        "arrayBuffers": 10475
+      },
+      "maxRssKiB": 111900,
+      "eventLoopMaxMs": 10.125311,
+      "round": 3,
+      "undoCount": 3
+    },
+    {
+      "stage": "undo_redo_verified",
+      "count": 70000,
+      "ms": 225.864801,
+      "memory": {
+        "rss": 110059520,
+        "heapTotal": 44744704,
+        "heapUsed": 30976784,
+        "external": 1714574,
+        "arrayBuffers": 10475
+      },
+      "maxRssKiB": 117304,
+      "eventLoopMaxMs": 37.945343,
+      "verified": true
+    }
+  ],
+  "final_70000_256_r2.summary.json": {
+    "label": "final_70000_256_r2",
+    "memoryMiB": 256,
+    "memorySwapMiB": 256,
+    "exitCode": 0,
+    "state": {
+      "Status": "exited",
+      "Running": false,
+      "Paused": false,
+      "Restarting": false,
+      "OOMKilled": false,
+      "Dead": false,
+      "Pid": 0,
+      "ExitCode": 0,
+      "Error": "",
+      "StartedAt": "2026-10-29T08:01:15.034176376Z",
+      "FinishedAt": "2026-10-29T08:01:15.625815667Z"
+    },
+    "hostMinAvailableMiB": 5816.765625,
+    "seconds": 1.1869999999980791,
+    "guard": null,
+    "command": [
+      "docker",
+      "run",
+      "--name",
+      "smart-memory-lab-final-70000-256-r2",
+      "--read-only",
+      "--network",
+      "none",
+      "--memory",
+      "256m",
+      "--memory-swap",
+      "256m",
+      "--cpus",
+      "2",
+      "--pids-limit",
+      "128",
+      "--ulimit",
+      "core=0",
+      "--mount",
+      "type=bind,source=D:/Agent/Agent_temp/memory-optimize-20261029,target=/lab",
+      "-e",
+      "TMPDIR=/lab/tmp",
+      "--entrypoint",
+      "node",
+      "vinlic/doubao-free-api:latest",
+      "--max-old-space-size=192",
+      "/lab/final-bench.mjs",
+      "70000"
+    ]
+  },
+  "productionSha256": {
+    "src-tauri/src/db/tag_history.rs": "9ea4addf482dae0eb7b25f4bbfc345c901c5f8e74db5491d01b5a2a24eb4cf97",
+    "src-tauri/src/db/tags.rs": "1e5b1abfdb8a314d97fdcf8829ff5d883a2c436569e77c5d927a5a9b911c397e",
+    "src-tauri/src/db/mod.rs": "554c6548271d8831a05326377a6c0150b4e328d0f656ba39f31c3374dd88dd99",
+    "src-tauri/src/app/commands/tags.rs": "665769782ff6fef53c0510c00928a9fca6ea539e381493ec55981f7e559b0dcc",
+    "src-tauri/src/app/runtime/tags.rs": "a0d21a411f5fd3d3fb3a64e8f902baea8d5b382f6ba7ab8871d9ef5e175b7136",
+    "src-tauri/src/lib.rs": "0923fbcca2a93fba60feea2323bb2581bc7012b8b15becab19eb2008227328e0",
+    "src/lib/api/tags.ts": "1413f2da2495b0f6538be6c6db7ca7d3c026d51a26c579bd6e5d48ca8417b884",
+    "src/lib/dev/ipc-mock.ts": "a2fef1a2bb5f2d336088fdf835e33801ff56afb42d5223636e54a88f67af4928",
+    "src/react/state/history.ts": "61a0a7f656678cf1e59e9210f1c79d22d499cad54b70b2a7342c93e1b8be81a6",
+    "src/react/state/library-changes.ts": "b6635f0682c39c6893c957c8741a4900e72915691fdd2df064bab8c5d669a115",
+    "src/react/state/library.ts": "fd93e15f9a1696f84be872ee3fb99aa6939b718e2cd4761679f5ebe10b5d7477",
+    "src/react/ui/FieldEditor.tsx": "d9f186ad6d74b58f2cf22fe9abc654aaed2d57a8bd0f41bf43c558aed72dc20f",
+    "src/react/views/DetailContents.tsx": "7d16d5d487789ff143bcf4528ec88c5db6c95ae91ef9fef51a3a86a72a1e07c8",
+    "src/react/views/TagAssignDialog.tsx": "c21dc628d98c346ca14b5c8939845c73daa395bf290b8d7d33d9be7ec1a88355"
+  }
+}

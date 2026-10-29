@@ -1,7 +1,26 @@
 use super::{AppRuntime, AppRuntimeError};
-use crate::db::{RowSelection, TagMutationResult, TagSelectionSummary, TagSummary};
+use crate::db::{
+    RowSelection, TagChanges, TagEditResult, TagMutationResult, TagSelectionSummary, TagSummary,
+};
 
 impl AppRuntime {
+    pub(crate) fn edit_selection_tags(
+        &self,
+        selection: &RowSelection,
+        add: &[String],
+        remove: &[String],
+    ) -> Result<TagEditResult, AppRuntimeError> {
+        self.with_database_mut(|db| db.edit_selection_tags(selection, add, remove))
+    }
+
+    pub(crate) fn apply_tag_changes(
+        &self,
+        changes: &TagChanges,
+        reverse: bool,
+    ) -> Result<usize, AppRuntimeError> {
+        self.with_database_mut(|db| db.apply_tag_changes(changes, reverse))
+    }
+
     pub(crate) fn list_tags(&self) -> Result<Vec<TagSummary>, AppRuntimeError> {
         self.with_database(|db| db.list_tags())
     }

@@ -31,6 +31,7 @@ mod quick_edit;
 mod search;
 mod settings;
 mod tags;
+mod tag_history;
 
 pub use artist_auto_prefix::{
     ArtistTextPrefixResult, AutoArtistCandidate, AutoArtistPrefixApplyResult,
@@ -62,6 +63,7 @@ pub use quick_edit::{
 };
 pub use settings::{ImageExportRenameMode, ImageExportSettings};
 pub use tags::{RowSelection, TagMutationError, TagMutationResult, TagSelectionSummary};
+pub use tag_history::{TagAssociationChange, TagChanges, TagEditResult};
 
 use std::path::Path;
 use std::time::Duration;

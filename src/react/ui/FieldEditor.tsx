@@ -49,7 +49,7 @@ export function FieldEditor({ row, field, label }: { row: RowRecord; field: Fiel
           patchRowFields(row.id, { [field]: field === "note" ? saved.trim() || null : saved }, { reload: false });
         }
         drafts.delete(key); setEditing(false); setRestored(false);
-        await afterLibraryMutation({ history: () => recordRowStateChange(`编辑${label}`, [before]) });
+        await afterLibraryMutation({ history: () => recordRowStateChange(`编辑${label}`, [before]), impact: { kind: "text", rowIds: [row.id] } });
       });
     } catch (failure) { setError(errorText(failure)); }
     finally { setSaving(false); }

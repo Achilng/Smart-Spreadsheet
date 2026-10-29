@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { getAppSnapshot, listTags, queryRows, type AppSnapshot, type RowQuery, type RowRecord, type TagSummary } from "../../lib/api";
+import { getAppSnapshot, getRowsByIds, listTags, queryRows, type AppSnapshot, type RowQuery, type RowRecord, type TagSummary } from "../../lib/api";
 import { createRequestQueue } from "../../lib/utils/request-queue";
 import { trimPageCache } from "../../lib/utils/page-cache";
 import { errorText } from "../../lib/utils/format";
@@ -218,4 +218,32 @@ export function patchRowFields(rowId: number, fields: Partial<RowRecord>, option
   useRows.setState({ pages, activeRow: state.activeRow?.id === rowId ? { ...state.activeRow, ...fields } : state.activeRow });
   // Prompt, tag and note edits can change filter membership and duplicate groups.
   if (options.reload !== false) void reloadRows({ resetScroll: options.resetScroll ?? state.query.sort === "recentlyUpdated", keepActive: true });
+}
+
+/** Refresh only cached changed rows when the caller has proved membership/order stable.
+ * Any in-flight pagination/navigation falls back to the normal generation-safe reload.
+ */
+export async function refreshCachedRows(rowIds: readonly number[], isCurrent: () => boolean = () => true): Promise<boolean> {
+  const state = useRows.getState();
+  if (pending.size || replacing || state.loading || state.refreshing || state.error) return false;
+  const requestGeneration = generation;
+  const changed = new Set(rowIds);
+  const ids = new Set<number>();
+  for (const rows of state.pages.values()) for (const row of rows) if (changed.has(row.id)) ids.add(row.id);
+  if (state.activeRow) ids.add(state.activeRow.id);
+  // A bulk edit must not turn twelve cached pages into a larger reread than the
+  // existing visible-page reload. Use the bounded normal path in that case.
+  if (ids.size > PAGE_SIZE + 1) return false;
+  const records = ids.size ? await getRowsByIds([...ids]) : [];
+  const current = useRows.getState();
+  if (!isCurrent() || generation !== requestGeneration || current.query !== state.query || current.activeRow?.id !== state.activeRow?.id) return false;
+  const byId = new Map(records.map(row => [row.id, row]));
+  if (records.length !== ids.size) return false;
+  const pages = new Map(current.pages);
+  for (const [key, rows] of pages) {
+    if (rows.some(row => byId.has(row.id))) pages.set(key, rows.map(row => byId.get(row.id) ?? row));
+  }
+  // Dependent group/duplicate caches still observe every mutation, including hidden views.
+  useRows.setState({ pages, activeRow: current.activeRow ? byId.get(current.activeRow.id) ?? current.activeRow : null, resetToken: current.resetToken + 1 });
+  return true;
 }

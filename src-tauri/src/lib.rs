@@ -119,6 +119,8 @@ pub fn run() {
             app::commands::tags::list_selection_tags,
             app::commands::rows::selected_row_ids,
             app::commands::tags::add_tags_to_selection,
+            app::commands::tags::edit_selection_tags,
+            app::commands::tags::apply_tag_changes,
             app::commands::tags::remove_tags_from_selection,
             app::commands::tags::set_tags_for_row,
             app::commands::automation::list_automation_rules,

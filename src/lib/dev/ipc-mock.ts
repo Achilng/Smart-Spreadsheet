@@ -4,7 +4,7 @@
  * 分区、空态、分页与 set-sample 事件切换。生产构建会把它摇树剔除。
  */
 
-import type { FilterNumericComparison, LibraryFilter, MutableRowState, RowQuery, RowRecord, RowSelection } from "../api";
+import type { FilterNumericComparison, LibraryFilter, MutableRowState, RowQuery, RowRecord, RowSelection, TagChanges } from "../api";
 import type { Material, MaterialDraft, MaterialInspection } from "../api/materials";
 import type { PromptDocDetail } from "../api/prompt-docs";
 import type { GroupSummary } from "../api/groups";
@@ -571,6 +571,46 @@ export function installIpcMock(): void {
         case "list_selection_tags": {
           const selected = selectedRows(payload.selection as RowSelection);
           return [...knownTags].map(name => ({ name, selectedRows: selected.filter(row => row.tags.includes(name)).length }));
+        }
+        case "edit_selection_tags": {
+          const selection = payload.selection as RowSelection;
+          const selected = selectedRows(selection);
+          const ids = new Set(selected.map(row => row.id));
+          if (selection.kind === "explicit" && selection.rowIds.some(id => !ids.has(id))) throw new Error("图片不存在");
+          const remove = normalizeTags(payload.remove as string[]);
+          const add = normalizeTags(payload.add as string[]).filter(tag => !remove.includes(tag));
+          const changes: TagChanges = { added: [], removed: [] };
+          for (const tag of add) {
+            const rowIds = selected.filter(row => !row.tags.includes(tag)).map(row => row.id);
+            if (rowIds.length) changes.added.push({ tag, rowIds });
+            for (const row of selected) if (!row.tags.includes(tag)) row.tags = [...row.tags, tag].sort();
+            if (selected.length) knownTags.add(tag);
+          }
+          for (const tag of remove) {
+            const rowIds = selected.filter(row => row.tags.includes(tag)).map(row => row.id);
+            if (rowIds.length) changes.removed.push({ tag, rowIds });
+            for (const row of selected) row.tags = row.tags.filter(value => value !== tag);
+          }
+          return { affectedRows: selected.length, changes };
+        }
+        case "apply_tag_changes": {
+          const changes = payload.changes as TagChanges;
+          const byId = new Map(libraryRows.map(row => [row.id, row]));
+          for (const change of [...changes.added, ...changes.removed]) {
+            if (!change.tag.trim() || change.rowIds.some(id => !byId.has(id))) throw new Error("无效的标签变更或图片不存在");
+          }
+          const remove = payload.reverse ? changes.added : changes.removed;
+          const add = payload.reverse ? changes.removed : changes.added;
+          let changed = 0;
+          for (const change of remove) for (const id of change.rowIds) {
+            const row = byId.get(id)!;
+            if (row.tags.includes(change.tag)) { row.tags = row.tags.filter(tag => tag !== change.tag); changed++; }
+          }
+          for (const change of add) for (const id of change.rowIds) {
+            const row = byId.get(id)!;
+            if (!row.tags.includes(change.tag)) { row.tags = [...row.tags, change.tag].sort(); knownTags.add(change.tag); changed++; }
+          }
+          return changed;
         }
         case "add_tags_to_selection":
         case "remove_tags_from_selection": {

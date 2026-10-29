@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { getRowsByIds, mutableRowState, restoreMutableRowStates, selectedRowIds, type MutableRowState, type RowSelection } from "../../lib/api";
+import { applyTagChanges, getRowsByIds, mutableRowState, restoreMutableRowStates, selectedRowIds, type MutableRowState, type RowSelection, type TagChanges } from "../../lib/api";
 import { afterLibraryMutation } from "./library-changes";
 import { notify } from "./notices";
 import { runTask, useTasks } from "./tasks";
@@ -72,5 +72,22 @@ export async function recordRowStateChange(label: string, before: MutableRowStat
   const after = await captureRowStates(before.map(row => row.rowId));
   if (JSON.stringify(before) === JSON.stringify(after)) return false;
   recordHistory({ label, undo: () => restoreRowStates(before), redo: () => restoreRowStates(after) });
+  return true;
+}
+
+export async function refreshTagChanges(changes: TagChanges): Promise<void> {
+  const ids = new Set<number>();
+  for (const change of [...changes.added, ...changes.removed]) for (const id of change.rowIds) ids.add(id);
+  await afterLibraryMutation({ impact: { kind: "tags", rowIds: [...ids] } });
+}
+
+/** The committed backend delta is also the history entry: no whole-row rereads. */
+export function recordTagChange(changes: TagChanges, label = "编辑 Tag"): boolean {
+  if (!changes.added.length && !changes.removed.length) return false;
+  const restore = async (reverse: boolean) => {
+    await applyTagChanges(changes, reverse);
+    await refreshTagChanges(changes);
+  };
+  recordHistory({ label, undo: () => restore(true), redo: () => restore(false) });
   return true;
 }

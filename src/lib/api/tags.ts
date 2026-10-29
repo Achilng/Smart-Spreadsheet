@@ -18,6 +18,18 @@ export interface TagMutationResult {
   associationsChanged: number;
 }
 
+export interface TagAssociationChange { tag: string; rowIds: number[] }
+export interface TagChanges { added: TagAssociationChange[]; removed: TagAssociationChange[] }
+export interface TagEditResult { affectedRows: number; changes: TagChanges }
+
+export function editSelectionTags(selection: RowSelection, add: string[], remove: string[]): Promise<TagEditResult> {
+  return invoke<TagEditResult>("edit_selection_tags", { selection, add, remove });
+}
+
+export function applyTagChanges(changes: TagChanges, reverse: boolean): Promise<number> {
+  return invoke<number>("apply_tag_changes", { changes, reverse });
+}
+
 export function listTags(): Promise<TagSummary[]> {
   return invoke<TagSummary[]>("list_tags");
 }

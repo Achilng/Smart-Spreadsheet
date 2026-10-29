@@ -468,7 +468,7 @@ fn find_unknown_rows(transaction: &Transaction<'_>) -> Result<Vec<i64>, rusqlite
         .collect::<Result<Vec<_>, _>>()
 }
 
-fn target_row_count(transaction: &Transaction<'_>) -> Result<u64, TagMutationError> {
+pub(super) fn target_row_count(transaction: &Transaction<'_>) -> Result<u64, TagMutationError> {
     let count: i64 = transaction.query_row(
         &format!("SELECT COUNT(*) FROM {TARGET_ROWS_TABLE}"),
         [],
@@ -487,7 +487,7 @@ pub(super) fn drop_selection_tables(
     ))
 }
 
-fn add_tags(transaction: &Transaction<'_>, tags: &[String]) -> Result<usize, rusqlite::Error> {
+pub(super) fn add_tags(transaction: &Transaction<'_>, tags: &[String]) -> Result<usize, rusqlite::Error> {
     let mut changed = 0;
     for tag in tags {
         transaction.execute("INSERT OR IGNORE INTO tags(name) VALUES (?1)", [tag])?;
@@ -507,7 +507,7 @@ fn add_tags(transaction: &Transaction<'_>, tags: &[String]) -> Result<usize, rus
     Ok(changed)
 }
 
-fn remove_tags(transaction: &Transaction<'_>, tags: &[String]) -> Result<usize, rusqlite::Error> {
+pub(super) fn remove_tags(transaction: &Transaction<'_>, tags: &[String]) -> Result<usize, rusqlite::Error> {
     let mut changed = 0;
     for tag in tags {
         let tag_id = transaction

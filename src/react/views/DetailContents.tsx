@@ -2,18 +2,18 @@ import { useEffect, useRef, useState } from "react";
 import { LlmBadge } from "../ui/LlmBadge";
 import { markArtistRepresentative } from "../state/artist-representatives";
 import { Check, Copy, Filter, FolderOpen, ImageOff, Maximize2, X } from "lucide-react";
-import { createTag, mutableRowState, setTagsForRow, type RowRecord } from "../../lib/api";
+import { editSelectionTags, type RowRecord } from "../../lib/api";
 import { rowFileName, rowResolution } from "../../lib/utils/row-display";
 import { modelVersionBadge } from "../../lib/utils/model-version";
 import { errorText } from "../../lib/utils/format";
 import { vibeStatuses } from "../../lib/images/vibe-statuses";
 import { notifyToolboxLibraryChanged } from "../../lib/windows/library-events";
-import { patchRowFields, refreshTags, useLibrary } from "../state/library";
+import { patchRowFields, useLibrary } from "../state/library";
 import { useImageCache } from "../state/image-cache";
 import { notify } from "../state/notices";
 import { runTask, useTasks } from "../state/tasks";
-import { recordRowStateChange } from "../state/history";
-import { assignToGroup, invalidateGroups } from "../state/groups";
+import { recordTagChange, refreshTagChanges } from "../state/history";
+import { assignToGroup } from "../state/groups";
 import { filterByArtists, showRowInExplorer } from "../state/row-actions";
 import { beginFileDrag } from "../state/file-drag";
 import { Button, Hint, Input } from "../ui/controls";
@@ -79,15 +79,11 @@ function TagEditor({ row }: { row: RowRecord }) {
     setError(null);
     try {
       await runTask("保存 Tag", async () => {
-        const before = mutableRowState(row);
-        if (create && !tags.some(tag => tag.name === create)) await createTag(create);
-        const result = await setTagsForRow(row.id, next);
-        patchRowFields(row.id, { tags: result.normalizedTags });
+        const result = await editSelectionTags({ kind: "explicit", rowIds: [row.id] }, next.filter(tag => !row.tags.includes(tag)), row.tags.filter(tag => !next.includes(tag)));
         setQuery(""); setChoice(-1);
-        notifyToolboxLibraryChanged("main");
-        await refreshTags(); invalidateGroups();
-        try { await recordRowStateChange(create ? "添加 Tag" : "编辑 Tag", [before]); }
+        try { recordTagChange(result.changes, create ? "添加 Tag" : "编辑 Tag"); }
         catch (historyError) { notify(`操作已完成，但未能记录撤销历史：${errorText(historyError)}`, "error"); }
+        await refreshTagChanges(result.changes);
       });
     } catch (failure) { setError(errorText(failure)); }
   };

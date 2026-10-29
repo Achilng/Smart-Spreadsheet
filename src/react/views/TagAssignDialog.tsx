@@ -1,11 +1,10 @@
 import { useEffect, useState } from "react";
 import { Plus } from "lucide-react";
-import { addTagsToSelection, removeTagsFromSelection, getRecentTags, setRecentTags, listSelectionTags, restoreMutableRowStates, type RowSelection } from "../../lib/api";
+import { editSelectionTags, getRecentTags, setRecentTags, listSelectionTags, type RowSelection } from "../../lib/api";
 import { splitListText } from "../../lib/utils/list-text";
 import { errorText, formatCount } from "../../lib/utils/format";
-import { captureSelectionStates, recordRowStateChange } from "../state/history";
+import { recordTagChange, refreshTagChanges } from "../state/history";
 import { refreshTags, useLibrary } from "../state/library";
-import { refreshLibrary } from "../state/library-changes";
 import { runTask } from "../state/tasks";
 import { notify } from "../state/notices";
 import { Button, Checkbox, Input, Modal } from "../ui/controls";
@@ -59,22 +58,13 @@ export function TagAssignDialog({ selection, count, onClose }: { selection: RowS
     const removes = [...staged].filter(([, op]) => op === "remove").map(([name]) => name);
     try {
       await runTask("应用 Tag 修改", async () => {
-        const before = await captureSelectionStates(selection);
-        try {
-          if (adds.length) await addTagsToSelection(selection, adds);
-          if (removes.length) await removeTagsFromSelection(selection, removes);
-        } catch (failure) {
-          try { await restoreMutableRowStates(before); }
-          catch (rollbackError) { notify(`部分 Tag 修改可能已生效，恢复失败：${errorText(rollbackError)}`, "error"); }
-          await refreshLibrary({ preserveSelection: true });
-          throw failure;
-        }
+        const edited = await editSelectionTags(selection, adds, removes);
         // A later read or preference failure must never invite applying successful writes again.
         setStaged(new Map()); setCreated([]);
         setResult(`已对 ${formatCount(count)} 张图片${[adds.length && `添加 ${adds.length} 个 Tag`, removes.length && `移除 ${removes.length} 个 Tag`].filter(Boolean).join("、")}。`);
-        try { await recordRowStateChange("编辑 Tag", before); }
+        try { recordTagChange(edited.changes); }
         catch (historyError) { notify(`Tag 已保存，但未能记录撤销历史：${errorText(historyError)}`, "error"); }
-        await refreshLibrary({ preserveSelection: true });
+        await refreshTagChanges(edited.changes);
         const summaries = await listSelectionTags(selection); setCoverage(new Map(summaries.map(item => [item.name, item.selectedRows])));
         if (adds.length) {
           const merged = [...adds, ...recent.filter(name => !adds.includes(name))].slice(0, 10);
