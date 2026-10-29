@@ -23,29 +23,31 @@ function limited<T>(run: () => Promise<T>): Promise<T> {
   });
 }
 
-/** Mount with a new key when the source query changes; keep loadPreview stable. */
+/** Refresh covers in place; changing the query must not remount the album frame. */
 export function RowAlbumCard({ albumKey, previewKey, label, count, actionLabel, loadPreview, initialPreview, onOpen, menu }: {
   albumKey: string; previewKey: string; label: string; count?: number; actionLabel: string; loadPreview: () => Promise<RowPage>; initialPreview?: Preview; onOpen: () => void; menu?: MenuItem[];
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [page, setPage] = useState<Preview | null>(() => initialPreview ? { rows: initialPreview.rows.slice(0, 3), totalCount: initialPreview.totalCount } : previews.get(previewKey) ?? null);
+  const [preview, setPreview] = useState(() => ({ key: previewKey, page: initialPreview ? { rows: initialPreview.rows.slice(0, 3), totalCount: initialPreview.totalCount } : previews.get(previewKey) ?? null }));
+  const page = preview.page;
   const [visible, setVisible] = useState(Boolean(page));
   const [error, setError] = useState(""), [attempt, setAttempt] = useState(0);
-  useEffect(() => { if (page) rememberPreview(previewKey, page); }, [previewKey, page]);
   useEffect(() => {
     if (!ref.current) return;
     const observer = new IntersectionObserver(entries => setVisible(entries[0].isIntersecting), { root: ref.current.closest(".r-section-list"), rootMargin: "160px" });
     observer.observe(ref.current); return () => observer.disconnect();
   }, []);
   useEffect(() => {
-    if (!visible || page || count === 0) return;
+    if (!visible) return;
+    if (count === 0) { const empty = { rows: [], totalCount: 0 }; rememberPreview(previewKey, empty); setPreview({ key: previewKey, page: empty }); setError(""); return; }
+    if (preview.key === previewKey && page && (count === undefined || page.totalCount === count)) { rememberPreview(previewKey, page); return; }
     let cancelled = false;
     setError("");
     void limited(async () => cancelled ? null : loadPreview()).then(result => {
-      if (!cancelled && result) setPage(result);
+      if (!cancelled && result) { rememberPreview(previewKey, result); setPreview({ key: previewKey, page: result }); }
     }, cause => { if (!cancelled) setError(errorText(cause)); });
     return () => { cancelled = true; };
-  }, [visible, count, loadPreview, attempt, page]);
+  }, [visible, count, loadPreview, attempt, previewKey]);
   const total = count ?? page?.totalCount;
   return <div ref={ref} role="listitem" className="r-group-album" data-album-key={albumKey}>
     <RightClickMenu items={menu}><button className="r-album-trigger" type="button" aria-label={actionLabel} onClick={onOpen}>

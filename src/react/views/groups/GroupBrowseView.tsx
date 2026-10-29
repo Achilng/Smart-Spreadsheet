@@ -74,7 +74,7 @@ export function GroupBrowseView({ filtersOpen, onFilters }: { filtersOpen: boole
     <FilterChips />
     {groups.error && <div className="r-group-status" role="alert"><p className="r-group-error">加载失败：{groups.error}</p><Button onClick={() => void loadGroups()}>重试</Button></div>}
     {groups.loading && !groups.list.length && <p className="r-group-status" role="status">正在加载分组…</p>}
-    <SectionList key={positionKey} positionKey={positionKey} loading={groups.loading || groups.expanded.some(key => !groups.members[key] || groups.members[key].loading)} version={groups.version}>
+    <SectionList key={`${directory}:${positionKey}`} positionKey={positionKey} loading={groups.loading || groups.expanded.some(key => !groups.members[key] || groups.members[key].loading)} version={groups.version}>
       {!albumOpen && !groups.list.length && !groups.loading && !groups.error && <p className="r-group-status">暂无分组。可选择图片后创建分组。</p>}
       {shelf ? opened ? <SectionMembersGrid data={groups.members[opened]} scope="groups" order={order} onLoad={more => void loadGroupMembers(opened, more)} /> : <GroupAlbumShelf groups={sorted} version={groups.version} onOpen={openAlbum} menuFor={albumActions} /> : <SectionBrowseList sections={sections} scope="groups" order={order} />}
     </SectionList>

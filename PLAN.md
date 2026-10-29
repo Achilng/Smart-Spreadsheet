@@ -1,5 +1,13 @@
 # 项目计划
 
+## 分组与重复项复用画廊重排动画（2026-10-29）
+
+- 从画廊提取 `GalleryMotion` 与 `GalleryLayoutItem`，画廊、分组和重复项共用 Motion 布局动画、280ms 缓动和系统减少动态效果设置。保留各页面原有卡片外观、选择与相册导航交互。
+- 虚拟列表继续按行计算可见范围，但图片和相册卡片在同一个父节点下按稳定 ID 渲染；筛选、列数变化或换行不再销毁仍需显示的卡片。书架移除筛选版本号对 React key 的影响，以共用画廊动画替换原来的单独重排 Hook。
+- 成员分页刷新保留旧图片，待新结果到达后原位替换；按请求代次丢弃过期结果，刷新失败保留图片并允许重试，过期分页不会追加到新筛选结果。切换资料库或重复项依据仍清空旧数据。封面查询独立刷新，失效缓存不复用，加载期间保留已有封面。
+- 验证：`npm run build`（含类型检查）、Impeccable 扫描（0 项）与 `git diff --check` 通过。浏览器开发模拟数据检查分组/重复项书架、组内图片和列表模式：记录帧间 DOM 身份与 transform，确认保留卡片跨行移动、筛选刷新不重建；减少动态效果模式未产生移动帧。验证成员加载失败保留图片及重试、连续筛选最终结果、空结果恢复、原画廊回归，以及 12,000 张模拟图库中 300 张相册的分页（200→300）和可见范围渲染；1280×800、900×600 下稳定布局正常。未新增单元测试，未修改或运行真实资料库。
+- 修改文件：`src/react/ui/GalleryMotion.tsx`（新增）、`VirtualRows.tsx`、`AlbumShelf.tsx`、`RowAlbumCard.tsx`；`src/react/views/Gallery.tsx`；`src/react/views/groups/SectionParts.tsx`、`GroupAlbumShelf.tsx`、`GroupBrowseView.tsx`；`src/react/views/duplicates/DuplicateAlbumShelf.tsx`、`DuplicateBrowseView.tsx`；`src/react/state/section-members.ts`、`groups.ts`、`duplicates.ts`；本文件。生成/缓存目录：`dist/`、`node_modules/.vite/`、`node_modules/.vite-temp/`；临时浏览器目录：`D:/Agent/Agent_temp/gallery-motion-browser/`、`D:/Agent/Agent_temp/gallery-motion-browser-2/`，均不提交。保留工作区已有文档改动。
+
 ## 对比页图片右键菜单（2026-10-29）
 
 - 对比结果卡片、左侧参考样本和双图页 A/B 图片统一提供四项右键菜单：复制文件地址、在文件管理器中打开、对比、删除。复制与文件定位复用画廊操作；对比将当前图片设为新样本；删除仅针对右键图片。

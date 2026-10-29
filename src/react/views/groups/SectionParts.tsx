@@ -1,6 +1,6 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { motion, MotionConfig } from "motion/react";
-import { useReducedMotionPreference } from "../../ui/use-reduced-motion";
+import { motion } from "motion/react";
+import { GalleryMotion } from "../../ui/GalleryMotion";
 import { useGridColumns } from "../../ui/use-grid-columns";
 import { ChevronRight, ImageOff, MoreHorizontal } from "lucide-react";
 import type { RowRecord } from "../../../lib/api";
@@ -23,7 +23,6 @@ export function SectionHeader({ label, count, expanded, onToggle, items, suffix 
   return <RightClickMenu items={items}>{content}</RightClickMenu>;
 }
 export function SectionList({ positionKey, loading, version, children }: { positionKey: string; loading: boolean; version: number; children: ReactNode }) {
-  const reducedMotion = useReducedMotionPreference();
   const ref = useRef<HTMLDivElement>(null), restoring = useRef(true);
   const reset = useRows(state => state.resetToken);
   const navigationRestoring = useNavigation(state => state.restoring);
@@ -32,7 +31,7 @@ export function SectionList({ positionKey, loading, version, children }: { posit
     if (loading || navigationRestoring || !ref.current) return;
     return restoreScrollPosition(ref.current, positionKey, 60, undefined, () => { restoring.current = false; });
   }, [positionKey, reset, loading, version, navigationRestoring]);
-  return <MotionConfig reducedMotion="never" transition={{ layout: { duration: reducedMotion ? 0 : .28, ease: [.22, 1, .36, 1] } }}><motion.div layoutScroll className="r-section-list" ref={ref} tabIndex={0} onScroll={event => { if (!restoring.current && !navigationRestoring && !loading) saveScrollPosition(positionKey, event.currentTarget.scrollTop); }}>{children}</motion.div></MotionConfig>;
+  return <GalleryMotion><motion.div layoutScroll className="r-section-list" ref={ref} tabIndex={0} aria-busy={loading} onScroll={event => { if (!restoring.current && !navigationRestoring && !loading) saveScrollPosition(positionKey, event.currentTarget.scrollTop); }}>{children}</motion.div></GalleryMotion>;
 }
 function MembersFooter({ data, onLoad }: { data?: SectionMembers; onLoad: (more?: boolean) => void }) {
   return <div className="r-section-footer">
@@ -64,16 +63,21 @@ export function SectionBrowseList({ sections, scope, order }: { sections: Browse
     return result;
   }, [sections, columns]);
   const stickyRows = useMemo(() => blocks.flatMap((block, index) => block.kind === "header" ? [index] : []), [blocks]);
-  return <div ref={ref} className="r-virtual-sections">
+  return <div ref={ref} className="r-virtual-sections" role="list" aria-label="组内图片">
     <VirtualRows count={blocks.length} layoutKey={columns} stickyRows={stickyRows} itemKey={index => {
       const block = blocks[index]; return `${block.section.key}:${block.kind}:${block.start}`;
     }} estimateSize={index => blocks[index].kind === "images" ? 179 : blocks[index].kind === "header" ? 48 : 60} render={index => {
-      const { section, kind, start } = blocks[index];
+      const { section, kind } = blocks[index];
       if (kind === "header") return <SectionHeader label={section.label!} count={section.count} suffix={section.suffix} expanded={section.expanded} onToggle={section.onToggle!} items={section.items} />;
       if (kind === "footer") return <MembersFooter data={section.data} onLoad={section.onLoad} />;
-      return <div className="r-section-grid r-virtual-image-row" role="list" style={{ gridTemplateColumns: `repeat(${columns}, 120px)` }}>
-        {section.data!.rows.slice(start, start + columns).map(row => <GroupSectionCard key={row.id} row={row} order={order} scope={scope} />)}
-      </div>;
+      return null;
+    }} renderCells={index => {
+      const { section, kind, start } = blocks[index];
+      if (kind !== "images") return undefined;
+      return section.data!.rows.slice(start, start + columns).map((row, column) => ({
+        key: `${section.key}:${row.id}`, style: { left: column * 132, width: 120, paddingTop: 8 },
+        content: <GroupSectionCard row={row} order={order} scope={scope} />,
+      }));
     }} />
   </div>;
 }

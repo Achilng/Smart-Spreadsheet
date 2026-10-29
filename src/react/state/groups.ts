@@ -17,7 +17,7 @@ export const useGroups = create<GroupsState>(() => ({ memberSort: "timeAsc", lis
 const memberPager = createSectionPager({
   read: key => useGroups.getState().members[key],
   write: (key, value) => useGroups.setState(state => ({ members: { ...state.members, [key]: value } })),
-  clear: () => useGroups.setState({ members: {} }),
+  clear: preserve => useGroups.setState(state => ({ members: preserve ? Object.fromEntries(Object.entries(state.members).map(([key, value]) => [key, { ...value, loading: false, stale: true }])) : {} })),
   fetch: (key, offset, limit) => {
     const sort = useGroups.getState().memberSort;
     return key === "ungrouped"
@@ -39,7 +39,7 @@ export function syncGroups(force = false): Promise<void> {
   const nextDirectory = useLibrary.getState().snapshot?.dataDirectory;
   const changedDirectory = nextDirectory !== directory;
   const next = JSON.stringify([nextDirectory, rows.resetToken, rows.query, useGroups.getState().memberSort]);
-  if (!memberPager.sync(next, force)) return Promise.resolve();
+  if (!memberPager.sync(next, force, changedDirectory)) return Promise.resolve();
   directory = nextDirectory;
   useGroups.setState(state => ({ renderLimits: {}, version: state.version + 1, ...(changedDirectory ? { list: [], expanded: [], search: "" } : {}) }));
   const loading = loadGroups();

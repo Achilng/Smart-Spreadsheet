@@ -1,13 +1,17 @@
-import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { defaultRangeExtractor, useVirtualizer } from "@tanstack/react-virtual";
+import { GalleryLayoutItem } from "./GalleryMotion";
+import { useReducedMotionPreference } from "./use-reduced-motion";
 
 const noStickyRows: number[] = [];
 
 /** Shared windowing for shelves, section headers and image rows in SectionList. */
-export function VirtualRows({ count, itemKey, estimateSize, render, layoutKey, stickyRows = noStickyRows }: {
+export function VirtualRows({ count, itemKey, estimateSize, render, renderCells, layoutKey, stickyRows = noStickyRows }: {
   count: number; itemKey: (index: number) => string; estimateSize: (index: number) => number;
   render: (index: number) => ReactNode; layoutKey: number; stickyRows?: number[];
+  renderCells?: (index: number) => { key: string; content: ReactNode; style: CSSProperties; className?: string }[] | undefined;
 }) {
+  const reducedMotion = useReducedMotionPreference();
   const ref = useRef<HTMLDivElement>(null);
   const activeSticky = useRef(-1);
   const [margin, setMargin] = useState(0);
@@ -37,10 +41,19 @@ export function VirtualRows({ count, itemKey, estimateSize, render, layoutKey, s
   }, []);
   useLayoutEffect(() => { virtual.measure(); }, [layoutKey, virtual]);
   return <div ref={ref} className="r-virtual-rows" style={{ height: virtual.getTotalSize(), position: "relative" }}>
-    {virtual.getVirtualItems().map(item => <div key={item.key} data-index={item.index} ref={virtual.measureElement}
+    {virtual.getVirtualItems().flatMap(item => {
+      const cells = renderCells?.(item.index);
+      // Keep cards as siblings, like Gallery: changing columns or filters must not
+      // move an image to a new React parent and discard its previous layout.
+      if (cells) return cells.map(cell => <GalleryLayoutItem key={`cell:${cell.key}`}
+        layoutDependency={`${layoutKey}:${item.start}:${cell.style.left}:${reducedMotion}`}
+        className={cell.className} style={{ position: "absolute", top: item.start - margin, height: item.size, ...cell.style }}>
+        {cell.content}
+      </GalleryLayoutItem>);
+      return [<div key={item.key} data-index={item.index} ref={virtual.measureElement}
       style={{ position: item.index === activeSticky.current ? "sticky" : "absolute", zIndex: item.index === activeSticky.current ? 2 : undefined,
         top: 0, left: 0, width: "100%", transform: item.index === activeSticky.current ? undefined : `translateY(${item.start - margin}px)` }}>
       {render(item.index)}
-    </div>)}
+    </div>]; })}
   </div>;
 }

@@ -1,5 +1,6 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { motion, MotionConfig } from "motion/react";
+import { motion } from "motion/react";
+import { GalleryLayoutItem, GalleryMotion } from "../ui/GalleryMotion";
 import { Star } from "lucide-react";
 import { setFavorite, type RowRecord, type TagSummary } from "../../lib/api";
 import { notify } from "../state/notices";
@@ -84,9 +85,9 @@ const GalleryCard = memo(function GalleryCard({ row, index, layout, reducedMotio
   const position = galleryCellPosition(index, layout);
   const style = { left: position.x, top: position.y, width: layout.cardWidth, "--image-height": `${layout.imageHeight}px` } as CSSProperties;
   const layoutKey = `${layout.columns}:${index}:${reducedMotion}`;
-  return <motion.div layout layoutDependency={layoutKey} initial={false} role="listitem" className="r-card" data-active={active} data-checked={checked} data-selecting={selecting} style={style}>
+  return <GalleryLayoutItem layoutDependency={layoutKey} role="listitem" className="r-card" data-active={active} data-checked={checked} data-selecting={selecting} style={style}>
     <GalleryCardContent row={row} index={index} checked={checked} active={active} pickingMaterial={pickingMaterial} tags={tags} layoutKey={layoutKey} />
-  </motion.div>;
+  </GalleryLayoutItem>;
 });
 
 export function Gallery() {
@@ -116,7 +117,7 @@ export function Gallery() {
   useEffect(() => { thumbnails.retain(new Set(visibleIds ? visibleIds.split(",").map(Number) : [])); }, [visibleIds]);
   // Motion caches its own OS preference at mount. Supply a live duration instead,
   // including when the user changes the setting while the gallery is open.
-  return <MotionConfig reducedMotion="never" transition={{ layout: { duration: reducedMotion ? 0 : .28, ease: [.22, 1, .36, 1] } }}><motion.div layoutScroll className="r-gallery" ref={viewport} role="list" tabIndex={0} aria-label="图片画廊" aria-busy={loading || refreshing} onScroll={onScroll}>
+  return <GalleryMotion><motion.div layoutScroll className="r-gallery" ref={viewport} role="list" tabIndex={0} aria-label="图片画廊" aria-busy={loading || refreshing} onScroll={onScroll}>
     {loading ? <div className="r-state-message" role="status">正在加载图片…</div> : error && total === 0 ? <div className="r-state-message"><p>{error}</p><Button onClick={() => void reloadRows()}>重试</Button></div>
       : total === 0 ? <div className="r-state-message"><p>没有符合条件的图片</p><Button variant="ghost" onClick={clearFilters}>清除筛选</Button></div>
       : <div className="r-gallery-spacer" style={{ height: layout.spacerHeight }}>{indices.map(index => {
@@ -127,5 +128,5 @@ export function Gallery() {
         return <GalleryCard key={row.id} row={row} index={index} layout={layout} reducedMotion={reducedMotion} pickingMaterial={pickingMaterial} selecting={selectionActive} tags={tags} />;
       })}</div>}
     {error && total > 0 && <div className="r-inline-error" role="alert"><span>{error}</span><Button size="sm" onClick={() => void reloadRows()}>重试</Button></div>}
-  </motion.div></MotionConfig>;
+  </motion.div></GalleryMotion>;
 }

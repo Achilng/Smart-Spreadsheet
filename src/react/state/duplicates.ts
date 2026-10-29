@@ -12,7 +12,7 @@ export const useDuplicates = create<{ mode: DuplicateMode; memberSort: SortMode;
 const memberPager = createSectionPager({
   read: key => useDuplicates.getState().members[key],
   write: (key, value) => useDuplicates.setState(state => ({ members: { ...state.members, [key]: value } })),
-  clear: () => useDuplicates.setState({ members: {} }),
+  clear: preserve => useDuplicates.setState(state => ({ members: preserve ? Object.fromEntries(Object.entries(state.members).map(([key, value]) => [key, { ...value, loading: false, stale: true }])) : {} })),
   fetch: (key, offset, limit) => {
     const [mode, ...filters] = args();
     return getDedupeClusterMembers(mode, key, ...filters, offset, limit, useDuplicates.getState().memberSort);
@@ -20,13 +20,16 @@ const memberPager = createSectionPager({
 });
 let listGeneration = 0;
 let directory: string | null | undefined;
+let memberMode: DuplicateMode | undefined;
 function args(): Parameters<typeof listDedupeClusters> { const q = useRows.getState().query; return [useDuplicates.getState().mode, [...q.tags], q.tagMode, q.singleArtistOnly, q.hasVibe, q.untaggedOnly, structuredClone(q.filters), q.hideGrouped]; }
 export function syncDuplicates(force = false): void {
   const nextDirectory = useLibrary.getState().snapshot?.dataDirectory;
   const changedDirectory = directory !== nextDirectory;
   const next = JSON.stringify([nextDirectory, useRows.getState().resetToken, ...args(), useDuplicates.getState().memberSort]);
-  if (!memberPager.sync(next, force)) return;
+  const changedMode = memberMode !== useDuplicates.getState().mode;
+  if (!memberPager.sync(next, force, changedDirectory || changedMode)) return;
   directory = nextDirectory;
+  memberMode = useDuplicates.getState().mode;
   useDuplicates.setState(state => ({ renderLimits: {}, version: state.version + 1, ...(changedDirectory ? { clusters: [], expanded: [] } : {}) }));
   void loadClusters();
   for (const key of useDuplicates.getState().expanded) void loadClusterMembers(key);
