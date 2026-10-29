@@ -6,7 +6,7 @@ import { notify } from "../state/notices";
 import { errorText } from "../../lib/utils/format";
 import { notifyToolboxLibraryChanged } from "../../lib/windows/library-events";
 import { galleryCellPosition, galleryLayout, galleryVisibleIndices } from "../../lib/images/gallery-layout";
-import { clearFilters, ensurePage, PAGE_SIZE, patchRowFields, reloadRows, useLibrary, useRows } from "../state/library";
+import { clearFilters, ensureVisibleRowPages, PAGE_SIZE, patchRowFields, reloadRows, useLibrary, useRows } from "../state/library";
 import { useMaterials } from "../state/materials";
 import { useWorkspace } from "../state/workspace";
 import { isSelected, selectedCount, toggleRow, useSelection } from "../state/selection";
@@ -110,7 +110,7 @@ export function Gallery() {
   useLayoutEffect(() => { if (!loading && !refreshing && last >= first) rememberVisibleRange("gallery", first, last); }, [first, last, loading, refreshing]);
   useEffect(() => {
     if (!pageKey || refreshing || loading) return;
-    for (const page of pageKey.split(",").map(Number)) void ensurePage(page);
+    ensureVisibleRowPages(pageKey.split(",").map(Number));
   }, [pageKey, refreshing, loading]);
   const visibleIds = indices.map(index => pages.get(Math.floor(index / PAGE_SIZE))?.[index % PAGE_SIZE]?.id).filter((id): id is number => id !== undefined).join(",");
   useEffect(() => { thumbnails.retain(new Set(visibleIds ? visibleIds.split(",").map(Number) : [])); }, [visibleIds]);

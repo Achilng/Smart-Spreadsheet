@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, type CSSProperties } from "react";
-import { ensurePage, PAGE_SIZE, reloadRows, clearFilters, useRows } from "../state/library";
+import { ensureVisibleRowPages, PAGE_SIZE, reloadRows, clearFilters, useRows } from "../state/library";
 import { isSelected, toggleRow, useSelection } from "../state/selection";
 import { useWorkspace } from "../state/workspace";
 import { useViewport } from "../ui/use-viewport";
@@ -29,7 +29,7 @@ export function Table() {
   const thumbWidth = Math.max(52, Math.round(height * 1.15));
   const columns = `36px ${thumbWidth}px 64px 150px minmax(0,1.8fr) minmax(0,1.8fr) minmax(0,1.1fr) minmax(0,1.3fr)`;
   useEffect(() => {
-    if (!loading && pageKey) for (const page of pageKey.split(",").map(Number)) void ensurePage(page);
+    if (!loading && pageKey) ensureVisibleRowPages(pageKey.split(",").map(Number));
   }, [pageKey, loading]);
   useLayoutEffect(() => { if (!loading && last > first) rememberVisibleRange("table", first, last - 1); }, [first, last, loading]);
   const visibleIds = indices.map(index => pages.get(Math.floor(index / PAGE_SIZE))?.[index % PAGE_SIZE]?.id).filter((id): id is number => id !== undefined).join(",");

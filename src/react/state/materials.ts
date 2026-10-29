@@ -3,6 +3,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { listMaterials, materialTagCounts, materialImage, materialVersionImage, deleteMaterial, type Material } from "../../lib/api/materials";
 import type { TagSummary } from "../../lib/api/tags";
 import { ImageLoader } from "../../lib/images/image-loader";
+import { trimPageCache } from "../../lib/utils/page-cache";
 import { isMaterialImagePath, MATERIAL_IMAGE_EXTENSIONS } from "../../lib/utils/materials";
 import { errorText } from "../../lib/utils/format";
 import { useLibrary, useRows, refreshTags } from "./library";
@@ -11,6 +12,7 @@ import { useTasks, runTask } from "./tasks";
 import { notify } from "./notices";
 
 export const MATERIAL_PAGE_SIZE = 48;
+export const MAX_CACHED_MATERIAL_PAGES = 8;
 export const materialThumbnails = new ImageLoader(id => materialImage(id, true), 4, 144, "image/png");
 export const materialCovers = new ImageLoader(id => materialImage(id, false), 2, 8, "image/png");
 export const materialVersionCovers = new ImageLoader(materialVersionImage, 2, 16, "image/png");
@@ -45,17 +47,18 @@ export function finishMaterialGalleryPick(id?: number) {
 }
 let generation = 0;
 let pending = new Set<number>();
+let visiblePages = new Set([0]);
 function clearImages() { materialThumbnails.clear(); materialCovers.clear(); materialVersionCovers.clear(); materialCardVersionImages.clear(); }
 useLibrary.subscribe((state, previous) => {
   if (state.snapshot?.dataDirectory !== previous.snapshot?.dataDirectory) {
-    generation++; pending = new Set(); clearImages(); useMaterials.setState({ ...initial, pages: new Map(), revision: useMaterials.getState().revision + 1 });
+    generation++; pending = new Set(); visiblePages = new Set([0]); clearImages(); useMaterials.setState({ ...initial, pages: new Map(), revision: useMaterials.getState().revision + 1 });
   } else if (state.tags !== previous.tags && useMaterials.getState().initialized) {
     void reloadMaterials();
   }
 });
 export function initializeMaterials() { if (!useMaterials.getState().initialized) void reloadMaterials(); }
 export async function reloadMaterials(keepSelection = true) {
-  generation++; pending = new Set();
+  generation++; pending = new Set(); visiblePages = new Set([0]);
   const token = generation;
   useMaterials.setState({ pages: new Map(), total: 0, loading: true, error: "", initialized: true, scrollTop: 0, openCardId: null, ...(!keepSelection && { selected: null }) });
   await Promise.all([loadMaterialPage(0), materialTagCounts().then(tags => { if (token === generation) useMaterials.setState({ tags, tagError: "" }); }).catch(error => { if (token === generation) useMaterials.setState({ tagError: errorText(error) }); })]);
@@ -68,9 +71,14 @@ export async function loadMaterialPage(page: number) {
     const result = await listMaterials(state.search, state.selectedTags, state.untagged, page * MATERIAL_PAGE_SIZE);
     if (token !== generation) return;
     const pages = new Map(useMaterials.getState().pages); pages.set(page, result.items);
+    trimPageCache(pages, visiblePages, MAX_CACHED_MATERIAL_PAGES);
     useMaterials.setState({ pages, total: result.total, loading: false });
   } catch (error) { if (token === generation) useMaterials.setState({ loading: false, error: errorText(error) }); }
   finally { if (token === generation) pending.delete(page); }
+}
+export function loadVisibleMaterialPages(first: number, last: number): void {
+  visiblePages = new Set(Array.from({ length: last - first + 1 }, (_, index) => first + index));
+  for (const page of visiblePages) void loadMaterialPage(page);
 }
 export function setMaterialSearch(search: string) { if (search === useMaterials.getState().search) return; useMaterials.setState({ search }); void reloadMaterials(false); }
 export function toggleMaterialTag(name: string) { const tags = useMaterials.getState().selectedTags; useMaterials.setState({ selectedTags: tags.includes(name) ? tags.filter(tag => tag !== name) : [...tags, name], untagged: false }); void reloadMaterials(false); }

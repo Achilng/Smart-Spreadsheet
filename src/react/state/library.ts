@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { getAppSnapshot, listTags, queryRows, type AppSnapshot, type RowQuery, type RowRecord, type TagSummary } from "../../lib/api";
 import { createRequestQueue } from "../../lib/utils/request-queue";
+import { trimPageCache } from "../../lib/utils/page-cache";
 import { errorText } from "../../lib/utils/format";
 import { applyScrollSnapshot, captureScrollSnapshot, clearScrollPositions, prepareFilterScrollSnapshot, type ScrollSnapshot } from "../../lib/stores/view-state";
 import { useWorkspace } from "./workspace";
@@ -15,6 +16,7 @@ interface LibraryState {
 }
 export const useLibrary = create<LibraryState>(() => ({ snapshot: null, tags: [], loaded: false, error: null, tagError: null }));
 export const PAGE_SIZE = 200;
+export const MAX_CACHED_ROW_PAGES = 12;
 type Filters = Omit<RowQuery, "offset" | "limit">;
 export const defaultFilters: Filters = {
   tags: [], tagMode: "and", dedupe: "none", singleArtistOnly: false, artistFilter: "", hasVibe: false,
@@ -50,6 +52,9 @@ let pending = new Set<number>();
 let replacing = false;
 let incoming = new Map<number, RowRecord[]>();
 let requiredPages = new Set([0]);
+let visiblePages = new Set([0]);
+// Range selection only needs IDs, not every visited row's prompts and metadata.
+let visitedRowIds = new Map<number, readonly number[]>();
 let pendingScroll: ScrollSnapshot | null = null;
 let keepActive = false;
 let beforeQueryChange: (searchSession?: number) => void = () => {};
@@ -91,6 +96,7 @@ export function initializeLibrary(): Promise<void> {
 /** Invalidate pending page requests before reconnecting to a different library. */
 export function resetLibraryRows(): void {
   generation++; pending = new Set(); incoming = new Map(); replacing = false; pendingScroll = null;
+  visitedRowIds = new Map(); visiblePages = new Set([0]);
   clearScrollPositions();
   useRows.setState(state => ({ query: { ...defaultFilters, sort: state.query.sort }, pages: new Map(), total: 0, loading: false, refreshing: false, error: null, activeRow: null, resetToken: state.resetToken + 1 }));
 }
@@ -155,6 +161,11 @@ export async function reloadRows(options: ReloadOptions = {}): Promise<void> {
   await Promise.all([...requiredPages].map(ensurePage));
 }
 
+export function ensureVisibleRowPages(pages: readonly number[]): void {
+  visiblePages = new Set(pages);
+  for (const page of pages) void ensurePage(page);
+}
+
 export async function ensurePage(page: number): Promise<void> {
   const state = useRows.getState();
   if (pending.has(page) || state.error || (replacing ? incoming.has(page) : state.pages.has(page))) return;
@@ -173,9 +184,16 @@ export async function ensurePage(page: number): Promise<void> {
       const missing = [...requiredPages].filter(value => !incoming.has(value));
       if (missing.length) { await Promise.all(missing.map(ensurePage)); return; }
       pages = new Map(incoming);
+      visiblePages = new Set(requiredPages);
+      visitedRowIds = new Map([...pages].map(([key, rows]) => [key, rows.map(row => row.id)]));
+      incoming = new Map();
       if (pendingScroll) applyScrollSnapshot(pendingScroll);
       pendingScroll = null;
-    } else { pages = new Map(current.pages); pages.set(page, result.rows); }
+    } else {
+      pages = new Map(current.pages); pages.set(page, result.rows);
+      visitedRowIds.set(page, result.rows.map(row => row.id));
+    }
+    trimPageCache(pages, visiblePages, MAX_CACHED_ROW_PAGES);
     const activeRow = replacing && !keepActive ? null : current.activeRow;
     useRows.setState({ pages, total: result.totalCount, loading: false, refreshing: false, error: null,
       resetToken: current.resetToken + (replacing ? 1 : 0), activeRow });
@@ -187,8 +205,8 @@ export async function ensurePage(page: number): Promise<void> {
   }
 }
 
-export function rowAt(index: number): RowRecord | undefined {
-  return useRows.getState().pages.get(Math.floor(index / PAGE_SIZE))?.[index % PAGE_SIZE];
+export function rowIdAt(index: number): number | undefined {
+  return visitedRowIds.get(Math.floor(index / PAGE_SIZE))?.[index % PAGE_SIZE];
 }
 
 export function patchRowFields(rowId: number, fields: Partial<RowRecord>, options: { resetScroll?: boolean; reload?: boolean } = {}): void {

@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { countSelectedRows, selectedRowIds, type RowSelection } from "../../lib/api";
 import { snapshotQueryFilters } from "../../lib/utils/library-query";
-import { rowAt, useRows } from "./library";
+import { rowIdAt, useRows } from "./library";
 import { notify } from "./notices";
 
 type FilteredSelection = Extract<RowSelection, { kind: "filtered" }>;
@@ -49,8 +49,8 @@ export function toggleRow(id: number, index: number, shift: boolean): void {
     const from = Math.min(state.anchor, index), to = Math.max(state.anchor, index);
     let missing = 0;
     for (let cursor = from; cursor <= to; cursor++) {
-      const row = rowAt(cursor);
-      if (row) set(row.id, true); else missing++;
+      const rowId = rowIdAt(cursor);
+      if (rowId !== undefined) set(rowId, true); else missing++;
     }
     if (missing) notify(`范围内有 ${missing} 行尚未加载，本次只选中了已加载的 ${to - from + 1 - missing} 行。滚动浏览加载后可再次 Shift 选择补全。`, "error");
   } else set(id, !isSelected(id, state));

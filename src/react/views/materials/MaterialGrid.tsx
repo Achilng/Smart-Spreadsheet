@@ -1,7 +1,7 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { materialAlbum } from "../../../lib/utils/material-album";
 import { GALLERY_GAP, GALLERY_PADDING, GALLERY_PADDING_TOP, galleryLayout, galleryVisibleIndices } from "../../../lib/images/gallery-layout";
-import { useMaterials, loadMaterialPage, MATERIAL_PAGE_SIZE, materialThumbnails, materialCardVersionImages } from "../../state/materials";
+import { useMaterials, loadVisibleMaterialPages, MATERIAL_PAGE_SIZE, materialThumbnails, materialCardVersionImages } from "../../state/materials";
 import { useAlbumReflow } from "../../ui/use-album-reflow";
 import { MaterialCard } from "./MaterialCard";
 
@@ -64,7 +64,7 @@ export const MaterialGrid = memo(function MaterialGrid({ active, size }: { activ
     if (!active) return;
     const ids = new Set<number>();
     const versionIds = new Set<number>();
-    for (let page = Math.floor(first / MATERIAL_PAGE_SIZE); page <= Math.floor(last / MATERIAL_PAGE_SIZE); page++) void loadMaterialPage(page);
+    loadVisibleMaterialPages(Math.floor(first / MATERIAL_PAGE_SIZE), Math.floor(last / MATERIAL_PAGE_SIZE));
     for (const index of visible) {
       const item = state.pages.get(Math.floor(index / MATERIAL_PAGE_SIZE))?.[index % MATERIAL_PAGE_SIZE];
       if (!item) continue;
