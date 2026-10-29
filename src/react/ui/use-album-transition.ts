@@ -58,7 +58,7 @@ export function useAlbumTransition() {
     // Snapshots ignore the list's scroll clipping, so a half-scrolled album or card is drawn whole.
     // Everything above the list (window bar, page header, filter chips) therefore sits on top with
     // a solid ground and swaps instantly, like a fixed frame the images move underneath.
-    const heads = () => [...node.querySelectorAll<HTMLElement>(":scope > .r-page-head, :scope > .r-page-toolbar, :scope > .r-chips")];
+    const heads = () => [...node.querySelectorAll<HTMLElement>(":scope > .r-page-head, :scope > .r-page-toolbar, :scope > .r-chips-region")].filter(element => element.offsetHeight > 0);
     const parts = () => [...node.querySelectorAll<HTMLElement>(".r-group-album, .r-section-card, .r-section-header, .r-group-status")].filter(visible);
     const markParts = (side: "old" | "new") => parts().forEach((element, index) => {
       const name = `album-content-${side}-${index}`;

@@ -1,5 +1,13 @@
 # 项目计划
 
+## 筛选条件栏与内容区域同步展开（2026-10-29）
+
+- 共用 `FilterChips` 持续挂载，通过测量内部自然高度驱动外层高度过渡；首次添加、删除最后一个条件、清空筛选及条件换行时，内容区域随条件栏同步下移或上移。同一行新增条件不改变内容位置，切换到已有筛选的页面直接显示最终高度。
+- 条件标签的淡入/淡出、小幅移动、标签间位置变化和条件栏高度统一使用画廊的 280ms 缓动；移除旧 CSS 的延迟入场，避免文字和内容区域错拍。动画可从当前高度接续；退出中的条件不可点击或获得焦点，标签使用稳定且区分类别的 key。
+- 观察内容边框盒，包含换行和内边距变化；Motion 管理的容器不叠加 CSS transition，保证减少动态效果模式直接更新到正确高度。相册导航的顶部快照改为包含新条件栏容器。
+- 验证：`npm run build`（含类型检查）、Impeccable 扫描（0 项）与 `git diff --check` 通过。浏览器模拟逐帧验证画廊、分组、重复项、表格的 0→40px 展开及 40→0px 收回；内容区域位移与条件栏高度差保持一致。900px 窗口验证 40↔73px 换行过渡；同一行增添条件无额外位移。验证快速开/关/开、清空后高度为 0 且无残留按钮、带筛选相册导航、减少动态效果无中间移动且容器高度与内容一致。未新增单元测试，未操作真实资料库。
+- 修改文件：`src/react/views/CanvasHeader.tsx`、`src/react/ui/GalleryMotion.tsx`、`src/react/ui/use-album-transition.ts`、`src/react/styles/controls.css`、`src/react/styles/motion.css` 与本文件。生成/缓存目录：`dist/`、`node_modules/.vite/`、`node_modules/.vite-temp/`；复用临时浏览器目录 `D:/Agent/Agent_temp/gallery-motion-browser-2/`，均不提交。
+
 ## 分组与重复项复用画廊重排动画（2026-10-29）
 
 - 从画廊提取 `GalleryMotion` 与 `GalleryLayoutItem`，画廊、分组和重复项共用 Motion 布局动画、280ms 缓动和系统减少动态效果设置。保留各页面原有卡片外观、选择与相册导航交互。

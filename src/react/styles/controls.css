@@ -329,7 +329,10 @@
 }
 
 /* ---- Filter chips ---- */
-.r-chips { display: flex; flex: none; flex-wrap: wrap; align-items: center; gap: 6px; padding: 0 var(--page-gutter) 12px; }
+.r-chips-region, .r-chips, .r-filter-chip { transition-property: none; }
+.r-chips-region { flex: none; min-height: 0; overflow: hidden; }
+.r-chips { position: relative; display: flex; flex: none; flex-wrap: wrap; align-items: center; gap: 6px; padding: 0 var(--page-gutter) 12px; }
+.r-chips[data-empty="true"] { padding-bottom: 0; }
 .r-filter-chip {
   display: inline-flex;
   align-items: center;
