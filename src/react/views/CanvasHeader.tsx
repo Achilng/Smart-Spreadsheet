@@ -1,6 +1,6 @@
 import { Grid2X2, SlidersHorizontal, X } from "lucide-react";
-import { forwardRef, useLayoutEffect, useRef, useState } from "react";
-import { AnimatePresence, motion, useIsPresent, useMotionValue } from "motion/react";
+import { forwardRef, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { AnimatePresence, motion, useIsPresent } from "motion/react";
 import { clearFilters, setQuery, useRows } from "../state/library";
 import { useWorkspace } from "../state/workspace";
 import { viewLabel } from "../../lib/utils/view-modes";
@@ -16,19 +16,21 @@ type Chip = { key: string; label: string; remove: () => void };
 const FilterChip = forwardRef<HTMLSpanElement, { chip: Chip; reducedMotion: boolean }>(function FilterChip({ chip, reducedMotion }, ref) {
   const present = useIsPresent();
   return <motion.span ref={ref} layout="position" className="r-filter-chip" inert={!present} aria-hidden={!present}
-    initial={{ opacity: 0, y: reducedMotion ? 0 : -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: reducedMotion ? 0 : -4 }}
+    initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
     transition={{ ...galleryTransition, duration: reducedMotion ? 0 : galleryTransition.duration }}>
     <span title={chip.label}>{chip.label}</span><Button variant="ghost" size="icon" aria-label={`移除筛选 ${chip.label}`} onClick={chip.remove}><X size={12} /></Button>
   </motion.span>;
 });
 
-export function FilterChips() {
+/** Move the content as a composited layer; never resize a virtual list per frame. */
+export function FilterLayout({ children }: { children: ReactNode }) {
   const query = useRows(state => state.query);
   const groups = useGroups(state => state.list);
   const reducedMotion = useReducedMotionPreference();
   const content = useRef<HTMLDivElement>(null);
-  const height = useMotionValue(0);
-  const [naturalHeight, setNaturalHeight] = useState(0);
+  const viewportContent = useRef<HTMLDivElement>(null);
+  const movement = useRef<Animation | null>(null);
+  const [reservedHeight, setReservedHeight] = useState(0);
   const targetHeight = useRef<number | null>(null);
   const occurrences = new Map<string, number>();
   const chips: Chip[] = [
@@ -48,31 +50,57 @@ export function FilterChips() {
   ];
   const contentKey = JSON.stringify(chips.map(({ key, label }) => [key, label]));
   useLayoutEffect(() => {
-    const node = content.current;
-    if (!node) return;
+    const node = content.current, viewport = viewportContent.current;
+    if (!node || !viewport) return;
     const measure = () => {
       const next = node.offsetHeight;
-      // Measure the natural content, not the animated shell. This also catches
-      // wrapping when side panels change width, without a ResizeObserver loop.
-      if (targetHeight.current === null || reducedMotion) height.jump(next);
-      setNaturalHeight(next);
+      if (next === targetHeight.current && !reducedMotion) return;
+      const transform = `translateY(${next}px)`;
+      const from = getComputedStyle(viewport).transform;
+      const immediate = targetHeight.current === null || reducedMotion;
+      movement.current?.cancel();
+      movement.current = null;
+      viewport.style.transform = transform;
       targetHeight.current = next;
+      // Keep enough viewport height for both ends of the motion. The outer
+      // layout clips the excess at the bottom, so no blank strip is exposed.
+      if (immediate) {
+        setReservedHeight(next);
+      } else {
+        setReservedHeight(previous => Math.min(previous, next));
+        // A native transform animation keeps the large image surface off the JS
+        // frame loop. Read its current pose before cancelling an interrupted run.
+        const animation = viewport.animate([{ transform: from }, { transform }], {
+          duration: galleryTransition.duration * 1000, easing: `cubic-bezier(${galleryTransition.ease.join(",")})`,
+        });
+        movement.current = animation;
+        animation.onfinish = () => {
+          if (movement.current !== animation) return;
+          movement.current = null;
+          setReservedHeight(next);
+        };
+      }
     };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(node, { box: "border-box" });
     return () => observer.disconnect();
-  }, [contentKey, height, reducedMotion]);
-  return <GalleryMotion><motion.div className="r-chips-region" style={{ height }} initial={false} animate={{ height: naturalHeight }}
-    transition={{ ...galleryTransition, duration: reducedMotion ? 0 : galleryTransition.duration }} inert={!chips.length} aria-hidden={!chips.length}>
-    <div ref={content} className="r-chips" data-empty={!chips.length}>
-      <AnimatePresence initial={false} mode="popLayout">
-        {chips.map(chip => <FilterChip key={chip.key} chip={chip} reducedMotion={reducedMotion} />)}
-        {!!chips.length && <motion.button key="clear" layout="position" type="button" className="r-text-action" onClick={clearFilters}
-          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ ...galleryTransition, duration: reducedMotion ? 0 : galleryTransition.duration }}>清除全部</motion.button>}
-      </AnimatePresence>
+  }, [contentKey, reducedMotion]);
+  useEffect(() => () => movement.current?.cancel(), []);
+  return <GalleryMotion><div className="r-filter-layout">
+    <div className="r-chips-region" inert={!chips.length} aria-hidden={!chips.length}>
+      <div ref={content} className="r-chips" data-empty={!chips.length}>
+        <AnimatePresence initial={false} mode="popLayout">
+          {chips.map(chip => <FilterChip key={chip.key} chip={chip} reducedMotion={reducedMotion} />)}
+          {!!chips.length && <motion.button key="clear" layout="position" type="button" className="r-text-action" onClick={clearFilters}
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ ...galleryTransition, duration: reducedMotion ? 0 : galleryTransition.duration }}>清除全部</motion.button>}
+        </AnimatePresence>
+      </div>
     </div>
-  </motion.div></GalleryMotion>;
+    <div ref={viewportContent} className="r-filter-content" style={{ bottom: reservedHeight }}>
+      {children}
+    </div>
+  </div></GalleryMotion>;
 }
 
 export function CanvasHeader({ filtersOpen, onFilters }: { filtersOpen: boolean; onFilters: () => void }) {
@@ -88,5 +116,5 @@ export function CanvasHeader({ filtersOpen, onFilters }: { filtersOpen: boolean;
     <div className="r-size-control"><Grid2X2 size={11} aria-hidden="true" /><Slider aria-label={isTable ? "行高" : "卡片大小"} value={[isTable ? rowHeight : cardSize]} min={isTable ? 40 : 120} max={isTable ? 128 : 400} step={1} onValueChange={values => setSize(values[0])} /><Grid2X2 size={15} aria-hidden="true" /></div>
     <ImageSortMenu value={query.sort} onChange={sort => setQuery({ sort })} />
     <Button className="is-toggle" aria-expanded={filtersOpen} onClick={onFilters}><SlidersHorizontal size={15} />图片筛选</Button>
-  </div></header><FilterChips /></>;
+  </div></header></>;
 }

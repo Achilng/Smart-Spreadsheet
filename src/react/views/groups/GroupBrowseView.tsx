@@ -6,7 +6,7 @@ import { loadGroupMembers, loadGroups, renameExistingGroup, setGroupMemberSort, 
 import { useLibrary, useRows } from "../../state/library";
 import { runTask, useTasks } from "../../state/tasks";
 import { Button, Input, Menu, Modal, SearchField, Segmented, Select, type MenuItem } from "../../ui/controls";
-import { FilterChips } from "../CanvasHeader";
+import { FilterLayout } from "../CanvasHeader";
 import { DeleteGroupDialog, GroupManageDialog, MergeGroupDialog } from "./GroupManageDialog";
 import { SectionBrowseList, SectionList, SectionMembersGrid, type BrowseSection } from "./SectionParts";
 import { GroupAlbumShelf } from "./GroupAlbumShelf";
@@ -71,13 +71,14 @@ export function GroupBrowseView({ filtersOpen, onFilters }: { filtersOpen: boole
     <div className="r-page-toolbar"><SearchField aria-label="搜索分组名称" placeholder="搜索分组名称…" value={search} onChange={event => setSearch(event.target.value)} onClear={() => setSearch("")} clearLabel="清除分组搜索" /><Select pill label="分组顺序" value={groups.sortByCount ? "count" : "default"} onChange={value => useGroups.setState({ sortByCount: value === "count" })} options={[["default", "默认顺序"], ["count", "按图片数排序"]]} /><span className="r-toolbar-spacer" /><Segmented label="分组布局" value={shelf ? "shelf" : "list"} onChange={value => { if (value === "shelf") returnToShelf(); else setShelf(false); }} options={[{ value: "shelf", label: "书架", icon: <LayoutGrid size={14} /> }, { value: "list", label: "列表", icon: <List size={14} /> }]} /></div>
     </>}
     {(albumOpen || !shelf) && <div className="r-page-toolbar"><span>组内图片排序</span><ImageSortMenu value={groups.memberSort} onChange={sort => { clearSelection(); useRows.setState({ activeRow: null }); setGroupMemberSort(sort); }} /></div>}
-    <FilterChips />
+    <FilterLayout>
     {groups.error && <div className="r-group-status" role="alert"><p className="r-group-error">加载失败：{groups.error}</p><Button onClick={() => void loadGroups()}>重试</Button></div>}
     {groups.loading && !groups.list.length && <p className="r-group-status" role="status">正在加载分组…</p>}
     <SectionList key={`${directory}:${positionKey}`} positionKey={positionKey} loading={groups.loading || groups.expanded.some(key => !groups.members[key] || groups.members[key].loading)} version={groups.version}>
       {!albumOpen && !groups.list.length && !groups.loading && !groups.error && <p className="r-group-status">暂无分组。可选择图片后创建分组。</p>}
       {shelf ? opened ? <SectionMembersGrid data={groups.members[opened]} scope="groups" order={order} onLoad={more => void loadGroupMembers(opened, more)} /> : <GroupAlbumShelf groups={sorted} version={groups.version} onOpen={openAlbum} menuFor={albumActions} /> : <SectionBrowseList sections={sections} scope="groups" order={order} />}
     </SectionList>
+    </FilterLayout>
     <GroupManageDialog open={managing} onOpenChange={setManaging} /><DeleteGroupDialog group={deleting} onClose={() => setDeleting(null)} /><MergeGroupDialog group={merging} onClose={() => setMerging(null)} />
     <Modal open={Boolean(renaming)} onClose={() => setRenaming(null)} title="重命名分组" busy={busy} footer={<><Button disabled={busy} onClick={() => setRenaming(null)}>取消</Button><Button variant="primary" disabled={busy || taskBusy || !name.trim()} onClick={() => void rename()}>保存</Button></>}><Input aria-label="分组名称" value={name} disabled={busy} onChange={event => setName(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.nativeEvent.isComposing) void rename(); }} />{error && <p role="alert" className="r-group-error">{error}</p>}</Modal>
   </div>;

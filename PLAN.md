@@ -1,5 +1,13 @@
 # 项目计划
 
+## 筛选联动动画性能优化（2026-10-29）
+
+- 性能定位：原条件栏逐帧修改高度，使画廊/表格的 ResizeObserver、虚拟列表计算和滚动恢复跟随每一帧更新。将筛选与内容整理为共用 `FilterLayout`：外层裁切固定可用区域，内容层通过原生 Web Animations 的 transform 移动；视口只在开始/结束调整尺寸，并暂时保留较大高度，避免动画底部露白。
+- 保留画廊统一的 280ms 缓动和标签同步淡入/淡出，移除标签额外的逐帧小幅位移。快速反向操作从当前浏览器动画位置接续；条件换行、清空、减少动态效果和相册导航均兼容。滚动恢复只在首次获得有效尺寸、加载完成或浏览目标变化时执行，不再因高度变化重复恢复。
+- 同场景采样：12,000 张模拟图库、1440×900、前台 Edge 开发页面；读取筛选请求延后 1500ms，隔离点击后 400ms 的动画成本。画廊展开前后：布局计算 64→5 次、React 提交 31→6 次、画廊尺寸通知 52→1 次；脚本耗时约 113→65ms，主线程任务耗时约 242→137ms。该采样用于比较改动，不代表桌面安装版或所有设备的固定帧率。
+- 验证：`npm run build`（含类型检查）、Impeccable 扫描（0 项）、`git diff --check` 通过。逐帧确认内容层存在原生 transform 动画、图片相对视口位置不变、底部始终被内容覆盖；画廊、分组相册、重复项、表格均正常。检查 900px 窗口条件换行、快速开/关/开、减少动态效果无中间动画、相册打开以及清空筛选恢复原 1000px 滚动位置。未新增单元测试，未操作真实资料库。
+- 修改文件：`src/react/App.tsx`、`src/react/views/CanvasHeader.tsx`、`src/react/views/groups/GroupBrowseView.tsx`、`src/react/views/duplicates/DuplicateBrowseView.tsx`、`src/react/ui/use-viewport.ts`、`src/react/ui/use-album-transition.ts`、`src/react/styles/controls.css` 与本文件。生成/缓存目录：`dist/`、`node_modules/.vite/`、`node_modules/.vite-temp/`；临时目录 `D:/Agent/Agent_temp/gallery-motion-browser-2/`，性能记录 `D:/Agent/Agent_temp/filter-motion-performance-20261029.json`，均不提交。
+
 ## 筛选条件栏与内容区域同步展开（2026-10-29）
 
 - 共用 `FilterChips` 持续挂载，通过测量内部自然高度驱动外层高度过渡；首次添加、删除最后一个条件、清空筛选及条件换行时，内容区域随条件栏同步下移或上移。同一行新增条件不改变内容位置，切换到已有筛选的页面直接显示最终高度。

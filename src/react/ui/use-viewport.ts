@@ -9,6 +9,7 @@ export function useViewport(key: "gallery" | "table") {
   const [size, setSize] = useState(() => ({ width: 0, height: 0, top: savedScrollPosition(key), resetToken }));
   const loading = useRows(state => state.loading || state.refreshing);
   const restoring = useRef(false);
+  const ready = size.height > 0;
   useLayoutEffect(() => {
     const node = viewport.current;
     if (!node) return;
@@ -23,13 +24,13 @@ export function useViewport(key: "gallery" | "table") {
   }, [key]);
   useLayoutEffect(() => {
     const node = viewport.current;
-    if (!node || loading || size.height <= 0) return;
+    if (!node || loading || !ready) return;
     restoring.current = true;
     const top = savedScrollPosition(key);
     node.scrollTop = top;
-    setSize(previous => ({ ...previous, top: node.scrollTop, resetToken }));
+    setSize(previous => previous.top === node.scrollTop && previous.resetToken === resetToken ? previous : { ...previous, top: node.scrollTop, resetToken });
     restoring.current = false;
-  }, [key, resetToken, loading, size.height]);
+  }, [key, resetToken, loading, ready]);
   const onScroll = (event: UIEvent<HTMLDivElement>) => {
     const top = event.currentTarget.scrollTop;
     setSize(previous => ({ ...previous, top }));

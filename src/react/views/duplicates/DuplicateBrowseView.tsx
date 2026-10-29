@@ -7,7 +7,7 @@ import { useLibrary, useRows } from "../../state/library";
 import { clearSelection } from "../../state/selection";
 import { runTask, useTasks } from "../../state/tasks";
 import { Button, Input, Menu, Modal, Segmented, Select, type MenuItem } from "../../ui/controls";
-import { FilterChips } from "../CanvasHeader";
+import { FilterLayout } from "../CanvasHeader";
 import { SectionBrowseList, SectionList, SectionMembersGrid, type BrowseSection } from "../groups/SectionParts";
 import { DuplicateAlbumShelf } from "./DuplicateAlbumShelf";
 import { useAlbumTransition } from "../../ui/use-album-transition";
@@ -61,13 +61,14 @@ export function DuplicateBrowseView({ filtersOpen, onFilters }: { filtersOpen: b
       <div className="r-page-toolbar"><Select pill label="重复项依据" value={state.mode} onChange={mode => { clearActive(); setDuplicateMode(mode); }} options={[["artists", "按画师串"], ["positivePrompt", "按正向提示词"], ["vibes", "按 VIBE 引用"]]} /><Select pill label="重复项顺序" value={state.sortByCount ? "count" : "name"} onChange={value => useDuplicates.setState({ sortByCount: value === "count" })} options={[["count", "按图片数排序"], ["name", "按名称排序"]]} /><span className="r-toolbar-spacer" /><Segmented label="重复项布局" value={shelf ? "shelf" : "list"} onChange={value => setLayout(value)} options={[{ value: "shelf", label: "书架", icon: <LayoutGrid size={14} /> }, { value: "list", label: "列表", icon: <List size={14} /> }]} /></div>
     </>}
     {(albumOpen || !shelf) && <div className="r-page-toolbar"><span>组内图片排序</span><ImageSortMenu value={state.memberSort} onChange={sort => { clearActive(); setDuplicateMemberSort(sort); }} /></div>}
-    <FilterChips />
+    <FilterLayout>
     {state.loading && <p className="r-group-status" role="status">正在加载重复项…</p>}
     {state.error && <div className="r-group-status" role="alert"><p className="r-group-error">加载失败：{state.error}</p><Button onClick={() => void loadClusters()}>重试</Button></div>}
     {!state.loading && !state.error && !state.clusters.length && <p className="r-group-status">{state.mode === "vibes" ? "未找到共用同一组 VIBE 引用的图片。" : "未找到重复项（所有条目均唯一）。"}</p>}
     <SectionList key={`${directory}:${positionKey}`} positionKey={positionKey} loading={state.loading || state.expanded.some(key => !state.members[key] || state.members[key].loading)} version={state.version}>
       {shelf ? opened !== undefined ? members(opened) : <DuplicateAlbumShelf clusters={sorted} mode={state.mode} version={state.version} onOpen={openAlbum} menuFor={clusterActions} /> : <SectionBrowseList sections={sections} scope="duplicates" order={order} />}
     </SectionList>
+    </FilterLayout>
     <Modal open={Boolean(renaming)} onClose={() => setRenaming(null)} title="重命名重复项" description="自定义名称方便识别；留空可恢复原来的名称。" busy={busy} footer={<><Button disabled={busy} onClick={() => setRenaming(null)}>取消</Button><Button variant="primary" disabled={busy || taskBusy} onClick={() => void rename()}>保存</Button></>}><Input aria-label="重复项名称" value={name} disabled={busy} onChange={event => setName(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.nativeEvent.isComposing) void rename(); }} />{error && <p role="alert" className="r-group-error">{error}</p>}</Modal>
   </div>;
 }
