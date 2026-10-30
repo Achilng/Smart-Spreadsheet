@@ -36,6 +36,10 @@ export function setFavorite(rowId: number, favorite: boolean): Promise<number> {
   return invoke<number>("set_favorite", { rowId, favorite });
 }
 
+export function setSelectionFavorite(selection: RowSelection, favorite: boolean): Promise<number> {
+  return invoke<number>("set_selection_favorite", { selection, favorite });
+}
+
 export function setArtistRepresentative(rowId: number, artists: string, enabled: boolean, expectedRepresentativeId: number | null = null): Promise<{ conflict: boolean; representativeId: number | null }> {
   return invoke("set_artist_representative", { rowId, artists, enabled, expectedRepresentativeId });
 }

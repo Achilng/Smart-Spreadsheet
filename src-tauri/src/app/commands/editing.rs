@@ -26,6 +26,17 @@ pub(crate) fn set_favorite(
 }
 
 #[tauri::command]
+pub(crate) fn set_selection_favorite(
+    selection: RowSelection,
+    favorite: bool,
+    runtime: State<'_, AppRuntime>,
+) -> Result<u64, String> {
+    runtime
+        .set_selection_favorite(&selection, favorite)
+        .map_err(error_text)
+}
+
+#[tauri::command]
 pub(crate) fn update_positive_prompt(
     row_id: i64,
     new_prompt: String,

@@ -1,5 +1,12 @@
 # 项目计划
 
+## 多选菜单批量收藏（2026-10-31）
+
+- 多选图片后，在底部「更多操作 → 收藏」可一次收藏全部所选图片；支持手动多选、全选当前视图及排除项，已收藏的图片保持不变，并提示实际新增数量。
+- 后端复用现有选区解析，在单次事务内批量保存并刷新查询缓存，避免逐张调用；前端保存期间禁用重复操作，完成后刷新列表、详情和关联窗口，失败时保留选区方便重试。
+- 验证：前端生产构建、Rust `cargo check --locked`、界面扫描和差异检查通过；模拟资料库中检查混合选区、重复收藏、全选排除、保存中禁用、失败重试及 1180×760 / 900×600 菜单显示。未新增单元测试，未操作真实资料库；尚未更新本机安装版。
+- 修改文件：`src/react/views/SelectionBar.tsx`、`src/react/state/row-actions.ts`、`src/lib/api/prompt-edit.ts`、`src/lib/dev/ipc-mock.ts`、`src-tauri/src/db/favorites.rs`、`src-tauri/src/app/commands/editing.rs`、`src-tauri/src/app/runtime/editing.rs`、`src-tauri/src/lib.rs`、本文件。构建/开发生成目录为 `dist/`、`target/`、`node_modules/.vite/`、`node_modules/.vite-temp/`；临时浏览器数据及截图位于 `D:/Agent/Agent_temp/`（截图子目录 `bulk-favorites-20261031/`），均不提交。原有文档修改和删除保持原状。
+
 ## 本地编译与安装版更新（2026-10-30）
 
 - 按用户要求，以当前本地源码提交 `224458e` 完成 Tauri Release 编译，并更新 `D:/应用/智能表格/smart-spreadsheet.exe`；沿用版本号 `0.12.23`，未发布 Release。

@@ -531,6 +531,16 @@ export function installIpcMock(): void {
           row.artistRepresentative = Boolean(payload.enabled);
           return { conflict: false, representativeId: payload.enabled ? row.id : current?.id === row.id ? null : current?.id ?? null };
         }
+        case "set_selection_favorite": {
+          const selection = payload.selection as RowSelection;
+          const selected = selectedRows(selection);
+          const ids = new Set(selected.map(row => row.id));
+          if (selection.kind === "explicit" && selection.rowIds.some(id => !ids.has(id))) throw new Error("图片不存在");
+          const favorite = Boolean(payload.favorite);
+          const changed = selected.filter(row => row.favorite !== favorite);
+          for (const row of changed) row.favorite = favorite;
+          return changed.length;
+        }
         case "update_positive_prompt":
         case "update_character_prompt":
         case "update_negative_prompt":

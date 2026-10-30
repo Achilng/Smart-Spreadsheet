@@ -1,9 +1,9 @@
 import { create } from "zustand";
 import { save } from "@tauri-apps/plugin-dialog";
-import { deleteRows, exportRowImage, getRowFilePath, rowIdsWithArtists, selectedRowIds, showItemInExplorer, type DeleteResult, type RowRecord, type RowSelection } from "../../lib/api";
+import { deleteRows, exportRowImage, getRowFilePath, rowIdsWithArtists, selectedRowIds, setSelectionFavorite, showItemInExplorer, type DeleteResult, type RowRecord, type RowSelection } from "../../lib/api";
 import { errorText, formatCount } from "../../lib/utils/format";
 import { defaultFilters, setQuery, useLibrary, useRows } from "./library";
-import { refreshLibrary } from "./library-changes";
+import { afterLibraryMutation, refreshLibrary } from "./library-changes";
 import { clearHistory } from "./history";
 import { notify } from "./notices";
 import { clearSelection, setExplicitSelection } from "./selection";
@@ -36,6 +36,19 @@ export const requestTagEdit = (selection: RowSelection, count: number) => reques
 export const requestGroupAssign = (selection: RowSelection, count: number) => requestAction("group", selection, count);
 export const requestPromptEdit = (selection: RowSelection, count: number) => requestAction("prompt", selection, count);
 export const requestDelete = (selection: RowSelection, count: number) => requestAction("delete", selection, count);
+
+export async function favoriteSelection(selection: RowSelection): Promise<void> {
+  const directory = useLibrary.getState().snapshot?.dataDirectory;
+  try {
+    await runTask("批量收藏", async () => {
+      const affected = await setSelectionFavorite(selection, true);
+      if (directory !== useLibrary.getState().snapshot?.dataDirectory) return;
+      notify(affected ? `已新增收藏 ${formatCount(affected)} 张图片。` : "没有需要新增收藏的图片。", "success");
+      await afterLibraryMutation({ resetScroll: false });
+    });
+  } catch (error) { notify(`批量收藏失败：${errorText(error)}`, "error"); }
+}
+
 export function closeRowAction(): void { if (!useRowActions.getState().deleting && !useTasks.getState().busy) useRowActions.setState({ request: null, error: null }); }
 
 export type AfterRowsDeleted = (result: DeleteResult, selection: RowSelection) => Promise<void>;
