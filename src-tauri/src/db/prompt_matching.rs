@@ -283,9 +283,9 @@ pub fn artist_key(artists: &str, ignored: &[String]) -> Option<String> {
     (!result.text.trim().is_empty()).then_some(result.text)
 }
 
-/// Browser Range offsets count UTF-16 code units; parser spans count UTF-8 bytes.
-/// Resolve against the full string to recognize weight wrappers, but preserve
-/// the user's exact selection within each tag, including deliberately partial tags.
+/// Browser Range offsets count UTF-16 code units; Rust slices count UTF-8 bytes.
+/// Only inspect the selected text. Unselected syntax must never block editing
+/// the whitelist, and a selection may intentionally cut through tags or weights.
 pub fn selected_artist_tags(text: &str, start: usize, end: usize) -> Result<Vec<String>, String> {
     fn byte_offset(text: &str, offset: usize) -> Option<usize> {
         let mut units = 0;
@@ -303,28 +303,23 @@ pub fn selected_artist_tags(text: &str, start: usize, end: usize) -> Result<Vec<
     if start >= end {
         return Err("请先选中要加入白名单的文字。".into());
     }
-    fn collect(text: &str, nodes: &[Node], selection: &Range<usize>, tags: &mut Vec<String>) {
-        for node in nodes {
-            match &node.body {
-                Body::Group { children, .. } => collect(text, children, selection, tags),
-                Body::Tag => {
-                    let raw = &text[node.range.clone()];
-                    let start = node.range.start + raw.len() - raw.trim_start().len();
-                    let end = node.range.start + raw.trim_end().len();
-                    if start < selection.end && end > selection.start {
-                        tags.push(clean_tag(
-                            &text[start.max(selection.start)..end.min(selection.end)],
-                        ));
-                    }
-                }
+    let mut tags = Vec::new();
+    for part in text[start..end].split([',', '\n', '\r', '{', '}', '[', ']']) {
+        let mut pieces = part.split("::").peekable();
+        while let Some(piece) = pieces.next() {
+            // A finite number followed by :: is a weight prefix. Standalone
+            // numeric tags (for example a selected year) remain ordinary tags.
+            if pieces.peek().is_some()
+                && piece
+                    .trim()
+                    .parse::<f64>()
+                    .is_ok_and(|weight| weight.is_finite())
+            {
+                continue;
             }
+            tags.push(piece.to_owned());
         }
     }
-    let nodes = Parser { text, pos: 0 }
-        .sequence("", 0)
-        .ok_or("这段画师串的权重格式不完整，暂时无法安全识别 tag。")?;
-    let mut tags = Vec::new();
-    collect(text, &nodes, &(start..end), &mut tags);
     let tags = clean_ignored_tags(&tags);
     if tags.is_empty() {
         return Err("请先选中 tag 文字，可以跨逗号或换行选择多个。".into());

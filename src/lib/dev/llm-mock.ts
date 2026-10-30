@@ -3,13 +3,14 @@ import type { LlmChannel, LlmItem, LlmJob, LlmSettings, LlmSnapshot } from "../a
 // Fixture values only; production defaults always come from llm_snapshot.
 const mockIgnoredTags = ["mock quality", "mock resolution"];
 
-// Comma-separated UI fixture; production selection and weights use the Rust parser.
+// Selection-only UI fixture; unselected prompt syntax must not affect the menu.
 function selectedTags(payload: Record<string, unknown>): string[] {
   const text = String(payload.text), start = Number(payload.start), end = Number(payload.end);
-  const tags = [...text.matchAll(/[^,\r\n]+/g)].flatMap(match => {
-    const left = Math.max(start, match.index), right = Math.min(end, match.index + match[0].length);
-    return left < right ? [text.slice(left, right).replace(/[_\s]+/g, " ").trim().toLowerCase()] : [];
-  }).filter(Boolean);
+  const tags = text.slice(start, end).split(/[,\r\n{}\[\]]/).flatMap(part => {
+    const pieces = part.split('::');
+    return pieces.filter((piece, index) => !(index < pieces.length - 1
+      && /^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i.test(piece.trim()) && Number.isFinite(Number(piece))));
+  }).map(tag => tag.replace(/[_\s]+/g, " ").trim().toLowerCase()).filter(Boolean);
   if (!tags.length) throw Error("请先选中 tag 文字，可以跨逗号或换行选择多个。");
   return [...new Set(tags)];
 }
