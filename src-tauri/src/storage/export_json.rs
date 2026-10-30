@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
@@ -9,7 +9,6 @@ use thiserror::Error;
 use super::{DataDirectory, StorageError};
 use crate::db::{ExportRow, RowSelection, TagMutationError};
 use crate::fsx::{TemporaryFile, has_extension, replace_output_file, unique_sibling_path};
-use crate::pipeline::{extract_artist_blocks, extract_artist_tags};
 
 const PROGRESS_EVERY_ROWS: usize = 250;
 
@@ -24,14 +23,14 @@ pub struct JsonExportOutcome {
     pub destination: PathBuf,
     pub exported: usize,
     pub duplicates_removed: usize,
-    pub artists_added: usize,
+    pub empty_artists_skipped: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct JsonExportOptions {
     pub note_number_names: bool,
-    pub include_artists: bool,
+    pub artists_as_positive: bool,
     pub deduplicate: bool,
 }
 
@@ -39,7 +38,7 @@ impl Default for JsonExportOptions {
     fn default() -> Self {
         Self {
             note_number_names: true,
-            include_artists: true,
+            artists_as_positive: true,
             deduplicate: true,
         }
     }
@@ -50,7 +49,6 @@ struct PreparedPreset {
     fixed_prompt: String,
     negative_prompt: String,
     note: Option<String>,
-    artists_added: bool,
 }
 
 #[derive(Debug, Error)]
@@ -59,6 +57,8 @@ pub enum JsonExportError {
     InvalidExtension(PathBuf),
     #[error("没有可导出的行")]
     EmptySelection,
+    #[error("所选记录的画师串均为空，未导出文件；请补充画师串，或取消“将画师串视作正向提示词导出”后重试")]
+    EmptyArtists,
     #[error("导出项 {first_position} 和 {second_position} 的备注重复：{note}")]
     DuplicateNote {
         note: String,
@@ -76,8 +76,9 @@ pub enum JsonExportError {
 }
 
 impl DataDirectory {
-    /// 把选中行导出为智绘姬 JSON。可把资料库画师串补入正向提示词，随后按最终
-    /// `fixedPrompt` 去重；同组优先保留有备注的行。预设名称默认使用“备注_序号”，
+    /// 把选中行导出为智绘姬 JSON。可使用资料库完整画师串替代正向提示词，跳过
+    /// 空画师串，随后按最终 `fixedPrompt` 去重；同组优先保留有备注的行。
+    /// 预设名称默认使用“备注_序号”，
     /// 空备注只使用序号。`fixedPrompt_end` 为空串、顶层 `images` 为空对象。
     /// 逐条写入临时文件，成功后原子替换目标。
     pub fn export_zhihuiji_json(
@@ -97,9 +98,11 @@ impl DataDirectory {
             return Err(JsonExportError::EmptySelection);
         }
         let original_count = rows.len();
-        let rows = prepare_presets(rows, options);
-        let duplicates_removed = original_count - rows.len();
-        let artists_added = rows.iter().filter(|row| row.artists_added).count();
+        let (rows, empty_artists_skipped) = prepare_presets(rows, options);
+        if rows.is_empty() {
+            return Err(JsonExportError::EmptyArtists);
+        }
+        let duplicates_removed = original_count - empty_artists_skipped - rows.len();
 
         let mut preset_names = Vec::with_capacity(rows.len());
         let mut first_position_by_name = HashMap::with_capacity(rows.len());
@@ -177,22 +180,25 @@ impl DataDirectory {
             destination: destination.to_owned(),
             exported: total,
             duplicates_removed,
-            artists_added,
+            empty_artists_skipped,
         })
     }
 }
 
-fn prepare_presets(rows: Vec<ExportRow>, options: JsonExportOptions) -> Vec<PreparedPreset> {
+fn prepare_presets(rows: Vec<ExportRow>, options: JsonExportOptions) -> (Vec<PreparedPreset>, usize) {
     let mut retained: Vec<PreparedPreset> = Vec::with_capacity(rows.len());
     let mut index_by_prompt = HashMap::<String, usize>::with_capacity(rows.len());
+    let mut empty_artists_skipped = 0;
 
     for row in rows {
-        let positive_prompt = row.positive_prompt.as_deref().unwrap_or("");
-        let (fixed_prompt, artists_added) = if options.include_artists {
-            merge_xml_artists(positive_prompt, row.character_prompt.as_deref())
-                .unwrap_or_else(|| merge_missing_artists(positive_prompt, row.artists.as_deref()))
+        let fixed_prompt = if options.artists_as_positive {
+            let Some(artists) = row.artists.filter(|value| !value.trim().is_empty()) else {
+                empty_artists_skipped += 1;
+                continue;
+            };
+            artists
         } else {
-            (positive_prompt.to_owned(), false)
+            row.positive_prompt.unwrap_or_default()
         };
         let preset = PreparedPreset {
             fixed_prompt,
@@ -203,7 +209,6 @@ fn prepare_presets(rows: Vec<ExportRow>, options: JsonExportOptions) -> Vec<Prep
                 .map(str::trim)
                 .filter(|note| !note.is_empty())
                 .map(str::to_owned),
-            artists_added,
         };
 
         let key = preset.fixed_prompt.trim();
@@ -222,59 +227,7 @@ fn prepare_presets(rows: Vec<ExportRow>, options: JsonExportOptions) -> Vec<Prep
         }
     }
 
-    retained
-}
-
-/// XML blocks already in the positive prompt must never be re-appended as bare
-/// artist_collaboration fragments. Missing character blocks retain their delimiters.
-fn merge_xml_artists(positive: &str, character: Option<&str>) -> Option<(String, bool)> {
-    let positive_blocks = extract_artist_blocks(positive);
-    let character_blocks = extract_artist_blocks(character.unwrap_or_default());
-    if positive_blocks.is_none() && character_blocks.is_none() {
-        return None;
-    }
-    let present = positive_blocks.unwrap_or_default();
-    let missing: Vec<_> = character_blocks.unwrap_or_default().into_iter()
-        .filter(|block| !present.contains(block))
-        .map(|block| format!("<artist>{block}</artist>"))
-        .collect();
-    if missing.is_empty() {
-        Some((positive.to_owned(), false))
-    } else {
-        let suffix = missing.join("\n");
-        let merged = if positive.trim().is_empty() {
-            suffix
-        } else {
-            format!("{}\n{suffix}", positive.trim_end())
-        };
-        Some((merged, true))
-    }
-}
-
-fn merge_missing_artists(positive_prompt: &str, artists: Option<&str>) -> (String, bool) {
-    let Some(artists) = artists.filter(|value| !value.trim().is_empty()) else {
-        return (positive_prompt.to_owned(), false);
-    };
-
-    let mut seen: HashSet<String> = extract_artist_tags(positive_prompt).into_iter().collect();
-    let missing: Vec<String> = extract_artist_tags(artists)
-        .into_iter()
-        .filter(|artist| seen.insert(artist.clone()))
-        .collect();
-    if missing.is_empty() {
-        return (positive_prompt.to_owned(), false);
-    }
-
-    let prompt = positive_prompt.trim();
-    let suffix = missing.join(", ");
-    let merged = if prompt.is_empty() {
-        suffix
-    } else if prompt.ends_with(',') {
-        format!("{prompt} {suffix}")
-    } else {
-        format!("{prompt}, {suffix}")
-    };
-    (merged, true)
+    (retained, empty_artists_skipped)
 }
 
 #[cfg(test)]
@@ -286,19 +239,6 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn xml_export_preserves_positive_and_only_appends_missing_character_blocks() {
-        let positive = "<artist>0.8::a, b::, -5::artist_collaboration ::,</artist> <style>year_2025</style> no text";
-        assert_eq!(merge_xml_artists(positive, None), Some((positive.into(), false)));
-        assert_eq!(merge_xml_artists(positive, Some(positive)), Some((positive.into(), false)));
-        let character = "girl <artist>0.5::c, d::, c</artist>";
-        let (merged, changed) = merge_xml_artists(positive, Some(character)).unwrap();
-        assert!(changed);
-        assert_eq!(merged, format!("{positive}\n<artist>0.5::c, d::, c</artist>"));
-        assert_eq!(crate::pipeline::artist_string(&merged, None),
-            crate::pipeline::artist_string(positive, Some(character)));
-        assert_eq!(merge_xml_artists("artist:legacy", None), None);
-    }
     use crate::db::{NewRow, SourceType, TagMatchMode};
 
     #[test]
@@ -339,7 +279,10 @@ mod tests {
                     excluded_row_ids: Vec::new(),
                 },
                 &temporary.destination,
-                JsonExportOptions::default(),
+                JsonExportOptions {
+                    artists_as_positive: false,
+                    ..JsonExportOptions::default()
+                },
                 |_| {},
             )
             .unwrap();
@@ -385,7 +328,10 @@ mod tests {
             .export_zhihuiji_json(
                 &RowSelection::Explicit { row_ids: vec![1] },
                 &temporary.destination,
-                JsonExportOptions::default(),
+                JsonExportOptions {
+                    artists_as_positive: false,
+                    ..JsonExportOptions::default()
+                },
                 |_| {},
             )
             .unwrap();
@@ -396,7 +342,7 @@ mod tests {
     }
 
     #[test]
-    fn merges_artists_then_deduplicates_and_prefers_a_note() {
+    fn exports_artists_then_deduplicates_and_prefers_a_note() {
         let temporary = TemporaryJsonExport::new();
         let directory = DataDirectory::initialize(&temporary.data).unwrap();
         {
@@ -450,12 +396,12 @@ mod tests {
 
         assert_eq!(outcome.exported, 2);
         assert_eq!(outcome.duplicates_removed, 1);
-        assert_eq!(outcome.artists_added, 1);
+        assert_eq!(outcome.empty_artists_skipped, 0);
         let json: Value =
             serde_json::from_slice(&fs::read(&temporary.destination).unwrap()).unwrap();
         assert_eq!(
             json["presets"]["夏日白裙_1"]["fixedPrompt"],
-            "summer dress, artist:alice"
+            "artist:alice"
         );
         assert_eq!(
             json["presets"]["夏日白裙_1"]["negativePrompt"],
@@ -463,7 +409,7 @@ mod tests {
         );
         assert_eq!(
             json["presets"]["另一位画师_2"]["fixedPrompt"],
-            "summer dress, artist:bob"
+            "artist:bob"
         );
     }
 
@@ -508,7 +454,7 @@ mod tests {
                 &temporary.destination,
                 JsonExportOptions {
                     note_number_names: false,
-                    include_artists: false,
+                    artists_as_positive: false,
                     deduplicate: false,
                 },
                 |_| {},
@@ -517,7 +463,7 @@ mod tests {
 
         assert_eq!(outcome.exported, 2);
         assert_eq!(outcome.duplicates_removed, 0);
-        assert_eq!(outcome.artists_added, 0);
+        assert_eq!(outcome.empty_artists_skipped, 0);
         let json: Value =
             serde_json::from_slice(&fs::read(&temporary.destination).unwrap()).unwrap();
         assert_eq!(json["presets"]["预设一"]["fixedPrompt"], "same");

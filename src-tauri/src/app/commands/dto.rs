@@ -142,7 +142,7 @@ pub(crate) struct JsonExportResultDto {
     pub(super) path: String,
     pub(super) exported: usize,
     pub(super) duplicates_removed: usize,
-    pub(super) artists_added: usize,
+    pub(super) empty_artists_skipped: usize,
 }
 
 #[derive(Debug, Serialize)]

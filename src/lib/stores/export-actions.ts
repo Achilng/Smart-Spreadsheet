@@ -133,8 +133,8 @@ export async function executeJsonExport(
     if (result.duplicatesRemoved > 0) {
       parts.push(`去除 ${formatCount(result.duplicatesRemoved)} 条重复`);
     }
-    if (result.artistsAdded > 0) {
-      parts.push(`为 ${formatCount(result.artistsAdded)} 条补齐画师`);
+    if (result.emptyArtistsSkipped > 0) {
+      parts.push(`跳过 ${formatCount(result.emptyArtistsSkipped)} 条空画师串记录`);
     }
     setNotice({
       tone: "success",

@@ -95,7 +95,7 @@ pub(crate) async fn export_zhihuiji_json(
                 path: outcome.destination.to_string_lossy().into_owned(),
                 exported: outcome.exported,
                 duplicates_removed: outcome.duplicates_removed,
-                artists_added: outcome.artists_added,
+                empty_artists_skipped: outcome.empty_artists_skipped,
             })
             .map_err(error_text)
     })

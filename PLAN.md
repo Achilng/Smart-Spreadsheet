@@ -1,5 +1,13 @@
 # 项目计划
 
+## 智绘姬导出使用完整画师串（2026-10-31）
+
+- 将「补齐画师串」替换为「将画师串视作正向提示词导出」，沿用默认勾选。勾选后直接使用资料库当前画师串作为 `fixedPrompt`，完整保留提取或编辑后的内容、权重、换行和格式，不再筛选 `artist` 片段或拼接原正向/角色提示词；取消勾选则使用原正向提示词。
+- 画师串为空、缺失或仅含空白时跳过该条，单独显示跳过数量。全部为空时提示补充画师串或取消选项，不生成或覆盖文件。按实际导出的正向内容去重，保持重复时优先保留有备注记录、连续编号及负向提示词规则。
+- 验证：前端类型检查与生产构建、`cargo check --locked --offline`、现有 4 项 JSON 导出测试、Impeccable 扫描及 `git diff --check` 通过。Playwright 模拟资料库核对开关参数、1280×720 与 900×600 窗口；未新增单元测试，更新原有测试以适配新语义并移除旧补齐函数专用测试。未操作真实资料库，未更新本机安装版或发布 Release。
+- 修改文件：`src-tauri/src/storage/export_json.rs`、`src-tauri/src/app/commands/dto.rs`、`src-tauri/src/app/commands/exports.rs`、`src/lib/api/import-export.ts`、`src/lib/dev/ipc-mock.ts`、`src/lib/stores/export-actions.ts`、`src/lib/views/shell/JsonExportDialog.svelte`、`src/react/state/export-actions.ts`、`src/react/views/JsonExportDialog.tsx` 与本文件。
+- 生成/缓存目录：`dist/`、`target/`、`node_modules/.vite/`、`node_modules/.vite-temp/`；临时浏览器数据、截图和快照位于 `D:/Agent/Agent_temp/artists-export-20261031/`，CLI 日志位于 `D:/Agent/Agent_temp/.playwright-cli/`，均不提交。原有 `AGENTS.md` 修改和三个文档删除保持原状。
+
 ## 启动时引导填写 LLM Key（2026-10-31）
 
 - 主窗口启动并连接有效资料库后检查已保存的渠道 Key；全部渠道均无 Key 时显示引导，已有任一 Key 时跳过。每次启动最多提醒一次，兼容更新后的已有资料库；尚未设置数据目录时等待连接完成。

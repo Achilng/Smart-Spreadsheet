@@ -634,7 +634,7 @@ export function installIpcMock(): void {
           if (command === "add_tags_to_selection") for (const tag of tags) knownTags.add(tag);
           return { affectedRows: selected.length, normalizedTags: tags, associationsChanged };
         }
-        case "export_zhihuiji_json": return { path: payload.path, exported: selectedRows(payload.selection as RowSelection).length, duplicatesRemoved: 0, artistsAdded: 0 };
+        case "export_zhihuiji_json": return { path: payload.path, exported: selectedRows(payload.selection as RowSelection).length, duplicatesRemoved: 0, emptyArtistsSkipped: 0 };
         case "export_xlsx": return { path: payload.path, rowCount: selectedRows(payload.selection as RowSelection).length, imagesEmbedded: 0, imageFailures: 0 };
         case "export_prompt_rotation_json": return { path: payload.path, exported: selectedRows(payload.selection as RowSelection).length };
         case "export_image_files": return { directory: payload.parentDir, exported: selectedRows(payload.selection as RowSelection).length, missing: 0, hardlinkFallbacks: 0 };

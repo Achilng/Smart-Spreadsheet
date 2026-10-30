@@ -55,7 +55,7 @@ export async function executeJsonExport(selection: RowSelection, options: JsonEx
     if (!path) return false;
     await withProgress(async () => {
       const result = await exportZhihuijiJson(selection, path, options);
-      notify(`已导出 ${formatCount(result.exported)} 条预设到 ${result.path}${result.duplicatesRemoved ? `，去除 ${result.duplicatesRemoved} 条重复` : ""}${result.artistsAdded ? `，为 ${result.artistsAdded} 条补齐画师` : ""}`);
+      notify(`已导出 ${formatCount(result.exported)} 条预设到 ${result.path}${result.duplicatesRemoved ? `，去除 ${result.duplicatesRemoved} 条重复` : ""}${result.emptyArtistsSkipped ? `，跳过 ${result.emptyArtistsSkipped} 条空画师串记录` : ""}`);
     });
     return true;
   });

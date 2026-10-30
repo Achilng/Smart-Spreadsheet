@@ -19,7 +19,7 @@ export interface JsonExportResult {
   path: string;
   exported: number;
   duplicatesRemoved: number;
-  artistsAdded: number;
+  emptyArtistsSkipped: number;
 }
 
 export interface PromptRotationJsonExportResult {
@@ -29,7 +29,7 @@ export interface PromptRotationJsonExportResult {
 
 export interface JsonExportOptions {
   noteNumberNames: boolean;
-  includeArtists: boolean;
+  artistsAsPositive: boolean;
   deduplicate: boolean;
 }
 

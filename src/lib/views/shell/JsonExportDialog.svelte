@@ -10,7 +10,7 @@
   import Modal from "../../ui/Modal.svelte";
 
   let noteNumberNames = $state(true);
-  let includeArtists = $state(true);
+  let artistsAsPositive = $state(true);
   let deduplicate = $state(true);
   let working = $state(false);
 
@@ -20,7 +20,7 @@
 
     const options: JsonExportOptions = {
       noteNumberNames,
-      includeArtists,
+      artistsAsPositive,
       deduplicate,
     };
     working = true;
@@ -62,10 +62,10 @@
       </label>
 
       <label class="option-row">
-        <input type="checkbox" bind:checked={includeArtists} disabled={working} />
+        <input type="checkbox" bind:checked={artistsAsPositive} disabled={working} />
         <span>
-          <strong>补齐画师串</strong>
-          <small>把资料库中已有、但正向提示词里缺少的画师追加到末尾</small>
+          <strong>将画师串视作正向提示词导出</strong>
+          <small>使用库中完整画师串替代正向提示词；画师串为空时跳过该条</small>
         </span>
       </label>
 
@@ -73,12 +73,12 @@
         <input type="checkbox" bind:checked={deduplicate} disabled={working} />
         <span>
           <strong>按最终正向提示词去重</strong>
-          <small>补齐画师后再比较；重复时优先保留有备注的记录</small>
+          <small>按实际导出内容比较；重复时优先保留有备注的记录</small>
         </span>
       </label>
 
       <div class="example">
-        执行顺序：补齐画师 → 去重 → 连续编号
+        未勾选时使用原正向提示词；去重后连续编号
       </div>
     </div>
 
