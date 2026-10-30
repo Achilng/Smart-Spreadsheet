@@ -5,18 +5,31 @@ use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 ///
 /// 使用 `WebviewUrl::App` 明确加载内置前端资源，避免动态 URL 被系统浏览器接管。
 #[tauri::command]
-pub(crate) async fn open_toolbox_window(app: tauri::AppHandle) -> Result<(), String> {
+pub(crate) async fn open_toolbox_window(
+    app: tauri::AppHandle,
+    target: Option<String>,
+) -> Result<(), String> {
+    let llm_settings = target.as_deref() == Some("llmSettings");
     if let Some(toolbox) = app.get_webview_window("toolbox") {
         toolbox.show().map_err(error_text)?;
         toolbox.unminimize().map_err(error_text)?;
         toolbox.set_focus().map_err(error_text)?;
+        if llm_settings {
+            toolbox
+                .emit_to("toolbox", "toolbox://open-llm-settings", ())
+                .map_err(error_text)?;
+        }
         return Ok(());
     }
 
     WebviewWindowBuilder::new(
         &app,
         "toolbox",
-        WebviewUrl::App("index.html?window=toolbox".into()),
+        WebviewUrl::App(if llm_settings {
+            "index.html?window=toolbox&target=llmSettings".into()
+        } else {
+            "index.html?window=toolbox".into()
+        }),
     )
     .title("工具箱")
     .inner_size(960.0, 680.0)

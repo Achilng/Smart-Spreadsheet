@@ -19,7 +19,7 @@ function PromptHighlight({ item }: { item: LlmItem }) {
   return <pre className="llm-prompt">{index < 0 ? item.prompt : <>{item.prompt.slice(0, index)}<mark>{item.artists}</mark>{item.prompt.slice(index + item.artists.length)}</>}</pre>;
 }
 
-export default function StyleExtractionTool({ active }: { active: boolean }) {
+export default function StyleExtractionTool({ active, settingsRequest = 0 }: { active: boolean; settingsRequest?: number }) {
   const [snapshot, setSnapshot] = useState<LlmSnapshot | null>(null);
   const [draft, setDraft] = useState<LlmSettings | null>(null);
   const [dirty, setDirty] = useState(false), [tab, setTab] = useState("tasks"), [error, setError] = useState<string | null>(null), [busy, setBusy] = useState(false);
@@ -34,6 +34,7 @@ export default function StyleExtractionTool({ active }: { active: boolean }) {
   const activeJob = snapshot?.jobs.find(job => job.id === jobId);
   const channel = draft?.channels.find(value => value.id === channelId);
   const enabled = snapshot?.settings.channels.filter(value => value.enabled) ?? [];
+  useEffect(() => { if (settingsRequest) setTab("settings"); }, [settingsRequest]);
 
   async function refresh() {
     const next = await llmSnapshot(livePage);

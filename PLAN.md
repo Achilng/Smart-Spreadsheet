@@ -1,5 +1,13 @@
 # 项目计划
 
+## 启动时引导填写 LLM Key（2026-10-31）
+
+- 主窗口启动并连接有效资料库后检查已保存的渠道 Key；全部渠道均无 Key 时显示引导，已有任一 Key 时跳过。每次启动最多提醒一次，兼容更新后的已有资料库；尚未设置数据目录时等待连接完成。
+- 弹窗提供「去填写 Key」「稍后再说」「不再提醒」；关闭或 Esc 与稍后再说一致。「不再提醒」保存在本机，后续启动与更新继续生效；读取失败不会误判为缺 Key，保存偏好或跳转失败会提示并保留重试入口。
+- 「去填写 Key」直接打开工具箱的「LLM提取 → 渠道设置」。新窗口通过 URL 定位，已打开窗口通过事件切换，保留渠道未保存草稿；普通工具箱入口保持原有默认页面。
+- 验证：前端类型检查与生产构建、`cargo check --locked`、Impeccable 扫描及 `git diff --check` 通过。Playwright 模拟资料库验证缺 Key/已有 Key、稍后关闭/重启、不再提醒持久化、Esc、760×520 弹窗、跳转失败保留弹窗、新窗口定位及已有窗口切换与草稿保留。未新增单元测试，未操作真实资料库；原生窗口由 Rust 编译检查覆盖，跨窗口交互通过前端模拟验证，未发布或替换安装版。
+- 修改文件：`src/react/views/LlmSetupReminder.tsx`（新增）、`src/react/App.tsx`、`src/react/views/tools/ToolboxWindow.tsx`、`src/react/views/tools/StyleExtractionTool.tsx`、`src/lib/windows/toolbox.ts`、`src-tauri/src/app/commands/windows.rs` 与本文件。生成/缓存目录：`dist/`、`target/`、`node_modules/.vite/`、`node_modules/.vite-temp/`；临时检查脚本、截图与浏览器数据位于 `D:/Agent/Agent_temp/llm-reminder-20261031/`，CLI 日志位于 `D:/Agent/Agent_temp/.playwright-cli/`，均不提交。保留工作区其他改动。
+
 ## 多选菜单批量收藏（2026-10-31）
 
 - 多选图片后，在底部「更多操作 → 收藏」可一次收藏全部所选图片；支持手动多选、全选当前视图及排除项，已收藏的图片保持不变，并提示实际新增数量。
