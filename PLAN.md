@@ -1,5 +1,13 @@
 # 项目计划
 
+## 画师串白名单标签高亮（2026-10-31）
+
+- 详情面板、表格、对比样本及 LLM 任务结果中的画师串，以柔和橙色标记已保存白名单中的完整标签；悬停和键盘聚焦显示「这些tag会在比较画师串时被忽略」。已有结果立即适用，不清理原文、不调用模型，复制仍得到完整原始画师串。
+- 后端沿用 `prompt_matching` 的实际比较解析器输出原文片段，支持空格 / 下划线、大小写、多种及嵌套权重、中文与 Emoji；格式无法安全解析时与比较规则一致，不显示忽略标记。前端批量请求并复用相同画师串，最多缓存 512 串；保存规则、切换资料库或跨窗口通知后失效，旧请求不能恢复过时标记。
+- 验证：前端类型检查与生产构建、`cargo check --locked --offline`、Impeccable 扫描（0 项）及差异检查通过。直接运行正式 Rust 解析器核对六组原文及分段结果；Playwright 模拟资料库验证详情/表格、对比与任务结果、指定悬停文案、键盘提示、复制不变、白名单保存刷新、延迟响应失效及 1280×800 / 900×600 布局。未新增单元测试，未操作真实资料库或发布安装包。对比模拟数据已有重复编号 React 提示，未纳入本次修改。
+- 修改文件：`src-tauri/src/db/prompt_matching.rs`、`src-tauri/src/app/commands/llm.rs`、`src-tauri/src/lib.rs`、`src/lib/api/local-llm.ts`、`src/lib/dev/ipc-mock.ts`、`src/lib/dev/llm-mock.ts`、`src/react/main.tsx`、`src/react/styles/tokens.css`、`src/react/views/DetailContents.tsx`、`src/react/views/Table.tsx`、`src/react/views/compare/CompareWindow.tsx`、`src/react/views/tools/StyleExtractionTool.tsx`、`docs/LLM-STYLE-EXTRACTION.md` 与本文件；新增 `src/react/ui/ArtistText.tsx`、`src/react/ui/artist-text.css`。
+- 生成/缓存目录：`dist/`、`target/`、`node_modules/.vite/`、`node_modules/.vite-temp/`；临时程序、界面核对脚本、截图、浏览器资料与日志位于 `D:/Agent/Agent_temp/artist-highlight-20261031/`、`D:/Agent/Agent_temp/.playwright-cli/`，均不提交。保留原有 `AGENTS.md` 修改及三个文档删除。
+
 ## 智绘姬导出使用完整画师串（2026-10-31）
 
 - 将「补齐画师串」替换为「将画师串视作正向提示词导出」，沿用默认勾选。勾选后直接使用资料库当前画师串作为 `fixedPrompt`，完整保留提取或编辑后的内容、权重、换行和格式，不再筛选 `artist` 片段或拼接原正向/角色提示词；取消勾选则使用原正向提示词。

@@ -267,6 +267,70 @@ pub fn artist_key(artists: &str, ignored: &[String]) -> Option<String> {
     (!result.text.trim().is_empty()).then_some(result.text)
 }
 
+#[derive(serde::Serialize)]
+pub struct ArtistHighlightSegment {
+    text: String,
+    ignored: bool,
+}
+
+/// Preserve every original character, marking only tags the shared parser ignores.
+/// Malformed weights use literal comparison, so none of their tags are highlighted.
+pub fn artist_highlight_segments(text: &str, ignored: &[String]) -> Vec<ArtistHighlightSegment> {
+    fn collect(
+        text: &str,
+        nodes: &[Node],
+        ignored: &HashSet<String>,
+        ranges: &mut Vec<Range<usize>>,
+    ) {
+        for node in nodes {
+            match &node.body {
+                Body::Tag if ignored.contains(&clean_tag(&text[node.range.clone()])) => {
+                    let raw = &text[node.range.clone()];
+                    let start = node.range.start + raw.len() - raw.trim_start().len();
+                    let end = node.range.start + raw.trim_end().len();
+                    if start < end {
+                        ranges.push(start..end);
+                    }
+                }
+                Body::Group { children, .. } => collect(text, children, ignored, ranges),
+                Body::Tag => {}
+            }
+        }
+    }
+    let mut ranges = Vec::new();
+    let mut parser = Parser { text, pos: 0 };
+    if let Some(nodes) = parser.sequence("", 0) {
+        collect(
+            text,
+            &nodes,
+            &ignored.iter().map(|tag| clean_tag(tag)).collect(),
+            &mut ranges,
+        );
+    }
+    let mut segments = Vec::new();
+    let mut cursor = 0;
+    for range in ranges {
+        if cursor < range.start {
+            segments.push(ArtistHighlightSegment {
+                text: text[cursor..range.start].into(),
+                ignored: false,
+            });
+        }
+        segments.push(ArtistHighlightSegment {
+            text: text[range.clone()].into(),
+            ignored: true,
+        });
+        cursor = range.end;
+    }
+    if cursor < text.len() {
+        segments.push(ArtistHighlightSegment {
+            text: text[cursor..].into(),
+            ignored: false,
+        });
+    }
+    segments
+}
+
 /// Map a validated continuous result to the corresponding original characters of the new prompt.
 /// Ignored words are never copied from the source, and the destination remains a literal substring.
 pub fn project(

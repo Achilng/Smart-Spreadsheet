@@ -64,6 +64,23 @@ pub(crate) async fn llm_snapshot(
     .map_err(super::error_text)?
 }
 #[tauri::command]
+pub(crate) async fn artist_highlight_segments(
+    texts: Vec<String>,
+    app: tauri::AppHandle,
+) -> Result<Vec<Vec<crate::db::prompt_matching::ArtistHighlightSegment>>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let (_, _, settings) = app.state::<AppRuntime>().llm_context()?;
+        Ok(texts
+            .iter()
+            .map(|text| {
+                crate::db::prompt_matching::artist_highlight_segments(text, &settings.ignored_tags)
+            })
+            .collect())
+    })
+    .await
+    .map_err(super::error_text)?
+}
+#[tauri::command]
 pub(crate) async fn llm_save_settings(
     library_id: String,
     settings: Settings,
@@ -87,7 +104,9 @@ pub(crate) async fn refresh_artist_matching(
     app: tauri::AppHandle,
 ) -> Result<crate::db::ArtistMatchingRefresh, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let result = app.state::<AppRuntime>().llm_db(&library_id, |db| db.refresh_artist_matching(true))?;
+        let result = app
+            .state::<AppRuntime>()
+            .llm_db(&library_id, |db| db.refresh_artist_matching(true))?;
         let _ = app.emit("llm://library-changed", &library_id);
         let _ = app.emit("artist-matching://changed", &library_id);
         Ok(result)

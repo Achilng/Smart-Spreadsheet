@@ -9,12 +9,13 @@ async function start(): Promise<void> {
     installIpcMock();
   }
   const windowType = new URLSearchParams(location.search).get("window");
+  const { ArtistHighlightEvents } = await import("./ui/ArtistText");
   const App = windowType === "compare" ? (await import("./views/compare/CompareWindow")).CompareWindow
     : windowType === "toolbox" ? (await import("./views/tools/ToolboxWindow")).ToolboxWindow
     : (await import("./App")).App;
   const root = document.getElementById("app");
   if (!root) throw new Error("Missing #app root element");
-  createRoot(root).render(<StrictMode><App /></StrictMode>);
+  createRoot(root).render(<StrictMode><ArtistHighlightEvents /><App /></StrictMode>);
 }
 
 void start();

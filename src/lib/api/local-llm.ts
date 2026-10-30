@@ -10,6 +10,8 @@ export interface LlmSnapshot { defaultIgnoredTags: string[]; libraryId: string; 
 export interface LlmItem { hash: string; prompt: string; status: string; artists: string; model: string; channel: string; error: string; attempts: number; rowId: number | null }
 export interface LlmEstimate { rows: number; skipped: number; uniquePrompts: number; affectedRows: number; reusablePrompts: number; waitingPrompts: number; requestPrompts: number }
 export const llmSnapshot = (livePage = 0) => invoke<LlmSnapshot>("llm_snapshot", { livePage });
+export interface ArtistHighlightSegment { text: string; ignored: boolean }
+export const artistHighlightSegments = (texts: string[]) => invoke<ArtistHighlightSegment[][]>("artist_highlight_segments", { texts });
 export const saveLlmSettings = (libraryId: string, settings: LlmSettings) => invoke<LlmSettings>("llm_save_settings", { libraryId, settings });
 export interface ArtistMatchingRefresh { rows: number; changedRows: number; groupsBefore: number; groupsAfter: number; mergedRepresentatives: number }
 export const refreshArtistMatching = (libraryId: string) => invoke<ArtistMatchingRefresh>("refresh_artist_matching", { libraryId });

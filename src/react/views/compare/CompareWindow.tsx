@@ -16,6 +16,7 @@ import type { AfterRowsDeleted } from "../../state/row-actions";
 import { DeleteRowsDialog } from "../DeleteRowsDialog";
 import { notify } from "../../state/notices";
 import { closeSideBySide, compareModelGroups, compareNavigation, loadCompareModels, loadCompareSectionPage, moveCompareTarget, openSideBySide, refreshCompare, resetCompare, selectCompareModel, selectCompareTab, setCompareModelOffset, setCompareSample, useCompare, type CompareSectionKey } from "../../state/compare";
+import { ArtistText } from "../../ui/ArtistText";
 import { PaneImage } from "./CompareImages";
 import { SideBySide } from "./SideBySide";
 import { CompareRowContextMenu } from "./CompareRowContextMenu";
@@ -108,7 +109,7 @@ function SampleCard({ row }: { row: RowRecord }) {
     <div className="sample-overview"><div className="sample-media"><PaneImage row={row} tier="gallery" /></div>
       <div className="sample-meta"><h2 title={row.imagePath || undefined}>{rowTitle(row)}</h2><p className="facts">{rowResolution(row) || "尺寸未知"}</p><p className="facts">{row.time?.split(" ")[0] || "时间未知"}</p><div className="sample-badges"><Badges row={row} /></div></div>
     </div>
-    {row.artists?.trim() && <div className="artists"><span title={row.artists.trim()}>{row.artists.trim()}</span><button className="icon-button" aria-label="复制画师串" onClick={() => void copy(row.artists!.trim())}><Copy size={13} /></button></div>}
+    {row.artists?.trim() && <div className="artists"><span title={row.artists.trim()}><ArtistText text={row.artists.trim()} /></span><button className="icon-button" aria-label="复制画师串" onClick={() => void copy(row.artists!.trim())}><Copy size={13} /></button></div>}
   </section></CompareRowContextMenu>;
 }
 

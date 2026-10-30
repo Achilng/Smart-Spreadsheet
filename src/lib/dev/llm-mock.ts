@@ -9,6 +9,10 @@ export function createLlmMock() {
   const results = new Map<string, LlmItem[]>();
   return (command: string, payload: Record<string, unknown>): unknown => {
     switch (command) {
+      // Simple comma-separated fixture only; production uses Rust's shared weight parser.
+      case "artist_highlight_segments": return (payload.texts as string[]).map(text => text.split(/([,\r\n])/).filter(Boolean).map(part => ({
+        text: part, ignored: settings.ignoredTags.includes(part.replace(/[_\s]+/g, " ").trim().toLowerCase()),
+      })));
       case "llm_snapshot": return {
         libraryId: "mock-library", defaultIgnoredTags: [...mockIgnoredTags], settings: structuredClone(settings), jobs: structuredClone(jobs),
         progress: { libraryId: "mock-library", jobId: jobs.find(j => j.state === "running")?.id ?? "", total: 8, done: 3, failed: 0, inFlight: 1, queued: 0, message: "", running: jobs.some(j => j.state === "running") },

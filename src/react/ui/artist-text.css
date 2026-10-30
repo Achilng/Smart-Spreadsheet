@@ -1,0 +1,13 @@
+mark.r-artist-ignored {
+  color: inherit;
+  background: var(--artist-ignored-bg);
+  border-radius: 3px;
+  padding: 0;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+mark.r-artist-ignored:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

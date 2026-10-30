@@ -5,6 +5,7 @@ import { llmSnapshot, saveLlmSettings, estimateLlm, createLlm, actLlm, llmItems,
 import { useToolboxSelection, toolboxScopeSelection } from "../../state/tools/use-toolbox-selection";
 import { errorText } from "../../../lib/utils/format";
 import { notify } from "../../state/notices";
+import { ArtistText, invalidateArtistHighlights } from "../../ui/ArtistText";
 import { Button, Checkbox } from "../../ui/controls";
 import { ToolPage, ToolCard, ToolError, ToolMetrics } from "./shared";
 import StyleExchangeTool from "./StyleExchangeTool";
@@ -75,6 +76,7 @@ export default function StyleExtractionTool({ active, settingsRequest = 0 }: { a
   async function saveSettings() {
     if (!draft || !snapshot) return;
     const saved = await saveLlmSettings(snapshot.libraryId, draft);
+    invalidateArtistHighlights();
     setDraft(saved); setDirty(false); setChannels(current => saved.channels.filter(c => c.enabled && (current.includes(c.id) || !snapshot.settings.channels.some(old => old.id === c.id))).map(c => c.id));
     setEstimate(null); setMatchingResult(null); await refresh(); notify("设置已保存，画风归类和后续提取均使用最新匹配规则。");
   }
@@ -125,7 +127,7 @@ export default function StyleExtractionTool({ active, settingsRequest = 0 }: { a
           {activeJob.applied > 0 && !["running", "queued", "undone"].includes(activeJob.state) && <Button disabled={busy} onClick={() => setConfirmUndo(true)}>撤销本任务写入</Button>}
         </div>{confirmUndo && <div className="llm-confirm"><p>撤销本任务写入的画师串与 LLM 来源；后续被修改的图片保持现状。撤销后如需重新提取，请新建任务。</p><Button disabled={busy} onClick={() => void perform(() => action(activeJob, "undo"))}>确认撤销</Button><Button variant="ghost" onClick={() => setConfirmUndo(false)}>返回</Button></div>}
           {snapshot.progress.jobId === activeJob.id && snapshot.liveTotal > 0 && <details><summary>实时请求 · {snapshot.liveTotal} 个进行中</summary><div className="llm-live">{snapshot.live.map(request => <section key={request.id}><strong>{request.channel} · {request.count} 条</strong><small>{request.model} · 以下为尚未校验的输出</small><pre>{request.text || "正在等待模型输出…"}</pre></section>)}</div>{snapshot.liveTotal > 40 && <div className="rt-actions"><Button disabled={!livePage} onClick={() => setLivePage(p => p - 1)}>上一页</Button><Button disabled={(livePage + 1) * 40 >= snapshot.liveTotal} onClick={() => setLivePage(p => p + 1)}>下一页</Button></div>}</details>}
-          <h4>提取结果</h4>{items.map(item => <details className="llm-result" key={item.hash}><summary><span>{item.status === "ok" && <CheckCircle2 size={14} />}{itemStates[item.status]} · {item.artists || item.error || (item.status === "none" ? "未识别到画风" : item.prompt)}</span><small>{item.channel}</small></summary><PromptHighlight item={item} />{item.error && <p className="llm-warning">{item.error}</p>}<small>{item.model || "尚未调用"}</small></details>)}<div className="rt-actions"><Button disabled={!page} onClick={() => setPage(p => p - 1)}>上一页</Button><small>{page + 1} / {Math.max(1, Math.ceil(activeJob.total / 20))}</small><Button disabled={(page + 1) * 20 >= activeJob.total} onClick={() => setPage(p => p + 1)}>下一页</Button></div>
+          <h4>提取结果</h4>{items.map(item => <details className="llm-result" key={item.hash}><summary><span>{item.status === "ok" && <CheckCircle2 size={14} />}{itemStates[item.status]} · {item.artists ? <ArtistText text={item.artists} /> : item.error || (item.status === "none" ? "未识别到画风" : item.prompt)}</span><small>{item.channel}</small></summary><PromptHighlight item={item} />{item.error && <p className="llm-warning">{item.error}</p>}<small>{item.model || "尚未调用"}</small></details>)}<div className="rt-actions"><Button disabled={!page} onClick={() => setPage(p => p - 1)}>上一页</Button><small>{page + 1} / {Math.max(1, Math.ceil(activeJob.total / 20))}</small><Button disabled={(page + 1) * 20 >= activeJob.total} onClick={() => setPage(p => p + 1)}>下一页</Button></div>
         </section>}</>}
       </ToolCard></>}
     {tab === "matching" && draft && <>
