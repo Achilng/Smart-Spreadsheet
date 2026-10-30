@@ -227,6 +227,15 @@ export function getRowVibeStatus(rowId: number): Promise<number | null> {
   return invoke<number | null>("get_row_vibe_status", { rowId });
 }
 
+export interface RowCharacterPrompts {
+  characterPrompt: string;
+  characters: { index: number; positivePrompt: string; negativePrompt: string }[];
+}
+
+export function getRowCharacterPrompts(rowId: number): Promise<RowCharacterPrompts> {
+  return invoke<RowCharacterPrompts>("get_row_character_prompts", { rowId });
+}
+
 export function showItemInExplorer(rowId: number): Promise<void> {
   return invoke<void>("show_item_in_explorer", { rowId });
 }

@@ -14,10 +14,12 @@ const drafts = new Map<string, string>();
 export function hasFieldDrafts(): boolean { return drafts.size > 0; }
 export function clearFieldDrafts(): void { drafts.clear(); }
 
-export function FieldEditor({ row, field, label, heading, alternate, className }: {
+export function FieldEditor({ row, field, label, heading, alternate, className, display }: {
   row: RowRecord; field: Field; label: string; heading?: ReactNode; className?: string;
   /** Keep the editor and its unsaved draft alive while another view is shown. */
   alternate?: { actions: ReactNode; content: ReactNode };
+  /** Custom read view; editing and copying still use the saved field verbatim. */
+  display?: ReactNode;
 }) {
   const directory = useLibrary(state => state.snapshot?.dataDirectory);
   const key = `${directory}\u0000${row.id}\u0000${field}`;
@@ -77,7 +79,7 @@ export function FieldEditor({ row, field, label, heading, alternate, className }
       }} />
       {error && <p className="r-field-error" role="alert">保存失败：{error}</p>}
       <div className="r-inline-editor-footer"><span>Enter 保存 · Shift+Enter 换行</span><Button variant="ghost" size="sm" disabled={saving} onClick={cancel}>取消</Button><Button variant="primary" size="sm" disabled={busy || saving} onClick={() => void save()}>{saving ? "保存中…" : "保存"}</Button></div>
-    </div> : <p className={row[field] ? "r-prompt" : "r-muted"}>{row[field] || "暂无内容"}</p>}</div>
+    </div> : display ?? <p className={row[field] ? "r-prompt" : "r-muted"}>{row[field] || "暂无内容"}</p>}</div>
     <Modal open={discard} onClose={() => setDiscard(false)} title={`放弃${label}修改？`} footer={<><Button onClick={() => setDiscard(false)}>继续编辑</Button><Button variant="danger" onClick={() => { drafts.delete(key); setEditing(false); setDiscard(false); }}>放弃修改</Button></>}>
       <p>尚未保存的内容将被丢弃。</p>
     </Modal>

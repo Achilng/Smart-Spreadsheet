@@ -5,6 +5,36 @@ use std::path::PathBuf;
 use tauri::Manager;
 use tauri::ipc::Response;
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RowCharacterPrompts {
+    character_prompt: String,
+    characters: Vec<crate::pipeline::CharacterPrompt>,
+}
+
+#[tauri::command]
+pub(crate) async fn get_row_character_prompts(
+    row_id: i64,
+    runtime: tauri::State<'_, AppRuntime>,
+) -> Result<RowCharacterPrompts, String> {
+    // Capture the library before dispatch so a library switch cannot redirect this read.
+    let directory = runtime.active_directory().map_err(error_text)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let locator = directory.open_database().map_err(error_text)?
+            .row_image_locator(row_id).map_err(error_text)?;
+        let path = crate::storage::resolve_image_source(&directory, &locator)
+            .ok_or_else(|| "原图和库内副本均不可用".to_string())?;
+        let read = crate::pipeline::read_metadata::read_novelai_metadata(&path, None);
+        if read.is_unreadable() {
+            return Err(read.warnings.join("；"));
+        }
+        Ok(RowCharacterPrompts {
+            character_prompt: crate::pipeline::parse_novelai_metadata(&read.chunks).character_prompt,
+            characters: crate::pipeline::character_prompts(&read.chunks),
+        })
+    }).await.map_err(error_text)?
+}
+
 #[tauri::command]
 pub(crate) async fn get_row_thumbnail(
     row_id: i64,

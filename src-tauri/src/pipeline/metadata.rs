@@ -3,6 +3,35 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CharacterPrompt {
+    pub index: usize,
+    pub positive_prompt: String,
+    pub negative_prompt: String,
+}
+
+/// Preserve array positions, including empty slots: newlines belong to captions too.
+pub fn character_prompts(text_chunks: &BTreeMap<String, String>) -> Vec<CharacterPrompt> {
+    let Some(comment) = text_chunks.get("Comment")
+        .and_then(|text| serde_json::from_str::<Value>(text).ok()) else {
+        return Vec::new();
+    };
+    let positive = comment.pointer("/v4_prompt/caption/char_captions").and_then(Value::as_array);
+    let negative = comment.pointer("/v4_negative_prompt/caption/char_captions").and_then(Value::as_array);
+    let caption = |entries: Option<&Vec<Value>>, index: usize| {
+        entries.and_then(|entries| entries.get(index))
+            .and_then(|entry| entry.get("char_caption"))
+            .and_then(json_value_to_text).unwrap_or_default()
+    };
+    (0..positive.map_or(0, Vec::len).max(negative.map_or(0, Vec::len)))
+        .map(|index| CharacterPrompt {
+            index: index + 1,
+            positive_prompt: caption(positive, index),
+            negative_prompt: caption(negative, index),
+        }).collect()
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct NovelAiMetadata {
     pub positive_prompt: String,

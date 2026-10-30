@@ -1,5 +1,13 @@
 # 项目计划
 
+## 详情页按角色区分提示词（2026-10-31）
+
+- 详情页「角色提示词」展开后，按原图元数据的顺序分别展示角色 1、角色 2 等；正向提示词及非空的角色负向提示词均可单独复制。保留角色内部换行与空角色占位，不以换行猜测角色边界。
+- 新增只读接口，沿用原图 / 库内副本定位与普通 / 隐藏元数据读取流程；仅展开角色区域时读取，旧资料库无需重新导入。保留原有整段编辑与复制；当前文本与元数据不一致时展示现有文本并说明原因，不覆盖手动修改。原图缺失或读取失败时保留文本并提供重试，切图与切库丢弃过期响应。
+- 用户指定图片只读验证：两个角色的正向提示词分别为 87、174 字符，负向均为空；正式 Rust 解析函数的合并结果与现有保存文本一致。临时演示验证空角色、内部换行和只有负向内容的额外角色均保留原编号。
+- 验证：前端生产构建（含类型检查）、Rust 离线编译检查、Impeccable 扫描与差异检查通过。Playwright 模拟验证分组、逐角色正负向复制、修改后回退与恢复、空角色、缺少分组、失败重试及快速切图；1280×800、900×600 截图确认布局，无横向溢出。未新增单元测试，未改写原图或真实资料库，未发布安装包。
+- 文件：新增 `src/react/views/DetailCharacters.tsx`；修改 `src/react/views/DetailContents.tsx`、`DetailOrganization.tsx`、`detail-prompt.css`、`src/react/ui/FieldEditor.tsx`、`src/lib/api/rows.ts`、`src/lib/dev/ipc-mock.ts`、`src-tauri/src/app/commands/images.rs`、`src-tauri/src/pipeline/metadata.rs`、`src-tauri/src/pipeline/mod.rs`、`src-tauri/src/lib.rs` 与本文件。生成 / 缓存目录：`dist/`、`target/`、`node_modules/.vite/`、`node_modules/.vite-temp/`；临时验证程序、截图和浏览器数据：`D:/Agent/Agent_temp/character-groups-20261031/`；CLI 日志：`D:/Agent/Agent_temp/.playwright-cli/`。保留工作区既有文档修改及删除。
+
 ## 衣衣专用 LLM 一键配置（2026-10-31）
 
 - 启动缺 Key 提醒中增加醒目的「我是衣衣，帮我一键配置！」。专用弹窗只索要 Key，预设大宇宙站地址、`gpt-6-luna【神秘】`、并发 1、每次 10 条与高推理等级；默认模型存在时直接保存，仅缺失时让用户选模型，空列表与获取失败保留重试入口。

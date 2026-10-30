@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { DetailPrompt } from "./DetailPrompt";
+import { DetailCharacters } from "./DetailCharacters";
 import { markArtistRepresentative } from "../state/artist-representatives";
 import { Check, Copy, FolderOpen, ImageOff, Maximize2, Bookmark } from "lucide-react";
 import { type RowRecord } from "../../lib/api";
@@ -50,7 +51,8 @@ export function DetailContents({ row }: { row: RowRecord }) {
     </button><button type="button" className="rd-representative" data-active={row.artistRepresentative} aria-pressed={row.artistRepresentative} aria-label={row.artistRepresentative ? "取消代表图" : "设为代表图"} title={row.artists?.trim() ? "按画师串去重时优先显示这张图片" : "此图片暂无画师串"} disabled={busy || !row.artists?.trim()} onClick={() => void markArtistRepresentative(row, !row.artistRepresentative)}><Bookmark size={13} />{row.artistRepresentative ? "代表图" : "设为代表图"}</button>{image.error && <div className="rd-preview-retry"><span>{image.url ? "高清预览加载失败" : "预览加载失败"}</span><Button size="sm" variant="ghost" onClick={image.retry}>重新加载</Button></div>}</div>
     <DetailOrganization row={row} />
     <DetailPrompt row={row} />
-    {([["角色提示词", "characterPrompt"], ["负向提示词", "negativePrompt"]] as const).map(([label, field]) => <DetailFold key={field} name={field} label={label} summary={row[field] || "未填写"}><FieldEditor row={row} label={label} field={field} /></DetailFold>)}
+    <DetailCharacters row={row} />
+    <DetailFold name="negativePrompt" label="负向提示词" summary={row.negativePrompt || "未填写"}><FieldEditor row={row} label="负向提示词" field="negativePrompt" /></DetailFold>
     <DetailFold name="metadata" label="更多信息" summary={row.metadataFailed ? "生成信息未完整解析" : "生成参数 · 文件位置"}><section><h4>生成信息</h4><dl className="r-parameters">{[
       ["模型", row.generationModel], ["采样器", row.generationSampler], ["步数", row.generationSteps], ["种子", row.generationSeed], ["CFG", row.generationScale], ["CFG Rescale", row.generationCfgRescale], ["噪声调度", row.generationNoiseSchedule], ["尺寸", rowResolution(row)], ["时间", row.time],
     ].filter(([, value]) => value !== null && value !== undefined && value !== "").map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>{row.metadataFailed && <p className="rd-metadata-warning">这张图片的生成信息未能完整解析。</p>}</section>

@@ -17,6 +17,7 @@ const readFolds = (): Record<string, boolean> => {
   try { const value = JSON.parse(localStorage.getItem(foldKey) || "{}"); return value && typeof value === "object" ? value : {}; } catch { return {}; }
 };
 const useFolds = create<Record<string, boolean>>(readFolds);
+export const useDetailFoldOpen = (name: string) => useFolds(state => Boolean(state[name]));
 function toggleFold(name: string) {
   const next = { ...useFolds.getState(), [name]: !useFolds.getState()[name] };
   useFolds.setState(next);

@@ -50,3 +50,9 @@
 }
 .rd-prompt-container[data-expanded="false"] .r-field-body > .r-prompt { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 8; overflow: hidden; }
 .rd-prompt-expand { margin: -8px 0 12px; }
+.rd-character + .rd-character { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
+.rd-character h5 { margin: 0 0 8px; color: var(--text); font-size: var(--font-sm); font-weight: 600; }
+.rd-character-field + .rd-character-field { margin-top: 12px; }
+.rd-character-field > .r-section-heading { margin-bottom: 4px; color: var(--text-2); font-size: var(--font-xs); }
+.rd-character-field .r-prompt { margin: 0; }
+.rd-character-status { overflow-wrap: anywhere; }

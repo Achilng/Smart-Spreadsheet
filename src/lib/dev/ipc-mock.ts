@@ -4,7 +4,7 @@
  * 分区、空态、分页与 set-sample 事件切换。生产构建会把它摇树剔除。
  */
 
-import type { FilterNumericComparison, LibraryFilter, MutableRowState, RowQuery, RowRecord, RowSelection, TagChanges } from "../api";
+import type { FilterNumericComparison, LibraryFilter, MutableRowState, RowCharacterPrompts, RowQuery, RowRecord, RowSelection, TagChanges } from "../api";
 import type { Material, MaterialDraft, MaterialInspection } from "../api/materials";
 import type { PromptDocDetail } from "../api/prompt-docs";
 import type { GroupSummary } from "../api/groups";
@@ -185,6 +185,22 @@ export function installIpcMock(): void {
     tags: index % 4 === 0 ? ["收藏", "风景", "柔和光线"] : index % 3 === 0 ? [] : ["风景"],
     vibeReferenceCount: index % 4 === 0 ? 2 : 0,
   }));
+  const characterGroups = new Map<number, RowCharacterPrompts>();
+  if (params.has("characterGroups")) {
+    const characters = [
+      { index: 1, positivePrompt: "1girl, silver hair\ngreen eyes, blue dress", negativePrompt: "hat, glasses" },
+      { index: 2, positivePrompt: "1boy, black hair, brown eyes, white shirt", negativePrompt: "" },
+    ];
+    libraryRows[0].characterPrompt = characters.map(character => character.positivePrompt.trim()).join("\n");
+    characterGroups.set(1, { characterPrompt: libraryRows[0].characterPrompt, characters });
+    libraryRows[1].characterPrompt = "manually edited character text";
+    characterGroups.set(2, { characterPrompt: "original character text", characters });
+    libraryRows[2].characterPrompt = "second character";
+    characterGroups.set(3, { characterPrompt: "second character", characters: [
+      { index: 1, positivePrompt: "", negativePrompt: "" },
+      { index: 2, positivePrompt: "second character", negativePrompt: "hat" },
+    ] });
+  }
   const snapshot = {
     dataDirectory: params.has("setup") ? null : "D:\\mock",
     rejectedImagesDirectory: "D:\\mock\\rejected",
@@ -829,6 +845,8 @@ export function installIpcMock(): void {
         }
         case "get_row_vibe_status":
           return 2;
+        case "get_row_character_prompts":
+          return structuredClone(characterGroups.get(Number(payload.rowId)) ?? { characterPrompt: "", characters: [] });
         case "plugin:window|destroy":
           window.close();
           return null;
