@@ -40,12 +40,13 @@
 .rd-prompt-switch button:hover, .rd-prompt-switch button[aria-pressed="true"] { color: var(--text); }
 .rd-prompt-switch button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .rd-prompt-section .r-field-body {
-  min-height: 105px;
   animation: r-fade-in 140ms var(--ease-out);
 }
-.rd-prompt-section .r-field-body > .r-prompt { max-height: 315px; overflow-y: auto; scrollbar-gutter: stable; }
+.rd-prompt-section .r-field-body > .r-prompt { max-height: none; }
 .rd-prompt-source { margin-bottom: 6px; }
 @media (prefers-reduced-motion: reduce) {
   .rd-prompt-thumb, .rd-prompt-switch button { transition: none; }
   .rd-prompt-section .r-field-body { animation: none; }
 }
+.rd-prompt-container[data-expanded="false"] .r-field-body > .r-prompt { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 8; overflow: hidden; }
+.rd-prompt-expand { margin: -8px 0 12px; }
