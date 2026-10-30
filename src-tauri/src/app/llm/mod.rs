@@ -69,9 +69,38 @@ pub fn key(channel: &Channel) -> Result<String, String> {
     String::from_utf8(credentials::crypt(&channel.encrypted_key, false)?)
         .map_err(|_| "Key 编码无效，请重新填写".into())
 }
+/// Reuse saved credentials only for the matching channel and endpoint.
+/// An explicitly empty key means clear it, rather than restore the saved value.
+pub fn restore_saved_key(channel: &mut Channel, saved: Option<&Channel>) {
+    if channel.key.is_none() {
+        channel.key = saved.and_then(|value| value.key.clone());
+    }
+    channel.encrypted_key = if channel.key.is_some() {
+        vec![]
+    } else {
+        saved.map(|value| value.encrypted_key.clone()).unwrap_or_default()
+    };
+}
+
+/// Convert readable legacy DPAPI keys once; retain unreadable ciphertext so a
+/// library opened on another account is not destructively rewritten.
+pub fn migrate_keys(settings: &mut Settings) -> bool {
+    let mut changed = false;
+    for channel in &mut settings.channels {
+        if channel.encrypted_key.is_empty() { continue; }
+        if let Ok(value) = key(channel) {
+            channel.has_key = !value.is_empty();
+            channel.key = Some(value);
+            channel.encrypted_key.clear();
+            changed = true;
+        }
+    }
+    changed
+}
+
 pub fn public_settings(mut settings: Settings) -> Settings {
     for channel in &mut settings.channels {
-        channel.has_key = !channel.encrypted_key.is_empty();
+        channel.has_key = key(channel).is_ok_and(|value| !value.is_empty());
         channel.encrypted_key.clear();
         channel.key = None;
     }
@@ -117,15 +146,11 @@ pub fn save_settings(
             .channels
             .iter()
             .find(|c| c.id == channel.id && c.base_url == channel.base_url);
-        channel.encrypted_key = match channel.key.take() {
-            Some(value) if value.trim().is_empty() => vec![],
-            Some(value) => credentials::crypt(value.trim().as_bytes(), true)?,
-            None => previous
-                .map(|c| c.encrypted_key.clone())
-                .unwrap_or_default(),
-        };
-        channel.has_key = !channel.encrypted_key.is_empty();
+        restore_saved_key(channel, previous);
+        channel.key = channel.key.take().map(|value| value.trim().to_owned());
+        channel.has_key = key(channel).is_ok_and(|value| !value.is_empty());
     }
+    migrate_keys(&mut settings);
     runtime.llm_db(library, |db| {
         db.set_setting(SETTINGS_KEY, &json(&settings)?)
     })?;

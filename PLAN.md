@@ -1,5 +1,12 @@
 # 项目计划
 
+## LLM Key 随资料库迁移（2026-10-31）
+
+- 按用户要求取消 Windows 账户绑定，新 Key 直接以明文保存在本地资料库中，复制资料库到其他电脑即可继续使用；界面仍只显示是否已保存，不把 Key 返回界面或加入任务结果、导出和日志。同步修改渠道说明及保存占位文案。
+- 打开资料库时，在同一数据库锁内自动转换可以解密的旧版 Key，仅转换成功后落盘；无法解密的旧值原样保留，重新填写即可替换。保存其他设置会保留 Key，明确清空仍会清空，更改渠道地址不沿用原 Key；获取模型列表也支持复用新的本地 Key。
+- 验证：前端类型检查与生产构建、Rust 离线编译检查通过。临时程序调用正式 Key 处理函数，验证明文复用、界面脱敏、清空、端点切换、真实 Windows DPAPI 旧值转换、重复转换无写入、损坏旧值保留与替换；界面扫描和差异检查通过。未新增单元测试或操作真实资料库，未发布或替换安装版。
+- 修改文件：`src-tauri/src/app/llm/mod.rs`、`src-tauri/src/app/llm/credentials.rs`、`src-tauri/src/app/runtime/llm.rs`、`src-tauri/src/app/commands/llm.rs`、`src/react/views/tools/StyleExtractionTool.tsx`、`docs/LLM-STYLE-EXTRACTION.md` 与本文件。生成目录：`dist/`、`target/`、`node_modules/.vite/`、`node_modules/.vite-temp/`；临时验证程序、变更记录及浏览器数据位于 `D:/Agent/Agent_temp/llm-portable-key-20261031/`，CLI 日志位于 `D:/Agent/Agent_temp/.playwright-cli/`。同文件内并行修改分开提交。
+
 ## 删除 LLM 工作台说明（2026-10-31）
 
 - 按用户要求删除自动提取设置下方关于后台运行、进度保存和结果写入的整段提示；功能行为不变。

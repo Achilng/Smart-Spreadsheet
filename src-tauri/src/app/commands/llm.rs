@@ -201,13 +201,10 @@ pub(crate) async fn llm_models(
     let settings = app
         .state::<AppRuntime>()
         .llm_db(&library_id, |db| db.llm_settings())?;
-    // Never accept ciphertext from a webview, or reuse a key after changing endpoint.
-    channel.encrypted_key = settings
-        .channels
-        .iter()
-        .find(|c| c.id == channel.id && c.base_url == channel.base_url)
-        .map(|c| c.encrypted_key.clone())
-        .unwrap_or_default();
+    // Restore a saved key for model discovery without exposing it to the webview.
+    let previous = settings.channels.iter()
+        .find(|c| c.id == channel.id && c.base_url == channel.base_url);
+    llm::restore_saved_key(&mut channel, previous);
     let key = llm::key(&channel)?;
     if key.is_empty() {
         return Err("请先填写 API Key".into());

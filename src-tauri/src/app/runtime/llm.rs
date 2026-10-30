@@ -13,11 +13,13 @@ impl AppRuntime {
             .into_owned();
         let db = state.database().map_err(|e| e.to_string())?;
         let identity = format!("{}|{}", root, db.llm_id().map_err(|e| e.to_string())?);
-        Ok((
-            root,
-            identity,
-            db.llm_settings().map_err(|e| e.to_string())?,
-        ))
+        let mut settings = db.llm_settings().map_err(|e| e.to_string())?;
+        // Migrate while holding the same database lock as reads and writes.
+        if crate::app::llm::migrate_keys(&mut settings) {
+            db.set_setting(SETTINGS_KEY, &json(&settings).map_err(|e| e.to_string())?)
+                .map_err(|e| e.to_string())?;
+        }
+        Ok((root, identity, settings))
     }
     pub(crate) fn llm_db<T>(
         &self,

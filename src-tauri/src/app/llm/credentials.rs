@@ -1,4 +1,4 @@
-//! Windows DPAPI: encrypted for the current Windows account, never plaintext on disk.
+//! Legacy Windows DPAPI compatibility; new keys are stored in the local library.
 #[cfg(windows)]
 pub fn crypt(input: &[u8], encrypt: bool) -> Result<Vec<u8>, String> {
     use std::ffi::c_void;
