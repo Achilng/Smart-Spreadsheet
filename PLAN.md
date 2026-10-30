@@ -5,6 +5,7 @@
 - 应用版本统一递增至 `0.12.24`，发布标签 `v_47`；整合 v_46 之后的角色分组、详情布局、画师白名单、LLM 配置与 Key 迁移、导出、收藏、对比和性能改进。面向用户的入口与用法见 `.github/release-notes/v_47.md`。
 - 按用户后续要求取消云端任务，改用本机现有工具与签名密钥构建 Windows x64 安装包，校验安装器、签名和更新清单后发布。不修改本机安装程序或真实资料库。
 - 发布检查发现既有 v16 迁移测试直接创建 SQLite 连接，遗漏正式初始化中的画师匹配函数注册；补齐该测试的初始化，不修改产品逻辑或新增测试。未公开的 v_47 标签同步至修复后的发布提交，使用 `[skip ci]` 防止再次触发云端构建。
+- 已发布并设为最新版本：[v_47](https://github.com/Achilng/Smart-Spreadsheet/releases/tag/v_47)，发布源码 `7e53828`。本地前端既有检查 45 项通过、后端 316 项通过 / 3 项原有忽略，生产构建及签名打包完成。三个远端附件的大小与 SHA-256 均与本地一致，公开后重新下载复核通过；应用更新入口返回 `0.12.24`。安装包 SHA-256：`721019DF3C00B38F58811C888A314C3FA3B943931EF0B594079952DFE0416852`。
 - 本轮文件：`package.json`、`package-lock.json`、`Cargo.lock`、`src-tauri/Cargo.toml`、`src-tauri/tauri.conf.json`、`src-tauri/src/db/mod.rs`、`.github/release-notes/v_47.md` 和本文件。产物位于 `target/`、`dist/`、`node_modules/.vite-temp/`，临时脚本、工具缓存与验证文件位于 `D:/Agent/Agent_temp/smart-spreadsheet-release-v47/`。保留原有 `AGENTS.md` 修改及三个文档删除，不纳入发布提交。
 
 ## 详情页按角色区分提示词（2026-10-31）
