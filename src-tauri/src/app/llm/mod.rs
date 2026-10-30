@@ -118,18 +118,7 @@ pub fn save_settings(
         return Err("请选择有效的推理等级".into());
     }
     settings.ignored_tags = prompt_matching::clean_ignored_tags(&settings.ignored_tags);
-    if settings.ignored_tags.len() > 256
-        || settings.ignored_tags.iter().any(|tag| {
-            tag.chars().count() > 160
-                || tag.contains([',', '{', '}', '[', ']', '\n', '\r'])
-                || tag.contains("::")
-        })
-    {
-        return Err(
-            "白名单每行填写一个完整标签，不填写逗号或权重外壳；最多 256 条，每条最多 160 字。"
-                .into(),
-        );
-    }
+    prompt_matching::validate_ignored_tags(&settings.ignored_tags)?;
     let old = runtime.llm_db(library, |db| db.llm_settings())?;
     let mut ids = HashSet::new();
     for channel in &mut settings.channels {

@@ -3,12 +3,39 @@ import type { LlmChannel, LlmItem, LlmJob, LlmSettings, LlmSnapshot } from "../a
 // Fixture values only; production defaults always come from llm_snapshot.
 const mockIgnoredTags = ["mock quality", "mock resolution"];
 
+// Comma-separated UI fixture; production selection and weights use the Rust parser.
+function selectedTags(payload: Record<string, unknown>): string[] {
+  const text = String(payload.text), start = Number(payload.start), end = Number(payload.end);
+  const tags = [...text.matchAll(/[^,\r\n]+/g)].flatMap(match => {
+    const left = Math.max(start, match.index), right = Math.min(end, match.index + match[0].length);
+    return left < right ? [text.slice(left, right).replace(/[_\s]+/g, " ").trim().toLowerCase()] : [];
+  }).filter(Boolean);
+  if (!tags.length) throw Error("请先选中 tag 文字，可以跨逗号或换行选择多个。");
+  return [...new Set(tags)];
+}
+
 export function createLlmMock() {
   let settings: LlmSettings = { autoImport: false, autoResume: true, batchSize: 10, reasoning: "medium", channels: [], ignoredTags: [...mockIgnoredTags] };
   const jobs: LlmJob[] = [];
   const results = new Map<string, LlmItem[]>();
   return (command: string, payload: Record<string, unknown>): unknown => {
     switch (command) {
+      case "artist_whitelist_selection": {
+        const tags = selectedTags(payload);
+        return { libraryId: "mock-library", addTags: tags.filter(tag => !settings.ignoredTags.includes(tag)), removeTags: tags.filter(tag => settings.ignoredTags.includes(tag)) };
+      }
+      case "update_artist_whitelist": {
+        if (payload.libraryId !== "mock-library") throw Error("资料库已切换");
+        const tags = selectedTags(payload), before = settings.ignoredTags.length;
+        const next = payload.remove ? settings.ignoredTags.filter(tag => !tags.includes(tag)) : [...new Set([...settings.ignoredTags, ...tags])];
+        if (next.length > 256 || next.some(tag => tag.length > 160)) throw Error("白名单最多 256 条，每条最多 160 字。");
+        settings.ignoredTags = next;
+        if (before !== next.length) {
+          window.__mockEmit?.("llm://library-changed", "mock-library");
+          window.__mockEmit?.("artist-matching://changed", "mock-library");
+        }
+        return Math.abs(before - next.length);
+      }
       // Simple comma-separated fixture only; production uses Rust's shared weight parser.
       case "artist_highlight_segments": return (payload.texts as string[]).map(text => text.split(/([,\r\n])/).filter(Boolean).map(part => ({
         text: part, ignored: settings.ignoredTags.includes(part.replace(/[_\s]+/g, " ").trim().toLowerCase()),

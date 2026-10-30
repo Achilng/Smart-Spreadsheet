@@ -12,6 +12,10 @@ export interface LlmEstimate { rows: number; skipped: number; uniquePrompts: num
 export const llmSnapshot = (livePage = 0) => invoke<LlmSnapshot>("llm_snapshot", { livePage });
 export interface ArtistHighlightSegment { text: string; ignored: boolean }
 export const artistHighlightSegments = (texts: string[]) => invoke<ArtistHighlightSegment[][]>("artist_highlight_segments", { texts });
+export interface ArtistTextSelection { text: string; start: number; end: number }
+export interface ArtistWhitelistSelection { libraryId: string; addTags: string[]; removeTags: string[] }
+export const artistWhitelistSelection = (selection: ArtistTextSelection) => invoke<ArtistWhitelistSelection>("artist_whitelist_selection", { ...selection });
+export const updateArtistWhitelist = (libraryId: string, selection: ArtistTextSelection, remove: boolean) => invoke<number>("update_artist_whitelist", { libraryId, ...selection, remove });
 export const saveLlmSettings = (libraryId: string, settings: LlmSettings) => invoke<LlmSettings>("llm_save_settings", { libraryId, settings });
 export interface ArtistMatchingRefresh { rows: number; changedRows: number; groupsBefore: number; groupsAfter: number; mergedRepresentatives: number }
 export const refreshArtistMatching = (libraryId: string) => invoke<ArtistMatchingRefresh>("refresh_artist_matching", { libraryId });

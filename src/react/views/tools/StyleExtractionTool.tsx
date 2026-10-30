@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { save } from "@tauri-apps/plugin-dialog";
+import { listen } from "@tauri-apps/api/event";
 import { Plus, Settings2, Play, Pause, RotateCcw, CheckCircle2 } from "lucide-react";
 import { llmSnapshot, saveLlmSettings, estimateLlm, createLlm, actLlm, llmItems, llmModels, exportLlm, type LlmSnapshot, type LlmSettings, type LlmChannel, type LlmItem, type LlmEstimate, type LlmJob } from "../../../lib/api/local-llm";
 import { useToolboxSelection, toolboxScopeSelection } from "../../state/tools/use-toolbox-selection";
@@ -32,19 +33,34 @@ export default function StyleExtractionTool({ active, settingsRequest = 0 }: { a
   const [confirmUndo, setConfirmUndo] = useState(false), [livePage, setLivePage] = useState(0);
   const [matchingResult, setMatchingResult] = useState<ArtistMatchingRefresh | null>(null);
   const initialized = useRef(false), pending = useRef(false), alive = useRef(true);
+  const refreshVersion = useRef(0), savedIgnoredTags = useRef<string[]>([]);
   const activeJob = snapshot?.jobs.find(job => job.id === jobId);
   const channel = draft?.channels.find(value => value.id === channelId);
   const enabled = snapshot?.settings.channels.filter(value => value.enabled) ?? [];
   useEffect(() => { if (settingsRequest) setTab("settings"); }, [settingsRequest]);
 
   async function refresh() {
+    const version = ++refreshVersion.current;
     const next = await llmSnapshot(livePage);
-    if (!alive.current) return;
+    if (!alive.current || version !== refreshVersion.current) return;
+    const previousTags = savedIgnoredTags.current;
+    savedIgnoredTags.current = next.settings.ignoredTags;
     setSnapshot(next);
     if (!initialized.current) {
       initialized.current = true; setDraft(next.settings);
       setChannels(next.settings.channels.filter(c => c.enabled).map(c => c.id));
       setChannelId(next.settings.channels[0]?.id ?? ""); setJobId(next.jobs[0]?.id ?? "");
+    } else if (JSON.stringify(previousTags) !== JSON.stringify(next.settings.ignoredTags)) {
+      // Apply external whitelist deltas while preserving unrelated unsaved edits.
+      const normalize = (tag: string) => tag.replace(/[_\s]+/g, " ").trim().toLowerCase();
+      const removed = new Set(previousTags.filter(tag => !next.settings.ignoredTags.includes(tag)));
+      const added = next.settings.ignoredTags.filter(tag => !previousTags.includes(tag));
+      setDraft(current => {
+        if (!current) return current;
+        const tags = current.ignoredTags.filter(tag => !removed.has(normalize(tag)));
+        const present = new Set(tags.map(normalize));
+        return { ...current, ignoredTags: [...tags, ...added.filter(tag => !present.has(tag))] };
+      });
     }
   }
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
@@ -55,7 +71,9 @@ export default function StyleExtractionTool({ active, settingsRequest = 0 }: { a
     const load = async () => { if (loading) return; loading = true; try { await refresh(); } catch (e) { if (!stopped) setError(errorText(e)); } finally { loading = false; } };
     void load();
     const timer = setInterval(() => void load(), 1500);
-    return () => { stopped = true; clearInterval(timer); };
+    let stop: (() => void) | undefined;
+    void listen("artist-matching://changed", () => void load()).then(cleanup => { if (stopped) cleanup(); else stop = cleanup; }).catch(() => {});
+    return () => { stopped = true; clearInterval(timer); stop?.(); };
   }, [active, livePage]);
   useEffect(() => { if (snapshot && livePage * 40 >= snapshot.liveTotal && livePage) setLivePage(0); }, [snapshot?.liveTotal, livePage]);
   useEffect(() => { setPage(0); setConfirmUndo(false); setItems([]); }, [jobId]);
@@ -133,6 +151,7 @@ export default function StyleExtractionTool({ active, settingsRequest = 0 }: { a
     {tab === "matching" && draft && <>
       <ToolCard><h3>画风与提取复用白名单</h3><p>每行一个完整标签。空格与下划线视为相同分隔，例如 very aesthetic 与 very_aesthetic 只需填写一个。比较时忽略白名单标签（包括加权写法）、多余分隔和末尾逗号；保留其余内容、画师权重和顺序。</p>
         <label className="llm-whitelist-label">忽略标签<textarea className="r-input llm-whitelist" rows={8} spellCheck={false} value={draft.ignoredTags.join("\n")} onChange={e => { setDraft({ ...draft, ignoredTags: e.target.value.split(/\r?\n/) }); setDirty(true); }} /></label>
+        <p>也可在画师串中拖选文字，右键加入或取消白名单。支持连续选中多个 tag；只选中部分文字时，就保存选中的片段，对所有图片生效。</p>
         <p>默认仅忽略已约定的通用品质与文字限制标签；年份、newest、细节描述、rating:general、location 和 no signature 等仍参与比较。保存后自动更新已有画风归类，后续 LLM 复用也遵循同一套规则。</p>
         <div className="rt-actions"><Button variant="primary" disabled={busy || !dirty} onClick={() => void perform(saveSettings)}>保存设置</Button><Button disabled={busy || !snapshot} onClick={() => { setDraft({ ...draft, ignoredTags: [...(snapshot?.defaultIgnoredTags ?? [])] }); setDirty(true); }}>恢复默认白名单</Button></div>
       </ToolCard>

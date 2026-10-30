@@ -7,6 +7,15 @@
 - 验证：前端类型检查与生产构建、Rust 离线编译检查通过。临时程序调用正式 Key 处理函数，验证明文复用、界面脱敏、清空、端点切换、真实 Windows DPAPI 旧值转换、重复转换无写入、损坏旧值保留与替换；界面扫描和差异检查通过。未新增单元测试或操作真实资料库，未发布或替换安装版。
 - 修改文件：`src-tauri/src/app/llm/mod.rs`、`src-tauri/src/app/llm/credentials.rs`、`src-tauri/src/app/runtime/llm.rs`、`src-tauri/src/app/commands/llm.rs`、`src/react/views/tools/StyleExtractionTool.tsx`、`docs/LLM-STYLE-EXTRACTION.md` 与本文件。生成目录：`dist/`、`target/`、`node_modules/.vite/`、`node_modules/.vite-temp/`；临时验证程序、变更记录及浏览器数据位于 `D:/Agent/Agent_temp/llm-portable-key-20261031/`，CLI 日志位于 `D:/Agent/Agent_temp/.playwright-cli/`。同文件内并行修改分开提交。
 
+## 画师串选区右键管理白名单（2026-10-31）
+
+- 在详情、表格、对比与 LLM 结果的画师串中拖选文字，右键提供「将这些tag加入白名单（所有图片生效）」和「取消加入白名单（所有图片生效）」。混合选区显示两项，分别添加新项或移除已有项；无文字选区时保留原有图片菜单。沿用现有柔和橙色高亮，配置与全库归类立即同步，不改画师串原文或调用模型。
+- 按用户补充要求，支持只选中半个标签并保存截断片段，不补全为完整原标签。后端沿用现有解析器识别多项、权重及嵌套，转换浏览器 UTF-16 选区以兼容中文和 Emoji；规范化空格 / 下划线、去重并沿用名单上限。比较仍为完整标签匹配。只选分隔符或无效选区时不写入。
+- 更新在同一资料库锁内读取最新名单并做增量修改，不覆盖渠道或 Key；持久化沿用归类刷新事务。菜单保存选区快照并绑定资料库，规则变化后旧菜单失效。单窗口共用一个文字选择监听器，快速拖选后右键也能识别；白名单编辑页合并外部增删并保留其他草稿。
+- 验证：前端生产构建及类型检查、Rust 离线编译检查、Impeccable 扫描及差异检查；临时程序运行正式 Rust 解析器核对 10 组选区（截断、多项、权重、Unicode、空选区）。Playwright 模拟资料库检查真实鼠标拖选、单次写入、混合选区、截断片段的增删、逆向选择、原文不变、旧菜单失效、保存失败、正常图片菜单、白名单草稿合并，以及 1280×800 / 900×600 窗口。未新增单元测试，未操作真实资料库或更新安装版。
+- 文件变动：新增 `src/react/ui/ArtistWhitelistMenu.tsx`；修改 `src/react/ui/ArtistText.tsx`、`src/react/ui/artist-text.css`、`src/react/views/tools/StyleExtractionTool.tsx`、`src/lib/api/local-llm.ts`、`src/lib/dev/ipc-mock.ts`、`src/lib/dev/llm-mock.ts`、`src-tauri/src/db/prompt_matching.rs`、`src-tauri/src/app/commands/llm.rs`、`src-tauri/src/app/llm/mod.rs`、`src-tauri/src/lib.rs`、`docs/LLM-STYLE-EXTRACTION.md` 与本文件。保留已有及并行改动。
+- 生成目录：`dist/`、`target/`、`node_modules/.vite/`、`node_modules/.vite-temp/`；临时程序、脚本、预览服务、截图和浏览器资料位于 `D:/Agent/Agent_temp/artist-whitelist-menu-20261031/`，CLI 日志位于 `D:/Agent/Agent_temp/.playwright-cli/`，均不提交。
+
 ## 删除 LLM 工作台说明（2026-10-31）
 
 - 按用户要求删除自动提取设置下方关于后台运行、进度保存和结果写入的整段提示；功能行为不变。

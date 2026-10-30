@@ -80,6 +80,81 @@ pub(crate) async fn artist_highlight_segments(
     .await
     .map_err(super::error_text)?
 }
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArtistWhitelistSelection {
+    library_id: String,
+    add_tags: Vec<String>,
+    remove_tags: Vec<String>,
+}
+
+#[tauri::command]
+pub(crate) async fn artist_whitelist_selection(
+    text: String,
+    start: usize,
+    end: usize,
+    app: tauri::AppHandle,
+) -> Result<ArtistWhitelistSelection, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let tags = crate::db::prompt_matching::selected_artist_tags(&text, start, end)?;
+        let (_, library_id, settings) = app.state::<AppRuntime>().llm_context()?;
+        let (remove_tags, add_tags) = tags
+            .into_iter()
+            .partition(|tag| settings.ignored_tags.contains(tag));
+        Ok(ArtistWhitelistSelection {
+            library_id,
+            add_tags,
+            remove_tags,
+        })
+    })
+    .await
+    .map_err(super::error_text)?
+}
+
+#[tauri::command]
+pub(crate) async fn update_artist_whitelist(
+    library_id: String,
+    text: String,
+    start: usize,
+    end: usize,
+    remove: bool,
+    app: tauri::AppHandle,
+) -> Result<usize, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let tags = crate::db::prompt_matching::selected_artist_tags(&text, start, end)?;
+        // Read/modify/write under the same runtime lock; do not overwrite channel
+        // settings, encrypted keys, or tags another window just added.
+        let changed = app.state::<AppRuntime>().llm_db(&library_id, |db| {
+            let mut settings = db.llm_settings()?;
+            let before = settings.ignored_tags.len();
+            if remove {
+                settings.ignored_tags.retain(|tag| !tags.contains(tag));
+            } else {
+                settings.ignored_tags.extend(tags.iter().cloned());
+                settings.ignored_tags =
+                    crate::db::prompt_matching::clean_ignored_tags(&settings.ignored_tags);
+            }
+            crate::db::prompt_matching::validate_ignored_tags(&settings.ignored_tags)
+                .map_err(invalid)?;
+            let changed = before.abs_diff(settings.ignored_tags.len());
+            if changed > 0 {
+                db.set_setting(SETTINGS_KEY, &json(&settings)?)?;
+            }
+            Ok(changed)
+        })?;
+        if changed > 0 {
+            app.state::<Engine>()
+                .revision
+                .fetch_add(1, Ordering::SeqCst);
+            let _ = app.emit("llm://library-changed", &library_id);
+            let _ = app.emit("artist-matching://changed", &library_id);
+        }
+        Ok(changed)
+    })
+    .await
+    .map_err(super::error_text)?
+}
+
 #[tauri::command]
 pub(crate) async fn llm_save_settings(
     library_id: String,

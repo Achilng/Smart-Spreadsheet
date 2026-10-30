@@ -4,6 +4,7 @@ import { create } from "zustand";
 import { artistHighlightSegments, type ArtistHighlightSegment } from "../../lib/api/local-llm";
 import { useLibrary } from "../state/library";
 import { Hint } from "./controls";
+import { ArtistSelectionEvents, ArtistWhitelistMenu } from "./ArtistWhitelistMenu";
 import "./artist-text.css";
 
 const useHighlightRevision = create(() => ({ revision: 0 }));
@@ -48,14 +49,16 @@ export function ArtistHighlightEvents() {
     const cleanups = [useLibrary.subscribe((next, previous) => {
       if (next.snapshot?.dataDirectory !== previous.snapshot?.dataDirectory) invalidateArtistHighlights();
     })];
-    for (const event of ["artist-matching://changed", "main://library-reset", "main://library-changed", "toolbox://app-state-changed"]) {
+    const windowType = new URLSearchParams(location.search).get("window") ?? "main";
+    const windowEvent = windowType === "toolbox" ? "main://library-changed" : windowType === "compare" ? "main://library-reset" : "toolbox://app-state-changed";
+    for (const event of ["artist-matching://changed", windowEvent]) {
       void listen(event, invalidateArtistHighlights).then(stop => {
         if (disposed) stop(); else cleanups.push(stop);
       }).catch(() => {});
     }
     return () => { disposed = true; cleanups.forEach(stop => stop()); invalidateArtistHighlights(); };
   }, []);
-  return null;
+  return <ArtistSelectionEvents />;
 }
 
 export function ArtistText({ text }: { text: string }) {
@@ -68,8 +71,8 @@ export function ArtistText({ text }: { text: string }) {
     }).catch(() => { if (active) setLoaded(null); });
     return () => { active = false; };
   }, [text, revision]);
-  if (loaded?.text !== text || loaded.revision !== revision) return <>{text}</>;
-  return <>{loaded.parts.map((part, index) => part.ignored
+  const content = loaded?.text !== text || loaded.revision !== revision ? text : loaded.parts.map((part, index) => part.ignored
     ? <Hint key={index} text="这些tag会在比较画师串时被忽略"><mark className="r-artist-ignored" tabIndex={0} title="">{part.text}</mark></Hint>
-    : <Fragment key={index}>{part.text}</Fragment>)}</>;
+    : <Fragment key={index}>{part.text}</Fragment>);
+  return <ArtistWhitelistMenu text={text} revision={revision} onChanged={invalidateArtistHighlights}>{content}</ArtistWhitelistMenu>;
 }
