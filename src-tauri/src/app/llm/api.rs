@@ -55,12 +55,21 @@ pub async fn models(channel: &Channel, key: &str) -> Result<Vec<String>, String>
         .timeout(Duration::from_secs(30))
         .send()
         .await
-        .map_err(|_| "获取模型列表失败，请检查地址和网络")?;
+        .map_err(|error| {
+            if error.is_timeout() {
+                "获取模型列表超时，请稍后重试。"
+            } else {
+                "无法连接模型站点，请检查网络或稍后重试。"
+            }
+        })?;
     if !reply.status().is_success() {
-        return Err(format!(
-            "获取模型列表失败：HTTP {}",
-            reply.status().as_u16()
-        ));
+        return Err(match reply.status().as_u16() {
+            401 => "Key 无效或已失效，请检查后重新填写。".into(),
+            403 => "这个 Key 没有获取模型列表的权限，请检查 Key 权限或联系站点管理员。".into(),
+            429 => "请求过于频繁，请稍后重试。".into(),
+            500..=599 => "模型站点暂时不可用，请稍后重试。".into(),
+            status => format!("获取模型列表失败（HTTP {status}），请稍后重试或联系站点管理员。"),
+        });
     }
     let body: Value = reply.json().await.map_err(|_| "模型列表不是有效 JSON")?;
     let mut values = body["data"]

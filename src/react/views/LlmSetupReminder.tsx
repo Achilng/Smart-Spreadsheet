@@ -5,6 +5,7 @@ import { openToolboxWindow } from "../../lib/windows/toolbox";
 import { useLibrary } from "../state/library";
 import { notify } from "../state/notices";
 import { Button, Modal } from "../ui/controls";
+import { YiyiLlmSetup } from "./YiyiLlmSetup";
 
 const DISMISSED_KEY = "smart-spreadsheet.llm-setup-reminder.dismissed";
 
@@ -15,6 +16,8 @@ export function LlmSetupReminder() {
   const checked = useRef(false);
   const [reminderDirectory, setReminderDirectory] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [libraryId, setLibraryId] = useState("");
+  const [quickSetup, setQuickSetup] = useState(false);
 
   useEffect(() => {
     if (!ready || !directory || checked.current) return;
@@ -28,7 +31,9 @@ export function LlmSetupReminder() {
         const snapshot = await llmSnapshot();
         if (cancelled) return;
         checked.current = true;
-        if (!snapshot.settings.channels.some(channel => channel.hasKey)) setReminderDirectory(directory!);
+        if (!snapshot.settings.channels.some(channel => channel.hasKey)) {
+          setLibraryId(snapshot.libraryId); setReminderDirectory(directory!);
+        }
       } catch (error) {
         if (!cancelled) {
           checked.current = true;
@@ -59,9 +64,13 @@ export function LlmSetupReminder() {
     } finally { setBusy(false); }
   }
 
-  return <Modal open={ready && !!reminderDirectory && reminderDirectory === directory} onClose={() => setReminderDirectory(null)} busy={busy}
+  const open = ready && !!reminderDirectory && reminderDirectory === directory;
+  if (quickSetup && open) return <YiyiLlmSetup libraryId={libraryId} onBack={() => setQuickSetup(false)} onComplete={() => { setQuickSetup(false); setReminderDirectory(null); }} />;
+
+  return <Modal open={open} onClose={() => setReminderDirectory(null)} busy={busy}
     title="填写 Key，开始 LLM 提取" description="当前资料库还没有保存 API Key。配置后，可以用 LLM 从图片提示词中提取画师串。" width={520}
-    footer={<><Button variant="ghost" disabled={busy} onClick={dismissPermanently}>不再提醒</Button><Button disabled={busy} onClick={() => setReminderDirectory(null)}>稍后再说</Button><Button variant="primary" data-autofocus disabled={busy} onClick={() => void openSettings()}>{busy ? "正在打开…" : "去填写 Key"}</Button></>}>
+    footer={<><Button variant="ghost" disabled={busy} onClick={dismissPermanently}>不再提醒</Button><Button disabled={busy} onClick={() => setReminderDirectory(null)}>稍后再说</Button><Button disabled={busy} onClick={() => void openSettings()}>{busy ? "正在打开…" : "去填写 Key"}</Button></>}>
+    <Button className="r-llm-quick-setup" variant="primary" data-autofocus disabled={busy} onClick={() => setQuickSetup(true)}>我是衣衣，帮我一键配置！</Button>
     <p>前往「工具箱 → LLM提取 → 渠道设置」，添加渠道，填写 Base URL、API Key 和模型，然后点击「保存设置」。</p>
     <p>也可以稍后设置，继续整理图片。选择「不再提醒」后，本机以后启动时将不再显示此提示。</p>
   </Modal>;
