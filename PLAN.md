@@ -3,8 +3,9 @@
 ## v_47 发布（2026-10-31）
 
 - 应用版本统一递增至 `0.12.24`，发布标签 `v_47`；整合 v_46 之后的角色分组、详情布局、画师白名单、LLM 配置与 Key 迁移、导出、收藏、对比和性能改进。面向用户的入口与用法见 `.github/release-notes/v_47.md`。
-- 使用现有 GitHub Actions 发布流程执行既有测试、构建 Windows x64 安装包、签名及更新清单校验；全部通过后公开 Release 并设为最新版本。不修改本机安装程序或真实资料库。
-- 本轮文件：`package.json`、`package-lock.json`、`Cargo.lock`、`src-tauri/Cargo.toml`、`src-tauri/tauri.conf.json`、`.github/release-notes/v_47.md` 和本文件。保留原有 `AGENTS.md` 修改及三个文档删除，不纳入发布提交。
+- 按用户后续要求取消云端任务，改用本机现有工具与签名密钥构建 Windows x64 安装包，校验安装器、签名和更新清单后发布。不修改本机安装程序或真实资料库。
+- 发布检查发现既有 v16 迁移测试直接创建 SQLite 连接，遗漏正式初始化中的画师匹配函数注册；补齐该测试的初始化，不修改产品逻辑或新增测试。未公开的 v_47 标签同步至修复后的发布提交，使用 `[skip ci]` 防止再次触发云端构建。
+- 本轮文件：`package.json`、`package-lock.json`、`Cargo.lock`、`src-tauri/Cargo.toml`、`src-tauri/tauri.conf.json`、`src-tauri/src/db/mod.rs`、`.github/release-notes/v_47.md` 和本文件。产物位于 `target/`、`dist/`、`node_modules/.vite-temp/`，临时脚本、工具缓存与验证文件位于 `D:/Agent/Agent_temp/smart-spreadsheet-release-v47/`。保留原有 `AGENTS.md` 修改及三个文档删除，不纳入发布提交。
 
 ## 详情页按角色区分提示词（2026-10-31）
 

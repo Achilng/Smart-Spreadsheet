@@ -974,6 +974,8 @@ mod tests {
     #[test]
     fn upgrading_v16_adds_style_signature_column_and_index() {
         let mut connection = Connection::open_in_memory().unwrap();
+        // Match production initialization before exercising post-migration write triggers.
+        super::artist_matching::register(&connection).unwrap();
         connection
             .execute_batch(&format!(
                 "{} PRAGMA user_version = 16;",
