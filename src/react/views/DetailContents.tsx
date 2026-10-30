@@ -54,11 +54,11 @@ export function DetailContents({ row }: { row: RowRecord }) {
       {image.url && decoded ? <img src={image.url} alt={rowFileName(row) || "图片预览"} draggable={false} onError={() => setDecoded(false)} /> : <span className="rd-preview-empty">{!hasImage ? <><ImageOff size={22} />无图片</> : image.error || !decoded ? <><ImageOff size={22} />图片不可用</> : "正在加载图片…"}</span>}
       <span className="rd-preview-badges">{badge && <span className={`version-badge ${badge.className}`} title={`作画模型：${row.generationModel}`}>{badge.label}</span>}{Boolean(vibeCount) && <span className="vibe-badge" title={`原图元数据包含 ${vibeCount} 个 VIBE 引用，拖到 NovelAI 可一并导入`}>VIBE ×{vibeCount}</span>}</span>{hasImage && <span className="rd-preview-open"><Maximize2 size={13} />查看原图</span>}
     </button>{image.error && <div className="rd-preview-retry"><span>{image.url ? "高清预览加载失败" : "预览加载失败"}</span><Button size="sm" variant="ghost" onClick={image.retry}>重新加载</Button></div>}</div>
-    <DetailPrompt row={row} />
     <FieldEditor row={row} label="备注" field="note" />
     <section><div className="r-section-heading"><h4>画师串代表图</h4><Button size="sm" variant="ghost" disabled={busy || !row.artists?.trim()} onClick={() => void markArtistRepresentative(row, !row.artistRepresentative)}>{row.artistRepresentative ? "取消代表图" : "设为代表图"}</Button></div><p className="r-muted">{row.artistRepresentative ? "已标记：按画师串去重时优先显示这张图片。" : "每组画师串可指定一张，按画师串去重时优先显示。"}</p></section>
     <TagEditor row={row} />
     <section><h4>分组</h4><div className="rd-group">{row.groupName ? <><span title={row.groupName}>{row.groupName}</span><Button variant="ghost" size="sm" disabled={busy} onClick={() => void ungroup()}>取消分组</Button></> : <p className="r-muted">未分组</p>}</div></section>
+    <DetailPrompt row={row} />
     {([["角色提示词", "characterPrompt"], ["负向提示词", "negativePrompt"]] as const).map(([label, field]) => <FieldEditor key={field} row={row} label={label} field={field} />)}
     <section><h4>生成信息</h4><dl className="r-parameters">{[
       ["模型", row.generationModel], ["采样器", row.generationSampler], ["步数", row.generationSteps], ["种子", row.generationSeed], ["CFG", row.generationScale], ["CFG Rescale", row.generationCfgRescale], ["噪声调度", row.generationNoiseSchedule], ["尺寸", rowResolution(row)], ["时间", row.time],
