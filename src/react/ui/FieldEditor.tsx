@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Check, Copy, Pencil } from "lucide-react";
 import { mutableRowState, updateCharacterPrompt, updateNegativePrompt, updateNote, updatePositivePrompt, type RowRecord } from "../../lib/api";
 import { patchRowFields, useLibrary } from "../state/library";
@@ -14,7 +14,11 @@ const drafts = new Map<string, string>();
 export function hasFieldDrafts(): boolean { return drafts.size > 0; }
 export function clearFieldDrafts(): void { drafts.clear(); }
 
-export function FieldEditor({ row, field, label }: { row: RowRecord; field: Field; label: string }) {
+export function FieldEditor({ row, field, label, heading, alternate, className }: {
+  row: RowRecord; field: Field; label: string; heading?: ReactNode; className?: string;
+  /** Keep the editor and its unsaved draft alive while another view is shown. */
+  alternate?: { actions: ReactNode; content: ReactNode };
+}) {
   const directory = useLibrary(state => state.snapshot?.dataDirectory);
   const key = `${directory}\u0000${row.id}\u0000${field}`;
   const busy = useTasks(state => state.busy);
@@ -58,11 +62,11 @@ export function FieldEditor({ row, field, label }: { row: RowRecord; field: Fiel
     try { await navigator.clipboard.writeText(row[field] ?? ""); setCopied(true); clearTimeout(copyTimer.current); copyTimer.current = setTimeout(() => setCopied(false), 1200); notify(`已复制${label}`); }
     catch (failure) { notify(`复制失败：${errorText(failure)}`, "error"); }
   };
-  return <section><div className="r-section-heading"><h4>{label}</h4><div className="r-field-actions">
-    {!editing && <Button variant="ghost" size="sm" onClick={begin} disabled={busy}><Pencil size={12} />编辑</Button>}
+  return <section className={className}><div className="r-section-heading">{heading ?? <h4>{label}</h4>}<div className="r-field-actions">{alternate ? alternate.actions : <>
+    {!editing && (heading ? <Hint text={`编辑${label}`}><Button variant="ghost" size="icon" aria-label={`编辑${label}`} onClick={begin} disabled={busy}><Pencil size={13} /></Button></Hint> : <Button variant="ghost" size="sm" onClick={begin} disabled={busy}><Pencil size={12} />编辑</Button>)}
     <Hint text={`复制${label}`}><Button variant="ghost" size="icon" disabled={!row[field]} aria-label={`复制${label}`} onClick={() => void copy()}>{copied ? <Check size={13} /> : <Copy size={13} />}</Button></Hint>
-  </div></div>
-    {editing ? <div className="r-inline-editor">
+  </>}</div></div>
+    <div key={alternate ? "alternate" : "field"} className={className ? "r-field-body" : undefined}>{alternate ? alternate.content : editing ? <div className="r-inline-editor">
       {restored && <p className="r-muted">已恢复此图片未保存的草稿</p>}
       <Textarea autoFocus aria-label={`编辑${label}`} value={value} disabled={saving} rows={field === "note" ? 3 : 6} onChange={event => {
         const next = event.target.value; setValue(next); if (next === base) drafts.delete(key); else drafts.set(key, next);
@@ -73,7 +77,7 @@ export function FieldEditor({ row, field, label }: { row: RowRecord; field: Fiel
       }} />
       {error && <p className="r-field-error" role="alert">保存失败：{error}</p>}
       <div className="r-inline-editor-footer"><span>Enter 保存 · Shift+Enter 换行</span><Button variant="ghost" size="sm" disabled={saving} onClick={cancel}>取消</Button><Button variant="primary" size="sm" disabled={busy || saving} onClick={() => void save()}>{saving ? "保存中…" : "保存"}</Button></div>
-    </div> : <p className={row[field] ? "r-prompt" : "r-muted"}>{row[field] || "暂无内容"}</p>}
+    </div> : <p className={row[field] ? "r-prompt" : "r-muted"}>{row[field] || "暂无内容"}</p>}</div>
     <Modal open={discard} onClose={() => setDiscard(false)} title={`放弃${label}修改？`} footer={<><Button onClick={() => setDiscard(false)}>继续编辑</Button><Button variant="danger" onClick={() => { drafts.delete(key); setEditing(false); setDiscard(false); }}>放弃修改</Button></>}>
       <p>尚未保存的内容将被丢弃。</p>
     </Modal>

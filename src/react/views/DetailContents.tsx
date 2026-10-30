@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { ArtistText } from "../ui/ArtistText";
-import { LlmBadge } from "../ui/LlmBadge";
+import { DetailPrompt } from "./DetailPrompt";
 import { markArtistRepresentative } from "../state/artist-representatives";
-import { Check, Copy, Filter, FolderOpen, ImageOff, Maximize2, X } from "lucide-react";
+import { Check, Copy, FolderOpen, ImageOff, Maximize2, X } from "lucide-react";
 import { editSelectionTags, type RowRecord } from "../../lib/api";
 import { rowFileName, rowResolution } from "../../lib/utils/row-display";
 import { modelVersionBadge } from "../../lib/utils/model-version";
@@ -15,7 +14,7 @@ import { notify } from "../state/notices";
 import { runTask, useTasks } from "../state/tasks";
 import { recordTagChange, refreshTagChanges } from "../state/history";
 import { assignToGroup } from "../state/groups";
-import { filterByArtists, showRowInExplorer } from "../state/row-actions";
+import { showRowInExplorer } from "../state/row-actions";
 import { beginFileDrag } from "../state/file-drag";
 import { Button, Hint, Input } from "../ui/controls";
 import { FieldEditor } from "../ui/FieldEditor";
@@ -55,15 +54,16 @@ export function DetailContents({ row }: { row: RowRecord }) {
       {image.url && decoded ? <img src={image.url} alt={rowFileName(row) || "图片预览"} draggable={false} onError={() => setDecoded(false)} /> : <span className="rd-preview-empty">{!hasImage ? <><ImageOff size={22} />无图片</> : image.error || !decoded ? <><ImageOff size={22} />图片不可用</> : "正在加载图片…"}</span>}
       <span className="rd-preview-badges">{badge && <span className={`version-badge ${badge.className}`} title={`作画模型：${row.generationModel}`}>{badge.label}</span>}{Boolean(vibeCount) && <span className="vibe-badge" title={`原图元数据包含 ${vibeCount} 个 VIBE 引用，拖到 NovelAI 可一并导入`}>VIBE ×{vibeCount}</span>}</span>{hasImage && <span className="rd-preview-open"><Maximize2 size={13} />查看原图</span>}
     </button>{image.error && <div className="rd-preview-retry"><span>{image.url ? "高清预览加载失败" : "预览加载失败"}</span><Button size="sm" variant="ghost" onClick={image.retry}>重新加载</Button></div>}</div>
+    <DetailPrompt row={row} />
     <FieldEditor row={row} label="备注" field="note" />
     <section><div className="r-section-heading"><h4>画师串代表图</h4><Button size="sm" variant="ghost" disabled={busy || !row.artists?.trim()} onClick={() => void markArtistRepresentative(row, !row.artistRepresentative)}>{row.artistRepresentative ? "取消代表图" : "设为代表图"}</Button></div><p className="r-muted">{row.artistRepresentative ? "已标记：按画师串去重时优先显示这张图片。" : "每组画师串可指定一张，按画师串去重时优先显示。"}</p></section>
     <TagEditor row={row} />
     <section><h4>分组</h4><div className="rd-group">{row.groupName ? <><span title={row.groupName}>{row.groupName}</span><Button variant="ghost" size="sm" disabled={busy} onClick={() => void ungroup()}>取消分组</Button></> : <p className="r-muted">未分组</p>}</div></section>
-    {([["正向提示词", "positivePrompt"], ["角色提示词", "characterPrompt"], ["负向提示词", "negativePrompt"]] as const).map(([label, field]) => <FieldEditor key={field} row={row} label={label} field={field} />)}
+    {([["角色提示词", "characterPrompt"], ["负向提示词", "negativePrompt"]] as const).map(([label, field]) => <FieldEditor key={field} row={row} label={label} field={field} />)}
     <section><h4>生成信息</h4><dl className="r-parameters">{[
       ["模型", row.generationModel], ["采样器", row.generationSampler], ["步数", row.generationSteps], ["种子", row.generationSeed], ["CFG", row.generationScale], ["CFG Rescale", row.generationCfgRescale], ["噪声调度", row.generationNoiseSchedule], ["尺寸", rowResolution(row)], ["时间", row.time],
     ].filter(([, value]) => value !== null && value !== undefined && value !== "").map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>{row.metadataFailed && <p className="rd-metadata-warning">这张图片的生成信息未能完整解析。</p>}</section>
-    {([{ label: "画师串", value: row.artists }, { label: "图片文件夹", value: row.imageFolder }, { label: "图片路径", value: row.imagePath }] as const).map(field => <section key={field.label}><div className="r-section-heading"><h4>{field.label} {field.label === "画师串" && <LlmBadge source={row.artistLlm} />}</h4><div className="r-field-actions">{field.label === "画师串" && field.value && <Hint text="筛选相同画师串"><Button size="icon" variant="ghost" aria-label="筛选相同画师串" onClick={() => filterByArtists(field.value!)}><Filter size={13} /></Button></Hint>}{field.label === "图片路径" && hasImage && <Hint text="在资源管理器中定位"><Button size="icon" variant="ghost" aria-label="在资源管理器中定位" onClick={() => void showRowInExplorer(row)}><FolderOpen size={13} /></Button></Hint>}<Hint text={`复制${field.label}`}><Button size="icon" variant="ghost" disabled={!field.value} aria-label={`复制${field.label}`} onClick={() => void copy(field.label, field.value!)}>{copied === field.label ? <Check size={13} /> : <Copy size={13} />}</Button></Hint></div></div><p className={field.value ? "r-prompt" : "r-muted"}>{field.label === "画师串" && field.value ? <ArtistText text={field.value} /> : field.value || (field.label === "画师串" && row.artistLlm ? "未识别到画风" : "—")}</p></section>)}
+    {([{ label: "图片文件夹", value: row.imageFolder }, { label: "图片路径", value: row.imagePath }] as const).map(field => <section key={field.label}><div className="r-section-heading"><h4>{field.label}</h4><div className="r-field-actions">{field.label === "图片路径" && hasImage && <Hint text="在资源管理器中定位"><Button size="icon" variant="ghost" aria-label="在资源管理器中定位" onClick={() => void showRowInExplorer(row)}><FolderOpen size={13} /></Button></Hint>}<Hint text={`复制${field.label}`}><Button size="icon" variant="ghost" disabled={!field.value} aria-label={`复制${field.label}`} onClick={() => void copy(field.label, field.value!)}>{copied === field.label ? <Check size={13} /> : <Copy size={13} />}</Button></Hint></div></div><p className={field.value ? "r-prompt" : "r-muted"}>{field.value || "—"}</p></section>)}
   </div>{lightbox && <ImageLightbox row={row} onClose={() => setLightbox(false)} />}</>;
 }
 
