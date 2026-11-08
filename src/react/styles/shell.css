@@ -77,6 +77,8 @@
 .r-rail-actions { display: flex; flex-direction: column; gap: 4px; margin-top: auto; padding-top: 10px; border-top: 0; }
 
 /* ---- Page header shared by every view ---- */
+.r-canvas-header { flex: none; }
+.r-canvas-header > .r-page-head { position: relative; }
 .r-page-head {
   display: flex;
   flex: none;

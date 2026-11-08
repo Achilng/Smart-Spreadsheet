@@ -11,6 +11,7 @@ import { libraryFilterLabel } from "../../lib/utils/library-filters";
 import { useGroups } from "../state/groups";
 import { GalleryMotion, galleryTransition } from "../ui/GalleryMotion";
 import { useReducedMotionPreference } from "../ui/use-reduced-motion";
+import { useCanvasHeaderMotion } from "../ui/use-canvas-header-motion";
 
 type Chip = { key: string; label: string; remove: () => void };
 const FilterChip = forwardRef<HTMLSpanElement, { chip: Chip; reducedMotion: boolean }>(function FilterChip({ chip, reducedMotion }, ref) {
@@ -110,11 +111,12 @@ export function CanvasHeader({ filtersOpen, onFilters }: { filtersOpen: boolean;
   const setSize = useWorkspace(state => state.setSize);
   const query = useRows(state => state.query);
   const total = useRows(state => state.total);
+  const { frame, header } = useCanvasHeaderMotion(view);
   const isTable = view === "table";
   if (view !== "gallery" && !isTable) return null;
-  return <><header key={view} className="r-page-head"><h1 className="r-page-title">{viewLabel(view)}<span className="r-page-count">{formatCount(total)} 张符合条件</span></h1><div className="r-page-actions">
+  return <div ref={frame} className="r-canvas-header"><header ref={header} key={view} className="r-page-head"><h1 className="r-page-title">{viewLabel(view)}<span className="r-page-count">{formatCount(total)} 张符合条件</span></h1><div className="r-page-actions">
     <div className="r-size-control"><Grid2X2 size={11} aria-hidden="true" /><Slider aria-label={isTable ? "行高" : "卡片大小"} value={[isTable ? rowHeight : cardSize]} min={isTable ? 40 : 120} max={isTable ? 128 : 400} step={1} onValueChange={values => setSize(values[0])} /><Grid2X2 size={15} aria-hidden="true" /></div>
     <ImageSortMenu value={query.sort} onChange={sort => setQuery({ sort })} />
     <Button className="is-toggle" aria-expanded={filtersOpen} onClick={onFilters}><SlidersHorizontal size={15} />图片筛选</Button>
-  </div></header></>;
+  </div></header></div>;
 }
