@@ -26,7 +26,7 @@ interface MaterialsState {
   cardVersions: Record<number, number>; openCardId: number | null;
   galleryPick: { label: string; onChoose: (id: number) => void } | null;
 }
-const initial: MaterialsState = { search: "", selectedTags: [], untagged: false, tags: [], tagError: "", pages: new Map(), total: 0, loading: false, error: "", revision: 0, selected: null, detailOpen: true, scrollTop: 0, initialized: false, editorOpen: false, editing: null, pendingPaths: [], editorKey: 0, pendingDelete: null, deleteError: "", deleting: false, cardVersions: {}, openCardId: null, galleryPick: null };
+const initial: MaterialsState = { search: "", selectedTags: [], untagged: false, tags: [], tagError: "", pages: new Map(), total: 0, loading: false, error: "", revision: 0, selected: null, detailOpen: false, scrollTop: 0, initialized: false, editorOpen: false, editing: null, pendingPaths: [], editorKey: 0, pendingDelete: null, deleteError: "", deleting: false, cardVersions: {}, openCardId: null, galleryPick: null };
 export const useMaterials = create<MaterialsState>(() => initial);
 // Leaving the gallery cancels only the pick; the mounted editor keeps its draft.
 useWorkspace.subscribe((state, previous) => {
