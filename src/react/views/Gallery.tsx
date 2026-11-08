@@ -54,8 +54,8 @@ function FavoriteButton({ row }: { row: RowRecord }) {
 
 // Geometry changes every animation frame. Keep the interactive card subtree
 // stable while its lightweight outer frame follows the available gallery width.
-const GalleryCardContent = memo(function GalleryCardContent({ row, index, checked, active, pickingMaterial, tags, layoutKey }: {
-  row: RowRecord; index: number; checked: boolean; active: boolean; pickingMaterial: boolean; tags: TagSummary[]; layoutKey: string;
+const GalleryCardContent = memo(function GalleryCardContent({ row, index, checked, active, pickingMaterial, tags, layoutKey, animateLayout }: {
+  row: RowRecord; index: number; checked: boolean; active: boolean; pickingMaterial: boolean; tags: TagSummary[]; layoutKey: string; animateLayout: boolean;
 }) {
   const dragged = useRef(false);
   const badge = modelVersionBadge(row.generationModel);
@@ -72,31 +72,31 @@ const GalleryCardContent = memo(function GalleryCardContent({ row, index, checke
         const tone = tagColorFor(tag, tags); return <span key={tag} style={{ background: tone.background, color: tone.text }}>{tag}</span>;
       })}{row.tags.length > 2 && <span className="r-tag-more">+{row.tags.length - 2}</span>}</span>}
     </button>
-    <motion.div layout="position" layoutDependency={layoutKey} className="r-card-meta"><div title={rowFileName(row) ?? undefined}>{row.artistRepresentative && <span className="r-representative-label">代表图 · </span>}{rowFileName(row) ?? `#${row.sourceOrdinal}`}</div><small><span>{rowResolution(row) ?? `#${row.sourceOrdinal}`}</span>{(badge || !!row.vibeReferenceCount) && <span className="r-card-badges">{badge && <span className={`version-badge ${badge.className}`} title={`作画模型：${row.generationModel}`}>{badge.label}</span>}{!!row.vibeReferenceCount && <span className="vibe-badge" title={`包含 ${row.vibeReferenceCount} 个 VIBE 引用`}>VIBE ×{row.vibeReferenceCount}</span>}</span>}</small></motion.div>
+    <motion.div layout={animateLayout ? "position" : false} layoutDependency={layoutKey} className="r-card-meta"><div title={rowFileName(row) ?? undefined}>{row.artistRepresentative && <span className="r-representative-label">代表图 · </span>}{rowFileName(row) ?? `#${row.sourceOrdinal}`}</div><small><span>{rowResolution(row) ?? `#${row.sourceOrdinal}`}</span>{(badge || !!row.vibeReferenceCount) && <span className="r-card-badges">{badge && <span className={`version-badge ${badge.className}`} title={`作画模型：${row.generationModel}`}>{badge.label}</span>}{!!row.vibeReferenceCount && <span className="vibe-badge" title={`包含 ${row.vibeReferenceCount} 个 VIBE 引用`}>VIBE ×{row.vibeReferenceCount}</span>}</span>}</small></motion.div>
   </div></RowContextMenu>;
 });
 
-const GalleryCard = memo(function GalleryCard({ row, index, layout, reducedMotion, pickingMaterial, selecting, tags }: {
+const GalleryCard = memo(function GalleryCard({ row, index, layout, reducedMotion, pickingMaterial, selecting, tags, animateLayout }: {
   row: RowRecord; index: number; layout: ReturnType<typeof galleryLayout>; reducedMotion: boolean;
-  pickingMaterial: boolean; selecting: boolean; tags: TagSummary[];
+  pickingMaterial: boolean; selecting: boolean; tags: TagSummary[]; animateLayout: boolean;
 }) {
   const checked = useSelection(state => !pickingMaterial && isSelected(row.id, state));
   const active = useRows(state => state.activeRow?.id === row.id);
   const position = galleryCellPosition(index, layout);
   const style = { left: position.x, top: position.y, width: layout.cardWidth, "--image-height": `${layout.imageHeight}px` } as CSSProperties;
   const layoutKey = `${layout.columns}:${index}:${reducedMotion}`;
-  return <GalleryLayoutItem layoutDependency={layoutKey} role="listitem" className="r-card" data-active={active} data-checked={checked} data-selecting={selecting} style={style}>
-    <GalleryCardContent row={row} index={index} checked={checked} active={active} pickingMaterial={pickingMaterial} tags={tags} layoutKey={layoutKey} />
+  return <GalleryLayoutItem layout={animateLayout} layoutDependency={layoutKey} role="listitem" className="r-card" data-active={active} data-checked={checked} data-selecting={selecting} style={style}>
+    <GalleryCardContent row={row} index={index} checked={checked} active={active} pickingMaterial={pickingMaterial} tags={tags} layoutKey={layoutKey} animateLayout={animateLayout} />
   </GalleryLayoutItem>;
 });
 
 export function Gallery() {
   const reducedMotion = useReducedMotionPreference();
   const pickingMaterial = useMaterials(state => !!state.galleryPick);
-  const { viewport, size, onScroll } = useViewport("gallery");
   const cardSize = useWorkspace(state => state.galleryCardSize);
   const pages = useRows(state => state.pages);
   const total = useRows(state => state.total);
+  const { viewport, size, onScroll } = useViewport("gallery", { cardSize, total });
   const loading = useRows(state => state.loading);
   const refreshing = useRows(state => state.refreshing);
   const error = useRows(state => state.error);
@@ -106,6 +106,11 @@ export function Gallery() {
   const indices = galleryVisibleIndices(layout, size.top, size.height, total);
   const pageKey = [...new Set(indices.map(index => Math.floor(index / PAGE_SIZE)))].join(",");
   const selectionActive = !pickingMaterial && hasSelection;
+  // While scrolled, the viewport anchors the pictures as geometry changes.
+  // Motion's document-coordinate projection would animate that scroll correction
+  // a second time, briefly sending deep-library cards far outside the viewport.
+  // The panel still animates its width; cards follow its geometry directly.
+  const animateLayout = size.top === 0;
   const first = indices[0] ?? 0;
   const last = indices[indices.length - 1] ?? -1;
   useLayoutEffect(() => { if (!loading && !refreshing && last >= first) rememberVisibleRange("gallery", first, last); }, [first, last, loading, refreshing]);
@@ -125,7 +130,7 @@ export function Gallery() {
         const position = galleryCellPosition(index, layout);
         const style = { left: position.x, top: position.y, width: layout.cardWidth, "--image-height": `${layout.imageHeight}px` } as CSSProperties;
         if (!row) return <div key={`placeholder-${index}`} className="r-card r-card-skeleton" style={style}><div className="r-thumb r-image-placeholder" /></div>;
-        return <GalleryCard key={row.id} row={row} index={index} layout={layout} reducedMotion={reducedMotion} pickingMaterial={pickingMaterial} selecting={selectionActive} tags={tags} />;
+        return <GalleryCard key={row.id} row={row} index={index} layout={layout} reducedMotion={reducedMotion} pickingMaterial={pickingMaterial} selecting={selectionActive} tags={tags} animateLayout={animateLayout} />;
       })}</div>}
     {error && total > 0 && <div className="r-inline-error" role="alert"><span>{error}</span><Button size="sm" onClick={() => void reloadRows()}>重试</Button></div>}
   </motion.div></GalleryMotion>;
