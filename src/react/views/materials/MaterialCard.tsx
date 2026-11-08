@@ -1,10 +1,12 @@
 import { memo, useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { Check, Eye, Images, Layers, X } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
 import type { Material } from "../../../lib/api/materials";
 import { materialAlbum } from "../../../lib/utils/material-album";
 import { copyMaterial, materialCardVersionImages, materialThumbnails, useMaterials } from "../../state/materials";
 import { AlbumStack } from "../../ui/AlbumStack";
 import { Hint } from "../../ui/controls";
+import { useReducedMotionPreference } from "../../ui/use-reduced-motion";
 import { notify } from "../../state/notices";
 import { MaterialImage } from "./MaterialImage";
 import "./material-card.css";
@@ -15,6 +17,7 @@ export const MaterialCard = memo(function MaterialCard({ material, active, open 
   const root = useRef<HTMLElement>(null), hit = useRef<HTMLButtonElement>(null), panel = useRef<HTMLDivElement>(null);
   const [query, setQuery] = useState("");
   const [copied, setCopied] = useState(false);
+  const reducedMotion = useReducedMotionPreference();
   const copyTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const copyRequest = useRef(0);
   const panelId = useId();
@@ -70,7 +73,13 @@ export const MaterialCard = memo(function MaterialCard({ material, active, open 
       <span className="r-album-title">{material.title}</span><span className="rm-album-tags" title={material.tags.join(" · ")}>{material.tags.join(" · ") || "无 Tag"}</span>
     </button>
     <div className="rm-album-meta"><span><Images size={14} />{images.length} 张图片</span><button type="button" aria-expanded={open} aria-controls={panelId} aria-label={`选择 ${material.title} 的版本`} onClick={toggle}><Layers size={14} />{versions.length} 个版本</button><Hint text="查看详情"><button type="button" className="rm-card-details" aria-label={`查看 ${material.title} 的详情`} onClick={() => useMaterials.setState({ selected: material, detailOpen: true, openCardId: null })}><Eye size={14} aria-hidden="true" /></button></Hint></div>
-    {copied && <span className="rm-copy-feedback" role="status"><Check size={14} aria-hidden="true" />已复制</span>}
+    <AnimatePresence>{copied && <motion.span className="rm-copy-feedback" role="status"
+      style={{ x: "-50%" }}
+      initial={{ opacity: 0, y: reducedMotion ? 0 : 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: reducedMotion ? 0 : 8, transition: { duration: 0.16, ease: "easeIn" } }}
+      transition={{ duration: reducedMotion ? 0.12 : 0.22, ease: [0.16, 1, 0.3, 1] }}
+    ><Check size={14} aria-hidden="true" />已复制</motion.span>}</AnimatePresence>
     {open && <div ref={panel} id={panelId} className="rm-look-panel" onKeyDown={navigate}>
       <header><strong>切换并复制</strong><button type="button" aria-label="收起版本" onClick={() => close(true)}><X size={16} /></button></header>
       {versions.length > 8 && <input className="rm-look-search" aria-label="搜索版本" placeholder="搜索版本…" value={query} onChange={event => setQuery(event.target.value)} onKeyDown={event => { if (event.key === "Enter") panel.current?.querySelector<HTMLButtonElement>(".rm-look-option")?.click(); }} />}

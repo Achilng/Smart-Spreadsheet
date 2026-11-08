@@ -20,7 +20,7 @@
 }
 .rm-album-meta > button:hover, .rm-album-meta > button[aria-expanded="true"] { border-color: var(--accent-soft-border); background: var(--accent-soft); color: var(--text); }
 .rm-album-meta > .rm-card-details { flex: none; justify-content: center; width: 26px; padding: 0; }
-.rm-copy-feedback { position: absolute; top: calc(var(--album-stage-height) - 36px); left: 50%; z-index: 4; display: flex; align-items: center; gap: 5px; padding: 4px 9px; border-radius: var(--radius-full); background: var(--surface); color: var(--text); box-shadow: var(--elev-2); font-size: var(--font-xs); white-space: nowrap; transform: translateX(-50%); pointer-events: none; }
+.rm-copy-feedback { position: absolute; top: calc(var(--album-stage-height) - 36px); left: 50%; z-index: 4; display: flex; align-items: center; gap: 5px; padding: 4px 9px; border-radius: var(--radius-full); background: var(--surface); color: var(--text); box-shadow: var(--elev-2); font-size: var(--font-xs); white-space: nowrap; pointer-events: none; }
 
 .rm-look-panel {
   position: absolute;
