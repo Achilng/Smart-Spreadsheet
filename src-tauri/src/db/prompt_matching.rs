@@ -57,7 +57,7 @@ pub fn rules_key(tags: &[String]) -> String {
     tags.sort();
     tags.dedup();
     prompt_hash(&format!(
-        "llm-match-v2:{}",
+        "llm-match-v3:{}",
         serde_json::to_string(&tags).unwrap()
     ))
 }
@@ -68,6 +68,7 @@ struct Node {
 }
 enum Body {
     Tag,
+    Literal,
     Group {
         open: Range<usize>,
         children: Vec<Node>,
@@ -175,6 +176,51 @@ impl Parser<'_> {
     }
 }
 
+/// Recover at explicit, unescaped tag separators when the whole expression is
+/// invalid. Only independently valid fragments may lose whitelist tags; broken
+/// wrappers remain opaque so their weights are never silently repaired/dropped.
+fn parse(text: &str) -> (Vec<Node>, bool) {
+    if let Some(nodes) = (Parser { text, pos: 0 }).sequence("", 0) {
+        return (nodes, false);
+    }
+    let mut nodes = Vec::new();
+    let mut start = 0;
+    let mut escaped = false;
+    let mut boundaries = Vec::new();
+    for (index, ch) in text.char_indices() {
+        if escaped {
+            escaped = false;
+        } else if ch == '\\' {
+            escaped = true;
+        } else if matches!(ch, ',' | '\n' | '\r') {
+            boundaries.push((index, index + ch.len_utf8()));
+        }
+    }
+    boundaries.push((text.len(), text.len()));
+    for (end, next) in boundaries {
+        let raw = &text[start..end];
+        let trimmed = raw.trim();
+        if !trimmed.is_empty() {
+            let begin = start + raw.len() - raw.trim_start().len();
+            let finish = begin + trimmed.len();
+            let mut parser = Parser {
+                text: &text[..finish],
+                pos: begin,
+            };
+            if let Some(fragment) = parser.sequence("", 0) {
+                nodes.extend(fragment);
+            } else {
+                nodes.push(Node {
+                    range: begin..finish,
+                    body: Body::Literal,
+                });
+            }
+        }
+        start = next;
+    }
+    (nodes, true)
+}
+
 #[derive(Default)]
 struct Mapped {
     text: String,
@@ -219,6 +265,12 @@ fn render(text: &str, nodes: &[Node], ignored: &HashSet<String>) -> Mapped {
     for node in nodes {
         let mut part = Mapped::default();
         match &node.body {
+            Body::Literal => {
+                for (index, ch) in text[node.range.clone()].char_indices() {
+                    let start = node.range.start + index;
+                    part.push(ch, start..start + ch.len_utf8());
+                }
+            }
             Body::Tag => {
                 if !ignored.contains(&clean_tag(&text[node.range.clone()])) {
                     part.raw(text, node.range.clone());
@@ -254,27 +306,18 @@ fn render(text: &str, nodes: &[Node], ignored: &HashSet<String>) -> Mapped {
     result
 }
 fn mapped(text: &str, ignored: &[String]) -> Mapped {
-    let mut parser = Parser { text, pos: 0 };
-    if let Some(nodes) = parser.sequence("", 0) {
-        render(
-            text,
-            &nodes,
-            &ignored.iter().map(|s| clean_tag(s)).collect(),
-        )
-    } else {
-        let mut result = Mapped {
-            literal: true,
-            ..Default::default()
-        };
-        for (index, ch) in text.char_indices() {
-            result.push(ch, index..index + ch.len_utf8());
-        }
-        result
-    }
+    let (nodes, literal) = parse(text);
+    let mut result = render(
+        text,
+        &nodes,
+        &ignored.iter().map(|s| clean_tag(s)).collect(),
+    );
+    result.literal = literal;
+    result
 }
 pub fn key(prompt: &str, ignored: &[String]) -> String {
     let result = mapped(prompt, ignored);
-    prompt_hash(&format!("llm-match-v2:{}:{}", result.literal, result.text))
+    prompt_hash(&format!("llm-match-v3:{}:{}", result.literal, result.text))
 }
 
 /// Readable identity for artist grouping. No remaining content means no comparable style.
@@ -335,7 +378,7 @@ pub struct ArtistHighlightSegment {
 }
 
 /// Preserve every original character, marking only tags the shared parser ignores.
-/// Malformed weights use literal comparison, so none of their tags are highlighted.
+/// Malformed fragments stay literal without disabling unrelated valid tags.
 pub fn artist_highlight_segments(text: &str, ignored: &[String]) -> Vec<ArtistHighlightSegment> {
     fn collect(
         text: &str,
@@ -354,20 +397,18 @@ pub fn artist_highlight_segments(text: &str, ignored: &[String]) -> Vec<ArtistHi
                     }
                 }
                 Body::Group { children, .. } => collect(text, children, ignored, ranges),
-                Body::Tag => {}
+                Body::Tag | Body::Literal => {}
             }
         }
     }
     let mut ranges = Vec::new();
-    let mut parser = Parser { text, pos: 0 };
-    if let Some(nodes) = parser.sequence("", 0) {
-        collect(
-            text,
-            &nodes,
-            &ignored.iter().map(|tag| clean_tag(tag)).collect(),
-            &mut ranges,
-        );
-    }
+    let (nodes, _) = parse(text);
+    collect(
+        text,
+        &nodes,
+        &ignored.iter().map(|tag| clean_tag(tag)).collect(),
+        &mut ranges,
+    );
     let mut segments = Vec::new();
     let mut cursor = 0;
     for range in ranges {
