@@ -1,5 +1,11 @@
 # 项目计划
 
+## v_48 发布（2026-11-13）
+
+- 应用版本统一递增至 `0.12.25`，发布标签 `v_48`；整合 v_47 之后的画师串异常权重匹配修复、画廊浏览位置保持与重排动画、标题操作栏换行过渡、素材选中 / 复制 / 详情分离及复制提示动画。面向用户的入口与用法见 `.github/release-notes/v_48.md`。
+- 按用户要求仅在本机构建：使用现有发布脚本与签名密钥生成 Windows x64 安装包、更新签名和 `latest.json`，发布提交带 `[skip ci]`，避免标签推送触发云端构建。前端既有检查 45 项通过，后端 316 项通过 / 3 项原有忽略。
+- 本轮文件：`package.json`、`package-lock.json`、`Cargo.lock`、`src-tauri/Cargo.toml`、`src-tauri/tauri.conf.json`、`.github/release-notes/v_48.md` 和本文件。产物位于 `target/`、`dist/`，构建日志位于 `D:/Agent/Agent_temp/smart-spreadsheet-release-v48/`。保留原有 `AGENTS.md` 修改及三个文档删除，不纳入发布提交；未更新本机安装版。
+
 ## 本机安装版更新画师匹配修复（2026-11-11）
 
 - 按用户要求，将提交 `99d4ee8965eaf7a92230202e2aa6dab8731637ad` 构建并安装到 `D:/应用/智能表格/smart-spreadsheet.exe`，包含异常权重下的白名单高亮、同画风归类及末尾空白导致自身筛选为空的修复。版本号保持 `0.12.24`，仅更新本机，未发布 Release。
