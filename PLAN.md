@@ -4,6 +4,7 @@
 
 - 应用版本统一递增至 `0.12.25`，发布标签 `v_48`；整合 v_47 之后的画师串异常权重匹配修复、画廊浏览位置保持与重排动画、标题操作栏换行过渡、素材选中 / 复制 / 详情分离及复制提示动画。面向用户的入口与用法见 `.github/release-notes/v_48.md`。
 - 按用户要求仅在本机构建：使用现有发布脚本与签名密钥生成 Windows x64 安装包、更新签名和 `latest.json`，发布提交带 `[skip ci]`，避免标签推送触发云端构建。前端既有检查 45 项通过，后端 316 项通过 / 3 项原有忽略。
+- 已发布并设为最新版本：[v_48](https://github.com/Achilng/Smart-Spreadsheet/releases/tag/v_48)，发布源码 `ba9c800`，未触发云端构建。三个远端附件的大小与 SHA-256 均与本地一致，`releases/latest/download/latest.json` 返回 `0.12.25`。安装包 SHA-256：`38A1C94A4C00E534B014BEEC5B5E457933473E329640D16D8440C297974472E1`。
 - 本轮文件：`package.json`、`package-lock.json`、`Cargo.lock`、`src-tauri/Cargo.toml`、`src-tauri/tauri.conf.json`、`.github/release-notes/v_48.md` 和本文件。产物位于 `target/`、`dist/`，构建日志位于 `D:/Agent/Agent_temp/smart-spreadsheet-release-v48/`。保留原有 `AGENTS.md` 修改及三个文档删除，不纳入发布提交；未更新本机安装版。
 
 ## 本机安装版更新画师匹配修复（2026-11-11）
