@@ -4,7 +4,7 @@ param(
     [ValidatePattern('^v_\d+$')]
     [string]$ReleaseTag,
 
-    [string]$PrivateKeyPath = 'D:\Agent\Smart-Spreadsheet-Secrets\smart-spreadsheet-updater.key',
+    [string]$PrivateKeyPath = (Join-Path $HOME '.tauri\smart-spreadsheet-updater.key'),
 
     [string]$NotesPath,
 
