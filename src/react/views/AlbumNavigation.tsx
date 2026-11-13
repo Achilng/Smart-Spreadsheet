@@ -1,5 +1,5 @@
 import { forwardRef, type ComponentProps, type ReactNode } from "react";
-import { Bookmark, Copy, FileText, Folders, FolderInput, Images, Share, Table2, Wrench } from "lucide-react";
+import { Bookmark, Copy, FileText, Folders, FolderInput, Images, MessagesSquare, Share, Table2, Wrench } from "lucide-react";
 import { useWorkspace } from "../state/workspace";
 import { useLibrary } from "../state/library";
 import { useTasks } from "../state/tasks";
@@ -7,6 +7,7 @@ import { useSelection } from "../state/selection";
 import { buildExportItems, exportScopeLabel } from "../state/export-actions";
 import { chooseImageArchive, chooseImageFolder, updateAutoArtistPrefixOnImport } from "../state/import-actions";
 import { openToolboxWindow } from "../../lib/windows/toolbox";
+import { openAgentWindow } from "../../lib/api/agent";
 import { notify } from "../state/notices";
 import { errorText } from "../../lib/utils/format";
 import { Menu } from "../ui/controls";
@@ -35,6 +36,7 @@ export function AlbumNavigation({ onUpdateImport }: { onUpdateImport: () => void
         { label: "更新现有图片", hint: "只更新，不新增；保留 Tag / 分组", separator: true, action: onUpdateImport },
       ]} />
       <Menu direction="right" disabled={!total || busy} heading={`导出范围：${exportScopeLabel()}`} trigger={<RailButton disabled={!total || busy} icon={<Share size={20} />} label="导出" />} items={buildExportItems()} />
+      <RailButton disabled={!total} icon={<MessagesSquare size={20} />} label="助手" title="整理助手：用对话的方式批量整理图片" onClick={() => void openAgentWindow().catch(error => notify(`无法打开整理助手：${errorText(error)}`, "error"))} />
       <RailButton icon={<Wrench size={20} />} label="工具箱" onClick={() => void openToolboxWindow().catch(error => notify(`无法打开工具箱：${errorText(error)}`, "error"))} />
     </div>
   </nav>;

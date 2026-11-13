@@ -8,6 +8,7 @@ export type MainStateChange = "migrated" | "reset" | "libraryEdited";
  */
 export function notifyCompareLibraryReset(): void {
   void emitTo("compare", "main://library-reset").catch(() => {});
+  void emitTo("agent", "main://library-reset").catch(() => {});
 }
 
 export async function notifyMainStateChanged(kind: MainStateChange): Promise<void> {

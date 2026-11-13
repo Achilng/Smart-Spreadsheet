@@ -12,6 +12,7 @@ async function start(): Promise<void> {
   const { ArtistHighlightEvents } = await import("./ui/ArtistText");
   const App = windowType === "compare" ? (await import("./views/compare/CompareWindow")).CompareWindow
     : windowType === "toolbox" ? (await import("./views/tools/ToolboxWindow")).ToolboxWindow
+    : windowType === "agent" ? (await import("./views/agent/AgentWindow")).AgentWindow
     : (await import("./App")).App;
   const root = document.getElementById("app");
   if (!root) throw new Error("Missing #app root element");

@@ -23,6 +23,7 @@ import { requestDelete } from "../state/row-actions";
 import { revealRow } from "../state/reveal-row";
 import { syncGroups } from "../state/groups";
 import { syncDuplicates } from "../state/duplicates";
+import { installAgentBridge } from "./agent-bridge";
 
 
 export function useWorkspaceLifecycle(): void {
@@ -63,6 +64,7 @@ export function useWorkspaceLifecycle(): void {
     retain(listen("llm://library-changed", () => { llmDirty = true; if (!llmTimer && !llmRefreshing) llmTimer = setTimeout(() => void refreshLlm(), 1200); }));
     cleanups.push(() => clearTimeout(llmTimer));
     cleanups.push(listenDragDrop());
+    cleanups.push(installAgentBridge());
     const syncSections = () => { const snapshot = useLibrary.getState().snapshot; if (snapshot?.dataDirectory && !snapshot.startupError) { void syncGroups(); syncDuplicates(); } };
     cleanups.push(useRows.subscribe((next, previous) => { if (next.resetToken !== previous.resetToken) syncSections(); }));
     cleanups.push(useLibrary.subscribe((next, previous) => { if (next.snapshot?.dataDirectory !== previous.snapshot?.dataDirectory) syncSections(); }));
