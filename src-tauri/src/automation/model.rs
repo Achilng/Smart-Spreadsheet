@@ -170,7 +170,7 @@ pub enum RuleCondition {
         scope: PromptScope,
         operator: PromptOperator,
         value: String,
-        #[serde(default)]
+        #[serde(default, rename = "caseSensitive", alias = "case_sensitive")]
         case_sensitive: bool,
     },
     Tag {
@@ -180,6 +180,7 @@ pub enum RuleCondition {
     },
     Group {
         operator: GroupOperator,
+        #[serde(rename = "groupId", alias = "group_id")]
         group_id: Option<i64>,
     },
     Artist {
@@ -191,20 +192,21 @@ pub enum RuleCondition {
         operator: NoteOperator,
         #[serde(default)]
         value: String,
-        #[serde(default)]
+        #[serde(default, rename = "caseSensitive", alias = "case_sensitive")]
         case_sensitive: bool,
     },
     FileText {
         field: FileTextField,
         operator: TextOperator,
         value: String,
-        #[serde(default)]
+        #[serde(default, rename = "caseSensitive", alias = "case_sensitive")]
         case_sensitive: bool,
     },
     FileSize {
         comparison: NumericComparison,
     },
     SourceType {
+        #[serde(rename = "sourceType", alias = "source_type")]
         source_type: RuleSourceType,
         #[serde(default)]
         negate: bool,
@@ -229,7 +231,7 @@ pub enum RuleCondition {
         field: GenerationTextField,
         operator: TextOperator,
         value: String,
-        #[serde(default)]
+        #[serde(default, rename = "caseSensitive", alias = "case_sensitive")]
         case_sensitive: bool,
     },
     GenerationNumber {
@@ -256,8 +258,9 @@ pub enum RuleAction {
         tags: Vec<String>,
     },
     SetGroup {
+        #[serde(rename = "groupId", alias = "group_id")]
         group_id: i64,
-        #[serde(default)]
+        #[serde(default, rename = "onlyIfUngrouped", alias = "only_if_ungrouped")]
         only_if_ungrouped: bool,
     },
     ClearGroup,
@@ -273,7 +276,7 @@ pub enum RuleAction {
         field: PromptActionField,
         find: String,
         replace: String,
-        #[serde(default = "default_true")]
+        #[serde(default = "default_true", rename = "caseSensitive", alias = "case_sensitive")]
         case_sensitive: bool,
     },
     /// Replacement text may reference capture groups as `$1` or `${name}`.
@@ -282,7 +285,7 @@ pub enum RuleAction {
         pattern: String,
         #[serde(default)]
         replace: String,
-        #[serde(default = "default_true")]
+        #[serde(default = "default_true", rename = "caseSensitive", alias = "case_sensitive")]
         case_sensitive: bool,
     },
     PrefixArtist {
