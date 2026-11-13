@@ -14,6 +14,7 @@ use crate::automation::text::{normalized_strings, parse_prompt_tokens, prompt_to
 use crate::automation::validation::validate_action;
 use crate::db::Database;
 use crate::db::automation_rules::execution::seed_note_sequence_counters;
+use crate::pipeline::prompt_text::combined_artists;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
@@ -251,6 +252,7 @@ impl Database {
                     (_, None) => {}
                 }
             }
+            updated.artists = settled_artists(row, &updated, resolved.llm_artists(row.id).is_some());
             let mut change = RowChange {
                 id: row.id,
                 text: Vec::new(),
@@ -443,6 +445,34 @@ pub(crate) fn analyze_matches(
             "text": text, "count": count, "sampleRowId": row_id, "context": context
         })).collect::<Vec<_>>(),
     })
+}
+
+/// Stored artist strings drive grouping, so a prompt edit must not regroup an image unless
+/// it really changes the artist part. AI-extracted strings are never re-derived by rules.
+fn settled_artists(before: &RuleRow, after: &RuleRow, ai_extracted: bool) -> Option<String> {
+    let derive = |row: &RuleRow| {
+        combined_artists(row.positive_prompt.as_deref().unwrap_or(""), row.character_prompt.as_deref())
+    };
+    if ai_extracted {
+        return before.artists.clone();
+    }
+    let derived = derive(after);
+    if derive(before) == derived { before.artists.clone() } else { derived }
+}
+
+/// Rows whose AI-extracted artist string no longer appears in the edited positive prompt.
+pub(crate) fn stale_ai_artists(resolved: &Resolved, changes: &[RowChange]) -> usize {
+    changes
+        .iter()
+        .filter(|change| {
+            let Some(artists) = resolved.llm_artists(change.id) else { return false };
+            change
+                .text
+                .iter()
+                .find(|item| item.field == "positive")
+                .is_some_and(|item| !item.after.as_deref().unwrap_or("").contains(artists))
+        })
+        .count()
 }
 
 pub(crate) fn action_regex(action: &Action) -> Option<(Res<Regex>, PromptActionField)> {

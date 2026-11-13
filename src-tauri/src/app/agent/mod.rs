@@ -176,32 +176,66 @@ fn build_input(messages: &[crate::db::agent::Message]) -> Vec<Value> {
     let result_count = messages.iter().filter(|message| message.kind == "tool_result").count();
     let mut seen_results = 0;
     let mut input = Vec::new();
-    for message in messages {
+    let tool_output = |content: &Value, seen_results: &mut usize| {
+        *seen_results += 1;
+        let mut output = content["output"].as_str().unwrap_or_default().to_owned();
+        if *seen_results + RECENT_FULL_OUTPUTS <= result_count && output.chars().count() > OLD_OUTPUT_LIMIT {
+            output = output.chars().take(OLD_OUTPUT_LIMIT).collect::<String>() + "…（较早的结果已截断，需要时请重新查询）";
+        }
+        json!({"type": "function_call_output", "call_id": content["callId"], "output": output})
+    };
+    let mut index = 0;
+    while index < messages.len() {
+        let message = &messages[index];
         let content = &message.content;
+        index += 1;
         match message.kind.as_str() {
             "user" => input.push(json!({"role": "user", "content": content["text"]})),
-            "assistant" => input.push(json!({"role": "assistant", "content": content["text"]})),
+            "assistant" => {
+                input.extend(content["reasoning"].as_array().into_iter().flatten().cloned());
+                input.push(json!({"role": "assistant", "content": content["text"]}));
+            }
             "tool_call" => {
-                let call_id = content["callId"].as_str().unwrap_or_default();
-                input.push(json!({
-                    "type": "function_call",
-                    "call_id": call_id,
-                    "name": content["name"],
-                    "arguments": content["arguments"],
-                }));
-                if !answered.contains(call_id) {
-                    input.push(json!({"type": "function_call_output", "call_id": call_id,
-                        "output": "已被用户中断，未执行"}));
+                // Calls returned in one model response are replayed together, then their results;
+                // providers that convert to chat messages need them in a single assistant turn.
+                let mut batch = vec![message];
+                let mut results = Vec::new();
+                if let Some(turn) = content["turn"].as_str() {
+                    while let Some(next) = messages.get(index) {
+                        let same_turn = match next.kind.as_str() {
+                            "tool_call" => next.content["turn"].as_str() == Some(turn),
+                            "tool_result" => batch.iter().any(|call| call.content["callId"] == next.content["callId"]),
+                            _ => false,
+                        };
+                        if !same_turn {
+                            break;
+                        }
+                        if next.kind == "tool_call" { batch.push(next) } else { results.push(next) }
+                        index += 1;
+                    }
+                }
+                for call in &batch {
+                    input.extend(call.content["reasoning"].as_array().into_iter().flatten().cloned());
+                }
+                for call in &batch {
+                    input.push(json!({
+                        "type": "function_call",
+                        "call_id": call.content["callId"],
+                        "name": call.content["name"],
+                        "arguments": call.content["arguments"],
+                    }));
+                }
+                for call in &batch {
+                    let call_id = call.content["callId"].as_str().unwrap_or_default();
+                    if let Some(result) = results.iter().find(|result| result.content["callId"] == call.content["callId"]) {
+                        input.push(tool_output(&result.content, &mut seen_results));
+                    } else if !answered.contains(call_id) {
+                        input.push(json!({"type": "function_call_output", "call_id": call_id,
+                            "output": "已被用户中断，未执行"}));
+                    }
                 }
             }
-            "tool_result" => {
-                seen_results += 1;
-                let mut output = content["output"].as_str().unwrap_or_default().to_owned();
-                if seen_results + RECENT_FULL_OUTPUTS <= result_count && output.chars().count() > OLD_OUTPUT_LIMIT {
-                    output = output.chars().take(OLD_OUTPUT_LIMIT).collect::<String>() + "…（较早的结果已截断，需要时请重新查询）";
-                }
-                input.push(json!({"type": "function_call_output", "call_id": content["callId"], "output": output}));
-            }
+            "tool_result" => input.push(tool_output(content, &mut seen_results)),
             "error" => {
                 if content["stopped"].as_bool() == Some(true) {
                     input.push(json!({"role": "user", "content": "（我中途停止了上一轮回复）"}));
@@ -256,12 +290,19 @@ async fn run_loop(app: &AppHandle, conversation_id: &str, cancel: Arc<AtomicBool
             responses::Delta::Reasoning(text) => emit(app, conversation_id, "reasoning-delta", json!({"delta": text})),
         })
         .await?;
+        // Reasoning precedes this turn's output, so it rides on the first stored message.
+        let mut reasoning = (!outcome.reasoning.is_empty()).then(|| Value::Array(outcome.reasoning));
         if !outcome.text.trim().is_empty() {
-            push(app, conversation_id, "assistant", json!({"text": outcome.text}))?;
+            let mut content = json!({"text": outcome.text});
+            if let Some(items) = reasoning.take() {
+                content["reasoning"] = items;
+            }
+            push(app, conversation_id, "assistant", content)?;
         }
         if outcome.calls.is_empty() {
             return Ok(());
         }
+        let turn = outcome.calls.first().map(|call| call.call_id.clone()).unwrap_or_default();
         for call in outcome.calls {
             if cancel.load(Ordering::SeqCst) {
                 return Err("已停止".into());
@@ -269,9 +310,13 @@ async fn run_loop(app: &AppHandle, conversation_id: &str, cancel: Arc<AtomicBool
             if runtime.agent_library_id()? != library {
                 return Err("资料库已切换，这轮对话已停止".into());
             }
-            push(app, conversation_id, "tool_call", json!({
-                "callId": call.call_id, "name": call.name, "arguments": call.arguments,
-            }))?;
+            let mut content = json!({
+                "callId": call.call_id, "name": call.name, "arguments": call.arguments, "turn": turn,
+            });
+            if let Some(items) = reasoning.take() {
+                content["reasoning"] = items;
+            }
+            push(app, conversation_id, "tool_call", content)?;
             emit(app, conversation_id, "tool-start", json!({"name": call.name}));
             let arguments = serde_json::from_str::<Value>(&call.arguments).unwrap_or_else(|_| json!({}));
             let app_handle = app.clone();

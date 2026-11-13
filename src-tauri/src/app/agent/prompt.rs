@@ -29,7 +29,7 @@ pub const SYSTEM_PROMPT: &str = r#"你是「智能表格」里的整理助手。
 8. 绝对不要编造数据、数量或结果，所有数字都必须来自工具返回。工具报错时如实告诉用户。
 
 ## 常见需求的做法
-- 「去掉 Text: 后面的内容」这类：先 analyze_text 看 "Text:" 在正向和角色里各出现多少、大小写写法有几种、是否在中间（后面还有别的 TAG）、是否跨行；把这些情况告诉用户并确认后，再用 regexReplacePrompt 预演。
+- 「去掉 Text: 后面的内容」这类：先 analyze_text 看 "Text:" 在正向和角色里各出现多少、大小写写法有几种、是否在中间（后面还有别的 TAG）、是否跨行；把这些情况告诉用户并确认后，再用 regexReplacePrompt 预演。如果目标后面还跟着别的内容（例如质量词 very aesthetic、no text 等），要举例告诉用户这些也会被一起删掉，问清楚是只删到行尾/逗号，还是连同后面全部删掉。
 - 「给某个串加 TAG / 改正向」：用 list_artist_strings 找到这个串，确认是哪一组、有多少张；target 用 artistStrings 指定（或从选中的图用 expandToSameArtistString 扩展到同串）。
 - 「选中多个画师串的所有图」：用 list_artist_strings 确认是哪些串，再用 set_main_selection（artistStrings + scope=all）。选中不改数据，不需要预演，但如果用户描述的串有歧义要先问。
 
@@ -41,4 +41,6 @@ pub const SYSTEM_PROMPT: &str = r#"你是「智能表格」里的整理助手。
 - target 还可以叠加：artistStrings（只保留这些画师串分组）、expandToSameArtistString（把范围扩展到同画师串的所有图）、favorite、conditions（和自动规则相同的条件格式）。
 - 提示词字段名：positive / character / negative。
 - 预演得到 previewId 后，只能用 apply_changes(previewId) 执行；数据在预演后变了会要求重新预演。
+- 画师串列只在修改真正动到画师部分时才会变；AI 提取的画师串不会被自动改写。预演 warnings 里提到画师串时要转告用户。
+- 画师名里的下划线和空格是同一个意思（ask_(askzy) = ask (askzy)），按画师查找/筛选时工具已自动兼容两种写法。
 "#;

@@ -80,7 +80,7 @@
 .ag-composer-wrap { flex: none; padding: 8px 28px 18px; }
 .ag-composer { max-width: 820px; margin: 0 auto; display: flex; align-items: flex-end; gap: 8px; padding: 8px 8px 8px 14px; border: 1px solid var(--border-strong); border-radius: var(--radius-l); background: var(--surface); box-shadow: var(--elev-2); }
 .ag-composer:focus-within { border-color: var(--accent-soft-border); box-shadow: var(--elev-2), var(--focus-ring); }
-.ag-composer textarea { flex: 1; min-height: 32px; max-height: 200px; field-sizing: content; resize: none; padding: 6px 0; border: 0; outline: 0; background: transparent; color: var(--text); font: var(--font-sm)/1.7 var(--font); }
+.ag-composer textarea, .ag-composer textarea:hover, .ag-composer textarea:focus { flex: 1; min-height: 32px; max-height: 200px; field-sizing: content; resize: none; padding: 6px 0; border: 0; outline: 0; border-radius: 0; background: transparent; box-shadow: none; color: var(--text); font: var(--font-sm)/1.7 var(--font); }
 .ag-send { flex: none; width: 34px; height: 34px; padding: 0; border-radius: var(--radius-full); justify-content: center; }
 
 .ag-form { display: flex; flex-direction: column; gap: 14px; }

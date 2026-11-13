@@ -28,6 +28,8 @@ pub struct FunctionCall {
 pub struct Outcome {
     pub text: String,
     pub calls: Vec<FunctionCall>,
+    /// Reasoning items some providers (e.g. DeepSeek thinking mode) require to be sent back.
+    pub reasoning: Vec<Value>,
 }
 
 pub enum Delta<'a> {
@@ -81,6 +83,16 @@ fn collect_item(item: &Value, outcome: &mut Outcome, text_seen: bool) {
                 if let Some(text) = part["text"].as_str() {
                     outcome.text.push_str(text);
                 }
+            }
+        }
+        Some("reasoning") => {
+            let replayable = item["content"].as_array().is_some_and(|parts| !parts.is_empty())
+                || item["encrypted_content"].as_str().is_some_and(|text| !text.is_empty());
+            let duplicate = outcome.reasoning.iter().any(|seen| {
+                seen == item || (item["id"].is_string() && seen["id"] == item["id"])
+            });
+            if replayable && !duplicate {
+                outcome.reasoning.push(item.clone());
             }
         }
         _ => {}
@@ -145,6 +157,7 @@ pub async fn stream(
     let mut buffer = Vec::<u8>::new();
     let mut text_seen = false;
     let mut completed = false;
+    let mut raw_reasoning = String::new();
     loop {
         if cancel.load(Ordering::SeqCst) {
             return Err("已停止".into());
@@ -179,6 +192,9 @@ pub async fn stream(
                 }
                 "response.reasoning_summary_text.delta" | "response.reasoning_text.delta" => {
                     if let Some(delta) = value["delta"].as_str() {
+                        if value["type"] == "response.reasoning_text.delta" {
+                            raw_reasoning.push_str(delta);
+                        }
                         on_delta(Delta::Reasoning(delta));
                     }
                 }
@@ -212,6 +228,13 @@ pub async fn stream(
             "模型「{}」没有返回任何内容。它可能不支持 Responses 接口，请换一个模型再试。",
             request.model
         ));
+    }
+    if outcome.reasoning.is_empty() && !raw_reasoning.trim().is_empty() {
+        outcome.reasoning.push(json!({
+            "type": "reasoning",
+            "summary": [],
+            "content": [{"type": "reasoning_text", "text": raw_reasoning}],
+        }));
     }
     Ok(outcome)
 }

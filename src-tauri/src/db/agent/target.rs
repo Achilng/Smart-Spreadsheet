@@ -49,6 +49,8 @@ pub struct MainView {
 pub(crate) struct RowIndexEntry {
     pub(crate) artist_key: Option<String>,
     pub(crate) favorite: bool,
+    /// Artist string confirmed by LLM style extraction; it outranks the rule-based derivation.
+    pub(crate) llm_artists: Option<String>,
 }
 
 pub(crate) struct Resolved {
@@ -61,21 +63,30 @@ impl Resolved {
     pub(crate) fn favorite(&self, id: i64) -> bool {
         self.index.get(&id).is_some_and(|entry| entry.favorite)
     }
+
+    pub(crate) fn llm_artists(&self, id: i64) -> Option<&str> {
+        self.index.get(&id)?.llm_artists.as_deref()
+    }
 }
 
 impl Database {
     pub(crate) fn agent_row_index(&self) -> Res<HashMap<i64, RowIndexEntry>> {
         let mut statement = self
             .connection
-            .prepare("SELECT id, artist_match_key, favorite FROM rows")
+            .prepare("SELECT id, artist_match_key, favorite, artist_llm FROM rows")
             .map_err(s)?;
         let entries = statement
             .query_map([], |row| {
+                let source: Option<String> = row.get(3)?;
                 Ok((
                     row.get::<_, i64>(0)?,
                     RowIndexEntry {
                         artist_key: row.get(1)?,
                         favorite: row.get(2)?,
+                        llm_artists: source
+                            .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+                            .and_then(|value| value["artistString"].as_str().map(str::to_owned))
+                            .filter(|text| !text.is_empty()),
                     },
                 ))
             })
@@ -190,7 +201,7 @@ impl Database {
                 negate: false,
                 groups: vec![RuleConditionGroup {
                     mode: target.condition_match.unwrap_or(RuleMatchMode::All),
-                    conditions: target.conditions.clone(),
+                    conditions: target.conditions.iter().map(with_spelling_variants).collect(),
                 }],
             };
             let prepared = PreparedConditionSet::new(&set).map_err(s)?;
@@ -198,4 +209,21 @@ impl Database {
         }
         Ok(Resolved { rows, index, notes })
     }
+}
+
+/// NovelAI reads `_` and a space as the same character, so the agent matches artists
+/// under both spellings; saved automation rules keep their exact-match behaviour.
+fn with_spelling_variants(condition: &RuleCondition) -> RuleCondition {
+    let RuleCondition::Artist { operator, artists } = condition else {
+        return condition.clone();
+    };
+    let mut expanded = Vec::new();
+    for artist in artists {
+        for variant in [artist.clone(), artist.replace('_', " "), artist.replace(' ', "_")] {
+            if !expanded.contains(&variant) {
+                expanded.push(variant);
+            }
+        }
+    }
+    RuleCondition::Artist { operator: *operator, artists: expanded }
 }

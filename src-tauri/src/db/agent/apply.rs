@@ -6,7 +6,10 @@ use rusqlite::{OptionalExtension, Transaction, TransactionBehavior, params, para
 use serde::Serialize;
 use serde_json::{Value, json};
 
-use super::changes::{Action, PreviewReport, RowChange, action_regex, analyze_matches, field_name, sample_json};
+use super::changes::{
+    Action, PreviewReport, RowChange, action_regex, analyze_matches, field_name, sample_json,
+    stale_ai_artists,
+};
 use super::target::{MainView, Scope, Target};
 use super::{Res, s};
 use crate::automation::model::AutomationRule;
@@ -211,6 +214,11 @@ impl Database {
         }
         let mut warnings = Vec::new();
         let mut match_analysis = Vec::new();
+        let covered = actions
+            .iter()
+            .filter_map(action_regex)
+            .map(|(_, field)| field_name(field))
+            .collect::<std::collections::HashSet<_>>();
         for (index, action) in actions.iter().enumerate() {
             let Some((regex, field)) = action_regex(action) else { continue };
             let regex = regex?;
@@ -224,12 +232,17 @@ impl Database {
                     (other.to_owned(), hit)
                 })
                 .collect::<serde_json::Map<_, _>>();
-            if others.values().any(|value| value.as_u64().unwrap_or(0) > 0) {
+            let uncovered = others
+                .iter()
+                .filter(|(name, value)| !covered.contains(name.as_str()) && value.as_u64().unwrap_or(0) > 0)
+                .map(|(name, value)| format!("{name} {value} 张"))
+                .collect::<Vec<_>>();
+            if !uncovered.is_empty() {
                 warnings.push(format!(
-                    "第 {} 个动作只改 {}，但同样的内容也出现在其它提示词字段里：{}",
+                    "第 {} 个动作只改 {}，但同样的内容也出现在没有被修改的字段里：{}",
                     index + 1,
                     field_name(field),
-                    Value::Object(others.clone())
+                    uncovered.join("、")
                 ));
             }
             analysis["sameMatchInOtherFields"] = Value::Object(others);
@@ -243,6 +256,12 @@ impl Database {
         }
         if changes.iter().any(|change| change.text.iter().any(|item| item.field == "artists")) {
             warnings.push("部分图片的画师串会随提示词改变，画师串分组可能变化".into());
+        }
+        let stale = stale_ai_artists(&resolved, &changes);
+        if stale > 0 {
+            warnings.push(format!(
+                "{stale} 张图的画师串是 AI 提取的，这次修改动到了画师串原文；画师串列会保持原样，需要时可在工具箱重新提取"
+            ));
         }
         if changes.is_empty() {
             warnings.push("没有任何图片需要修改".into());

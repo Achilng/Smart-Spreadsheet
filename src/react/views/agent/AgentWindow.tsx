@@ -73,6 +73,9 @@ function Step({ item, running }: { item: Extract<Item, { type: "step" }>; runnin
   </div>;
 }
 
+/** Tested on real requests: quick, and consistently asks instead of guessing. */
+const RECOMMENDED_MODEL = /gpt-6-luna/i;
+
 function PreferencesDialog({ state, open, onClose, onSaved }: { state: AgentState; open: boolean; onClose: () => void; onSaved: () => void }) {
   const [draft, setDraft] = useState<AgentPreferences>(state.preferences);
   const [models, setModels] = useState<string[]>([]);
@@ -83,7 +86,13 @@ function PreferencesDialog({ state, open, onClose, onSaved }: { state: AgentStat
     if (!open || !channelId) return;
     let stale = false;
     setLoading(true);
-    agentModels(channelId).then(list => { if (!stale) setModels(list); }).catch(error => { if (!stale) { setModels([]); notify(`获取模型列表失败：${errorText(error)}`, "error"); } }).finally(() => { if (!stale) setLoading(false); });
+    agentModels(channelId).then(list => {
+      if (stale) return;
+      setModels(list);
+      // Pre-fill the tested recommendation when nothing has been chosen yet.
+      const recommended = list.find(name => RECOMMENDED_MODEL.test(name));
+      if (recommended) setDraft(current => current.model ? current : { ...current, model: recommended });
+    }).catch(error => { if (!stale) { setModels([]); notify(`获取模型列表失败：${errorText(error)}`, "error"); } }).finally(() => { if (!stale) setLoading(false); });
     return () => { stale = true; };
   }, [open, channelId]);
   const save = async () => {
@@ -99,7 +108,7 @@ function PreferencesDialog({ state, open, onClose, onSaved }: { state: AgentStat
         <datalist id="ag-models">{models.map(model => <option key={model} value={model} />)}</datalist>
       </label>
       <label>思考强度<Select label="思考强度" value={draft.effort || "medium"} onChange={value => setDraft({ ...draft, effort: value })} options={EFFORTS} /></label>
-      <p className="ag-hint">思考强度越高越稳，但每一步更慢。模型不支持思考强度时请选「模型默认」。</p>
+      <p className="ag-hint">推荐 gpt-6-luna + 中等思考强度：又快又谨慎。DeepSeek、Gemini 也能用，但每轮要慢不少。思考强度越高越稳，但每一步更慢；模型不支持思考强度时请选「模型默认」。</p>
     </div>}
   </Modal>;
 }

@@ -166,7 +166,9 @@ impl Database {
                 .collect::<Result<HashMap<_, _>, _>>()
                 .map_err(s)?
         };
-        let needle = contains.map(str::to_lowercase).filter(|value| !value.trim().is_empty());
+        // `_` and a space are interchangeable in NovelAI prompts.
+        let fold = |text: &str| text.to_lowercase().replace('_', " ");
+        let needle = contains.map(fold).filter(|value| !value.trim().is_empty());
         let mut groups: HashMap<String, (usize, String, i64)> = HashMap::new();
         let mut without = 0;
         for row in &resolved.rows {
@@ -183,8 +185,8 @@ impl Database {
             .into_iter()
             .filter(|(key, (_, text, _))| {
                 needle.as_ref().is_none_or(|needle| {
-                    text.to_lowercase().contains(needle)
-                        || aliases.get(key).is_some_and(|alias| alias.to_lowercase().contains(needle))
+                    fold(text).contains(needle)
+                        || aliases.get(key).is_some_and(|alias| fold(alias).contains(needle))
                 })
             })
             .collect::<Vec<_>>();
