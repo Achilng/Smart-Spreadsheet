@@ -1,5 +1,5 @@
 use crate::automation::error::AutomationRuleError;
-use crate::automation::matching::PreparedConditionSet;
+use crate::automation::matching::{PreparedConditionSet, build_regex};
 use crate::automation::model::{
     ArtistOperator, AutomationRuleDraft, GroupOperator, NoteOperator, NumericComparison,
     NumericOperator, PromptOperator, RuleAction, RuleCondition, TagOperator, VibeOperator,
@@ -115,6 +115,14 @@ pub(crate) fn validate_action(action: &RuleAction) -> Result<(), AutomationRuleE
         RuleAction::ReplacePrompt { find, .. } if find.is_empty() => {
             Err(AutomationRuleError::EmptyValue("查找内容"))
         }
+        RuleAction::RegexReplacePrompt { pattern, .. } if pattern.is_empty() => {
+            Err(AutomationRuleError::EmptyValue("正则表达式"))
+        }
+        RuleAction::RegexReplacePrompt {
+            pattern,
+            case_sensitive,
+            ..
+        } => build_regex(pattern, *case_sensitive).map(|_| ()),
         RuleAction::PrefixArtist { artists } if normalized_strings(artists).is_empty() => {
             Err(AutomationRuleError::EmptyValue("画师前缀任务"))
         }

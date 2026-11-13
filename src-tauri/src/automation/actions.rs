@@ -1,4 +1,5 @@
 use crate::automation::error::AutomationRuleError;
+use crate::automation::matching::build_regex;
 use crate::automation::model::{PromptActionField, RuleAction, RuleRow};
 use crate::automation::text::{
     append_prompt, delete_prompt_tags, nonempty, normalized_strings, replace_text,
@@ -76,6 +77,25 @@ pub(crate) fn simulate_actions(
                     false
                 }
             }
+            RuleAction::RegexReplacePrompt {
+                field,
+                pattern,
+                replace,
+                case_sensitive,
+            } => {
+                let regex = cached_regex(pattern, *case_sensitive)?;
+                let prompt = prompt_mut(&mut row, *field);
+                let updated = prompt
+                    .as_deref()
+                    .map(|value| regex.replace_all(value, replace.as_str()).into_owned());
+                if *prompt != updated {
+                    *prompt = updated.and_then(nonempty);
+                    refresh_artists(&mut row);
+                    true
+                } else {
+                    false
+                }
+            }
             RuleAction::PrefixArtist { artists } => {
                 let mut changed = false;
                 for artist in normalized_strings(artists) {
@@ -134,6 +154,22 @@ pub(crate) fn simulate_actions(
         }
     }
     Ok((row, changed_actions, stop))
+}
+
+/// Actions run once per row; compiling the same pattern for every row would dominate large libraries.
+fn cached_regex(pattern: &str, case_sensitive: bool) -> Result<regex::Regex, AutomationRuleError> {
+    use std::sync::Mutex;
+    static CACHE: Mutex<Option<(String, bool, regex::Regex)>> = Mutex::new(None);
+    let mut cache = CACHE.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    if let Some((cached, sensitive, regex)) = cache.as_ref()
+        && cached == pattern
+        && *sensitive == case_sensitive
+    {
+        return Ok(regex.clone());
+    }
+    let regex = build_regex(pattern, case_sensitive)?;
+    *cache = Some((pattern.to_owned(), case_sensitive, regex.clone()));
+    Ok(regex)
 }
 
 pub(crate) fn prompt_mut(row: &mut RuleRow, field: PromptActionField) -> &mut Option<String> {

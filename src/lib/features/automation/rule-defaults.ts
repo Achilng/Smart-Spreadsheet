@@ -9,6 +9,7 @@ export function defaultAction(type: RuleAction["type"]): RuleAction {
     case "appendPrompt": return { type, field: "positive", value: "" };
     case "deletePromptTags": return { type, field: "positive", value: "" };
     case "replacePrompt": return { type, field: "positive", find: "", replace: "", caseSensitive: true };
+    case "regexReplacePrompt": return { type, field: "positive", pattern: "", replace: "", caseSensitive: false };
     case "prefixArtist": return { type, artists: [] };
     case "setNote": return { type, value: "" };
     case "setNoteSequence": return { type, prefix: "" };

@@ -276,6 +276,15 @@ pub enum RuleAction {
         #[serde(default = "default_true")]
         case_sensitive: bool,
     },
+    /// Replacement text may reference capture groups as `$1` or `${name}`.
+    RegexReplacePrompt {
+        field: PromptActionField,
+        pattern: String,
+        #[serde(default)]
+        replace: String,
+        #[serde(default = "default_true")]
+        case_sensitive: bool,
+    },
     PrefixArtist {
         artists: Vec<String>,
     },

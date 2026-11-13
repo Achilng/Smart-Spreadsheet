@@ -329,6 +329,7 @@ export function installIpcMock(): void {
       if (action.type === "setGroup" && !groups.some(group => group.id === action.groupId)) throw new Error("目标分组不存在");
       if ((action.type === "appendPrompt" || action.type === "deletePromptTags") && !action.value.trim()) throw new Error("请填写提示词任务内容");
       if (action.type === "replacePrompt" && !action.find) throw new Error("查找内容不能为空");
+      if (action.type === "regexReplacePrompt") { if (!action.pattern) throw new Error("正则表达式不能为空"); new RegExp(action.pattern, "u"); }
       if (action.type === "prefixArtist" && !action.artists.length) throw new Error("请填写需要修正的画师名");
     }
   };
@@ -382,12 +383,13 @@ export function installIpcMock(): void {
           const numbers = libraryRows.map(item => item.note?.startsWith(action.prefix) ? Number(item.note.slice(action.prefix.length)) : NaN).filter(Number.isFinite);
           if (!edited.note?.startsWith(action.prefix) || !Number.isFinite(Number(edited.note.slice(action.prefix.length))) || !edited.note.slice(action.prefix.length)) { const next = (sequence.get(action.prefix) ?? Math.max(0, ...numbers)) + 1; sequence.set(action.prefix, next); edited.note = `${action.prefix}${next}`; }
         }
-        if (action.type === "appendPrompt" || action.type === "deletePromptTags" || action.type === "replacePrompt") {
+        if (action.type === "appendPrompt" || action.type === "deletePromptTags" || action.type === "replacePrompt" || action.type === "regexReplacePrompt") {
           const field = ({ positive: "positivePrompt", character: "characterPrompt", negative: "negativePrompt" } as const)[action.field];
           const text = edited[field] ?? "";
           if (action.type === "appendPrompt") edited[field] = normalizeTags([...splitListText(text), ...splitListText(action.value)]).join(", ");
           if (action.type === "deletePromptTags") { const remove = new Set(splitListText(action.value).map(value => value.toLowerCase())); edited[field] = splitListText(text).filter(value => !remove.has(value.toLowerCase())).join(", ") || null; }
           if (action.type === "replacePrompt") edited[field] = text.replace(new RegExp(action.find.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), action.caseSensitive ? "g" : "gi"), () => action.replace) || null;
+          if (action.type === "regexReplacePrompt") edited[field] = text.replace(new RegExp(action.pattern, action.caseSensitive ? "gu" : "giu"), action.replace) || null;
         }
         if (action.type === "prefixArtist") for (const field of ["positivePrompt", "characterPrompt", "negativePrompt"] as const) edited[field] = splitListText(edited[field] ?? "").map(token => action.artists.some(artist => artist.replace(/^artist:/i, "").trim().toLowerCase() === token.toLowerCase()) ? `artist:${token}` : token).join(", ") || null;
         if (action.type === "stopProcessing") stoppedRows++;

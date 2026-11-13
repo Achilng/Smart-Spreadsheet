@@ -52,6 +52,7 @@ export type RuleAction =
   | { type: "appendPrompt"; field: PromptActionField; value: string }
   | { type: "deletePromptTags"; field: PromptActionField; value: string }
   | { type: "replacePrompt"; field: PromptActionField; find: string; replace: string; caseSensitive: boolean }
+  | { type: "regexReplacePrompt"; field: PromptActionField; pattern: string; replace: string; caseSensitive: boolean }
   | { type: "prefixArtist"; artists: string[] }
   | { type: "setNote"; value: string }
   | { type: "setNoteSequence"; prefix: string }
