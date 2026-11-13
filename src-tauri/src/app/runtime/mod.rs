@@ -1,4 +1,5 @@
 //! Active library lifecycle and shared database access.
+mod agent;
 mod artists;
 mod style_extraction;
 mod llm;

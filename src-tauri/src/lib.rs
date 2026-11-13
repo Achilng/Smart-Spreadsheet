@@ -30,6 +30,7 @@ pub fn run() {
             };
             app.manage(app::AppRuntime::load(locator_path, default_data_dir));
             app.manage(app::llm::Engine::default());
+            app.manage(app::agent::Engine::default());
             app::llm::start(app.handle().clone());
             Ok(())
         })
@@ -53,6 +54,19 @@ pub fn run() {
             app::commands::windows::open_toolbox_window,
             app::commands::windows::open_compare_window,
             app::commands::windows::focus_main_window,
+            app::commands::agent::open_agent_window,
+            app::commands::agent::agent_state,
+            app::commands::agent::agent_save_preferences,
+            app::commands::agent::agent_models,
+            app::commands::agent::agent_messages,
+            app::commands::agent::agent_send,
+            app::commands::agent::agent_cancel,
+            app::commands::agent::agent_rename_conversation,
+            app::commands::agent::agent_delete_conversation,
+            app::commands::agent::agent_operations,
+            app::commands::agent::agent_undo,
+            app::commands::agent::agent_change_page,
+            app::commands::agent::agent_report_main_view,
             app::commands::library::get_app_snapshot,
             app::commands::library::reset_configuration,
             app::commands::library::reset_data,

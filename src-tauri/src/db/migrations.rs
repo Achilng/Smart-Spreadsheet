@@ -1,4 +1,46 @@
-pub const CURRENT_SCHEMA_VERSION: u32 = 28;
+pub const CURRENT_SCHEMA_VERSION: u32 = 29;
+
+/// Agent conversations, dry-run previews and undoable operations live with the library.
+/// Operations survive conversation deletion so the operation log can still undo them.
+pub(super) const MIGRATION_29: &str = r#"
+CREATE TABLE agent_conversations (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+) STRICT;
+CREATE TABLE agent_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    conversation_id TEXT NOT NULL REFERENCES agent_conversations(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    kind TEXT NOT NULL,
+    content TEXT NOT NULL
+) STRICT;
+CREATE INDEX agent_messages_conversation ON agent_messages(conversation_id, id);
+CREATE TABLE agent_previews (
+    id TEXT PRIMARY KEY,
+    conversation_id TEXT NOT NULL REFERENCES agent_conversations(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    plan TEXT NOT NULL,
+    changes TEXT NOT NULL,
+    report TEXT NOT NULL,
+    used INTEGER NOT NULL DEFAULT 0 CHECK (used IN (0, 1))
+) STRICT;
+CREATE TABLE agent_operations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    conversation_id TEXT REFERENCES agent_conversations(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    kind TEXT NOT NULL,
+    title TEXT NOT NULL,
+    report TEXT NOT NULL,
+    changes TEXT NOT NULL,
+    created_tags TEXT NOT NULL DEFAULT '[]',
+    created_groups TEXT NOT NULL DEFAULT '[]',
+    state TEXT NOT NULL DEFAULT 'applied' CHECK (state IN ('applied', 'undone')),
+    undo_message TEXT,
+    undone_at TEXT
+) STRICT;
+"#;
 
 // Match dedupe_identity exactly, preserving whitespace/empty-key semantics.
 pub(super) const MIGRATION_28: &str = r#"

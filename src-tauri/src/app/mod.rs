@@ -1,3 +1,4 @@
+pub(crate) mod agent;
 pub(crate) mod commands;
 pub(crate) mod materials;
 pub(crate) mod llm;

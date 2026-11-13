@@ -1,3 +1,4 @@
+pub(crate) mod agent;
 mod artist_auto_prefix;
 mod artist_prefix_write;
 mod artist_representatives;
@@ -445,6 +446,10 @@ fn apply_pending_migrations(
         transaction.execute_batch(migrations::MIGRATION_28)?;
         version = 28;
     }
+    if version == 28 {
+        transaction.execute_batch(migrations::MIGRATION_29)?;
+        version = 29;
+    }
     debug_assert_eq!(version, CURRENT_SCHEMA_VERSION);
     transaction.pragma_update(None, "user_version", version)?;
     transaction.commit()?;
@@ -643,6 +648,10 @@ mod tests {
         assert_eq!(
             tables,
             vec![
+                "agent_conversations",
+                "agent_messages",
+                "agent_operations",
+                "agent_previews",
                 "artist_representatives",
                 "automation_rules",
                 "dedupe_aliases",
