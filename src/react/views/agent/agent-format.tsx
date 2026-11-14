@@ -1,5 +1,3 @@
-import { Fragment, type ReactNode } from "react";
-
 export const FIELD_LABELS: Record<string, string> = {
   positive: "正向", character: "角色", negative: "负面", artists: "画师串", note: "备注",
   group: "分组", favorite: "收藏", tagsAdded: "新增 TAG", tagsRemoved: "移除 TAG",
@@ -32,13 +30,16 @@ export function describeTarget(target: Record<string, unknown> | undefined): str
   const lines = [`范围：${SCOPE_LABELS[str(target.scope)] ?? str(target.scope)}`];
   const ids = target.rowIds as number[] | undefined;
   if (target.scope === "rowIds" && ids?.length) lines.push(`图片 ID：${ids.slice(0, 12).join("、")}${ids.length > 12 ? ` 等 ${ids.length} 张` : ""}`);
-  const artists = target.artistStrings as string[] | undefined;
-  if (artists?.length) lines.push(`只限画师串：${artists.map(quote).join("、")}`);
   if (target.expandToSameArtistString) lines.push("扩展到同画师串的所有图");
   if (typeof target.favorite === "boolean") lines.push(target.favorite ? "只限已收藏" : "只限未收藏");
   const conditions = target.conditions as Record<string, unknown>[] | undefined;
   if (conditions?.length) lines.push(`附加条件（${target.conditionMatch === "any" ? "满足任一" : "全部满足"}）：${conditions.map(describeCondition).join("；")}`);
   return lines;
+}
+
+export function targetArtistStrings(target: Record<string, unknown> | undefined): string[] {
+  const artists = target?.artistStrings;
+  return Array.isArray(artists) ? artists.filter((item): item is string => typeof item === "string") : [];
 }
 
 function describeCondition(condition: Record<string, unknown>): string {
@@ -94,57 +95,4 @@ export function DiffPair({ before, after, afterEmpty }: { before: string; after:
     <div className="ag-diff-line"><span className="ag-diff-tag">前</span><span className="ag-diff-text">{head}{removed && <del>{removed}</del>}{tail}{!before && <em>（空）</em>}</span></div>
     <div className="ag-diff-line"><span className="ag-diff-tag is-after">后</span><span className="ag-diff-text">{head}{added && <ins>{added}</ins>}{tail}{(afterEmpty || !after) && <em>（空）</em>}</span></div>
   </div>;
-}
-
-function inline(text: string, key: string): ReactNode[] {
-  const parts: ReactNode[] = [];
-  const pattern = /(\*\*[^*]+\*\*|`[^`]+`)/g;
-  let last = 0, index = 0;
-  for (const match of text.matchAll(pattern)) {
-    if (match.index > last) parts.push(text.slice(last, match.index));
-    const token = match[0];
-    parts.push(token.startsWith("**") ? <strong key={`${key}-${index++}`}>{token.slice(2, -2)}</strong> : <code key={`${key}-${index++}`}>{token.slice(1, -1)}</code>);
-    last = match.index + token.length;
-  }
-  if (last < text.length) parts.push(text.slice(last));
-  return parts;
-}
-
-/** A small, safe markdown subset: paragraphs, headings, bullet / numbered lists, bold and inline code. */
-export function RichText({ text }: { text: string }) {
-  const blocks: ReactNode[] = [];
-  const lines = text.replace(/\r\n/g, "\n").split("\n");
-  let list: { ordered: boolean; items: string[] } | null = null;
-  let paragraph: string[] = [];
-  const flushParagraph = () => {
-    if (paragraph.length) blocks.push(<p key={`p${blocks.length}`}>{paragraph.map((line, i) => <Fragment key={i}>{i > 0 && <br />}{inline(line, `p${blocks.length}-${i}`)}</Fragment>)}</p>);
-    paragraph = [];
-  };
-  const flushList = () => {
-    if (list) {
-      const items = list.items.map((item, i) => <li key={i}>{inline(item, `l${blocks.length}-${i}`)}</li>);
-      blocks.push(list.ordered ? <ol key={`l${blocks.length}`}>{items}</ol> : <ul key={`l${blocks.length}`}>{items}</ul>);
-    }
-    list = null;
-  };
-  for (const raw of lines) {
-    const line = raw.trimEnd();
-    const bullet = /^\s*[-*•]\s+(.*)$/.exec(line), numbered = /^\s*\d+[.)、]\s+(.*)$/.exec(line), heading = /^#{1,4}\s+(.*)$/.exec(line);
-    if (bullet || numbered) {
-      flushParagraph();
-      const ordered = !!numbered;
-      if (!list || list.ordered !== ordered) { flushList(); list = { ordered, items: [] }; }
-      list.items.push((bullet ?? numbered)![1]);
-    } else if (heading) {
-      flushParagraph(); flushList();
-      blocks.push(<h4 key={`h${blocks.length}`}>{inline(heading[1], `h${blocks.length}`)}</h4>);
-    } else if (!line.trim()) {
-      flushParagraph(); flushList();
-    } else {
-      flushList();
-      paragraph.push(line);
-    }
-  }
-  flushParagraph(); flushList();
-  return <div className="ag-rich">{blocks}</div>;
 }

@@ -7,6 +7,7 @@
 - 安全：所有修改必须先预演拿到 previewId 再执行，每次修改都有可视化卡片（参数、数量、前后对比、撤销按钮）；提示词明确要求需求不清时即使用户不耐烦也不猜测执行。「同一个串」按 `artist_match_key` 判定；助手查找画师时 `_` 与空格视为同一写法（自动规则保持原有精确匹配）；修改提示词时只有画师部分真的变化才重算画师串列，AI 提取的画师串不被改写，并在预演中提示。
 - 兼容：DeepSeek 思考模式要求回传推理内容，现已保存模型返回的 reasoning 条目并在后续请求中回放；同一次返回的多个工具调用合并回放，避免网关转换后推理内容错位。
 - 实测（资料库副本，194 张）：Text: 删除、给 ciloranko 串 21 组 63 张加 TAG、按多串选中 52 张、撤销均正常，主窗口即时刷新。模型对比（「快点弄，别问我」「随便你看着办」场景均拒绝猜测）：gpt-6-luna medium 约 5–17 秒且会追问范围与角色提示词；gemini-4-carbon 更细但 17–38 秒；deepseek-v4-pro 修复后可用，能识别 written_text 与文字中的逗号等边界，但单轮可达 150 秒。默认推荐 gpt-6-luna + medium：设置窗口在未选模型时自动预填并给出说明。
+- 界面：聊天部分改用 AI Elements 的组件源码（`src/react/ui/ai-elements/`：对话滚动、消息、思考过程、工具步骤、输入框、建议词），Markdown 由 streamdown 渲染（含 `@streamdown/cjk`）；新增依赖 `streamdown`、`@streamdown/cjk`、`use-stick-to-bottom`、`class-variance-authority`、`tw-animate-css`。这些组件靠 Tailwind 工具类，而项目的 `base.css` 不在层里会盖过工具类，所以 `styles.css` 先声明 `@layer theme, base, utilities`，`styles/ai-elements.css` 把 shadcn 颜色名映射到项目色板，并只在 `.ai-ui` 容器内做元素重置和 `revert-layer` 回退，主窗口样式不受影响。修改卡片仍是项目自有样式；画师串和范围说明很长时默认折叠（只显示前 3 个截断的串）。
 - 待办：合并到 main 并随下一版发布；发布前在正式环境再走一遍完整流程。
 
 ## v_48 发布（2026-11-13）

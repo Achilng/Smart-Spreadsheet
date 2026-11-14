@@ -1,0 +1,60 @@
+/* AI Elements chat components (src/react/ui/ai-elements): shadcn colour names mapped onto the
+   app tokens, plus the element reset those components assume, scoped to `.ai-ui`. */
+@import "tw-animate-css";
+@source "../../../node_modules/streamdown/dist";
+
+/* The app is light-only; keep `dark:` utilities from following the OS setting. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme inline {
+  --color-background: var(--surface);
+  --color-foreground: var(--text);
+  --color-card: var(--surface);
+  --color-card-foreground: var(--text);
+  --color-popover: var(--surface);
+  --color-popover-foreground: var(--text);
+  --color-primary: var(--primary);
+  --color-primary-foreground: #fff;
+  --color-secondary: var(--surface-3);
+  --color-secondary-foreground: var(--text);
+  --color-muted: var(--surface-2);
+  --color-muted-foreground: var(--text-3);
+  --color-accent: var(--surface-3);
+  --color-accent-foreground: var(--text);
+  --color-destructive: var(--danger);
+  --color-border: var(--border);
+  --color-input: var(--border-strong);
+  --color-ring: var(--accent);
+  --color-sidebar: var(--surface-2);
+  --color-sidebar-foreground: var(--text);
+  --font-mono: ui-monospace, "Cascadia Code", Consolas, "Microsoft YaHei", monospace;
+}
+
+@layer base {
+  .ai-ui, .ai-ui *, .ai-ui ::before, .ai-ui ::after { border: 0 solid var(--border); }
+  .ai-ui :where(h1, h2, h3, h4, h5, h6) { margin: 0; font-size: inherit; font-weight: inherit; }
+  .ai-ui :where(p, blockquote, figure, pre, hr, dl, dd) { margin: 0; }
+  .ai-ui :where(ol, ul, menu) { margin: 0; padding: 0; list-style: none; }
+  .ai-ui :where(button) { margin: 0; padding: 0; border-radius: 0; background: transparent; font: inherit; color: inherit; }
+  .ai-ui :where(textarea) { margin: 0; padding: 0; border-radius: 0; background: transparent; box-shadow: none; font: inherit; color: inherit; resize: vertical; }
+  .ai-ui :where(code, kbd, samp, pre) { font-family: var(--font-mono); font-size: 1em; }
+  .ai-ui :where(table) { border-collapse: collapse; border-color: inherit; text-indent: 0; }
+  .ai-ui :where(a) { color: inherit; text-decoration: inherit; }
+  .ai-ui :where(hr) { height: 0; border-top-width: 1px; color: inherit; }
+  .ai-ui :where(svg, img) { display: block; }
+}
+
+/* base.css is unlayered, so its element defaults would beat the utilities above;
+   inside `.ai-ui` these properties fall back to the layered rules instead. */
+.ai-ui :where(h1, h2, h3, h4, p) { margin: revert-layer; }
+.ai-ui :where(h1, h2, h3, h4) { font-weight: revert-layer; }
+.ai-ui :where(code, pre, kbd, samp) { font-family: revert-layer; }
+.ai-ui :where(button) { font: revert-layer; color: revert-layer; }
+.ai-ui :where(textarea), .ai-ui textarea:focus {
+  font: revert-layer;
+  border: revert-layer;
+  border-radius: revert-layer;
+  background: revert-layer;
+  box-shadow: revert-layer;
+  color: revert-layer;
+}

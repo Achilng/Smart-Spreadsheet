@@ -4,9 +4,46 @@ import { agentChangePage, undoAgentOperation, type AgentMatchAnalysis, type Agen
 import { errorText, formatCount } from "../../../lib/utils/format";
 import { Button } from "../../ui/controls";
 import { notify } from "../../state/notices";
-import { DiffPair, FIELD_LABELS, describeAction, describeTarget, formatTime } from "./agent-format";
+import { DiffPair, FIELD_LABELS, describeAction, describeTarget, formatTime, targetArtistStrings } from "./agent-format";
 
 const PAGE = 40;
+const ARTIST_PREVIEW = 3;
+const ARTIST_CLIP = 72;
+
+const clip = (text: string) => { const chars = Array.from(text); return chars.length > ARTIST_CLIP ? `${chars.slice(0, ARTIST_CLIP).join("")}…` : text; };
+
+/** Target description; artist strings are long, so only a clipped few show until expanded. */
+function TargetItems({ target }: { target: Record<string, unknown> | undefined }) {
+  const [open, setOpen] = useState(false);
+  const artists = targetArtistStrings(target);
+  const collapsible = artists.length > ARTIST_PREVIEW || artists.some(item => Array.from(item).length > ARTIST_CLIP);
+  const [scope, ...rest] = describeTarget(target);
+  return <>
+    {scope && <li>{scope}</li>}
+    {artists.length > 0 && <li>
+      只限这 {artists.length} 个画师串
+      {collapsible && <button type="button" className="ag-link ag-inline" onClick={() => setOpen(!open)}>{open ? "收起" : "展开全部"}</button>}
+      <ol className="ag-artists">
+        {(open ? artists : artists.slice(0, ARTIST_PREVIEW)).map(item => <li key={item}><code>{open ? item : clip(item)}</code></li>)}
+        {!open && artists.length > ARTIST_PREVIEW && <li className="ag-note">…还有 {artists.length - ARTIST_PREVIEW} 个</li>}
+      </ol>
+    </li>}
+    {rest.map(line => <li key={line}>{line}</li>)}
+  </>;
+}
+
+/** Backend remarks about the target (one per artist string); long lists stay folded. */
+function TargetNotes({ notes }: { notes: string[] }) {
+  const [open, setOpen] = useState(false);
+  if (!notes.length) return null;
+  const collapsible = notes.length > 2 || notes.some(line => Array.from(line).length > ARTIST_CLIP + 24);
+  if (!collapsible) return <>{notes.map(line => <li key={line} className="ag-note">{line}</li>)}</>;
+  return <li className="ag-note">
+    范围说明共 {notes.length} 条
+    <button type="button" className="ag-link ag-inline" onClick={() => setOpen(!open)}>{open ? "收起" : "展开查看"}</button>
+    {open && <ol className="ag-notes">{notes.map(line => <li key={line}>{line}</li>)}</ol>}
+  </li>;
+}
 
 function ChangeRow({ change }: { change: AgentRowChange }) {
   return <div className="ag-change">
@@ -93,8 +130,8 @@ export function PreviewCard({ report, applied }: { report: AgentPreviewReport; a
     <div className="ag-params">
       <h5>参数</h5>
       <ul>
-        {describeTarget(report.target).map(line => <li key={line}>{line}</li>)}
-        {report.targetNotes.map(line => <li key={line} className="ag-note">{line}</li>)}
+        <TargetItems target={report.target} />
+        <TargetNotes notes={report.targetNotes} />
         {report.actions.map((action, index) => <li key={index}><b>第 {index + 1} 步：</b>{describeAction(action)}</li>)}
         {report.newGroups.length > 0 && <li>会新建分组：{report.newGroups.join("、")}</li>}
         {report.newTags.length > 0 && <li>会新建 TAG：{report.newTags.join("、")}</li>}
@@ -147,7 +184,7 @@ export function OperationCard({ operation, onChanged, compact = false }: { opera
     {!isRule && <>
       <button type="button" className="ag-link" onClick={() => setShowDetail(!showDetail)}>{showDetail ? <ChevronDown size={14} /> : <ChevronRight size={14} />}参数</button>
       {showDetail && <div className="ag-params"><ul>
-        {describeTarget(report.target).map(line => <li key={line}>{line}</li>)}
+        <TargetItems target={report.target} />
         {(report.actions ?? []).map((action, index) => <li key={index}><b>第 {index + 1} 步：</b>{describeAction(action)}</li>)}
       </ul></div>}
       <ChangeList source="operation" id={String(operation.id)} total={operation.changedRows} />
