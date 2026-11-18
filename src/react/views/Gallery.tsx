@@ -8,7 +8,7 @@ import { errorText } from "../../lib/utils/format";
 import { notifyToolboxLibraryChanged } from "../../lib/windows/library-events";
 import { galleryCellPosition, galleryLayout, galleryVisibleIndices } from "../../lib/images/gallery-layout";
 import { clearFilters, ensureVisibleRowPages, PAGE_SIZE, patchRowFields, reloadRows, useLibrary, useRows } from "../state/library";
-import { useMaterials } from "../state/materials";
+import { useGalleryPick } from "../state/gallery-pick";
 import { useWorkspace } from "../state/workspace";
 import { isSelected, selectedCount, toggleRow, useSelection } from "../state/selection";
 import { Thumbnail } from "../ui/Thumbnail";
@@ -54,17 +54,17 @@ function FavoriteButton({ row }: { row: RowRecord }) {
 
 // Geometry changes every animation frame. Keep the interactive card subtree
 // stable while its lightweight outer frame follows the available gallery width.
-const GalleryCardContent = memo(function GalleryCardContent({ row, index, checked, active, pickingMaterial, tags, layoutKey }: {
-  row: RowRecord; index: number; checked: boolean; active: boolean; pickingMaterial: boolean; tags: TagSummary[]; layoutKey: string;
+const GalleryCardContent = memo(function GalleryCardContent({ row, index, checked, active, pickingImage, tags, layoutKey }: {
+  row: RowRecord; index: number; checked: boolean; active: boolean; pickingImage: boolean; tags: TagSummary[]; layoutKey: string;
 }) {
   const dragged = useRef(false);
   const badge = modelVersionBadge(row.generationModel);
   return <RowContextMenu row={row}><div className="r-card-content" onContextMenu={() => useRows.setState({ activeRow: row })}>
-    {!pickingMaterial && <Checkbox aria-label={`选择第 ${row.sourceOrdinal} 行`} className="r-card-checkbox" checked={checked} onClick={event => toggleRow(row.id, index, event.shiftKey)} />}
+    {!pickingImage && <Checkbox aria-label={`选择第 ${row.sourceOrdinal} 行`} className="r-card-checkbox" checked={checked} onClick={event => toggleRow(row.id, index, event.shiftKey)} />}
     <FavoriteButton row={row} />
     <button type="button" className="r-thumb" aria-label={`查看第 ${row.sourceOrdinal} 行详情`} aria-pressed={active} onMouseDown={event => { dragged.current = false; if (row.imagePath || row.storedImagePath) beginFileDrag(event.nativeEvent, row.id, () => { dragged.current = true; }); }} onClick={event => {
       if (dragged.current) { dragged.current = false; return; }
-      if (!pickingMaterial && (event.ctrlKey || event.metaKey || (event.shiftKey && useSelection.getState().anchor !== null))) toggleRow(row.id, index, event.shiftKey);
+      if (!pickingImage && (event.ctrlKey || event.metaKey || (event.shiftKey && useSelection.getState().anchor !== null))) toggleRow(row.id, index, event.shiftKey);
       else useRows.setState({ activeRow: row });
     }}>
       <Thumbnail enhanced hasImage={Boolean(row.imagePath || row.storedImagePath)} rowId={row.id} alt={`第 ${row.sourceOrdinal} 行缩略图`} />
@@ -76,23 +76,23 @@ const GalleryCardContent = memo(function GalleryCardContent({ row, index, checke
   </div></RowContextMenu>;
 });
 
-const GalleryCard = memo(function GalleryCard({ row, index, layout, reducedMotion, pickingMaterial, selecting, tags }: {
+const GalleryCard = memo(function GalleryCard({ row, index, layout, reducedMotion, pickingImage, selecting, tags }: {
   row: RowRecord; index: number; layout: ReturnType<typeof galleryLayout>; reducedMotion: boolean;
-  pickingMaterial: boolean; selecting: boolean; tags: TagSummary[];
+  pickingImage: boolean; selecting: boolean; tags: TagSummary[];
 }) {
-  const checked = useSelection(state => !pickingMaterial && isSelected(row.id, state));
+  const checked = useSelection(state => !pickingImage && isSelected(row.id, state));
   const active = useRows(state => state.activeRow?.id === row.id);
   const position = galleryCellPosition(index, layout);
   const style = { left: position.x, top: position.y, width: layout.cardWidth, "--image-height": `${layout.imageHeight}px` } as CSSProperties;
   const layoutKey = `${layout.columns}:${index}:${reducedMotion}`;
   return <GalleryLayoutItem layoutDependency={layoutKey} role="listitem" className="r-card" data-active={active} data-checked={checked} data-selecting={selecting} style={style}>
-    <GalleryCardContent row={row} index={index} checked={checked} active={active} pickingMaterial={pickingMaterial} tags={tags} layoutKey={layoutKey} />
+    <GalleryCardContent row={row} index={index} checked={checked} active={active} pickingImage={pickingImage} tags={tags} layoutKey={layoutKey} />
   </GalleryLayoutItem>;
 });
 
 export function Gallery() {
   const reducedMotion = useReducedMotionPreference();
-  const pickingMaterial = useMaterials(state => !!state.galleryPick);
+  const pickingImage = useGalleryPick(state => !!state.pick);
   const cardSize = useWorkspace(state => state.galleryCardSize);
   const pages = useRows(state => state.pages);
   const total = useRows(state => state.total);
@@ -105,7 +105,7 @@ export function Gallery() {
   const layout = useMemo(() => galleryLayout(size.width, cardSize, total), [size.width, cardSize, total]);
   const indices = galleryVisibleIndices(layout, size.top, size.height, total);
   const pageKey = [...new Set(indices.map(index => Math.floor(index / PAGE_SIZE)))].join(",");
-  const selectionActive = !pickingMaterial && hasSelection;
+  const selectionActive = !pickingImage && hasSelection;
   const first = indices[0] ?? 0;
   const last = indices[indices.length - 1] ?? -1;
   useLayoutEffect(() => { if (!loading && !refreshing && last >= first) rememberVisibleRange("gallery", first, last); }, [first, last, loading, refreshing]);
@@ -129,7 +129,7 @@ export function Gallery() {
         const position = galleryCellPosition(index, layout);
         const style = { left: position.x, top: position.y, width: layout.cardWidth, "--image-height": `${layout.imageHeight}px` } as CSSProperties;
         if (!row) return <div key={`placeholder-${index}`} className="r-card r-card-skeleton" style={style}><div className="r-thumb r-image-placeholder" /></div>;
-        return <GalleryCard key={row.id} row={row} index={index} layout={layout} reducedMotion={reducedMotion} pickingMaterial={pickingMaterial} selecting={selectionActive} tags={tags} />;
+        return <GalleryCard key={row.id} row={row} index={index} layout={layout} reducedMotion={reducedMotion} pickingImage={pickingImage} selecting={selectionActive} tags={tags} />;
       })}</div>}
     {error && total > 0 && <div className="r-inline-error" role="alert"><span>{error}</span><Button size="sm" onClick={() => void reloadRows()}>重试</Button></div>}
   </motion.div></GalleryMotion>;

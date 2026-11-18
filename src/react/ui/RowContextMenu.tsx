@@ -1,6 +1,6 @@
 import { useState, type ReactElement } from "react";
 import { ContextMenu } from "radix-ui";
-import type { RowRecord, RowSelection } from "../../lib/api";
+import { selectedRowIds, type RowRecord, type RowSelection } from "../../lib/api";
 import { openCompareWindow } from "../../lib/windows/compare";
 import { errorText, formatCount } from "../../lib/utils/format";
 import { copyRowFilePath, copyRowPrompt, exportOriginalImage, filterByArtists, requestDelete, requestGroupAssign, requestPromptEdit, requestTagEdit, selectSameArtists, showRowInExplorer } from "../state/row-actions";
@@ -18,7 +18,9 @@ export function RowContextMenu({ row, children }: { row: RowRecord; children: Re
     if (!open) return;
     if (selectedCount(useSelection.getState()) > 0 && !isSelected(row.id)) setExplicitSelection([row.id]);
     const count = selectedCount(useSelection.getState());
-    setTarget(count > 0 ? { selection: selectionDto(), count } : { selection: { kind: "explicit", rowIds: [row.id] }, count: 1 });
+    const selection = selectionDto();
+    if (count === 2 && selection.kind === "explicit") selection.rowIds = [...useSelection.getState().ids];
+    setTarget(count > 0 ? { selection, count } : { selection: { kind: "explicit", rowIds: [row.id] }, count: 1 });
   }}><ContextMenu.Trigger asChild>{children}</ContextMenu.Trigger><ContextMenu.Portal>
     <ContextMenu.Content className="r-menu" collisionPadding={8}>
       {action("复制 Prompt", () => void copyRowPrompt(row), !row.positivePrompt?.trim())}
@@ -26,7 +28,15 @@ export function RowContextMenu({ row, children }: { row: RowRecord; children: Re
       {action("复制文件地址", () => void copyRowFilePath(row), !hasImage)}
       {action("在文件管理器中打开", () => void showRowInExplorer(row), !hasImage)}
       <ContextMenu.Separator className="r-menu-separator" />
-      {action("对比", () => { void openCompareWindow(row.id).catch(error => notify(`打开对比窗口失败：${errorText(error)}`, "error")); })}
+      {action(target.count === 2 ? "对比这两张" : "对比", async () => {
+        try {
+          if (target.count === 2) {
+            const ids = target.selection.kind === "explicit" ? target.selection.rowIds : await selectedRowIds(target.selection);
+            if (ids.length !== 2) throw new Error("选区已变化，请重新选择两张图片。");
+            await openCompareWindow(ids[0], ids[1]);
+          } else await openCompareWindow(row.id);
+        } catch (error) { notify(`打开对比窗口失败：${errorText(error)}`, "error"); }
+      })}
       {action("只看当前画师串", () => filterByArtists(row.artists ?? ""), !row.artists?.trim())}
       {action("选中相同画师串", () => void selectSameArtists(row.artists ?? ""), !row.artists?.trim())}
       {action(row.artistRepresentative ? "取消画师串代表图" : "设为画师串代表图", () => void markArtistRepresentative(row, !row.artistRepresentative), busy || !row.artists?.trim())}

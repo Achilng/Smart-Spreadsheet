@@ -7,11 +7,11 @@ let opening: Promise<void> | null = null;
  * 后端负责单实例、URL 传参与 `compare://set-sample` 推送，
  * 前端不需要自己跨窗口发事件，也没有新建窗口的就绪竞态。
  */
-export function openCompareWindow(rowId: number): Promise<void> {
+export function openCompareWindow(rowId: number, targetId?: number): Promise<void> {
   if (opening) {
     return opening;
   }
-  opening = invoke<void>("open_compare_window", { rowId }).finally(() => {
+  opening = invoke<void>("open_compare_window", { rowId, targetId }).finally(() => {
     opening = null;
   });
   return opening;

@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { listen } from "@tauri-apps/api/event";
+import { emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Images, Palette, Layers, SlidersHorizontal, ScanLine, RefreshCw, Copy, ChevronDown, ChevronLeft, ChevronRight, ArrowUpRight } from "lucide-react";
+import { Images, Palette, Layers, SlidersHorizontal, ScanLine, RefreshCw, Copy, ChevronDown, ChevronLeft, ChevronRight, ArrowUpRight, MousePointer2 } from "lucide-react";
 import type { RowRecord } from "../../../lib/api";
 import { modelVersionBadge } from "../../../lib/utils/model-version";
 import { rowFileName, rowResolution } from "../../../lib/utils/row-display";
@@ -17,6 +17,7 @@ import { DeleteRowsDialog } from "../DeleteRowsDialog";
 import { notify } from "../../state/notices";
 import { closeSideBySide, compareModelGroups, compareNavigation, loadCompareModels, loadCompareSectionPage, moveCompareTarget, openSideBySide, refreshCompare, resetCompare, selectCompareModel, selectCompareTab, setCompareModelOffset, setCompareSample, useCompare, type CompareSectionKey } from "../../state/compare";
 import { ArtistText } from "../../ui/ArtistText";
+import { focusMainWindow } from "../../../lib/windows/toolbox";
 import { PaneImage } from "./CompareImages";
 import { SideBySide } from "./SideBySide";
 import { CompareRowContextMenu } from "./CompareRowContextMenu";
@@ -41,21 +42,44 @@ const afterCompareDelete: AfterRowsDeleted = async (_result, selection) => {
 
 export function CompareWindow() {
   const state = useCompare();
+  const pendingPick = useRef<string | null>(null);
+  async function chooseTarget() {
+    if (!state.sample) return;
+    const requestId = crypto.randomUUID();
+    pendingPick.current = requestId;
+    try {
+      await emitTo("main", "compare://pick-target", { sampleId: state.sample.row.id, requestId });
+      await focusMainWindow();
+    } catch (error) { notify(`无法打开主画廊：${String(error)}`, "error"); }
+  }
   const results = useRef<HTMLElement>(null);
   const lastTarget = useRef<number | null>(null);
   useEffect(() => {
     let disposed = false;
     const cleanups: (() => void)[] = [];
     const register = (promise: Promise<() => void>) => void promise.then(fn => { if (disposed) fn(); else cleanups.push(fn); }, error => { if (!disposed) notify(`窗口事件连接失败：${String(error)}`, "error"); });
-    register(listen<number>("compare://set-sample", event => { if (!disposed) void setCompareSample(event.payload); }));
+    register(listen<number | { rowId: number; targetId?: number }>("compare://set-sample", ({ payload }) => {
+      if (disposed) return;
+      pendingPick.current = null;
+      if (typeof payload === "number") void setCompareSample(payload, true);
+      else void setCompareSample(payload.rowId, true, payload.targetId);
+    }));
+    register(listen<{ requestId: string; sampleId: number; row: RowRecord | null }>("compare://pick-finished", ({ payload }) => {
+      if (disposed || pendingPick.current !== payload.requestId || useCompare.getState().rowId !== payload.sampleId) return;
+      pendingPick.current = null;
+      if (payload.row && payload.row.id !== payload.sampleId) openSideBySide(payload.row, true);
+      const win = getCurrentWindow();
+      void win.unminimize().then(() => win.setFocus()).catch(error => notify(`无法聚焦对比窗口：${String(error)}`, "error"));
+    }));
     register(listen("artist-matching://changed", () => { if (!disposed && useCompare.getState().sample) void refreshCompare(); }));
     register(listen("main://library-reset", () => {
       if (disposed) return;
       resetCompare(); thumbnails.clear(); clearProgressiveImages();
       void getCurrentWindow().destroy().catch(error => notify(`关闭对比窗口失败：${String(error)}`, "error"));
     }));
-    const initialRowId = Number(new URLSearchParams(window.location.search).get("row"));
-    if (initialRowId > 0) void setCompareSample(initialRowId);
+    const params = new URLSearchParams(window.location.search);
+    const initialRowId = Number(params.get("row"));
+    if (initialRowId > 0) void setCompareSample(initialRowId, false, Number(params.get("target")) || undefined);
     return () => { disposed = true; cleanups.forEach(fn => fn()); };
   }, []);
   useEffect(() => { results.current?.scrollTo({ top: 0 }); }, [state.rowId, state.activeTab, state.artists.offset, state.vibeDiffStyle.offset, state.styleDiffVibe.offset, state.modelTier, state.modelOffset]);
@@ -67,7 +91,7 @@ export function CompareWindow() {
   }, [state.target]);
   const sample = state.sample;
   const navigation = compareNavigation(state);
-  const relation = tabs.find(tab => tab.key === state.activeTab)!.label;
+  const relation = state.manualTarget ? "自选图片对比" : tabs.find(tab => tab.key === state.activeTab)!.label;
   return <Tooltip.Provider delayDuration={350}>
     <div className="rc-window" onContextMenu={event => { if (!(event.target instanceof Element && event.target.closest("input, textarea, [contenteditable='true']"))) event.preventDefault(); }}>
       <header className="titlebar" data-tauri-drag-region>
@@ -83,7 +107,7 @@ export function CompareWindow() {
                   <aside className="sidebar" aria-label="对比样本与关系">
                     <div className="sidebar-label"><strong>参考样本</strong><span>#{sample.row.id}</span><button className="icon-button" aria-label="刷新样本与关联结果" title="刷新样本与关联结果" onClick={() => void refreshCompare()}><RefreshCw size={14} /></button></div>
                     <SampleCard key={sample.row.id} row={sample.row} />
-                    <nav className="relation-nav" aria-label="对比关系">{tabs.map(tab => <button key={tab.key} type="button" className={state.activeTab === tab.key ? "active" : ""} aria-pressed={state.activeTab === tab.key} onClick={() => void selectCompareTab(tab.key)}>
+                    <nav className="relation-nav" aria-label="对比关系"><button type="button" onClick={() => void chooseTarget()}><MousePointer2 size={17} /><span className="nav-copy"><strong>手动选择 B</strong><small>到主画廊挑选目标</small></span><ChevronRight className="nav-arrow" size={14} /></button>{tabs.map(tab => <button key={tab.key} type="button" className={state.activeTab === tab.key ? "active" : ""} aria-pressed={state.activeTab === tab.key} onClick={() => void selectCompareTab(tab.key)}>
                       <tab.icon size={17} /><span className="nav-copy"><strong>{tab.label}</strong><small>{tab.hint}</small></span><ChevronRight className="nav-arrow" size={14} />
                     </button>)}</nav>
                     <SamplePrompts key={sample.row.id} row={sample.row} />
@@ -91,7 +115,7 @@ export function CompareWindow() {
                   </aside>
                   <main className="results" ref={results}>{state.activeTab === "models" ? <ModelSection key={`${sample.row.id}-models`} /> : <CompareSection key={`${sample.row.id}-${state.activeTab}`} section={state.activeTab} />}</main>
                 </div>
-                {state.target && <SideBySide key={sample.row.id} sample={sample.row} target={state.target} relation={relation} navigation={navigation} onMove={moveCompareTarget} onBack={closeSideBySide} />}
+                {state.target && <SideBySide key={sample.row.id} sample={sample.row} target={state.target} relation={relation} navigation={navigation} onMove={moveCompareTarget} onBack={closeSideBySide} onChooseTarget={chooseTarget} />}
               </>}
       </div>
     </div><DeleteRowsDialog afterDelete={afterCompareDelete} /><Notices />

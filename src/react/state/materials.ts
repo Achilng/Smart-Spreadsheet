@@ -6,7 +6,8 @@ import { ImageLoader } from "../../lib/images/image-loader";
 import { trimPageCache } from "../../lib/utils/page-cache";
 import { isMaterialImagePath, MATERIAL_IMAGE_EXTENSIONS } from "../../lib/utils/materials";
 import { errorText } from "../../lib/utils/format";
-import { useLibrary, useRows, refreshTags } from "./library";
+import { startGalleryPick, useGalleryPick } from "./gallery-pick";
+import { useLibrary, refreshTags } from "./library";
 import { useWorkspace } from "./workspace";
 import { useTasks, runTask } from "./tasks";
 import { notify } from "./notices";
@@ -24,26 +25,15 @@ interface MaterialsState {
   editorOpen: boolean; editing: Material | null; editingVersion?: number; pendingPaths: string[]; editorKey: number;
   pendingDelete: Material | null; deleteError: string; deleting: boolean;
   cardVersions: Record<number, number>; openCardId: number | null;
-  galleryPick: { label: string; onChoose: (id: number) => void } | null;
 }
-const initial: MaterialsState = { search: "", selectedTags: [], untagged: false, tags: [], tagError: "", pages: new Map(), total: 0, loading: false, error: "", revision: 0, selected: null, detailOpen: false, scrollTop: 0, initialized: false, editorOpen: false, editing: null, pendingPaths: [], editorKey: 0, pendingDelete: null, deleteError: "", deleting: false, cardVersions: {}, openCardId: null, galleryPick: null };
+const initial: MaterialsState = { search: "", selectedTags: [], untagged: false, tags: [], tagError: "", pages: new Map(), total: 0, loading: false, error: "", revision: 0, selected: null, detailOpen: false, scrollTop: 0, initialized: false, editorOpen: false, editing: null, pendingPaths: [], editorKey: 0, pendingDelete: null, deleteError: "", deleting: false, cardVersions: {}, openCardId: null };
 export const useMaterials = create<MaterialsState>(() => initial);
-// Leaving the gallery cancels only the pick; the mounted editor keeps its draft.
-useWorkspace.subscribe((state, previous) => {
-  if (state.viewMode !== previous.viewMode && state.viewMode !== "gallery") useMaterials.setState({ galleryPick: null });
-});
 export function startMaterialGalleryPick(label: string, onChoose: (id: number) => void) {
   if (!useMaterials.getState().editorOpen || useTasks.getState().busy) return;
-  useRows.setState({ activeRow: null });
-  useMaterials.setState({ galleryPick: { label, onChoose } });
-  useWorkspace.getState().setView("gallery");
-}
-export function finishMaterialGalleryPick(id?: number) {
-  const pick = useMaterials.getState().galleryPick;
-  if (!pick) return;
-  useMaterials.setState({ galleryPick: null });
-  useWorkspace.getState().setView("materials");
-  if (id !== undefined) pick.onChoose(id);
+  startGalleryPick({ kind: "material", label, onFinish: row => {
+    useWorkspace.getState().setView("materials");
+    if (row) onChoose(row.id);
+  } });
 }
 let generation = 0;
 let pending = new Set<number>();
@@ -86,7 +76,10 @@ export function setMaterialUntagged(untagged: boolean) { useMaterials.setState({
 export function clearMaterialFilters() { useMaterials.setState({ search: "", selectedTags: [], untagged: false }); void reloadMaterials(false); }
 export function createMaterial() { if (useTasks.getState().busy) return; useMaterials.setState(state => ({ editing: null, editingVersion: undefined, pendingPaths: [], editorOpen: true, editorKey: state.editorKey + 1 })); }
 export function editMaterial(material = useMaterials.getState().selected, versionId?: number) { if (!material || useTasks.getState().busy) return; useMaterials.setState(state => ({ selected: material, editing: material, editingVersion: versionId, pendingPaths: [], editorOpen: true, editorKey: state.editorKey + 1 })); }
-export function closeMaterialEditor() { useMaterials.setState({ editorOpen: false, editing: null, pendingPaths: [], galleryPick: null }); }
+export function closeMaterialEditor() {
+  if (useGalleryPick.getState().pick?.kind === "material") useGalleryPick.setState({ pick: null });
+  useMaterials.setState({ editorOpen: false, editing: null, pendingPaths: [] });
+}
 export function beginMaterialImport(paths: string[]) {
   if (useMaterials.getState().editorOpen || useMaterials.getState().pendingDelete || useTasks.getState().busy) return;
   const valid = paths.filter(isMaterialImagePath);

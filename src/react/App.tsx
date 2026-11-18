@@ -18,8 +18,8 @@ import { SelectionBar } from "./views/SelectionBar";
 import { StartupScreen } from "./views/StartupScreen";
 import { runStartupMaintenance } from "./state/library-session";
 import { FilterPanel } from "./views/FilterPanel";
-import { useMaterials } from "./state/materials";
-import { MaterialGalleryPicker } from "./views/materials/MaterialGalleryPicker";
+import { useGalleryPick } from "./state/gallery-pick";
+import { GalleryPicker } from "./views/GalleryPicker";
 import { MaterialsView } from "./views/materials/MaterialsView";
 import { DeferredPromptDocs } from "./views/prompt-docs/DeferredPromptDocs";
 import { GroupBrowseView } from "./views/groups/GroupBrowseView";
@@ -38,7 +38,7 @@ export function App() {
   const view = useWorkspace(state => state.viewMode);
   const [dialog, setDialog] = useState<string | null>(null);
   const [imageFilters, setImageFilters] = useState(false);
-  const pickingMaterial = useMaterials(state => !!state.galleryPick);
+  const pickingImage = useGalleryPick(state => !!state.pick);
   const expandedGroups = useGroups(state => state.expanded);
   const duplicateDetails = useDuplicates(state => state.layout === "list" || state.expanded.length > 0);
   useEffect(() => { void initializeLibrary().then(runStartupMaintenance); }, []);
@@ -46,8 +46,8 @@ export function App() {
     {!loaded || error || !configured ? <StartupScreen />
       : <div className="r-workspace"><TopBar />
         <div className="r-workspace-body"><AlbumNavigation onUpdateImport={() => setDialog("update")} /><MaterialsView active={view === "materials"} />{view === "promptDocs" ? <DeferredPromptDocs /> : view !== "materials" && <><div className="r-library-filter-panel" data-open={imageFilters} inert={!imageFilters}><TagSidebar onFilter={() => setDialog("过滤")} /></div><main className="r-main-area">
-          {refreshing && <div className="r-refresh-bar" role="status" aria-label="正在刷新" />}<CanvasHeader filtersOpen={imageFilters} onFilters={() => setImageFilters(value => !value)} />{view === "group" ? <GroupBrowseView filtersOpen={imageFilters} onFilters={() => setImageFilters(value => !value)} /> : view === "duplicates" ? <DuplicateBrowseView filtersOpen={imageFilters} onFilters={() => setImageFilters(value => !value)} /> : <FilterLayout>{pickingMaterial && view === "gallery" && <MaterialGalleryPicker />}{view === "table" ? <Table /> : <Gallery />}</FilterLayout>}
-          {!pickingMaterial && <SelectionBar />}
+          {refreshing && <div className="r-refresh-bar" role="status" aria-label="正在刷新" />}<CanvasHeader filtersOpen={imageFilters} onFilters={() => setImageFilters(value => !value)} />{view === "group" ? <GroupBrowseView filtersOpen={imageFilters} onFilters={() => setImageFilters(value => !value)} /> : view === "duplicates" ? <DuplicateBrowseView filtersOpen={imageFilters} onFilters={() => setImageFilters(value => !value)} /> : <FilterLayout>{pickingImage && view === "gallery" && <GalleryPicker />}{view === "table" ? <Table /> : <Gallery />}</FilterLayout>}
+          {!pickingImage && <SelectionBar />}
         </main>{(view !== "group" || expandedGroups.length > 0) && (view !== "duplicates" || duplicateDetails) && <DetailPanel />}</>}</div>
       </div>}
     {dialog === "过滤" && <FilterPanel onClose={() => setDialog(null)} />}{dialog === "update" && <UpdateImportDialog onClose={() => setDialog(null)} />}

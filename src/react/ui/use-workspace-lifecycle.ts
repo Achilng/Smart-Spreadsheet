@@ -9,7 +9,8 @@ import { clearHistory, undoLastAction, redoLastAction } from "../state/history";
 import { clearSelection, selectedCount, selectionDto, useSelection } from "../state/selection";
 import { selectAllCurrentView } from "../state/view-selection";
 import { useTasks } from "../state/tasks";
-import { useMaterials, finishMaterialGalleryPick } from "../state/materials";
+import { useMaterials } from "../state/materials";
+import { useGalleryPick, startGalleryPick, finishGalleryPick } from "../state/gallery-pick";
 import { useWorkspace } from "../state/workspace";
 import { notify } from "../state/notices";
 import { errorText } from "../../lib/utils/format";
@@ -39,6 +40,17 @@ export function useWorkspaceLifecycle(): void {
     cleanups.push(useRows.subscribe((next, previous) => { if (next.query !== previous.query) shareSelection(); }));
     retain(listen("toolbox://request-selection", shareSelection));
     retain(listen<{ rowId: number }>("toolbox://open-row", event => { void revealRow(event.payload.rowId).catch(error => notify(`无法定位图片：${errorText(error)}`, "error")); }));
+    retain(listen<{ sampleId: number; requestId: string }>("compare://pick-target", ({ payload }) => {
+      if (disposed) return;
+      if (useTasks.getState().busy || useMaterials.getState().editorOpen) {
+        notify("请先完成当前操作，再到画廊选择对比目标。");
+        return;
+      }
+      startGalleryPick({ kind: "compare", sampleId: payload.sampleId, onFinish: row => {
+        void emitTo("compare", "compare://pick-finished", { ...payload, row })
+          .catch(error => notify(`无法返回对比窗口：${errorText(error)}`, "error"));
+      } });
+    }));
     // Serialize notifications so a slow refresh cannot overwrite a later switch.
     let updates = Promise.resolve();
     retain(listen<MainStateChange>("toolbox://app-state-changed", event => {
@@ -76,8 +88,8 @@ export function useWorkspaceLifecycle(): void {
       if (target?.closest('input, textarea, select, [contenteditable="true"]') || event.isComposing || document.querySelector('[role="dialog"]')) return;
       if (event.altKey && (event.key === "ArrowLeft" || event.key === "ArrowRight")) { event.preventDefault(); if (!event.repeat) void navigateHistory(event.key === "ArrowLeft" ? -1 : 1); return; }
       if (["materials", "promptDocs"].includes(useWorkspace.getState().viewMode)) return;
-      if (useMaterials.getState().galleryPick) {
-        if (event.key === "Escape") { event.preventDefault(); finishMaterialGalleryPick(); return; }
+      if (useGalleryPick.getState().pick) {
+        if (event.key === "Escape") { event.preventDefault(); finishGalleryPick(); return; }
         if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") { event.preventDefault(); return; }
       }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") { event.preventDefault(); void (event.shiftKey ? redoLastAction() : undoLastAction()); }
