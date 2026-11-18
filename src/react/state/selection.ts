@@ -78,16 +78,31 @@ export async function selectAllFiltered(): Promise<void> {
   const state = useSelection.getState();
   const query = snapshotQueryFilters(useRows.getState().query);
   const filtered: FilteredSelection = { kind: "filtered", ...query, excludedRowIds: [] };
-  const total = await countSelectedRows(filtered);
+  // A fixed image scope can be removed while its selection stays active. Resolve
+  // its members now so newly visible rows won't inherit a select-all checkbox.
+  const fixedScope = query.filters.some(filter => filter.type === "selectedImages");
+  const rowIds = fixedScope ? await selectedRowIds(filtered) : null;
+  const total = rowIds?.length ?? await countSelectedRows(filtered);
   if (state.version !== useSelection.getState().version || JSON.stringify(query) !== JSON.stringify(snapshotQueryFilters(useRows.getState().query))) return;
-  useSelection.setState({ filtered, ids: new Set(), total, anchor: null, version: state.version + 1 });
+  if (rowIds) setExplicitSelection(rowIds);
+  else useSelection.setState({ filtered, ids: new Set(), total, anchor: null, version: state.version + 1 });
 }
 
-// Pure sort changes retain selected IDs but invalidate the range anchor.
 useRows.subscribe((state, previous) => {
   if (state.query === previous.query) return;
   const { sort: currentSort, ...currentQuery } = state.query;
   const { sort: previousSort, ...previousQuery } = previous.query;
-  if (JSON.stringify(currentQuery) !== JSON.stringify(previousQuery)) clearSelection();
-  else if (currentSort !== previousSort) useSelection.setState({ anchor: null });
+  const current = JSON.stringify(currentQuery);
+  if (current === JSON.stringify(previousQuery)) {
+    if (currentSort !== previousSort) useSelection.setState({ anchor: null });
+    return;
+  }
+  if (currentQuery.filters.length < previousQuery.filters.length) {
+    const remaining = previousQuery.filters.filter(filter => filter.type !== "selectedImages");
+    if (current === JSON.stringify({ ...previousQuery, filters: remaining })) {
+      useSelection.setState(state => ({ anchor: null, orderedAnchor: null, version: state.version + 1 }));
+      return;
+    }
+  }
+  clearSelection();
 });
