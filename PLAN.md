@@ -1,5 +1,12 @@
 # 项目计划
 
+## v_49 发布及本机升级（2026-11-19）
+
+- 从 `feat/library-agent` 的 `7019032` 发布 `v_49`（`0.12.26`），包含整理助手、模型选择、聊天附件与图片对比改进；入口和用法见 `.github/release-notes/v_49.md`。Windows x64 安装包在本机编译并签名，未触发 GitHub Actions 构建。
+- 使用应用内置公钥核验安装包签名；GitHub 上三个附件与本地 SHA-256 一致，应用更新地址返回 `0.12.26`。前端构建和 45 项既有测试通过；Rust 315 项通过、3 项忽略、1 项失败：旧表清单未包含新迁移创建的 `agent_image_attachments`，此次未修改测试。
+- 从签名安装包提取主程序，备份后原地更新 `D:/应用/智能表格/smart-spreadsheet.exe`，Windows 已安装应用登记版本同步至 `0.12.26`。保留快捷方式及卸载器，未启动新版或改写真实资料库。旧主程序备份：`D:/应用/智能表格/backups/smart-spreadsheet-before-v49-20261119.exe`。
+- 版本文件：`package.json`、`package-lock.json`、`Cargo.lock`、`src-tauri/Cargo.toml`、`src-tauri/tauri.conf.json`。发布产物在 `target/release/publish/v_49/`，构建、包内程序和验证记录在 `D:/Agent/Agent_temp/smart-spreadsheet-release-v49/`。工作区已有文件改动保持不变。
+
 ## 整理助手模型选择（2026-11-19）
 
 - 在聊天输入框下方点模型名称，设置里会显示当前选择。可以跟随渠道默认模型，也可以单独指定模型。每个资料库按渠道记住上次保存的选择和最近使用的五个手动模型。
