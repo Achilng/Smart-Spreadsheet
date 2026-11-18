@@ -114,10 +114,9 @@ export function CompareWindow() {
                     <nav className="relation-nav" aria-label="对比关系"><button type="button" onClick={() => void chooseTarget()}><MousePointer2 size={17} /><span className="nav-copy"><strong>手动选择 B</strong><small>到主画廊挑选目标</small></span><ChevronRight className="nav-arrow" size={14} /></button>{tabs.map(tab => <button key={tab.key} type="button" className={state.activeTab === tab.key ? "active" : ""} aria-pressed={state.activeTab === tab.key} onClick={() => void selectCompareTab(tab.key)}>
                       <tab.icon size={17} /><span className="nav-copy"><strong>{tab.label}</strong><small>{tab.hint}</small></span><ChevronRight className="nav-arrow" size={14} />
                     </button>)}
-                      <button type="button" className={state.activeTab === "custom" ? "active" : ""} aria-pressed={state.activeTab === "custom"} onClick={() => {
-                        if (state.custom.loaded) void selectCompareTab("custom");
-                        else setEditor(state.options);
-                      }}><SlidersHorizontal size={17} /><span className="nav-copy"><strong>自定义对比</strong><small>选择想观察的变化</small></span><ChevronRight className="nav-arrow" size={14} /></button>
+                      <button type="button" className={state.activeTab === "custom" ? "active" : ""} aria-haspopup="dialog" onClick={() => setEditor(state.options)}>
+                        <SlidersHorizontal size={17} /><span className="nav-copy"><strong>自定义对比</strong><small>调整对比条件</small></span><ChevronRight className="nav-arrow" size={14} />
+                      </button>
                     </nav>
                     <SamplePrompts key={sample.row.id} row={sample.row} />
                     <p className="sidebar-tip">点选右侧图片，与样本并排对照。</p>
