@@ -1,11 +1,11 @@
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { emit, listen } from "@tauri-apps/api/event";
 import { cjk } from "@streamdown/cjk";
-import { ArrowDown, ArrowUp, Check, ChevronDown, Copy, History, MoreHorizontal, PanelLeft, Sparkles, SquarePen } from "lucide-react";
+import { ArrowDown, ArrowUp, Check, ChevronDown, Copy, History, Images, MoreHorizontal, PanelLeft, Sparkles, SquarePen } from "lucide-react";
 import { Streamdown, type StreamdownProps } from "streamdown";
 import { useStickToBottom } from "use-stick-to-bottom";
 import {
-  agentCancel, agentMessages, agentModels, agentOperations, agentSend, agentState, deleteAgentConversation, renameAgentConversation, saveAgentPreferences,
+  agentCancel, agentMessages, agentModels, agentOperations, agentSend, agentState, applyAgentPreview, deleteAgentConversation, renameAgentConversation, saveAgentPreferences,
   type AgentEvent, type AgentMessage, type AgentOperation, type AgentPreferences, type AgentPreviewReport, type AgentState,
 } from "../../../lib/api/agent";
 import { errorText } from "../../../lib/utils/format";
@@ -13,7 +13,10 @@ import { Button, Menu, Modal, Select, Tooltip } from "../../ui/controls";
 import { Notices } from "../../ui/Notices";
 import { WindowControls } from "../../ui/WindowControls";
 import { notify } from "../../state/notices";
+import { thumbnails } from "../../../lib/images/thumbnails";
+import { clearProgressiveImages } from "../../../lib/images/progressive-images";
 import { OperationCard, PreviewCard } from "./AgentCards";
+import { ImageViewerProvider, ThumbStrip, useImageViewer } from "./AgentMedia";
 import { ThoughtLine, type ThoughtStep } from "./ThoughtLine";
 import { TOOL_LABELS, formatTime } from "./agent-format";
 import "./agent.css";
@@ -39,6 +42,7 @@ type Item =
   | { type: "user"; id: number; at: number; text: string }
   | { type: "assistant"; id: number; at: number; text: string }
   | { type: "error"; id: number; at: number; text: string; stopped: boolean }
+  | { type: "action"; id: number; at: number; action: string; title: string; operationId: number | null }
   | ReasoningItem
   | StepItem;
 /** A run of reasoning and tool steps, shown as one thought line. */
@@ -70,6 +74,7 @@ function toItems(messages: AgentMessage[]): Item[] {
     if (reasoning) items.push({ type: "reasoning", id: message.id, at, text: reasoning });
     if (message.kind === "user") items.push({ type: "user", id: message.id, at, text: String(content.text ?? "") });
     else if (message.kind === "assistant") items.push({ type: "assistant", id: message.id, at, text: String(content.text ?? "") });
+    else if (message.kind === "user_action") items.push({ type: "action", id: message.id, at, action: String(content.action ?? ""), title: String(content.title ?? ""), operationId: typeof content.operationId === "number" ? content.operationId : null });
     else if (message.kind === "error") items.push({ type: "error", id: message.id, at, text: String(content.message ?? ""), stopped: content.stopped === true });
     else if (message.kind === "tool_call") {
       const step: StepItem = { type: "step", id: message.id, at, doneAt: null, name: String(content.name ?? ""), args: String(content.arguments ?? ""), output: null, ok: true, display: null };
@@ -124,17 +129,64 @@ const Markdown = memo(function Markdown({ text, streaming = false, className = "
   return <Streamdown className={`md${streaming ? " streaming" : ""}${className && ` ${className}`}`} plugins={MARKDOWN_PLUGINS} components={MARKDOWN_COMPONENTS} controls={false} isAnimating={streaming}>{text}</Streamdown>;
 });
 
+function numbers(value: unknown): number[] {
+  return Array.isArray(value) ? value.filter((id): id is number => typeof id === "number") : [];
+}
+
+/** Images whose text a step read (find_rows), inside the folded steps. */
+function StepImages({ item }: { item: StepItem }) {
+  const view = useImageViewer();
+  const ids = item.display?.kind === "rows" ? numbers(item.display.rowIds) : [];
+  if (!ids.length) return null;
+  return <ThumbStrip ids={ids} max={12} size={48} onOpen={index => view({ title: `助手读取了这 ${ids.length} 张图的信息`, ids, index })} />;
+}
+
+/** Images the model actually looked at; stays in the thread even when the steps fold away. */
+function ViewedImages({ item }: { item: StepItem }) {
+  const view = useImageViewer();
+  const [open, setOpen] = useState(true);
+  const ids = numbers(item.display?.rowIds);
+  const missing = numbers(item.display?.missing).length;
+  if (!ids.length) return null;
+  return <div className="msg msg-viewed">
+    <button type="button" className="msg-viewed__head" aria-expanded={open} onClick={() => setOpen(!open)}>
+      <Images className="icon sm" aria-hidden="true" />
+      <span>已查看 {ids.length} 张图片{missing ? `（${missing} 张读取不到）` : ""}</span>
+      <ChevronDown className="icon sm msg-viewed__chevron" aria-hidden="true" />
+    </button>
+    {open && <ThumbStrip ids={ids} max={16} size={72} onOpen={index => view({ title: `助手看了这 ${ids.length} 张图`, ids, index })} />}
+  </div>;
+}
+
+function stepSummary(item: StepItem, interrupted: boolean, failure: string): string {
+  const display = item.display;
+  if (display?.kind === "selection") return `已选中 ${display.count} 张`;
+  if (display?.kind === "images") {
+    const count = numbers(display.rowIds).length;
+    const missing = numbers(display.missing).length;
+    return `${count} 张${count > 2 ? "（拼成一张总览图）" : ""}${missing ? `，${missing} 张读取不到` : ""}`;
+  }
+  if (display?.kind === "rows") {
+    const count = numbers(display.rowIds).length;
+    const total = typeof display.total === "number" ? display.total : count;
+    return total > count ? `${count} 张（范围内共 ${total} 张）` : `${count} 张`;
+  }
+  if (interrupted) return "被中断，没有执行";
+  return !item.ok && !failure ? "没有成功" : "";
+}
+
 /** One tool call inside a thought line; the raw arguments and result open on click. */
 function StepRow({ item, interrupted }: { item: StepItem; interrupted: boolean }) {
   const [open, setOpen] = useState(false);
   const kind = item.display?.kind;
   const failure = kind === "error" ? String(item.display?.message ?? "") : "";
-  const summary = kind === "selection" ? `已选中 ${item.display?.count} 张` : interrupted ? "被中断，没有执行" : !item.ok && !failure ? "没有成功" : "";
+  const summary = stepSummary(item, interrupted, failure);
   return <>
     <button type="button" className="thought-step" aria-expanded={open} title={open ? "收起详情" : "查看详情"} onClick={() => setOpen(!open)}>
       <span>{TOOL_LABELS[item.name] ?? item.name}</span>
       {summary && <span className="thought-step__summary">{summary}</span>}
     </button>
+    <StepImages item={item} />
     {failure && <p className="thought-step__error">{failure}</p>}
     {open && <div className="thought-step__detail">
       <span>参数</span><pre>{pretty(item.args)}</pre>
@@ -262,7 +314,7 @@ export function AgentWindow() {
         }
       }),
       listen("agent://operations-changed", () => void reloadOperations()),
-      listen("main://library-reset", () => { setCurrent(null); setMessages([]); void reloadState(); void reloadOperations(); }),
+      listen("main://library-reset", () => { thumbnails.clear(); clearProgressiveImages(); setCurrent(null); setMessages([]); void reloadState(); void reloadOperations(); }),
     ];
     return () => { stops.forEach(stop => void stop.then(fn => fn()).catch(() => {})); };
   }, [reloadOperations, reloadState, settleLive, updateLive]);
@@ -279,6 +331,8 @@ export function AgentWindow() {
     return map;
   }, [operations]);
   const operationById = useMemo(() => new Map(operations.map(operation => [operation.id, operation])), [operations]);
+  /** Previews already on screen in this conversation; their operations update those cards instead of adding new ones. */
+  const shownPreviews = useMemo(() => new Set(items.flatMap(item => item.type === "step" && item.display?.kind === "preview" ? [String((item.display.report as AgentPreviewReport).previewId)] : [])), [items]);
   const channel = state?.channels.find(item => item.id === state.preferences.channelId) ?? state?.channels[0];
   const modelName = state?.preferences.model || channel?.model || "";
   const conversation = state?.conversations.find(item => item.id === current);
@@ -313,6 +367,7 @@ export function AgentWindow() {
     try { localStorage.setItem(SIDEBAR_KEY, next ? "1" : "0"); } catch { /* Preference only. */ }
   };
 
+  const onCardChanged = () => { void reloadOperations(); if (current) void reloadMessages(current); };
   const renderThought = (block: ThoughtBlock, last: boolean) => {
     const working = last && thinking;
     const steps: ThoughtStep[] = block.entries.map(entry => {
@@ -328,13 +383,22 @@ export function AgentWindow() {
       <div className="msg msg-thought"><ThoughtLine working={working} startedAt={block.startedAt} endedAt={block.endedAt} steps={steps} doneLabel={doneLabel} /></div>
       {calls.map(step => {
         const display = step.display;
+        if (display?.kind === "images") return <ViewedImages key={step.id} item={step} />;
         if (display?.kind === "preview") {
           const report = display.report as AgentPreviewReport;
-          return <div key={step.id} className="msg msg-card"><PreviewCard report={report} applied={appliedByPreview.get(report.previewId)} /></div>;
+          const conversationId = current;
+          const onApply = conversationId && !running ? async () => {
+            await applyAgentPreview(conversationId, report.previewId);
+            await reloadOperations();
+            void reloadMessages(conversationId);
+          } : undefined;
+          return <div key={step.id} className="msg msg-card"><PreviewCard report={report} applied={appliedByPreview.get(report.previewId)} onApply={onApply} onChanged={onCardChanged} /></div>;
         }
         if (display?.kind === "operation") {
           const stored = display.operation as AgentOperation;
-          return <div key={step.id} className="msg msg-card"><OperationCard operation={operationById.get(stored.id) ?? stored} onChanged={() => void reloadOperations()} /></div>;
+          const previewId = (stored.report as Partial<AgentPreviewReport> | undefined)?.previewId;
+          if (previewId && shownPreviews.has(previewId)) return null;
+          return <div key={step.id} className="msg msg-card"><OperationCard operation={operationById.get(stored.id) ?? stored} onChanged={onCardChanged} /></div>;
         }
         return null;
       })}
@@ -347,6 +411,7 @@ export function AgentWindow() {
         <Markdown text={block.text} />
         <div className="msg-actions"><CopyAction text={block.text} /></div>
       </div>;
+      case "action": return <p key={block.id} className="msg msg-user-action"><Check className="icon sm" aria-hidden="true" /><span>{block.action === "undo" ? "你撤销了" : "你确认执行了"}「{block.title}」</span>{block.operationId !== null && <span className="ag-time">#{block.operationId}</span>}</p>;
       case "error": return block.stopped
         ? <p key={block.id} className="msg msg-notice">{block.text}</p>
         : <p key={block.id} className="msg msg-error" role="alert">{block.text}</p>;
@@ -356,7 +421,7 @@ export function AgentWindow() {
 
   const empty = page === "chat" && !current && !loadError;
   const title = loadError ? "整理助手" : page === "operations" ? "操作记录" : conversation?.title || "新对话";
-  return <Tooltip.Provider delayDuration={350}>
+  return <Tooltip.Provider delayDuration={350}><ImageViewerProvider>
     <div className={`chat-view${collapsed ? " is-collapsed" : ""}`} onContextMenu={event => { if (!(event.target instanceof Element && event.target.closest("input, textarea, .msg, .ag-card"))) event.preventDefault(); }}>
       <aside className="chat-side" aria-label="历史对话" inert={collapsed}>
         <div className="chat-side-head" data-tauri-drag-region>
@@ -396,7 +461,7 @@ export function AgentWindow() {
         {loadError ? <div className="chat-fail"><h2>整理助手暂时不可用</h2><p>{loadError}</p><Button onClick={() => void reloadState()}>重试</Button></div>
           : page === "operations" ? <div className="chat-scroll"><div className="chat-thread is-list">
             <p className="chat-lede">保留最近 100 次修改。关掉窗口或重启后也能撤销；撤销时，之后又被改过的图片会保留现状。</p>
-            {operations.length === 0 ? <p className="ag-empty">还没有执行过修改。</p> : operations.map(operation => <OperationCard key={operation.id} operation={operation} onChanged={() => void reloadOperations()} compact />)}
+            {operations.length === 0 ? <p className="ag-empty">还没有执行过修改。</p> : operations.map(operation => <OperationCard key={operation.id} operation={operation} onChanged={() => void reloadOperations()} />)}
           </div></div>
             : <>
               {current && loaded !== current ? <div className="chat-scroll-box" /> : <ChatScroll key={current ?? "new"}>
@@ -445,5 +510,5 @@ export function AgentWindow() {
       </Modal>
       <Notices />
     </div>
-  </Tooltip.Provider>;
+  </ImageViewerProvider></Tooltip.Provider>;
 }

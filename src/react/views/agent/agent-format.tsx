@@ -6,7 +6,8 @@ export const FIELD_LABELS: Record<string, string> = {
 export const TOOL_LABELS: Record<string, string> = {
   get_library_overview: "查看图库概况",
   get_main_window_state: "读取主窗口状态",
-  find_rows: "查看图片内容",
+  find_rows: "读取图片信息",
+  view_images: "查看图片",
   analyze_text: "统计文字出现情况",
   list_artist_strings: "查找画师串",
   preview_changes: "预演修改",

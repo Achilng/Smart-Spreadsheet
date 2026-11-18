@@ -7,7 +7,7 @@ use serde::Serialize;
 use serde_json::{Value, json};
 
 use super::changes::{
-    Action, PreviewReport, RowChange, action_regex, analyze_matches, field_name, sample_json,
+    Action, PreviewReport, RowChange, action_regex, analyze_matches, field_name, group_changes, report_groups, sample_json,
     stale_ai_artists,
 };
 use super::target::{MainView, Scope, Target};
@@ -267,6 +267,7 @@ impl Database {
             warnings.push("没有任何图片需要修改".into());
         }
         let samples = pick_samples(&changes, &match_analysis);
+        let (change_groups, other_rows) = report_groups(&changes);
         let new_tags = self.agent_missing_tags(actions)?;
         let row_ids = resolved.rows.iter().map(|row| row.id).collect::<Vec<_>>();
         let preview_id = new_id();
@@ -285,6 +286,8 @@ impl Database {
             match_analysis,
             samples,
             warnings,
+            change_groups,
+            other_rows,
         };
         let plan_json = json!({"rowIds": row_ids, "actions": actions, "title": report.title});
         self.connection
@@ -549,8 +552,16 @@ impl Database {
         Ok(rows)
     }
 
-    /// Page through the full change list of a preview or an applied operation.
-    pub fn agent_change_page(&self, source: &str, id: &str, offset: usize, limit: usize) -> Res<(usize, Vec<RowChange>)> {
+    /// Every changed row of a preview or operation, or of one of its change groups.
+    pub fn agent_changed_rows(&self, source: &str, id: &str, group: Option<usize>) -> Res<Vec<i64>> {
+        let changes = self.agent_stored_changes(source, id)?;
+        Ok(match group {
+            None => changes.iter().map(|change| change.id).collect(),
+            Some(index) => group_changes(&changes).into_iter().nth(index).map(|(_, ids)| ids).ok_or("这组修改不存在")?,
+        })
+    }
+
+    fn agent_stored_changes(&self, source: &str, id: &str) -> Res<Vec<RowChange>> {
         let json: Option<String> = match source {
             "preview" => self
                 .connection
@@ -568,7 +579,12 @@ impl Database {
                 .map_err(s)?,
             _ => return Err("未知的来源".into()),
         };
-        let changes: Vec<RowChange> = serde_json::from_str(&json.ok_or("记录不存在或已过期")?).map_err(s)?;
+        serde_json::from_str(&json.ok_or("记录不存在或已过期")?).map_err(s)
+    }
+
+    /// Page through the full change list of a preview or an applied operation.
+    pub fn agent_change_page(&self, source: &str, id: &str, offset: usize, limit: usize) -> Res<(usize, Vec<RowChange>)> {
+        let changes = self.agent_stored_changes(source, id)?;
         let total = changes.len();
         Ok((total, changes.into_iter().skip(offset).take(limit.min(200)).collect()))
     }

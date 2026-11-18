@@ -65,6 +65,8 @@ pub fn run() {
             app::commands::agent::agent_delete_conversation,
             app::commands::agent::agent_operations,
             app::commands::agent::agent_undo,
+            app::commands::agent::agent_apply_preview,
+            app::commands::agent::agent_show_changed_rows,
             app::commands::agent::agent_change_page,
             app::commands::agent::agent_report_main_view,
             app::commands::library::get_app_snapshot,

@@ -3,7 +3,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use tauri::{AppHandle, Emitter, Manager};
 
-use super::Engine;
+use super::{Engine, vision};
 use crate::app::AppRuntime;
 use crate::automation::model::AutomationRuleDraft;
 use crate::db::agent::{Action, Target};
@@ -62,12 +62,15 @@ field 取 positive / character / negative。caseSensitive 必须明确给出。�
     Value::Array(vec![
         tool("get_library_overview", "图库概况：总数、收藏数、画师串分组数、全部分组（含 id）和常用 TAG。", json!({}), &[]),
         tool("get_main_window_state", "读取主窗口当前选中了多少张、当前筛选条件和筛选结果数量。用户说「选中的」「现在这些」时先调用。", json!({}), &[]),
-        tool("find_rows", "按范围查看图片的具体内容（分页，每页最多 50 张）。", json!({
+        tool("find_rows", "按范围读取图片的文字信息：提示词、画师串、TAG、分组等（分页，每页最多 50 张）。只读文字，看不到画面。", json!({
             "target": target_schema("要查看的图片范围"),
             "fields": fields,
             "limit": {"type": "integer"},
             "offset": {"type": "integer"}
         }), &["target"]),
+        tool("view_images", "真正查看图片画面（需要模型支持图片输入）。一次最多 16 张，按 rowIds 顺序展示。1~2 张时逐张原样发给你；3 张及以上时会拼成一张总览图，从左到右、从上到下排列，每格下方标着 #图片编号，单格分辨率较低。需要看清细节时请少看几张（1~2 张）。图片会在工具结果之后作为一条单独的消息附上。", json!({
+            "rowIds": {"type": "array", "items": {"type": "integer"}, "description": "要查看的图片 id，最多 16 个"}
+        }), &["rowIds"]),
         tool("analyze_text", "统计一段文字或正则在范围内各字段的真实命中情况：命中多少张、出现几次、不同写法、出现在开头/中间/结尾、一张图多次命中。改提示词前必须先用它看边界情况。", json!({
             "target": target_schema("统计范围"),
             "pattern": {"type": "string"},
@@ -139,7 +142,18 @@ fn changed(app: &AppHandle) {
     let _ = app.emit("agent://operations-changed", ());
 }
 
-pub fn run(app: &AppHandle, conversation_id: &str, name: &str, arguments: &Value) -> Result<ToolOutput, String> {
+/// The preview as the model sees it: groups keep a few example IDs instead of every row.
+fn preview_for_model(report: &Value) -> Value {
+    let mut value = report.clone();
+    for group in value["changeGroups"].as_array_mut().into_iter().flatten() {
+        if let Some(ids) = group["rowIds"].as_array_mut() {
+            ids.truncate(5);
+        }
+    }
+    value
+}
+
+pub fn run(app: &AppHandle, conversation_id: &str, call_id: &str, name: &str, arguments: &Value) -> Result<ToolOutput, String> {
     let runtime = app.state::<AppRuntime>();
     let engine = app.state::<Engine>();
     let view = engine.main_view();
@@ -164,9 +178,38 @@ pub fn run(app: &AppHandle, conversation_id: &str, name: &str, arguments: &Value
         }
         "find_rows" => {
             let args: TargetArgs = parse(arguments)?;
-            plain(runtime.agent_db(false, |db| {
+            let output = runtime.agent_db(false, |db| {
                 db.agent_find_rows(&args.target, &view, &args.fields, args.limit.unwrap_or(20), args.offset.unwrap_or(0))
-            })?)
+            })?;
+            let ids = output["rows"].as_array().into_iter().flatten().filter_map(|row| row["id"].as_i64()).collect::<Vec<_>>();
+            Ok(ToolOutput { display: json!({"kind": "rows", "rowIds": ids, "total": output["total"]}), output })
+        }
+        "view_images" => {
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            struct Args {
+                row_ids: Vec<i64>,
+            }
+            let args: Args = parse(arguments)?;
+            let mut ids = Vec::new();
+            for id in args.row_ids {
+                if !ids.contains(&id) {
+                    ids.push(id);
+                }
+            }
+            if ids.is_empty() {
+                return Err("rowIds 不能为空".into());
+            }
+            if ids.len() > vision::MAX_IMAGES {
+                return Err(format!("一次最多查看 {} 张，请分批查看", vision::MAX_IMAGES));
+            }
+            let rendered = vision::render(&runtime, &ids)?;
+            app.state::<Engine>().vision.put(call_id, rendered.images.clone());
+            let layout = if ids.len() > vision::SEPARATE_LIMIT { "拼成一张总览图，每格下方标着 #图片编号" } else { "逐张附上" };
+            Ok(ToolOutput {
+                output: json!({"viewed": ids, "missing": rendered.missing, "layout": layout, "note": "图片在下一条消息里"}),
+                display: json!({"kind": "images", "rowIds": ids, "missing": rendered.missing}),
+            })
         }
         "analyze_text" => {
             #[derive(Deserialize)]
@@ -212,7 +255,7 @@ pub fn run(app: &AppHandle, conversation_id: &str, name: &str, arguments: &Value
                 db.agent_preview(conversation_id, &args.title, &args.target, &args.actions, &view)
             })?;
             let value = serde_json::to_value(&report).map_err(|e| e.to_string())?;
-            Ok(ToolOutput { display: json!({"kind": "preview", "report": value}), output: value })
+            Ok(ToolOutput { output: preview_for_model(&value), display: json!({"kind": "preview", "report": value}) })
         }
         "apply_changes" => {
             #[derive(Deserialize)]

@@ -2,6 +2,7 @@
 mod prompt;
 mod responses;
 pub(crate) mod tools;
+pub(crate) mod vision;
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -19,6 +20,8 @@ pub const PREFERENCES_KEY: &str = "agent_preferences_v1";
 const MAX_STEPS: usize = 30;
 const OLD_OUTPUT_LIMIT: usize = 1500;
 const RECENT_FULL_OUTPUTS: usize = 6;
+/// Images from at most this many recent `view_images` calls (in the current user turn) are re-sent.
+const RECENT_VIEWS: usize = 4;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -46,6 +49,7 @@ struct MainState {
 pub struct Engine {
     main: Mutex<MainState>,
     runs: Mutex<HashMap<String, Arc<AtomicBool>>>,
+    pub(crate) vision: vision::Cache,
 }
 
 impl Engine {
@@ -64,6 +68,10 @@ impl Engine {
 
     pub fn main_info(&self) -> Value {
         self.main.lock().map(|main| main.info.clone()).unwrap_or(Value::Null)
+    }
+
+    pub fn is_running(&self, conversation_id: &str) -> bool {
+        self.runs.lock().is_ok_and(|runs| runs.contains_key(conversation_id))
     }
 
     pub fn running(&self) -> Vec<String> {
@@ -110,7 +118,7 @@ fn emit(app: &AppHandle, conversation_id: &str, kind: &str, extra: Value) {
     let _ = app.emit("agent://event", payload);
 }
 
-fn push(app: &AppHandle, conversation_id: &str, kind: &str, content: Value) -> Result<i64, String> {
+pub(crate) fn push(app: &AppHandle, conversation_id: &str, kind: &str, content: Value) -> Result<i64, String> {
     let id = app
         .state::<AppRuntime>()
         .agent_db(false, |db| db.agent_push_message(conversation_id, kind, &content))?;
@@ -167,7 +175,50 @@ pub fn send(app: AppHandle, conversation_id: Option<String>, text: String) -> Re
     Ok(conversation_id)
 }
 
-fn build_input(messages: &[crate::db::agent::Message]) -> Vec<Value> {
+/// `view_images` results whose images go back to the model: the latest few since the user last spoke.
+fn recent_views(messages: &[crate::db::agent::Message]) -> Vec<(String, Vec<i64>)> {
+    let start = messages.iter().rposition(|message| message.kind == "user").unwrap_or(0);
+    let mut views = messages[start..]
+        .iter()
+        .filter(|message| message.kind == "tool_result")
+        .filter_map(|message| Some((message.content["callId"].as_str()?.to_owned(), vision::viewed_ids(&message.content)?)))
+        .collect::<Vec<_>>();
+    views.drain(..views.len().saturating_sub(RECENT_VIEWS));
+    views
+}
+
+/// Images for the recent views, rendered again when they are no longer cached.
+async fn attach_views(app: &AppHandle, messages: &[crate::db::agent::Message]) -> vision::Attached {
+    let mut attached = vision::Attached::new();
+    for (call_id, ids) in recent_views(messages) {
+        if let Some(images) = app.state::<Engine>().vision.get(&call_id) {
+            attached.insert(call_id, images);
+            continue;
+        }
+        let handle = app.clone();
+        let rendered = tauri::async_runtime::spawn_blocking(move || vision::render(&handle.state::<AppRuntime>(), &ids)).await;
+        if let Ok(Ok(rendered)) = rendered {
+            app.state::<Engine>().vision.put(&call_id, rendered.images.clone());
+            attached.insert(call_id, rendered.images);
+        }
+    }
+    attached
+}
+
+fn image_message(content: &Value, images: &[String]) -> Value {
+    let ids = vision::viewed_ids(content).unwrap_or_default();
+    let list = ids.iter().map(|id| format!("#{id}")).collect::<Vec<_>>().join("、");
+    let text = if ids.len() > vision::SEPARATE_LIMIT {
+        format!("（view_images 的结果，不是用户发的消息）这 {} 张图拼成了一张总览图，从左到右、从上到下排列，每格下方标着图片编号：{list}", ids.len())
+    } else {
+        format!("（view_images 的结果，不是用户发的消息）按顺序依次是：{list}")
+    };
+    let mut parts = vec![json!({"type": "input_text", "text": text})];
+    parts.extend(images.iter().map(|url| json!({"type": "input_image", "image_url": url, "detail": "high"})));
+    json!({"role": "user", "content": parts})
+}
+
+fn build_input(messages: &[crate::db::agent::Message], attached: &vision::Attached) -> Vec<Value> {
     let answered = messages
         .iter()
         .filter(|message| message.kind == "tool_result")
@@ -176,11 +227,17 @@ fn build_input(messages: &[crate::db::agent::Message]) -> Vec<Value> {
     let result_count = messages.iter().filter(|message| message.kind == "tool_result").count();
     let mut seen_results = 0;
     let mut input = Vec::new();
-    let tool_output = |content: &Value, seen_results: &mut usize| {
+    let tool_output = |content: &Value, seen_results: &mut usize, images: &mut Vec<Value>| {
         *seen_results += 1;
         let mut output = content["output"].as_str().unwrap_or_default().to_owned();
         if *seen_results + RECENT_FULL_OUTPUTS <= result_count && output.chars().count() > OLD_OUTPUT_LIMIT {
             output = output.chars().take(OLD_OUTPUT_LIMIT).collect::<String>() + "…（较早的结果已截断，需要时请重新查询）";
+        }
+        if vision::viewed_ids(content).is_some() {
+            match content["callId"].as_str().and_then(|id| attached.get(id)) {
+                Some(urls) => images.push(image_message(content, urls)),
+                None => output.push_str("\n（这是较早查看的图片，图片本身已不再附带；需要再看时请重新调用 view_images）"),
+            }
         }
         json!({"type": "function_call_output", "call_id": content["callId"], "output": output})
     };
@@ -191,6 +248,7 @@ fn build_input(messages: &[crate::db::agent::Message]) -> Vec<Value> {
         index += 1;
         match message.kind.as_str() {
             "user" => input.push(json!({"role": "user", "content": content["text"]})),
+            "user_action" => input.push(json!({"role": "user", "content": content["text"]})),
             "assistant" => {
                 input.extend(content["reasoning"].as_array().into_iter().flatten().cloned());
                 input.push(json!({"role": "assistant", "content": content["text"]}));
@@ -225,17 +283,24 @@ fn build_input(messages: &[crate::db::agent::Message]) -> Vec<Value> {
                         "arguments": call.content["arguments"],
                     }));
                 }
+                // Images follow all of the batch's outputs: tool results must stay next to their calls.
+                let mut images = Vec::new();
                 for call in &batch {
                     let call_id = call.content["callId"].as_str().unwrap_or_default();
                     if let Some(result) = results.iter().find(|result| result.content["callId"] == call.content["callId"]) {
-                        input.push(tool_output(&result.content, &mut seen_results));
+                        input.push(tool_output(&result.content, &mut seen_results, &mut images));
                     } else if !answered.contains(call_id) {
                         input.push(json!({"type": "function_call_output", "call_id": call_id,
                             "output": "已被用户中断，未执行"}));
                     }
                 }
+                input.extend(images);
             }
-            "tool_result" => input.push(tool_output(content, &mut seen_results)),
+            "tool_result" => {
+                let mut images = Vec::new();
+                input.push(tool_output(content, &mut seen_results, &mut images));
+                input.extend(images);
+            }
             "error" => {
                 if content["stopped"].as_bool() == Some(true) {
                     input.push(json!({"role": "user", "content": "（我中途停止了上一轮回复）"}));
@@ -282,7 +347,7 @@ async fn run_loop(app: &AppHandle, conversation_id: &str, cancel: Arc<AtomicBool
             model: &model,
             effort: &preferences.effort,
             instructions: prompt::SYSTEM_PROMPT,
-            input: build_input(&messages),
+            input: build_input(&messages, &attach_views(app, &messages).await),
             tools: tools.clone(),
         };
         let outcome = responses::stream(request, cancel.clone(), |delta| match delta {
@@ -322,7 +387,8 @@ async fn run_loop(app: &AppHandle, conversation_id: &str, cancel: Arc<AtomicBool
             let app_handle = app.clone();
             let id = conversation_id.to_owned();
             let name = call.name.clone();
-            let result = tauri::async_runtime::spawn_blocking(move || tools::run(&app_handle, &id, &name, &arguments))
+            let call_id = call.call_id.clone();
+            let result = tauri::async_runtime::spawn_blocking(move || tools::run(&app_handle, &id, &call_id, &name, &arguments))
                 .await
                 .map_err(|_| "工具执行异常中断".to_owned())?;
             let (output, display, ok) = match result {

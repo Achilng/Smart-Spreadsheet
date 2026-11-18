@@ -47,6 +47,13 @@ fn friendly_status(status: u16, body: &str, model: &str) -> String {
         || lower.contains("invalid model")
         || lower.contains("model_not_found");
     let detail = body.chars().take(300).collect::<String>();
+    let image_rejected = (lower.contains("image") || lower.contains("vision") || lower.contains("multimodal"))
+        && matches!(status, 400 | 415 | 422 | 500..=599);
+    if image_rejected {
+        return format!(
+            "模型「{model}」好像不支持看图。请在右上角换一个支持图片输入的模型，然后重新发一条消息（之前看过的图不会再附带）。\n（站点返回：{detail}）"
+        );
+    }
     match status {
         401 => "Key 无效或已失效，请到工具箱的模型设置里检查这个渠道的 Key。".into(),
         403 => format!("这个 Key 没有权限使用模型「{model}」。请换一个模型或检查 Key 权限。\n（站点返回：{detail}）"),

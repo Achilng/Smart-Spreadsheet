@@ -1,6 +1,6 @@
 //! IPC for the agent window: conversations, sending, undo and preferences.
 use serde::Serialize;
-use serde_json::Value;
+use serde_json::{Value, json};
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
 use super::error_text;
@@ -145,13 +145,72 @@ pub(crate) async fn agent_operations(limit: Option<usize>, app: tauri::AppHandle
     blocking(app, move |runtime| runtime.agent_db(false, |db| db.agent_operations(limit.unwrap_or(100)))).await
 }
 
+/// Tell the conversation what the user did on a card, unless a model turn is in progress there.
+fn note_user_action(app: &tauri::AppHandle, conversation_id: Option<&str>, text: String, extra: Value) {
+    let Some(id) = conversation_id else { return };
+    if app.state::<Engine>().is_running(id) {
+        return;
+    }
+    let mut content = json!({"text": text});
+    if let (Some(target), Value::Object(extra)) = (content.as_object_mut(), extra) {
+        target.extend(extra);
+    }
+    let _ = agent::push(app, id, "user_action", content);
+}
+
 #[tauri::command]
 pub(crate) async fn agent_undo(operation_id: i64, app: tauri::AppHandle) -> Result<UndoOutcome, String> {
     let handle = app.clone();
-    let outcome = blocking(app, move |runtime| runtime.agent_db(true, |db| db.agent_undo(operation_id))).await?;
+    let (outcome, operation) = blocking(app, move |runtime| {
+        runtime.agent_db(true, |db| Ok((db.agent_undo(operation_id)?, db.agent_operation(operation_id)?)))
+    })
+    .await?;
     let _ = handle.emit("agent://library-changed", ());
     let _ = handle.emit("agent://operations-changed", ());
+    if let Some(operation) = operation {
+        note_user_action(
+            &handle,
+            operation.conversation_id.as_deref(),
+            format!("（我在卡片上撤销了操作 #{}「{}」：{}）", operation.id, operation.title, outcome.message),
+            json!({"action": "undo", "operationId": operation.id, "title": operation.title}),
+        );
+    }
     Ok(outcome)
+}
+
+/// Run a preview from its card, without going through the model.
+#[tauri::command]
+pub(crate) async fn agent_apply_preview(conversation_id: String, preview_id: String, app: tauri::AppHandle) -> Result<OperationRecord, String> {
+    if app.state::<Engine>().is_running(&conversation_id) {
+        return Err("助手还在处理这个对话，请等它停下来再执行".into());
+    }
+    let handle = app.clone();
+    let id = conversation_id.clone();
+    let record = blocking(app, move |runtime| runtime.agent_db(true, |db| db.agent_apply(&id, &preview_id))).await?;
+    let _ = handle.emit("agent://library-changed", ());
+    let _ = handle.emit("agent://operations-changed", ());
+    note_user_action(
+        &handle,
+        Some(&conversation_id),
+        format!("（我在预演卡片上点了「确认执行」：「{}」已执行，修改了 {} 张，操作记录 #{}）", record.title, record.changed_rows, record.id),
+        json!({"action": "apply", "operationId": record.id, "title": record.title}),
+    );
+    Ok(record)
+}
+
+/// Show the rows a preview or operation changes (optionally one change group) in the main window.
+#[tauri::command]
+pub(crate) async fn agent_show_changed_rows(source: String, id: String, group: Option<usize>, app: tauri::AppHandle) -> Result<usize, String> {
+    let handle = app.clone();
+    let ids = blocking(app, move |runtime| runtime.agent_db(false, |db| db.agent_changed_rows(&source, &id, group))).await?;
+    handle
+        .emit_to("main", "agent://main-selection", json!({"rowIds": ids, "showOnly": true}))
+        .map_err(error_text)?;
+    if let Some(window) = handle.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+    }
+    Ok(ids.len())
 }
 
 #[derive(Serialize)]

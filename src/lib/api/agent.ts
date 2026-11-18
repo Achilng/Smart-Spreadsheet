@@ -31,11 +31,32 @@ export interface AgentMatchAnalysis {
   sameMatchInOtherFields?: Record<string, number>;
   actionIndex?: number;
 }
+export interface AgentTextEdit {
+  field: string;
+  /** Edited span by characters (notes). */
+  removed: string; added: string;
+  /** Prompt fields: tags that go and come. */
+  removedTags?: string[]; addedTags?: string[];
+  formatOnly?: boolean;
+  /** Excerpt around the edit in the first row; empty when it spans too much. */
+  before: string; after: string; afterEmpty: boolean;
+}
+/** Rows that change in exactly the same way. */
+export interface AgentChangeGroup {
+  count: number; rowIds: number[];
+  text?: AgentTextEdit[];
+  group?: [string | null, string | null];
+  favorite?: [boolean, boolean];
+  tagsAdded?: string[];
+  tagsRemoved?: string[];
+}
 export interface AgentPreviewReport {
   previewId: string; title: string; target: Record<string, unknown>; targetNotes: string[];
   actions: Record<string, unknown>[]; scannedRows: number; changedRows: number; unchangedRows: number;
   fieldCounts: Record<string, number>; newGroups: string[]; newTags: string[];
   matchAnalysis: AgentMatchAnalysis[]; samples: AgentSample[]; warnings: string[];
+  /** Missing on reports made before grouping existed. */
+  changeGroups?: AgentChangeGroup[]; otherRows?: number;
 }
 export interface AgentOperation {
   id: number; conversationId: string | null; createdAt: string; kind: "rows" | "rule" | string; title: string;
@@ -55,6 +76,9 @@ export const renameAgentConversation = (id: string, title: string) => invoke<voi
 export const deleteAgentConversation = (id: string) => invoke<void>("agent_delete_conversation", { id });
 export const agentOperations = (limit?: number) => invoke<AgentOperation[]>("agent_operations", { limit });
 export const undoAgentOperation = (operationId: number) => invoke<AgentUndoOutcome>("agent_undo", { operationId });
+export const applyAgentPreview = (conversationId: string, previewId: string) => invoke<AgentOperation>("agent_apply_preview", { conversationId, previewId });
+export const showAgentChangedRows = (source: "preview" | "operation", id: string, group?: number) =>
+  invoke<number>("agent_show_changed_rows", { source, id, group: group ?? null });
 export const agentChangePage = (source: "preview" | "operation", id: string, offset: number, limit: number) =>
   invoke<{ total: number; changes: AgentRowChange[] }>("agent_change_page", { source, id, offset, limit });
 export const openAgentWindow = () => invoke<void>("open_agent_window");

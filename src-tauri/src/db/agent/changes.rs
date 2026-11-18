@@ -337,6 +337,173 @@ pub struct PreviewReport {
     pub match_analysis: Vec<Value>,
     pub samples: Vec<Value>,
     pub warnings: Vec<String>,
+    /// Rows that change in exactly the same way, largest first.
+    #[serde(default)]
+    pub change_groups: Vec<ChangeGroup>,
+    /// Rows left out of `change_groups` once it reaches its size limit.
+    #[serde(default)]
+    pub other_rows: usize,
+}
+
+const GROUP_LIMIT: usize = 40;
+const GROUP_ROW_IDS: usize = 60;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TextEdit {
+    pub field: String,
+    /// Edited span by characters; used for notes, which are free text.
+    pub removed: String,
+    pub added: String,
+    /// Prompt fields compare comma-separated tags, so reformatting alone does not split groups.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub removed_tags: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub added_tags: Vec<String>,
+    /// Only separators or spacing change.
+    #[serde(default)]
+    pub format_only: bool,
+    /// Excerpt of the first row around the edit; empty when the edit spans too much to excerpt.
+    pub before: String,
+    pub after: String,
+    pub after_empty: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChangeGroup {
+    pub count: usize,
+    /// The first rows of the group, enough for thumbnails.
+    pub row_ids: Vec<i64>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub text: Vec<TextEdit>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<[Option<String>; 2]>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub favorite: Option<[bool; 2]>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags_added: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags_removed: Vec<String>,
+}
+
+/// The edited span of a before/after pair, by common prefix and suffix.
+fn edited_span(before: &str, after: &str) -> (String, String) {
+    let a = before.chars().collect::<Vec<_>>();
+    let b = after.chars().collect::<Vec<_>>();
+    let prefix = a.iter().zip(&b).take_while(|(x, y)| x == y).count();
+    let suffix = a[prefix..].iter().rev().zip(b[prefix..].iter().rev()).take_while(|(x, y)| x == y).count();
+    (a[prefix..a.len() - suffix].iter().collect(), b[prefix..b.len() - suffix].iter().collect())
+}
+
+fn prompt_tags(text: &str) -> Vec<String> {
+    text.split([',', '\n']).map(str::trim).filter(|tag| !tag.is_empty()).map(str::to_owned).collect()
+}
+
+/// Tags present in `a` more often than in `b`, in the order they appear in `a`.
+fn tags_missing_from(a: &[String], b: &[String]) -> Vec<String> {
+    let mut left = HashMap::<&str, usize>::new();
+    for tag in b {
+        *left.entry(tag).or_default() += 1;
+    }
+    a.iter()
+        .filter(|tag| match left.get_mut(tag.as_str()) {
+            Some(count) if *count > 0 => {
+                *count -= 1;
+                false
+            }
+            _ => true,
+        })
+        .cloned()
+        .collect()
+}
+
+const EXCERPT_SPAN: usize = 160;
+
+/// Bucket rows by what actually changes in them, so identical edits are shown once.
+/// Returns the groups (largest first, at most `GROUP_LIMIT`) and every group's full row list in the same order.
+pub(crate) fn group_changes(changes: &[RowChange]) -> Vec<(ChangeGroup, Vec<i64>)> {
+    let mut order = Vec::<String>::new();
+    let mut groups = HashMap::<String, (ChangeGroup, Vec<i64>)>::new();
+    for change in changes {
+        let text = change
+            .text
+            .iter()
+            .filter(|item| item.field != "artists")
+            .map(|item| {
+                let before = item.before.as_deref().unwrap_or("");
+                let after = item.after.as_deref().unwrap_or("");
+                let (removed, added) = edited_span(before, after);
+                let (before_excerpt, after_excerpt) = if removed.chars().count() + added.chars().count() <= EXCERPT_SPAN {
+                    excerpt(before, after, 40)
+                } else {
+                    (String::new(), String::new())
+                };
+                let prompt = matches!(item.field.as_str(), "positive" | "character" | "negative");
+                let (removed_tags, added_tags) = if prompt {
+                    let (a, b) = (prompt_tags(before), prompt_tags(after));
+                    (tags_missing_from(&a, &b), tags_missing_from(&b, &a))
+                } else {
+                    (Vec::new(), Vec::new())
+                };
+                let format_only = prompt && removed_tags.is_empty() && added_tags.is_empty();
+                TextEdit {
+                    field: item.field.clone(),
+                    // Prompt groups are keyed by tags; the character span would split them by context.
+                    removed: if prompt { String::new() } else { removed },
+                    added: if prompt { String::new() } else { added },
+                    removed_tags,
+                    added_tags,
+                    format_only,
+                    before: before_excerpt,
+                    after: after_excerpt,
+                    after_empty: item.after.is_none(),
+                }
+            })
+            .collect::<Vec<_>>();
+        let group = change.group.as_ref().map(|group| [group.before_name.clone(), group.after_name.clone()]);
+        let key = json!([
+            text.iter().map(|edit| json!([edit.field, edit.removed, edit.added, edit.removed_tags, edit.added_tags])).collect::<Vec<_>>(),
+            text.iter().map(|edit| edit.after_empty).collect::<Vec<_>>(),
+            group,
+            change.favorite,
+            change.tags_added,
+            change.tags_removed,
+        ])
+        .to_string();
+        let entry = groups.entry(key.clone()).or_insert_with(|| {
+            order.push(key);
+            (
+                ChangeGroup {
+                    count: 0,
+                    row_ids: Vec::new(),
+                    text,
+                    group,
+                    favorite: change.favorite,
+                    tags_added: change.tags_added.clone(),
+                    tags_removed: change.tags_removed.clone(),
+                },
+                Vec::new(),
+            )
+        });
+        entry.0.count += 1;
+        if entry.0.row_ids.len() < GROUP_ROW_IDS {
+            entry.0.row_ids.push(change.id);
+        }
+        entry.1.push(change.id);
+    }
+    let mut list = order.into_iter().filter_map(|key| groups.remove(&key)).collect::<Vec<_>>();
+    // Stable: equal sizes keep the order rows were found in.
+    list.sort_by(|a, b| b.0.count.cmp(&a.0.count));
+    list
+}
+
+/// Groups for a report, capped, with the number of rows that did not fit.
+pub(crate) fn report_groups(changes: &[RowChange]) -> (Vec<ChangeGroup>, usize) {
+    let mut groups = group_changes(changes).into_iter().map(|(group, _)| group).collect::<Vec<_>>();
+    let other = groups.iter().skip(GROUP_LIMIT).map(|group| group.count).sum();
+    groups.truncate(GROUP_LIMIT);
+    (groups, other)
 }
 
 /// Shorten a before/after pair around the edited span so long prompts stay readable.
