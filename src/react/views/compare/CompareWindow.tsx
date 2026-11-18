@@ -147,7 +147,7 @@ function SamplePrompts({ row }: { row: RowRecord }) {
 
 function CompareCard({ row }: { row: RowRecord }) {
   return <CompareRowContextMenu row={row}><article className="rc-card">
-    <div className="thumb"><PaneImage row={row} tier="thumbnail" lazy /><div className="card-badges"><Badges row={row} /></div><button type="button" className="card-open" data-compare-id={row.id} aria-label={`对比这张：${rowTitle(row)}`} title={[rowFileName(row), rowResolution(row), row.imagePath].filter(Boolean).join("\n")} onClick={() => openSideBySide(row)}><span className="open-hint"><ArrowUpRight size={14} />对比这张</span></button></div>
+    <div className="thumb"><PaneImage row={row} tier="gallery" lazy /><div className="card-badges"><Badges row={row} /></div><button type="button" className="card-open" data-compare-id={row.id} aria-label={`对比这张：${rowTitle(row)}`} title={[rowFileName(row), rowResolution(row), row.imagePath].filter(Boolean).join("\n")} onClick={() => openSideBySide(row)}><span className="open-hint"><ArrowUpRight size={14} />对比这张</span></button></div>
     <div className="card-info"><span className="card-label" title={rowTitle(row)}>{rowTitle(row)}</span><span className="card-sub"><span>{rowResolution(row) || "尺寸未知"}</span><span>#{row.id}</span></span></div>
   </article></CompareRowContextMenu>;
 }
