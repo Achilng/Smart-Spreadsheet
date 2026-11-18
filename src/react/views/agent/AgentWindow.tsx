@@ -7,17 +7,18 @@ import { Streamdown, defaultRemarkPlugins, type StreamdownProps } from "streamdo
 import { GalleryLink, isGalleryLink, remarkGalleryImages } from "./AgentGalleryLinks";
 import { useStickToBottom } from "use-stick-to-bottom";
 import {
-  agentCancel, agentMessages, agentModels, agentOperations, agentSend, agentState, applyAgentPreview, deleteAgentConversation, renameAgentConversation, saveAgentPreferences,
-  type AgentEvent, type AgentMessage, type AgentOperation, type AgentPreferences, type AgentPreviewReport, type AgentState,
+  agentCancel, agentMessages, agentOperations, agentSend, agentState, applyAgentPreview, deleteAgentConversation, renameAgentConversation, selectedAgentModel,
+  type AgentEvent, type AgentMessage, type AgentOperation, type AgentPreviewReport, type AgentState,
 } from "../../../lib/api/agent";
 import { errorText } from "../../../lib/utils/format";
-import { Button, Menu, Modal, Select, Tooltip } from "../../ui/controls";
+import { Button, Menu, Modal, Tooltip } from "../../ui/controls";
 import { Notices } from "../../ui/Notices";
 import { WindowControls } from "../../ui/WindowControls";
 import { notify } from "../../state/notices";
 import { thumbnails } from "../../../lib/images/thumbnails";
 import { clearProgressiveImages } from "../../../lib/images/progressive-images";
 import { OperationCard, PreviewCard } from "./AgentCards";
+import { AgentPreferencesDialog } from "./AgentPreferencesDialog";
 import { ImageViewerProvider, ThumbStrip, useImageViewer } from "./AgentMedia";
 import { ThoughtLine, type ThoughtStep } from "./ThoughtLine";
 import { TOOL_LABELS, formatTime } from "./agent-format";
@@ -26,7 +27,6 @@ import "./agent.css";
 // The window carries its own palette; the class also reaches dialogs and menus portalled to <body>.
 document.documentElement.classList.add("agent-doc");
 
-const EFFORTS = [["minimal", "最快（minimal）"], ["low", "低（low）"], ["medium", "中（medium，推荐）"], ["high", "高（high，更慢）"], ["default", "模型默认"]] as const;
 const EFFORT_SHORT: Record<string, string> = { minimal: "最快", low: "低强度", medium: "中强度", high: "高强度", default: "默认强度" };
 const SUGGESTIONS = [
   { label: "删掉「Text:」后面的内容", text: "把选中图片正向提示词里「Text:」后面的内容删掉" },
@@ -218,46 +218,6 @@ function ChatScroll({ children }: { children: ReactNode }) {
   </div>;
 }
 
-/** Tested on real requests: quick, and consistently asks instead of guessing. */
-const RECOMMENDED_MODEL = /gpt-6-luna/i;
-
-function PreferencesDialog({ state, open, onClose, onSaved }: { state: AgentState; open: boolean; onClose: () => void; onSaved: () => void }) {
-  const [draft, setDraft] = useState<AgentPreferences>(state.preferences);
-  const [models, setModels] = useState<string[]>([]);
-  const [loading, setLoading] = useState(false);
-  const channelId = draft.channelId || state.channels[0]?.id || "";
-  useEffect(() => { if (open) setDraft(state.preferences); }, [open, state.preferences]);
-  useEffect(() => {
-    if (!open || !channelId) return;
-    let stale = false;
-    setLoading(true);
-    agentModels(channelId).then(list => {
-      if (stale) return;
-      setModels(list);
-      // Pre-fill the tested recommendation when nothing has been chosen yet.
-      const recommended = list.find(name => RECOMMENDED_MODEL.test(name));
-      if (recommended) setDraft(current => current.model ? current : { ...current, model: recommended });
-    }).catch(error => { if (!stale) { setModels([]); notify(`获取模型列表失败：${errorText(error)}`, "error"); } }).finally(() => { if (!stale) setLoading(false); });
-    return () => { stale = true; };
-  }, [open, channelId]);
-  const save = async () => {
-    try { await saveAgentPreferences({ ...draft, channelId }); onSaved(); onClose(); }
-    catch (error) { notify(`保存失败：${errorText(error)}`, "error"); }
-  };
-  return <Modal open={open} onClose={onClose} title="助手使用的模型" description="渠道和 Key 沿用工具箱「模型设置」里的配置。助手需要支持 Responses 接口和工具调用的模型。" width={460}
-    footer={<><Button onClick={onClose}>取消</Button><Button variant="primary" onClick={() => void save()}>保存</Button></>}>
-    {state.channels.length === 0 ? <p className="ag-hint">还没有模型渠道，请先到工具箱的「模型设置」里添加。</p> : <div className="ag-form">
-      <label className="field"><span className="field-label">渠道</span><Select label="渠道" value={channelId} onChange={value => setDraft({ ...draft, channelId: value, model: "" })} options={state.channels.map(channel => [channel.id, `${channel.name}${channel.hasKey ? "" : "（没有 Key）"}`] as const)} /></label>
-      <label className="field"><span className="field-label">模型</span>
-        <input className="r-input" list="ag-models" value={draft.model} placeholder={loading ? "正在获取模型列表…" : "输入或选择模型"} onChange={event => setDraft({ ...draft, model: event.target.value })} />
-        <datalist id="ag-models">{models.map(model => <option key={model} value={model} />)}</datalist>
-      </label>
-      <label className="field"><span className="field-label">思考强度</span><Select label="思考强度" value={draft.effort || "medium"} onChange={value => setDraft({ ...draft, effort: value })} options={EFFORTS} /></label>
-      <p className="ag-hint">推荐 gpt-6-luna + 中等思考强度：又快又谨慎。DeepSeek、Gemini 也能用，但每轮要慢不少。思考强度越高越稳，但每一步更慢；模型不支持思考强度时请选「模型默认」。</p>
-    </div>}
-  </Modal>;
-}
-
 function readCollapsed(): boolean {
   try { return localStorage.getItem(SIDEBAR_KEY) === "1"; } catch { return false; }
 }
@@ -290,11 +250,22 @@ export function AgentWindow() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [renaming, setRenaming] = useState<{ id: string; title: string } | null>(null);
   const currentRef = useRef<string | null>(null);
+  const stateRequest = useRef(0);
   currentRef.current = current;
 
   const updateLive = useCallback((change: (previous: Live) => Live) => { liveRef.current = change(liveRef.current); setLive(liveRef.current); }, []);
   const reloadState = useCallback(async () => {
-    try { setState(await agentState()); setLoadError(null); } catch (error) { setLoadError(errorText(error)); }
+    const request = ++stateRequest.current;
+    try {
+      const next = await agentState();
+      if (request !== stateRequest.current) return false;
+      setState(next);
+      setLoadError(null);
+      return true;
+    } catch (error) {
+      if (request === stateRequest.current) setLoadError(errorText(error));
+      return false;
+    }
   }, []);
   const reloadOperations = useCallback(async () => {
     try { setOperations(await agentOperations(100)); } catch { /* shown on the page when it matters */ }
@@ -329,7 +300,7 @@ export function AgentWindow() {
         }
       }),
       listen("agent://operations-changed", () => void reloadOperations()),
-      listen("main://library-reset", () => { thumbnails.clear(); clearProgressiveImages(); setCurrent(null); setMessages([]); void reloadState(); void reloadOperations(); }),
+      listen("main://library-reset", () => { thumbnails.clear(); clearProgressiveImages(); setSettingsOpen(false); setState(null); setCurrent(null); setMessages([]); void reloadState(); void reloadOperations(); }),
     ];
     return () => { stops.forEach(stop => void stop.then(fn => fn()).catch(() => {})); };
   }, [reloadOperations, reloadState, settleLive, updateLive]);
@@ -356,13 +327,16 @@ export function AgentWindow() {
   /** Previews already on screen in this conversation; their operations update those cards instead of adding new ones. */
   const shownPreviews = useMemo(() => new Set(items.flatMap(item => item.type === "step" && item.display?.kind === "preview" ? [String((item.display.report as AgentPreviewReport).previewId)] : [])), [items]);
   const channel = state?.channels.find(item => item.id === state.preferences.channelId) ?? state?.channels[0];
-  const modelName = state?.preferences.model || channel?.model || "";
+  const modelName = state && channel ? selectedAgentModel(state.preferences, channel.id) || channel.model.trim() : "";
+  const openSettings = async () => {
+    if (await reloadState()) setSettingsOpen(true);
+  };
   const conversation = state?.conversations.find(item => item.id === current);
 
   const send = async (text = input) => {
     const value = text.trim();
     if ((!value && !files.length) || sending || running) return;
-    if (!modelName) { setSettingsOpen(true); notify("请先选择助手使用的模型", "error"); return; }
+    if (!modelName) { void openSettings(); notify("请先选择助手使用的模型", "error"); return; }
     setSending(true);
     try {
       const attachments = await Promise.all(files.map(encodeAttachment));
@@ -520,7 +494,7 @@ export function AgentWindow() {
                     }} />
                   <div className="composer-bar">
                     <button type="button" className="icon-btn" aria-label="添加图片或文件" title="添加图片、PDF 或文本；也可拖入或粘贴截图" disabled={sending || files.length >= 4} onClick={() => fileInput.current?.click()}><Paperclip className="icon" /></button>
-                    <button type="button" className="chip" title="选择助手使用的模型和思考强度" onClick={() => setSettingsOpen(true)}>
+                    <button type="button" className="chip" title="选择助手使用的模型和思考强度" onClick={() => void openSettings()}>
                       <Sparkles className="icon sm" />
                       <span className="chip-text">{modelName || "选择模型"}</span>
                       {modelName && <span className="chip-auto">{EFFORT_SHORT[state?.preferences.effort || "medium"] ?? state?.preferences.effort}</span>}
@@ -540,7 +514,11 @@ export function AgentWindow() {
             </>}
       </div>
 
-      {state && <PreferencesDialog state={state} open={settingsOpen} onClose={() => setSettingsOpen(false)} onSaved={() => void reloadState()} />}
+      {state && <AgentPreferencesDialog key={state.libraryId} state={state} open={settingsOpen} onClose={() => setSettingsOpen(false)}
+        onSaved={preferences => {
+          setState(current => current?.libraryId === state.libraryId ? { ...current, preferences } : current);
+          void reloadState();
+        }} />}
       <Modal open={!!renaming} onClose={() => setRenaming(null)} title="重命名对话" footer={<><Button onClick={() => setRenaming(null)}>取消</Button><Button variant="primary" onClick={() => void rename()}>保存</Button></>}>
         <input className="r-input ag-full" value={renaming?.title ?? ""} onChange={event => renaming && setRenaming({ ...renaming, title: event.target.value })} onKeyDown={event => { if (event.key === "Enter") void rename(); }} />
       </Modal>

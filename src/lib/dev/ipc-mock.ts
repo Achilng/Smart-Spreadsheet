@@ -494,7 +494,7 @@ export function installIpcMock(): void {
         }
       }
       switch (command) {
-        case "agent_state": return { conversations: [], running: [], preferences: { channelId: "", model: "", effort: "medium" }, channels: [] };
+        case "agent_state": return { libraryId: "mock", conversations: [], running: [], preferences: { channelId: "", model: "", effort: "medium", channelModels: {} }, channels: [] };
         case "agent_messages": case "agent_operations": case "agent_models": return [];
         case "agent_change_page": return { total: 0, changes: [] };
         case "agent_report_main_view": case "agent_save_preferences": case "agent_cancel": case "agent_rename_conversation": case "agent_delete_conversation": case "open_agent_window": return;

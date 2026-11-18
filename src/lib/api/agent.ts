@@ -1,9 +1,18 @@
 import { invoke } from "@tauri-apps/api/core";
 
 export interface AgentConversation { id: string; title: string; createdAt: string; updatedAt: string }
-export interface AgentPreferences { channelId: string; model: string; effort: string }
-export interface AgentChannel { id: string; name: string; model: string; hasKey: boolean }
-export interface AgentState { conversations: AgentConversation[]; running: string[]; preferences: AgentPreferences; channels: AgentChannel[] }
+export interface AgentChannelModels { model: string; recent: string[] }
+export interface AgentPreferences {
+  channelId: string; model: string; effort: string; channelModels: Record<string, AgentChannelModels>;
+}
+export interface AgentChannel { id: string; name: string; model: string; hasKey: boolean; catalogRevision: string }
+export interface AgentState { libraryId: string; conversations: AgentConversation[]; running: string[]; preferences: AgentPreferences; channels: AgentChannel[] }
+
+export function selectedAgentModel(preferences: AgentPreferences, channelId: string): string {
+  return (!preferences.channelId || preferences.channelId === channelId
+    ? preferences.model
+    : preferences.channelModels[channelId]?.model ?? "").trim();
+}
 export interface AgentMessage { id: number; createdAt: string; kind: "user" | "assistant" | "tool_call" | "tool_result" | "error" | string; content: Record<string, unknown> }
 
 export interface AgentTextChange { field: string; before: string | null; after: string | null }
@@ -67,8 +76,10 @@ export interface AgentUndoOutcome { operationId: number; restoredRows: number; s
 export interface AgentEvent { conversationId: string; kind: "run-start" | "text-delta" | "reasoning-delta" | "tool-start" | "tool-end" | "messages-changed" | "run-end"; delta?: string; name?: string }
 
 export const agentState = () => invoke<AgentState>("agent_state");
-export const saveAgentPreferences = (preferences: AgentPreferences) => invoke<void>("agent_save_preferences", { preferences });
-export const agentModels = (channelId: string) => invoke<string[]>("agent_models", { channelId });
+export const saveAgentPreferences = (libraryId: string, preferences: AgentPreferences) =>
+  invoke<void>("agent_save_preferences", { libraryId, preferences });
+export const agentModels = (libraryId: string, channel: AgentChannel) =>
+  invoke<string[]>("agent_models", { libraryId, channelId: channel.id, revision: channel.catalogRevision });
 export const agentMessages = (conversationId: string) => invoke<AgentMessage[]>("agent_messages", { conversationId });
 export interface AgentAttachment { name: string; mime: string; data: string }
 export const agentSend = (conversationId: string | null, text: string, attachments: AgentAttachment[] = []) => invoke<string>("agent_send", { conversationId, text, attachments });

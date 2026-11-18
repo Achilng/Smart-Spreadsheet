@@ -1,4 +1,7 @@
 //! IPC for the agent window: conversations, sending, undo and preferences.
+use std::hash::{BuildHasher, RandomState};
+use std::sync::OnceLock;
+
 use serde::Serialize;
 use serde_json::{Value, json};
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
@@ -43,6 +46,7 @@ pub(crate) async fn open_agent_window(app: tauri::AppHandle) -> Result<(), Strin
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentState {
+    library_id: String,
     conversations: Vec<Conversation>,
     running: Vec<String>,
     preferences: Preferences,
@@ -56,13 +60,22 @@ pub struct ChannelInfo {
     name: String,
     model: String,
     has_key: bool,
+    catalog_revision: String,
+}
+
+fn catalog_revision(channel: &crate::db::llm::Channel) -> String {
+    static HASHER: OnceLock<RandomState> = OnceLock::new();
+    let revision = HASHER.get_or_init(RandomState::new).hash_one((
+        &channel.base_url, &channel.key, &channel.encrypted_key,
+    ));
+    format!("{revision:x}")
 }
 
 #[tauri::command]
 pub(crate) async fn agent_state(app: tauri::AppHandle) -> Result<AgentState, String> {
     let running = app.state::<Engine>().running();
     blocking(app, move |runtime| {
-        let (_, _, settings) = runtime.llm_context()?;
+        let (_, library_id, settings) = runtime.llm_context()?;
         let channels = settings
             .channels
             .iter()
@@ -71,39 +84,54 @@ pub(crate) async fn agent_state(app: tauri::AppHandle) -> Result<AgentState, Str
                 name: channel.name.clone(),
                 model: channel.model.clone(),
                 has_key: crate::app::llm::key(channel).is_ok_and(|key| !key.is_empty()),
+                catalog_revision: catalog_revision(channel),
             })
             .collect();
-        Ok(AgentState {
-            conversations: runtime.agent_db(false, |db| db.agent_conversations())?,
-            running,
-            preferences: agent::load_preferences(runtime)?,
-            channels,
+        runtime.llm_db(&library_id, |db| {
+            Ok(AgentState {
+                library_id: library_id.clone(),
+                conversations: db.agent_conversations().map_err(crate::db::llm::invalid)?,
+                running,
+                preferences: agent::read_preferences(db)?,
+                channels,
+            })
         })
     })
     .await
 }
 
 #[tauri::command]
-pub(crate) async fn agent_save_preferences(preferences: Preferences, app: tauri::AppHandle) -> Result<(), String> {
+pub(crate) async fn agent_save_preferences(library_id: String, preferences: Preferences, app: tauri::AppHandle) -> Result<(), String> {
     blocking(app, move |runtime| {
         let text = serde_json::to_string(&preferences).map_err(error_text)?;
-        runtime.agent_db(false, |db| db.set_setting(PREFERENCES_KEY, &text).map_err(error_text))
+        runtime.llm_db(&library_id, |db| {
+            if !db.llm_settings()?.channels.iter().any(|channel| channel.id == preferences.channel_id) {
+                return Err(crate::db::llm::invalid("找不到这个模型渠道，请重新打开设置。"));
+            }
+            db.set_setting(PREFERENCES_KEY, &text)
+        })
     })
     .await
 }
 
 #[tauri::command]
-pub(crate) async fn agent_models(channel_id: String, app: tauri::AppHandle) -> Result<Vec<String>, String> {
+pub(crate) async fn agent_models(library_id: String, channel_id: String, revision: String, app: tauri::AppHandle) -> Result<Vec<String>, String> {
     let channel = blocking(app, move |runtime| {
-        let (_, _, settings) = runtime.llm_context()?;
+        let (_, current_library_id, settings) = runtime.llm_context()?;
+        if current_library_id != library_id {
+            return Err("资料库已切换".into());
+        }
         settings
             .channels
             .into_iter()
-            .find(|channel| channel.id == channel_id)
-            .ok_or_else(|| "找不到这个渠道".to_owned())
+            .find(|channel| channel.id == channel_id && catalog_revision(channel) == revision)
+            .ok_or_else(|| "模型渠道已更改，请重新打开设置。".to_owned())
     })
     .await?;
     let key = crate::app::llm::key(&channel)?;
+    if key.is_empty() {
+        return Err("这个渠道还没有填写 Key。".into());
+    }
     crate::app::llm::api::models(&channel, &key).await
 }
 

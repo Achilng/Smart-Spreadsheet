@@ -138,6 +138,14 @@ pub struct Preferences {
     pub model: String,
     #[serde(default = "default_effort")]
     pub effort: String,
+    #[serde(default)]
+    pub channel_models: std::collections::HashMap<String, ChannelModels>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChannelModels {
+    pub model: String,
+    pub recent: Vec<String>,
 }
 
 fn default_effort() -> String {
@@ -207,13 +215,10 @@ impl Engine {
     }
 }
 
-pub fn load_preferences(runtime: &AppRuntime) -> Result<Preferences, String> {
-    runtime.agent_db(false, |db| {
-        let saved = db.setting(PREFERENCES_KEY).map_err(|e| e.to_string())?;
-        Ok(saved
-            .and_then(|text| serde_json::from_str(&text).ok())
-            .unwrap_or_else(|| Preferences { effort: default_effort(), ..Default::default() }))
-    })
+pub fn read_preferences(db: &Database) -> Result<Preferences, crate::db::DatabaseError> {
+    Ok(db.setting(PREFERENCES_KEY)?
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or_else(|| Preferences { effort: default_effort(), ..Default::default() }))
 }
 
 fn emit(app: &AppHandle, conversation_id: &str, kind: &str, extra: Value) {
@@ -492,8 +497,8 @@ fn build_input(messages: &[Message], attached: &vision::Attached, attachment_dat
 
 async fn run_loop(app: &AppHandle, conversation_id: &str, cancel: Arc<AtomicBool>) -> Result<(), String> {
     let runtime = app.state::<AppRuntime>();
-    let preferences = load_preferences(&runtime)?;
-    let (_, _, settings) = runtime.llm_context()?;
+    let (_, library, settings) = runtime.llm_context()?;
+    let preferences = runtime.llm_db(&library, |db| read_preferences(db))?;
     let channel = settings
         .channels
         .iter()
@@ -501,8 +506,13 @@ async fn run_loop(app: &AppHandle, conversation_id: &str, cancel: Arc<AtomicBool
         .or_else(|| settings.channels.first())
         .ok_or("还没有可用的模型渠道。请先在工具箱的「模型设置」里添加渠道和 Key。")?
         .clone();
-    let model = if preferences.model.trim().is_empty() { channel.model.clone() } else { preferences.model.clone() };
-    if model.trim().is_empty() {
+    let selected_model = if channel.id == preferences.channel_id || preferences.channel_id.is_empty() {
+        preferences.model.as_str()
+    } else {
+        preferences.channel_models.get(&channel.id).map_or("", |saved| saved.model.as_str())
+    };
+    let model = if selected_model.trim().is_empty() { channel.model.trim() } else { selected_model.trim() };
+    if model.is_empty() {
         return Err("还没有选择模型，请在右上角选择一个模型。".into());
     }
     let key = crate::app::llm::key(&channel)?;
@@ -510,7 +520,6 @@ async fn run_loop(app: &AppHandle, conversation_id: &str, cancel: Arc<AtomicBool
         return Err(format!("渠道「{}」还没有填写 Key。", channel.name));
     }
     let tools = tools::definitions();
-    let library = runtime.agent_library_id()?;
     for _ in 0..MAX_STEPS {
         if cancel.load(Ordering::SeqCst) {
             return Err("已停止".into());
@@ -526,7 +535,7 @@ async fn run_loop(app: &AppHandle, conversation_id: &str, cancel: Arc<AtomicBool
         let request = responses::Request {
             base_url: &channel.base_url,
             key: &key,
-            model: &model,
+            model,
             effort: &preferences.effort,
             instructions: prompt::SYSTEM_PROMPT,
             input: build_input(&messages, &attach_views(app, &messages).await, &attachment_data),

@@ -286,6 +286,24 @@
   .field { display: flex; flex-direction: column; gap: 8px; }
   .field-label { font-size: 13px; font-weight: 500; color: var(--text-2); }
   .ag-form { display: flex; flex-direction: column; gap: 14px; }
+  .r-dialog:has(.ag-model-settings) { max-height: calc(100dvh - 24px); }
+  .ag-model-settings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .ag-model-settings .r-select > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ag-model-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .ag-model-trigger { display: flex; align-items: center; justify-content: space-between; gap: 10px; text-align: left; padding-block: 7px; }
+  .ag-model-trigger[aria-expanded="true"] { border-color: var(--accent-text); }
+  .ag-model-trigger > span, .ag-model-option > span { min-width: 0; overflow-wrap: anywhere; }
+  .ag-model-trigger > svg, .ag-model-option > small, .ag-model-option > svg { flex: none; }
+  .ag-model-picker { display: grid; gap: 5px; min-width: 0; }
+  .ag-model-picker > input { width: 100%; }
+  .ag-model-list { max-height: clamp(84px, calc(100dvh - 420px), 205px); overflow-y: auto; overscroll-behavior: contain; padding: 4px; border: 1px solid var(--line-ctl); border-radius: var(--r); background: var(--chat-input); }
+  .ag-model-option { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: var(--r-sm); font-size: 13px; cursor: pointer; }
+  .ag-model-option > span { flex: 1; }
+  .ag-model-option > small { color: var(--text-2); font-size: 11px; }
+  .ag-model-option[aria-selected="true"] { color: var(--accent-text); }
+  .ag-model-option:hover, .ag-model-option.is-active { background: var(--raised-2); }
+  .ag-model-empty { padding: 8px 10px; }
+  .ag-model-status:empty { display: none; }
   .ag-full { width: 100%; }
   .ag-hint { font-size: 12px; line-height: 1.6; color: var(--text-2); }
   .ag-empty { padding: 24px 0; font-size: 13px; color: var(--text-3); }
