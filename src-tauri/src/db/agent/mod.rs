@@ -6,6 +6,7 @@ mod target;
 
 pub use apply::{OperationRecord, UndoOutcome};
 pub use changes::{Action, RowChange};
+pub(crate) use read::{DEFAULT_PROMPT_STATS_LIMIT, MAX_PROMPT_STATS_LIMIT, PromptStatsSort};
 pub use target::{MainView, Target};
 
 use rusqlite::{OptionalExtension, params};

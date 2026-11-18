@@ -1,13 +1,138 @@
 //! Read-only helpers the agent uses to inspect the library before proposing changes.
 use std::collections::HashMap;
 
+use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::changes::analyze_matches;
-use super::target::{MainView, Target};
+use super::target::{MainView, Scope, Target, target_conditions};
 use super::{Res, s};
-use crate::automation::matching::build_regex;
-use crate::db::Database;
+use crate::automation::{matching::{PreparedConditionSet, build_regex}, text::tag_core};
+use crate::db::{Database, automation_rules::execution::load_rule_rows};
+use crate::pipeline::prompt_text::normalize_prompt_token;
+
+pub(crate) const DEFAULT_PROMPT_STATS_LIMIT: usize = 20;
+pub(crate) const MAX_PROMPT_STATS_LIMIT: usize = 50;
+
+#[derive(Clone, Copy, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum PromptStatsSort {
+    #[default]
+    Count,
+    Enrichment,
+}
+
+#[derive(Default)]
+struct PromptTagCount {
+    last_row_id: Option<i64>,
+    in_scope: usize,
+    in_library: usize,
+    samples: Vec<i64>,
+}
+
+#[derive(Default)]
+struct PromptStats {
+    positive: HashMap<String, PromptTagCount>,
+    character: HashMap<String, PromptTagCount>,
+    artists: HashMap<String, PromptTagCount>,
+    scope_rows: usize,
+    library_rows: usize,
+}
+
+impl PromptStats {
+    fn add_row(
+        &mut self,
+        id: i64,
+        positive: Option<&str>,
+        character: Option<&str>,
+        artists: Option<&str>,
+        llm_artists: bool,
+        in_scope: bool,
+    ) {
+        self.library_rows += 1;
+        self.scope_rows += usize::from(in_scope);
+        for (counts, text, is_artist) in [
+            (&mut self.positive, positive, false),
+            (&mut self.character, character, false),
+            (&mut self.artists, artists, true),
+        ] {
+            let is_prompt_fallback = is_artist && !llm_artists && text.map(str::trim) == positive.map(str::trim);
+            for part in text.unwrap_or_default().split([',', '，', '\n', '\r']) {
+                let core = tag_core(part);
+                // Artist XML markers decorate prompt text; they are not TAGs themselves.
+                let core = core.trim_start_matches("<artist>").trim_end_matches("</artist>");
+                let key = normalize_prompt_token(core).replace('_', " ");
+                let key = if is_artist {
+                    match key.strip_prefix("artist:") {
+                        Some(name) => name,
+                        None if is_prompt_fallback => continue,
+                        None => key.as_str(),
+                    }
+                } else {
+                    key.as_str()
+                };
+                let key = key.split_whitespace().collect::<Vec<_>>().join(" ");
+                if key.is_empty() {
+                    continue;
+                }
+                let count = counts.entry(key).or_default();
+                if count.last_row_id == Some(id) {
+                    continue;
+                }
+                count.last_row_id = Some(id);
+                count.in_library += 1;
+                if in_scope {
+                    count.in_scope += 1;
+                    if count.samples.len() < 3 {
+                        count.samples.push(id);
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn ranked_prompt_tags(
+    counts: HashMap<String, PromptTagCount>,
+    scope_rows: usize,
+    library_rows: Option<usize>,
+    limit: usize,
+    sort_by: PromptStatsSort,
+) -> Value {
+    let mut items = counts.into_iter().filter(|(_, count)| count.in_scope > 0).collect::<Vec<_>>();
+    let compare = |a: &(String, PromptTagCount), b: &(String, PromptTagCount)| {
+        let by_enrichment = match sort_by {
+            PromptStatsSort::Count => std::cmp::Ordering::Equal,
+            PromptStatsSort::Enrichment => {
+                // The denominators are shared. Compare the two ratios exactly.
+                (b.1.in_scope as u128 * a.1.in_library as u128)
+                    .cmp(&(a.1.in_scope as u128 * b.1.in_library as u128))
+            }
+        };
+        by_enrichment.then(b.1.in_scope.cmp(&a.1.in_scope)).then(a.0.cmp(&b.0))
+    };
+    let distinct_tags = items.len();
+    if items.len() > limit {
+        items.select_nth_unstable_by(limit, compare);
+        items.truncate(limit);
+    }
+    items.sort_unstable_by(compare);
+    let items = items.into_iter().map(|(tag, count)| {
+        let scope_share = count.in_scope as f64 / scope_rows as f64;
+        let mut item = json!({
+            "tag": tag, "imagesInScope": count.in_scope, "scopeShare": scope_share,
+            "sampleRowIds": count.samples,
+        });
+        if let Some(total) = library_rows {
+            let library_share = count.in_library as f64 / total as f64;
+            item["imagesInLibrary"] = json!(count.in_library);
+            item["libraryShare"] = json!(library_share);
+            item["enrichment"] = json!(scope_share / library_share);
+        }
+        item
+    }).collect::<Vec<_>>();
+    json!({"distinctTags": distinct_tags, "items": items})
+}
 
 fn clip(text: Option<&String>, max: usize) -> Value {
     match text {
@@ -139,6 +264,91 @@ impl Database {
             "notes": resolved.notes,
             "fields": results,
         }))
+    }
+
+    pub(crate) fn agent_summarize_rows(
+        &mut self,
+        target: &Target,
+        view: &MainView,
+        limit: usize,
+        compare_library: bool,
+        sort_by: PromptStatsSort,
+    ) -> Res<Value> {
+        let compare_library = compare_library || matches!(sort_by, PromptStatsSort::Enrichment);
+        let conditions = target_conditions(target)?;
+        let prepared = conditions.as_ref().map(PreparedConditionSet::new).transpose().map_err(s)?;
+        let unrestricted = target.scope == Scope::All
+            && target.artist_strings.is_empty()
+            && !target.expand_to_same_artist_string
+            && target.favorite.is_none();
+        let (ids, notes, index) = if unrestricted {
+            (None, Vec::new(), None)
+        } else {
+            let index = self.agent_row_index()?;
+            let (ids, notes) = self.agent_target_ids(target, view, &index)?;
+            (Some(ids), notes, Some(index))
+        };
+        let includes = |id| ids.as_ref().is_none_or(|ids| ids.contains(&id));
+        let mut stats = PromptStats::default();
+        if prepared.is_none() && (compare_library || unrestricted) {
+            // No condition evaluation: stream just the necessary columns, not full RuleRows.
+            let mut statement = self.connection.prepare(
+                "SELECT id, positive_prompt, character_prompt, artists, artist_llm IS NOT NULL
+                 FROM rows ORDER BY id",
+            ).map_err(s)?;
+            let mut rows = statement.query([]).map_err(s)?;
+            while let Some(row) = rows.next().map_err(s)? {
+                let id = row.get(0).map_err(s)?;
+                stats.add_row(
+                    id,
+                    row.get_ref(1).map_err(s)?.as_str_or_null().map_err(s)?,
+                    row.get_ref(2).map_err(s)?.as_str_or_null().map_err(s)?,
+                    row.get_ref(3).map_err(s)?.as_str_or_null().map_err(s)?,
+                    row.get(4).map_err(s)?,
+                    includes(id),
+                );
+            }
+        } else if compare_library || ids.as_ref().is_none_or(|ids| !ids.is_empty()) {
+            // When conditions are used, resolve and aggregate in one pass over the same inputs.
+            // For a library comparison, each scoped row also contributes to the baseline here.
+            let candidates = if compare_library {
+                None
+            } else {
+                ids.as_ref().map(|ids| ids.iter().copied().collect::<Vec<_>>())
+            };
+            let index = match index {
+                Some(index) => index,
+                None => self.agent_row_index()?,
+            };
+            for row in load_rule_rows(&self.connection, candidates.as_deref()).map_err(s)? {
+                let in_scope = includes(row.id) && prepared.as_ref().is_none_or(|p| p.matches(&row));
+                if !compare_library && !in_scope {
+                    continue;
+                }
+                stats.add_row(
+                    row.id,
+                    row.positive_prompt.as_deref(),
+                    row.character_prompt.as_deref(),
+                    row.artists.as_deref(),
+                    index.get(&row.id).is_some_and(|entry| entry.llm_artists.is_some()),
+                    in_scope,
+                );
+            }
+        }
+        let limit = limit.clamp(1, MAX_PROMPT_STATS_LIMIT);
+        let library_rows = compare_library.then_some(stats.library_rows);
+        let rank = |counts| ranked_prompt_tags(counts, stats.scope_rows, library_rows, limit, sort_by);
+        let mut result = json!({
+            "scannedRows": stats.scope_rows,
+            "notes": notes,
+            "positive": rank(stats.positive),
+            "character": rank(stats.character),
+            "artists": rank(stats.artists),
+        });
+        if let Some(total) = library_rows {
+            result["libraryRows"] = json!(total);
+        }
+        Ok(result)
     }
 
     pub fn agent_artist_strings(

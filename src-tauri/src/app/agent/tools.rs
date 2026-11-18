@@ -6,7 +6,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use super::{Engine, vision};
 use crate::app::AppRuntime;
 use crate::automation::model::AutomationRuleDraft;
-use crate::db::agent::{Action, Target};
+use crate::db::agent::{Action, DEFAULT_PROMPT_STATS_LIMIT, MAX_PROMPT_STATS_LIMIT, PromptStatsSort, Target};
 
 pub struct ToolOutput {
     /// Sent back to the model.
@@ -79,6 +79,12 @@ field 取 positive / character / negative。caseSensitive 必须明确给出。�
             "fields": {"type": "array", "items": {"type": "string", "enum": ["positive", "character", "negative", "artists", "note"]},
                 "description": "默认 positive、character、negative"}
         }), &["target", "pattern", "isRegex", "caseSensitive"]),
+        tool("summarize_rows", "统计范围内最常见的正面提示词、角色提示词和独立画师项。每榜独立，同一项在同一张图出现多次只计一次；返回范围内张数、占比（0~1）和最多 3 张样例图片 ID。用它直接聚合，不要用 find_rows 翻页做统计。", json!({
+            "target": target_schema("要统计的图片范围"),
+            "limit": {"type": "integer", "minimum": 1, "maximum": MAX_PROMPT_STATS_LIMIT, "default": DEFAULT_PROMPT_STATS_LIMIT, "description": "每个榜单最多返回多少项"},
+            "compareLibrary": {"type": "boolean", "default": false, "description": "是否同时返回全库占比及富集倍数（范围内占比除以全库占比）"},
+            "sortBy": {"type": "string", "enum": ["count", "enrichment"], "default": "count", "description": "按范围内张数或富集倍数降序；enrichment 会自动开启全库对比"}
+        }), &["target"]),
         tool("list_artist_strings", "列出范围内的画师串分组（与主窗口画师串去重视角一致），可按文字或别名搜索。返回每组在范围内和全库的图片数。", json!({
             "target": target_schema("统计范围，一般用 all"),
             "contains": {"type": "string", "description": "画师串或别名包含的文字（不区分大小写）"},
@@ -227,6 +233,28 @@ pub fn run(app: &AppHandle, conversation_id: &str, call_id: &str, name: &str, ar
             let args: Args = parse(arguments)?;
             plain(runtime.agent_db(false, |db| {
                 db.agent_analyze_text(&args.target, &view, &args.pattern, args.is_regex, args.case_sensitive, &args.fields)
+            })?)
+        }
+        "summarize_rows" => {
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            struct Args {
+                target: Target,
+                limit: Option<usize>,
+                #[serde(default)]
+                compare_library: bool,
+                #[serde(default)]
+                sort_by: PromptStatsSort,
+            }
+            let args: Args = parse(arguments)?;
+            plain(runtime.agent_db(false, |db| {
+                db.agent_summarize_rows(
+                    &args.target,
+                    &view,
+                    args.limit.unwrap_or(DEFAULT_PROMPT_STATS_LIMIT),
+                    args.compare_library,
+                    args.sort_by,
+                )
             })?)
         }
         "list_artist_strings" => {

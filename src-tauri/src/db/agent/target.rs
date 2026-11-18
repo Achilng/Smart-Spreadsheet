@@ -96,12 +96,31 @@ impl Database {
         Ok(entries)
     }
 
-    /// Resolve only the row IDs (no conditions), used by selection tools as well.
     pub(crate) fn agent_resolve(&mut self, target: &Target, view: &MainView) -> Res<Resolved> {
-        for condition in &target.conditions {
-            validate_condition(condition).map_err(s)?;
-        }
+        let conditions = target_conditions(target)?;
+        let prepared = conditions.as_ref().map(PreparedConditionSet::new).transpose().map_err(s)?;
         let index = self.agent_row_index()?;
+        let (ids, notes) = self.agent_target_ids(target, view, &index)?;
+        let mut ids = ids.into_iter().collect::<Vec<_>>();
+        ids.sort_unstable();
+        let mut rows = if ids.is_empty() {
+            Vec::new()
+        } else {
+            load_rule_rows(&self.connection, Some(&ids)).map_err(s)?
+        };
+        if let Some(prepared) = prepared {
+            rows.retain(|row| prepared.matches(row));
+        }
+        Ok(Resolved { rows, index, notes })
+    }
+
+    /// Resolve the initial target, including artist/favorite filters, before rule conditions.
+    pub(super) fn agent_target_ids(
+        &mut self,
+        target: &Target,
+        view: &MainView,
+        index: &HashMap<i64, RowIndexEntry>,
+    ) -> Res<(HashSet<i64>, Vec<String>)> {
         let mut notes = Vec::new();
         let mut ids: HashSet<i64> = match target.scope {
             Scope::Selection => {
@@ -188,27 +207,26 @@ impl Database {
         if let Some(favorite) = target.favorite {
             ids.retain(|id| index.get(id).is_some_and(|entry| entry.favorite == favorite));
         }
-        let mut ids = ids.into_iter().collect::<Vec<_>>();
-        ids.sort_unstable();
-        let mut rows = if ids.is_empty() {
-            Vec::new()
-        } else {
-            load_rule_rows(&self.connection, Some(&ids)).map_err(s)?
-        };
-        if !target.conditions.is_empty() {
-            let set = RuleConditionSet {
-                mode: RuleMatchMode::All,
-                negate: false,
-                groups: vec![RuleConditionGroup {
-                    mode: target.condition_match.unwrap_or(RuleMatchMode::All),
-                    conditions: target.conditions.iter().map(with_spelling_variants).collect(),
-                }],
-            };
-            let prepared = PreparedConditionSet::new(&set).map_err(s)?;
-            rows.retain(|row| prepared.matches(row));
-        }
-        Ok(Resolved { rows, index, notes })
+        Ok((ids, notes))
     }
+}
+
+pub(super) fn target_conditions(target: &Target) -> Res<Option<RuleConditionSet>> {
+    if target.conditions.is_empty() {
+        return Ok(None);
+    }
+    for condition in &target.conditions {
+        validate_condition(condition).map_err(s)?;
+    }
+    let set = RuleConditionSet {
+        mode: RuleMatchMode::All,
+        negate: false,
+        groups: vec![RuleConditionGroup {
+            mode: target.condition_match.unwrap_or(RuleMatchMode::All),
+            conditions: target.conditions.iter().map(with_spelling_variants).collect(),
+        }],
+    };
+    Ok(Some(set))
 }
 
 /// NovelAI reads `_` and a space as the same character, so the agent matches artists
