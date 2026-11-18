@@ -17,7 +17,7 @@ export interface CustomPage extends CompareSectionPage { groups: CompareGroups }
 
 export function startingConditions(preset: "artists" | "vibeDiffStyle" | "styleDiffVibe" | "models" | "blank"): CompareOptions {
   const observe = { artists: "artists", vibeDiffStyle: "positive", styleDiffVibe: "vibe", models: "model", blank: "negative" } as const;
-  return { observe: observe[preset], dedupe: false, allowed: ["seed"] };
+  return { observe: observe[preset], dedupe: false, allowed: Object.keys(compareFields) as CompareField[] };
 }
 
 export function inspectionTab(field: CompareField): DiffTab {
