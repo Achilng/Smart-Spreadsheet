@@ -326,6 +326,27 @@ pub fn artist_key(artists: &str, ignored: &[String]) -> Option<String> {
     (!result.text.trim().is_empty()).then_some(result.text)
 }
 
+pub(super) fn tag_names(text: &str) -> Vec<String> {
+    let mut tags = Vec::new();
+    for part in text.split([',', '\n', '\r', '{', '}', '[', ']']) {
+        let mut pieces = part.split("::").peekable();
+        while let Some(piece) = pieces.next() {
+            // A finite number followed by :: is a weight prefix. Standalone
+            // numeric tags (for example a selected year) remain ordinary tags.
+            if pieces.peek().is_some()
+                && piece
+                    .trim()
+                    .parse::<f64>()
+                    .is_ok_and(|weight| weight.is_finite())
+            {
+                continue;
+            }
+            tags.push(piece.to_owned());
+        }
+    }
+    clean_ignored_tags(&tags)
+}
+
 /// Browser Range offsets count UTF-16 code units; Rust slices count UTF-8 bytes.
 /// Only inspect the selected text. Unselected syntax must never block editing
 /// the whitelist, and a selection may intentionally cut through tags or weights.
@@ -346,24 +367,7 @@ pub fn selected_artist_tags(text: &str, start: usize, end: usize) -> Result<Vec<
     if start >= end {
         return Err("请先选中要加入白名单的文字。".into());
     }
-    let mut tags = Vec::new();
-    for part in text[start..end].split([',', '\n', '\r', '{', '}', '[', ']']) {
-        let mut pieces = part.split("::").peekable();
-        while let Some(piece) = pieces.next() {
-            // A finite number followed by :: is a weight prefix. Standalone
-            // numeric tags (for example a selected year) remain ordinary tags.
-            if pieces.peek().is_some()
-                && piece
-                    .trim()
-                    .parse::<f64>()
-                    .is_ok_and(|weight| weight.is_finite())
-            {
-                continue;
-            }
-            tags.push(piece.to_owned());
-        }
-    }
-    let tags = clean_ignored_tags(&tags);
+    let tags = tag_names(&text[start..end]);
     if tags.is_empty() {
         return Err("请先选中 tag 文字，可以跨逗号或换行选择多个。".into());
     }

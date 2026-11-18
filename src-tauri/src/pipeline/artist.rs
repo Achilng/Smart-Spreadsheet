@@ -3,9 +3,14 @@ use std::sync::LazyLock;
 
 /// Prompt fragments use XML-like delimiters, not a complete XML document.
 /// Keep each complete block intact so comma-spanning weights and repetitions survive.
+static BLOCK: LazyLock<regex::Regex> =
+    LazyLock::new(|| regex::Regex::new(r"(?is)<artist\s*>(.*?)</artist\s*>").unwrap());
+
+pub(crate) fn without_artist_blocks(prompt: &str) -> std::borrow::Cow<'_, str> {
+    BLOCK.replace_all(prompt, ",")
+}
+
 pub fn extract_artist_blocks(prompt: &str) -> Option<Vec<String>> {
-    static BLOCK: LazyLock<regex::Regex> =
-        LazyLock::new(|| regex::Regex::new(r"(?is)<artist\s*>(.*?)</artist\s*>").unwrap());
     let mut found = false;
     let blocks = BLOCK
         .captures_iter(prompt)

@@ -234,13 +234,16 @@
 
 .compare-editor { display: grid; gap: 22px; }
 .compare-editor section { display: grid; gap: 10px; min-width: 0; }
-.compare-editor h3 { font-size: var(--font-sm); }
-.compare-editor p, .compare-editor small, .ce-value { color: var(--text-3); font-size: var(--font-xs); line-height: 1.6; }
-.compare-editor .ce-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-.ce-heading .r-select { width: auto; }
-.ce-rule { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 5px 10px; padding: 10px 0; border-bottom: 1px solid var(--border); }
-.ce-field { display: inline-flex; gap: 8px; align-items: center; font-size: var(--font-sm); }
-.ce-value, .ce-rule small, .ce-rule > input { grid-column: 1 / -1; min-width: 0; }
-.ce-value summary { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
-.ce-value p { white-space: pre-wrap; overflow-wrap: anywhere; }
+.compare-editor h3, .ce-field { font-size: var(--font-sm); }
+.ce-field { display: flex; gap: 8px; align-items: center; }
+.ce-allowed { margin: 6px 0 0; padding: 12px; border: 1px solid var(--border); border-radius: 8px; }
+.ce-allowed legend { font-size: var(--font-sm); font-weight: 600; padding: 0 4px; }
+.ce-allowed p { margin: 0 0 12px; font-size: var(--font-xs); color: var(--text-3); }
+.ce-allowed > div { display: grid; grid-template-columns: repeat(auto-fit,minmax(170px,1fr)); gap: 12px; }
+.rc-card .card-change { display: grid; gap: 2px; margin-top: 8px; font-size: var(--font-sm); color: var(--text); }
+.card-change span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card-change small { color: var(--text-3); }
+.rc-card .expand-group { display: inline-flex; align-items: center; gap: 4px; border: 0; background: transparent; padding: 5px 0; color: var(--accent-hover); font-size: var(--font-xs); cursor: pointer; }
+.group-members .group-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.group-members { --compare-stage: var(--surface-3); }
 .rc-window .sidebar { overflow-y: auto; }

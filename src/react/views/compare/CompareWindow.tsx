@@ -8,20 +8,20 @@ import { rowFileName, rowResolution } from "../../../lib/utils/row-display";
 import { formatCount } from "../../../lib/utils/format";
 import { clearProgressiveImages } from "../../../lib/images/progressive-images";
 import { thumbnails } from "../../ui/use-image";
-import { Button, Tooltip } from "../../ui/controls";
+import { Button, Modal, Tooltip } from "../../ui/controls";
 import { Notices } from "../../ui/Notices";
 import { WindowControls } from "../../ui/WindowControls";
 import { notifyMainStateChanged, notifyToolboxLibraryChanged } from "../../../lib/windows/library-events";
 import type { AfterRowsDeleted } from "../../state/row-actions";
 import { DeleteRowsDialog } from "../DeleteRowsDialog";
 import { notify } from "../../state/notices";
-import { closeSideBySide, compareModelGroups, compareNavigation, loadCompareModels, loadCompareSectionPage, moveCompareTarget, openSideBySide, refreshCompare, resetCompare, selectCompareModel, selectCompareTab, setCompareModelOffset, setCompareSample, useCompare, type CompareSectionKey } from "../../state/compare";
+import { COMPARE_PAGE_SIZE, closeSideBySide, compareModelGroups, compareNavigation, loadCompareModels, loadCompareSectionPage, moveCompareTarget, openSideBySide, refreshCompare, resetCompare, selectCompareModel, selectCompareTab, setCompareModelOffset, setCompareSample, useCompare, type CompareSectionKey } from "../../state/compare";
 import { ArtistText } from "../../ui/ArtistText";
 import { focusMainWindow } from "../../../lib/windows/toolbox";
 import { PaneImage } from "./CompareImages";
 import { SideBySide } from "./SideBySide";
 import { CompareRowContextMenu } from "./CompareRowContextMenu";
-import { compareFields, startingConditions, type CompareOptions } from "../../../lib/api/compare-conditions";
+import { compareFields, describeChange, inspectionTab, orderedRows, startingConditions, type CompareField, type CompareOptions } from "../../../lib/api/compare-conditions";
 import { CompareConditionsEditor } from "./CompareConditionsEditor";
 import "./compare.css";
 
@@ -110,14 +110,14 @@ export function CompareWindow() {
                 <div className="workspace" hidden={Boolean(state.target)}>
                   <aside className="sidebar" aria-label="对比样本与关系">
                     <div className="sidebar-label"><strong>参考样本</strong><span>#{sample.row.id}</span><button className="icon-button" aria-label="刷新样本与关联结果" title="刷新样本与关联结果" onClick={() => void refreshCompare()}><RefreshCw size={14} /></button></div>
-                    <SampleCard key={sample.row.id} row={sample.row} />
+                    <SampleCard row={sample.row} />
                     <nav className="relation-nav" aria-label="对比关系"><button type="button" onClick={() => void chooseTarget()}><MousePointer2 size={17} /><span className="nav-copy"><strong>手动选择 B</strong><small>到主画廊挑选目标</small></span><ChevronRight className="nav-arrow" size={14} /></button>{tabs.map(tab => <button key={tab.key} type="button" className={state.activeTab === tab.key ? "active" : ""} aria-pressed={state.activeTab === tab.key} onClick={() => void selectCompareTab(tab.key)}>
                       <tab.icon size={17} /><span className="nav-copy"><strong>{tab.label}</strong><small>{tab.hint}</small></span><ChevronRight className="nav-arrow" size={14} />
                     </button>)}
                       <button type="button" className={state.activeTab === "custom" ? "active" : ""} aria-pressed={state.activeTab === "custom"} onClick={() => {
                         if (state.custom.loaded) void selectCompareTab("custom");
                         else setEditor(state.options);
-                      }}><SlidersHorizontal size={17} /><span className="nav-copy"><strong>自定义对比</strong><small>组合字段与目标筛选</small></span><ChevronRight className="nav-arrow" size={14} /></button>
+                      }}><SlidersHorizontal size={17} /><span className="nav-copy"><strong>自定义对比</strong><small>选择想观察的变化</small></span><ChevronRight className="nav-arrow" size={14} /></button>
                     </nav>
                     <SamplePrompts key={sample.row.id} row={sample.row} />
                     <p className="sidebar-tip">点选右侧图片，与样本并排对照。</p>
@@ -125,7 +125,7 @@ export function CompareWindow() {
                   <main className="results" ref={results}>{state.activeTab === "models" ? <ModelSection onAdjust={adjust} key={`${sample.row.id}-models`} /> : <CompareSection onAdjust={adjust} key={`${sample.row.id}-${state.activeTab}`} section={state.activeTab} />}</main>
                 </div>
                 {editor && <CompareConditionsEditor key={sample.row.id} sample={sample} initial={editor} onClose={() => setEditor(null)} />}
-                {state.target && <SideBySide initialTab={state.activeTab === "custom" && !state.manualTarget ? state.options.initialTab : undefined} key={sample.row.id} sample={sample.row} target={state.target} relation={relation} navigation={navigation} onMove={moveCompareTarget} onBack={closeSideBySide} onChooseTarget={chooseTarget} />}
+                {state.target && <SideBySide initialTab={state.activeTab === "custom" && !state.manualTarget ? inspectionTab(state.options.observe) : undefined} key={sample.row.id} sample={sample.row} target={state.target} relation={relation} navigation={navigation} onMove={moveCompareTarget} onBack={closeSideBySide} onChooseTarget={chooseTarget} />}
               </>}
       </div>
     </div><DeleteRowsDialog afterDelete={afterCompareDelete} /><Notices />
@@ -155,9 +155,13 @@ function SamplePrompts({ row }: { row: RowRecord }) {
   </section>;
 }
 
-function CompareCard({ row }: { row: RowRecord }) {
+function CompareCard({ row, change, group, onExpand, onOpen }: {
+  row: RowRecord; change?: ReturnType<typeof describeChange>; group?: number[]; onExpand?: () => void; onOpen?: () => void;
+}) {
   return <CompareRowContextMenu row={row}><article className="rc-card">
-    <div className="thumb"><PaneImage row={row} tier="gallery" lazy /><div className="card-badges"><Badges row={row} /></div><button type="button" className="card-open" data-compare-id={row.id} aria-label={`对比这张：${rowTitle(row)}`} title={[rowFileName(row), rowResolution(row), row.imagePath].filter(Boolean).join("\n")} onClick={() => openSideBySide(row)}><span className="open-hint"><ArrowUpRight size={14} />对比这张</span></button></div>
+    <div className="thumb"><PaneImage row={row} tier="gallery" lazy /><div className="card-badges"><Badges row={row} /></div><button type="button" className="card-open" data-compare-id={row.id} aria-label={`对比这张：${rowTitle(row)}`} title={[rowFileName(row), rowResolution(row), row.imagePath].filter(Boolean).join("\n")} onClick={onOpen ?? (() => openSideBySide(row))}><span className="open-hint"><ArrowUpRight size={14} />对比这张</span></button></div>
+    {change && <div className="card-change" title={change.full}>{change.lines.map((line, i) => <span key={i}>{line}</span>)}{change.more > 0 && <small>另有 {change.more} 项</small>}</div>}
+    {group && group.length > 1 && <button type="button" className="expand-group" onClick={onExpand}>共 {formatCount(group.length)} 张 · 展开 <ChevronRight size={13} /></button>}
     <div className="card-info"><span className="card-label" title={rowTitle(row)}>{rowTitle(row)}</span><span className="card-sub"><span>{rowResolution(row) || "尺寸未知"}</span><span>#{row.id}</span></span></div>
   </article></CompareRowContextMenu>;
 }
@@ -166,20 +170,52 @@ function Pagination({ offset, count, total, loading, onPrevious, onNext }: { off
   return <nav className="pagination" aria-label="结果分页"><span role="status">{loading ? "正在加载…" : `${formatCount(offset + 1)}–${formatCount(offset + count)} / ${formatCount(total)}`}</span><button className="icon-button" aria-label="上一页" disabled={loading || offset === 0} onClick={onPrevious}><ChevronLeft size={16} /></button><button className="icon-button" aria-label="下一页" disabled={loading || offset + count >= total} onClick={onNext}><ChevronRight size={16} /></button></nav>;
 }
 
+function GroupMembers({ ids, sample, field, onClose }: { ids: number[]; sample: RowRecord; field: CompareField; onClose: () => void }) {
+  const [offset, setOffset] = useState(0);
+  const [rows, setRows] = useState<RowRecord[]>([]);
+  const [error, setError] = useState("");
+  const [retry, setRetry] = useState(0);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    let active = true;
+    setLoading(true); setError("");
+    void orderedRows(ids.slice(offset, offset + 12)).then(page => { if (active) setRows(page); })
+      .catch(cause => { if (active) setError(String(cause)); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [ids, offset, retry]);
+  const inspecting = useCompare(state => !!state.target);
+  if (inspecting) return null;
+  return <Modal open title={`同组图片 · ${formatCount(ids.length)} 张`} onClose={onClose} width={800}>
+    <section className="rc-section group-members">
+      <div className="group-toolbar"><strong>{compareFields[field]}相同</strong>
+        {ids.length > 12 && <Pagination offset={offset} count={Math.min(12, ids.length - offset)} total={ids.length} loading={loading} onPrevious={() => setOffset(offset - 12)} onNext={() => setOffset(offset + 12)} />}</div>
+      {loading ? <p role="status">正在读取图片…</p> : error ? <p role="alert">{error} <Button onClick={() => setRetry(retry + 1)}>重新加载</Button></p> :
+        <div className="section-grid">{rows.map(row => <CompareCard key={row.id} row={row} change={describeChange(sample, row, field)} onOpen={() => openSideBySide(row, false, ids)} />)}</div>}
+    </section>
+  </Modal>;
+}
+
 function CompareSection({ section, onAdjust }: { section: CompareSectionKey; onAdjust: () => void }) {
   const state = useCompare(s => s[section]);
   const sample = useCompare(s => s.sample)!;
   const options = useCompare(s => s.options);
   const custom = section === "custom";
-  const summary = options.rules.filter(rule => rule.enabled).map(rule => compareFields[rule.field] + (rule.relation === "same" ? "相同" : rule.relation === "different" ? "不同" : `仅 ${rule.words} 有变化`));
-  if (options.filters.length) summary.push(`${options.filters.length} 项目标筛选`);
-  const title = custom ? "自定义对比" : section === "artists" ? "相同画师串" : section === "vibeDiffStyle" ? "相同 VIBE · 不同提示词" : "相同提示词 · 不同 VIBE";
+  const allGroups = useCompare(s => s.groups);
+  const [expanded, setExpanded] = useState<number[] | null>(null);
+  const pageGroups = useMemo(() => new Map(allGroups?.slice(state.offset, state.offset + COMPARE_PAGE_SIZE).map(group => [group[0], group])), [allGroups, state.offset]);
+  const grouped = custom && options.dedupe;
+  const summary = grouped ? `${compareFields[options.observe]}相同的图片合为一组，可展开查看。` : "展示与参考图 A 在这一项上不同的图片。";
+  const title = custom ? `比较${compareFields[options.observe]}` : section === "artists" ? "相同画师串" : section === "vibeDiffStyle" ? "相同 VIBE · 不同提示词" : "相同提示词 · 不同 VIBE";
   const unavailable = custom ? false : section === "artists" ? !sample.row.artists?.trim() : section === "vibeDiffStyle" ? !sample.hasVibeSignature : !sample.hasStyleSignature;
   const empty = section === "artists" ? "样本还没有画师串，试试其他对比关系。" : section === "vibeDiffStyle" ? sample.vibeSignatureUnreadable ? "样本原图不可读，无法读取 VIBE 引用。" : "样本没有引用 VIBE，试试其他对比关系。" : "样本没有可比较的提示词，试试其他对比关系。";
   return <section className="rc-section" aria-busy={state.loading}>
-    <header className="section-head"><div className="section-copy"><h1>{title}{state.loaded && <span className="section-count">{formatCount(state.total)} 张</span>}</h1><p>{custom ? summary.join(" · ") || "资料库中除 A 以外的所有图片" : section === "artists" ? "完整画师串一致，比较同一组合的不同创作。" : section === "vibeDiffStyle" ? "保持 VIBE 引用不变，观察正向提示词带来的变化。" : "正向提示词一致（忽略官方质量词），观察 VIBE 引用带来的变化。"}</p></div><Button onClick={onAdjust}>调整条件</Button>{state.items.length > 0 && <Pagination offset={state.offset} count={state.items.length} total={state.total} loading={state.loading} onPrevious={() => void loadCompareSectionPage(section, false, -1)} onNext={() => void loadCompareSectionPage(section)} />}</header>
+    <header className="section-head"><div className="section-copy"><h1>{title}{state.loaded && <span className="section-count">{formatCount(state.total)} {grouped ? "组" : "张"}</span>}</h1><p>{custom ? summary : section === "artists" ? "完整画师串一致，比较同一组合的不同创作。" : section === "vibeDiffStyle" ? "保持 VIBE 引用不变，观察正向提示词带来的变化。" : "正向提示词一致（忽略官方质量词），观察 VIBE 引用带来的变化。"}</p></div><Button onClick={onAdjust}>调整条件</Button>{state.items.length > 0 && <Pagination offset={state.offset} count={state.items.length} total={state.total} loading={state.loading} onPrevious={() => void loadCompareSectionPage(section, false, -1)} onNext={() => void loadCompareSectionPage(section)} />}</header>
     {state.error && <div className="error" role="alert"><span>{state.error}</span><Button onClick={() => void loadCompareSectionPage(section, true)}>重新加载</Button></div>}
-    {state.items.length ? <div className={`section-grid ${state.loading ? "loading" : ""}`}>{state.items.map(row => <CompareCard key={row.id} row={row} />)}</div> : state.loading ? <div className="skeleton-grid" role="status" aria-label="正在加载关联图片">{Array.from({ length: 6 }, (_, i) => <div className="skeleton" key={i} />)}</div> : !state.error && <div className="empty"><Images size={28} /><h2>{unavailable ? "缺少对比信息" : "暂时没有匹配图片"}</h2><p>{custom ? "可以点「调整条件」放宽匹配范围。" : unavailable ? empty : "资料库中还没有符合这个关系的图片，可以切换其他关系继续探索。"}</p></div>}
+    {state.items.length ? <div className={`section-grid ${state.loading ? "loading" : ""}`}>{state.items.map(row => <CompareCard key={row.id} row={row}
+      change={custom ? describeChange(sample.row, row, options.observe) : undefined} group={grouped ? pageGroups.get(row.id) : undefined}
+      onExpand={() => setExpanded(pageGroups.get(row.id) ?? null)} />)}</div> : state.loading ? <div className="skeleton-grid" role="status" aria-label="正在加载关联图片">{Array.from({ length: 6 }, (_, i) => <div className="skeleton" key={i} />)}</div> : !state.error && <div className="empty"><Images size={28} /><h2>{unavailable ? "缺少对比信息" : "暂时没有匹配图片"}</h2><p>{custom ? "可以点「调整条件」放宽匹配范围。" : unavailable ? empty : "资料库中还没有符合这个关系的图片，可以切换其他关系继续探索。"}</p></div>}
+    {grouped && expanded && pageGroups.get(expanded[0]) === expanded && <GroupMembers ids={expanded} sample={sample.row} field={options.observe} onClose={() => setExpanded(null)} />}
   </section>;
 }
 

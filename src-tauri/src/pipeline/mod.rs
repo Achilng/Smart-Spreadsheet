@@ -17,7 +17,7 @@ pub mod stealth_png;
 pub mod style_signature;
 
 pub use artist::{artist_string, extract_artist_blocks, extract_artist_tags};
-pub(crate) use artist::llm_artist_pool_fragments;
+pub(crate) use artist::{llm_artist_pool_fragments, without_artist_blocks};
 pub use metadata::{
     CharacterPrompt, character_prompts,
     NovelAiMetadata, generation_model_of, parse_novelai_metadata, vibe_reference_count,

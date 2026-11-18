@@ -7,13 +7,11 @@ use tauri::Manager;
 pub(crate) async fn query_compare_custom(
     row_id: i64,
     conditions: crate::db::CompareConditions,
-    offset: u64,
-    limit: u32,
     app: tauri::AppHandle,
-) -> Result<CompareSectionPage, String> {
+) -> Result<Vec<Vec<i64>>, String> {
     tauri::async_runtime::spawn_blocking(move || {
         app.state::<AppRuntime>()
-            .query_compare_custom(row_id, &conditions, offset, limit)
+            .query_compare_custom(row_id, &conditions)
             .map_err(error_text)
     })
     .await

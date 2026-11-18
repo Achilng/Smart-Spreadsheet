@@ -5,10 +5,8 @@ impl AppRuntime {
         &self,
         row_id: i64,
         conditions: &crate::db::CompareConditions,
-        offset: u64,
-        limit: u32,
-    ) -> Result<crate::db::CompareSectionPage, AppRuntimeError> {
-        self.with_database(|db| db.query_compare_custom(row_id, conditions, offset, limit))
+    ) -> Result<Vec<Vec<i64>>, AppRuntimeError> {
+        self.with_database(|db| db.query_compare_custom(row_id, conditions))
     }
 
     pub(crate) fn get_compare_sample(
