@@ -10,12 +10,18 @@ const mime = (file: File) => Object.hasOwn(types, extension(file)) ? types[exten
 
 export function validateFiles(files: File[]): void {
   if (files.length > 4) throw new Error("一条消息最多添加 4 个附件");
-  if (files.reduce((n, f) => n + f.size, 0) > 8 * 1024 * 1024) throw new Error("附件合计不能超过 8 MB");
+  let images = 0, documents = 0;
   for (const f of files) {
+    if (mime(f).startsWith("image/")) {
+      if (f.size > 32 * 1024 ** 2) throw new Error(`原图「${f.name}」超过 32 MiB`);
+      images += f.size;
+    } else documents += f.size;
     if (!mime(f)) throw new Error(`暂不支持「${f.name}」。可添加 PNG、JPEG、WebP、PDF 或 UTF-8 文本文件。`);
     if (!f.size) throw new Error(`「${f.name}」是空文件`);
     if (mime(f) === "text/plain" && f.size > 256 * 1024) throw new Error(`文本「${f.name}」超过 256 KB，请截取需要的部分`);
   }
+  if (images > 64 * 1024 ** 2) throw new Error("一条消息的图片合计不能超过 64 MiB");
+  if (documents > 8 * 1024 ** 2) throw new Error("一条消息的 PDF 和文本合计不能超过 8 MiB（不含图片）");
 }
 
 export function encodeAttachment(file: File): Promise<AgentAttachment> {

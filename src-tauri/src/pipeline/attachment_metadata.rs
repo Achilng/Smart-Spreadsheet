@@ -5,7 +5,7 @@ use image::{ImageFormat, ImageReader, Limits};
 use serde_json::{Value, json};
 use std::{collections::BTreeMap, io::Cursor};
 
-const MAX_INPUT: usize = 8 * 1024 * 1024;
+const MAX_INPUT: usize = 32 * 1024 * 1024;
 const MAX_CHUNKS: usize = 16_384;
 const MAX_FIELD_INPUT: usize = 128 * 1024;
 const TEXT_BUDGET: usize = 256 * 1024;
@@ -15,7 +15,7 @@ const INVALID_PNG: &str = "PNG 结构无效或不完整";
 
 pub fn inspect(bytes: &[u8]) -> Result<Value, String> {
     if bytes.len() > MAX_INPUT {
-        return Err("图片附件超过 8 MiB".into());
+        return Err("图片附件超过 32 MiB".into());
     }
     let format = image::guess_format(bytes).map_err(|_| "无法识别图片格式")?;
     let name = match format {
@@ -40,7 +40,8 @@ fn inspect_png(bytes: &[u8]) -> Result<Value, String> {
     let mut remaining = TEXT_BUDGET;
     // Never give the pixel decoder ancillary text, compressed ICC profiles,
     // EXIF or animation frames: its own metadata paths bypass our text budget.
-    let mut pixels = bytes.get(..8).ok_or(INVALID_PNG)?.to_vec();
+    let mut pixels = None;
+    let (mut width, mut height) = (0, 0);
     let mut input = &bytes[8..];
     let mut count = 0;
     loop {
@@ -58,8 +59,20 @@ fn inspect_png(bytes: &[u8]) -> Result<Value, String> {
         if (kind == b"IHDR") != (count == 1) {
             return Err(INVALID_PNG.into());
         }
+        if kind == b"IHDR" {
+            if size != 13 { return Err(INVALID_PNG.into()); }
+            width = u32::from_be_bytes(data[0..4].try_into().unwrap());
+            height = u32::from_be_bytes(data[4..8].try_into().unwrap());
+            if width == 0 || height == 0 { return Err(INVALID_PNG.into()); }
+            if width <= MAX_SIDE && height <= MAX_SIDE
+                && u64::from(width) * u64::from(height) <= MAX_PIXELS {
+                pixels = Some(bytes[..8].to_vec());
+            }
+        }
         match kind {
-            b"IHDR" | b"PLTE" | b"tRNS" | b"IDAT" | b"IEND" => pixels.extend_from_slice(frame),
+            b"IHDR" | b"PLTE" | b"tRNS" | b"IDAT" | b"IEND" => {
+                if let Some(pixels) = &mut pixels { pixels.extend_from_slice(frame); }
+            }
             b"tEXt" | b"iTXt" | b"zTXt" => {
                 // Charge before parsing; repeated, malformed or compressed
                 // chunks cannot reset the budget. Reject on expansion overflow.
@@ -88,33 +101,29 @@ fn inspect_png(bytes: &[u8]) -> Result<Value, String> {
             break;
         }
     }
-    let reader = || ImageReader::with_format(Cursor::new(pixels.as_slice()), ImageFormat::Png);
-    let mut limits = Limits::default();
-    limits.max_image_width = Some(MAX_SIDE);
-    limits.max_image_height = Some(MAX_SIDE);
-    limits.max_alloc = Some(96 * 1024 * 1024);
-    let mut header = reader();
-    header.limits(limits.clone());
-    let (width, height) = header.into_dimensions().map_err(|_| "PNG 尺寸无效或超限")?;
-    if u64::from(width) * u64::from(height) > MAX_PIXELS {
-        return Err("PNG 像素数超限".into());
-    }
-    let mut decoder = reader();
-    decoder.limits(limits);
-    let image = decoder.decode().map_err(|_| "PNG 像素解码失败或超限")?;
-    let mut partial = false;
-    if image.color().has_alpha() {
-        match stealth_png::read_stealth_limited(
-            &image.into_rgba8(),
-            remaining.min(MAX_FIELD_INPUT),
-            |key, value| {
-                matches!(key, "Description" | "Source" | "Comment")
-                    && (value.is_string() || (key == "Comment" && value.is_object()))
+    let skipped = pixels.is_none();
+    let mut partial = skipped;
+    if let Some(pixels) = pixels {
+        let mut decoder = ImageReader::with_format(Cursor::new(pixels), ImageFormat::Png);
+        let mut limits = Limits::default();
+        limits.max_image_width = Some(MAX_SIDE);
+        limits.max_image_height = Some(MAX_SIDE);
+        limits.max_alloc = Some(96 * 1024 * 1024);
+        decoder.limits(limits);
+        match decoder.decode() {
+            Ok(image) if image.color().has_alpha() => match stealth_png::read_stealth_limited(
+                &image.into_rgba8(), remaining.min(MAX_FIELD_INPUT), |key, value| {
+                    matches!(key, "Description" | "Source" | "Comment")
+                        && (value.is_string() || (key == "Comment" && value.is_object()))
+                },
+            ) {
+                Ok(Some(hidden)) => read_metadata::merge_hidden(&mut chunks, hidden),
+                Ok(None) => (),
+                Err(_) => partial = true,
             },
-        ) {
-            Ok(Some(hidden)) => read_metadata::merge_hidden(&mut chunks, hidden),
-            Ok(None) => (),
-            Err(_) => partial = true, // Ordinary fields are still usable.
+            Ok(_) => (),
+            Err(_) if !chunks.is_empty() => partial = true,
+            Err(_) => return Err("PNG 像素解码失败或超限".into()),
         }
     }
     let m = parse_novelai_metadata(&chunks);
@@ -160,8 +169,11 @@ fn inspect_png(bytes: &[u8]) -> Result<Value, String> {
     } else {
         "found"
     };
-    let result = json!({"format":"png", "width":width, "height":height,
+    let mut result = json!({"format":"png", "width":width, "height":height,
         "generationParametersStatus":status, "untrustedGenerationParameters":fields});
+    if skipped {
+        result["stealthNote"] = json!("只读取了普通 PNG 文本；单边超过 8192 像素或总计超过 8388608 像素时不解码隐写信息。");
+    }
     // Enforce the wire size, including escaped quotes, keys and envelope.
     if result.to_string().len() > 16 * 1024 {
         return Err("图片元数据输出超限".into());

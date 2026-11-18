@@ -137,21 +137,31 @@ impl Database {
         Ok(rows)
     }
 
-    /// Load only a user message whose attachment metadata fits the model's replay budget.
-    pub(crate) fn agent_attachment_data(&self, conversation_id: &str, message_id: i64) -> Res<Vec<String>> {
-        let data: String = self.connection.query_row(
-            "SELECT json_extract(content, '$.attachmentData') FROM agent_messages
-             WHERE conversation_id = ?1 AND id = ?2 AND kind = 'user'",
-            params![conversation_id, message_id],
+    /// Fetch only replayable slots, even in a mixed legacy message with inline images.
+    pub(crate) fn agent_document_attachment(&self, conversation_id: &str, message_id: i64, slot: usize) -> Res<String> {
+        self.connection.query_row(
+            "SELECT json_extract(content, ?3) FROM agent_messages
+             WHERE conversation_id = ?1 AND id = ?2 AND kind = 'user'
+               AND json_extract(content, ?4) IN ('text/plain','application/pdf')",
+            params![conversation_id, message_id, format!("$.attachmentData[{slot}]"), format!("$.attachments[{slot}].mime")],
             |row| row.get(0),
-        ).map_err(s)?;
-        serde_json::from_str(&data).map_err(s)
+        ).map_err(s)
     }
 
     /// Only return the requested image, never another conversation's bytes or a filesystem path.
     pub(crate) fn agent_image_attachment(&self, conversation_id: &str, message_id: i64, number: u8) -> Res<(String, String)> {
         if !(1..=4).contains(&number) { return Err("附件序号应在 1 至 4 之间".into()); }
         let slot = number - 1;
+        use base64::{Engine as _, engine::general_purpose::STANDARD};
+        let image = self.connection.query_row(
+            "SELECT json_extract(m.content, ?4), a.bytes FROM agent_image_attachments a
+             JOIN agent_messages m ON m.id = a.message_id
+             WHERE m.conversation_id = ?1 AND m.kind = 'user' AND m.id = ?2 AND a.number = ?3",
+            params![conversation_id, message_id, number, format!("$.attachments[{slot}].name")],
+            |row| Ok((row.get(0)?, STANDARD.encode(row.get_ref(1)?.as_blob()?))),
+        ).optional().map_err(s)?;
+        if let Some(image) = image { return Ok(image); }
+        // Pre-v30 messages stored original images as inline base64.
         self.connection.query_row(
             "SELECT json_extract(content, ?3 || '.name'), json_extract(content, ?4)
              FROM agent_messages WHERE conversation_id = ?1 AND id = ?2 AND kind = 'user'
@@ -163,20 +173,28 @@ impl Database {
     }
 
     pub fn agent_push_message(&self, conversation_id: &str, kind: &str, content: &Value) -> Res<i64> {
-        self.connection
-            .execute(
+        self.agent_push_with_images(conversation_id, kind, content, &[])
+    }
+
+    pub(crate) fn agent_push_with_images(&self, conversation_id: &str, kind: &str, content: &Value, images: &[(u8, Vec<u8>)]) -> Res<i64> {
+        let tx = self.connection.unchecked_transaction().map_err(s)?;
+        tx.execute(
                 "INSERT INTO agent_messages(conversation_id, kind, content) VALUES (?1, ?2, ?3)",
                 params![conversation_id, kind, content.to_string()],
             )
             .map_err(s)?;
-        let id = self.connection.last_insert_rowid();
-        self.connection
-            .execute(
+        let id = tx.last_insert_rowid();
+        for (number, bytes) in images {
+            tx.execute("INSERT INTO agent_image_attachments(message_id, number, bytes) VALUES (?1, ?2, ?3)",
+                params![id, number, bytes]).map_err(s)?;
+        }
+        tx.execute(
                 "UPDATE agent_conversations
                  SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?1",
                 [conversation_id],
             )
             .map_err(s)?;
+        tx.commit().map_err(s)?;
         Ok(id)
     }
 }

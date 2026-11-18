@@ -9,6 +9,10 @@ use image::{Rgb, RgbImage};
 
 use crate::app::AppRuntime;
 
+#[path = "attachment_view.rs"]
+mod attachment_view;
+pub use attachment_view::{AttachmentView, render_attachment};
+
 pub const MAX_IMAGES: usize = 16;
 /// Up to this many images are sent one by one; more are combined into a contact sheet.
 pub const SEPARATE_LIMIT: usize = 2;
@@ -33,11 +37,27 @@ pub struct Cache {
 
 impl Cache {
     pub fn get(&self, call_id: &str) -> Option<Vec<String>> {
-        let entries = self.entries.lock().ok()?;
-        entries.iter().find(|(id, _)| id == call_id).map(|(_, images)| images.clone())
+        self.cached(&format!("gallery:{call_id}"))
     }
 
     pub fn put(&self, call_id: &str, images: Vec<String>) {
+        self.store(&format!("gallery:{call_id}"), images);
+    }
+
+    pub fn attachment(&self, conversation: &str, call_id: &str, view: &AttachmentView) -> Option<Vec<String>> {
+        self.cached(&serde_json::json!([conversation, call_id, view]).to_string())
+    }
+
+    pub fn put_attachment(&self, conversation: &str, call_id: &str, view: &AttachmentView, url: String) {
+        self.store(&serde_json::json!([conversation, call_id, view]).to_string(), vec![url]);
+    }
+
+    fn cached(&self, key: &str) -> Option<Vec<String>> {
+        let entries = self.entries.lock().ok()?;
+        entries.iter().find(|(id, _)| id == key).map(|(_, images)| images.clone())
+    }
+
+    fn store(&self, call_id: &str, images: Vec<String>) {
         if let Ok(mut entries) = self.entries.lock() {
             entries.retain(|(id, _)| id != call_id);
             entries.push_back((call_id.to_owned(), images));

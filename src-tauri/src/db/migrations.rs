@@ -1,4 +1,13 @@
-pub const CURRENT_SCHEMA_VERSION: u32 = 29;
+pub const CURRENT_SCHEMA_VERSION: u32 = 30;
+
+pub(super) const MIGRATION_30: &str = r#"
+CREATE TABLE agent_image_attachments (
+    message_id INTEGER NOT NULL REFERENCES agent_messages(id) ON DELETE CASCADE,
+    number INTEGER NOT NULL CHECK (number BETWEEN 1 AND 4),
+    bytes BLOB NOT NULL,
+    PRIMARY KEY (message_id, number)
+) STRICT;
+"#;
 
 /// Agent conversations, dry-run previews and undoable operations live with the library.
 /// Operations survive conversation deletion so the operation log can still undo them.

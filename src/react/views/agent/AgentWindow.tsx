@@ -483,7 +483,7 @@ export function AgentWindow() {
               <div className="chat-dock">
                 <form className="chat-composer" onSubmit={event => { event.preventDefault(); void send(); }} onClick={event => { if (!(event.target instanceof Element && event.target.closest("button"))) inputRef.current?.focus(); }}>
                   <input ref={fileInput} type="file" hidden multiple accept={attachmentAccept} onChange={event => { if (event.currentTarget.files) addFiles(event.currentTarget.files); event.currentTarget.value = ""; }} />
-                  {files.length > 0 && <><div className="ag-file-list">{files.map((file, i) => <DraftAttachment key={`${file.name}-${file.lastModified}-${file.size}-${i}`} file={file} disabled={sending} onRemove={() => setFiles(old => old.filter((_, at) => at !== i))} />)}</div><small className="ag-file-note">点击发送后，附件内容将发送给当前模型。</small></>}
+                  {files.length > 0 && <><div className="ag-file-list">{files.map((file, i) => <DraftAttachment key={`${file.name}-${file.lastModified}-${file.size}-${i}`} file={file} disabled={sending} onRemove={() => setFiles(old => old.filter((_, at) => at !== i))} />)}</div><small className="ag-file-note">原图保存在本地。查生成信息不发送画面；需要看图时发送预览或局部。PDF 和文本会发送给模型。</small></>}
                   <textarea ref={inputRef} readOnly={sending} onPaste={event => { if (event.clipboardData.files.length) { event.preventDefault(); addFiles(event.clipboardData.files); } }} rows={1} value={input} autoFocus aria-label="给整理助手发消息" placeholder={running ? "助手正在处理…" : "描述你想怎么整理图片"}
                     onChange={event => setInput(event.target.value)}
                     onKeyDown={event => {

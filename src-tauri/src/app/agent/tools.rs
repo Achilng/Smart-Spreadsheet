@@ -64,6 +64,15 @@ field 取 positive / character / negative。caseSensitive 必须明确给出。�
             "messageId": {"type":"integer", "minimum":1},
             "attachmentNumber": {"type":"integer", "minimum":1, "maximum":4, "description":"消息中从 1 开始的附件序号，包含非图片附件"}
         }), &["messageId", "attachmentNumber"]),
+        tool("view_attachment_image", "按需查看当前对话的一张上传图片（不是图库 rowId）。默认长边最多 2000px，high 最多 3072px；大图可能进一步缩小。crop 使用未旋转原图像素，左上角为 (0,0)，不是预览坐标。结果之后只附一张视图。", json!({
+            "messageId": {"type":"integer", "minimum":1},
+            "attachmentNumber": {"type":"integer", "minimum":1, "maximum":4},
+            "detail": {"type":"string", "enum":["standard","high"]},
+            "crop": {"type":"object", "properties": {
+                "x":{"type":"integer","minimum":0}, "y":{"type":"integer","minimum":0},
+                "width":{"type":"integer","minimum":1}, "height":{"type":"integer","minimum":1}
+            }, "required":["x","y","width","height"], "additionalProperties":false}
+        }), &["messageId", "attachmentNumber"]),
         tool("get_library_overview", "图库概况：总数、收藏数、画师串分组数、全部分组（含 id）和常用 TAG。", json!({}), &[]),
         tool("get_main_window_state", "读取主窗口当前选中了多少张、当前筛选条件和筛选结果数量。用户说「选中的」「现在这些」时先调用。", json!({}), &[]),
         tool("find_rows", "按范围读取图片的文字信息：提示词、画师串、TAG、分组等（分页，每页最多 50 张）。只读文字，看不到画面。", json!({
@@ -185,6 +194,12 @@ pub fn run(app: &AppHandle, conversation_id: &str, call_id: &str, name: &str, ar
                 return plain(json!({"reported": false, "message": "主窗口还没有上报状态（可能没打开资料库）"}));
             }
             plain(json!({"selectedCount": counts.0.unwrap_or(0), "filteredCount": counts.1, "mainWindow": info}))
+        }
+        "view_attachment_image" => {
+            let view: vision::AttachmentView = parse(arguments)?;
+            let (url, output) = vision::render_attachment(&runtime, conversation_id, &view)?;
+            engine.vision.put_attachment(conversation_id, call_id, &view, url);
+            Ok(ToolOutput { display: json!({"kind":"info", "view":view}), output })
         }
         "read_attachment_metadata" => {
             use base64::{Engine as _, engine::general_purpose::STANDARD};
