@@ -126,6 +126,7 @@ pub enum LibraryFilter {
     },
     Group {
         operator: FilterGroupOperator,
+        #[serde(rename = "groupId", alias = "group_id")]
         group_id: Option<i64>,
     },
     Artist {
@@ -141,14 +142,14 @@ pub enum LibraryFilter {
         operator: FilterNoteOperator,
         #[serde(default)]
         value: String,
-        #[serde(default)]
+        #[serde(default, rename = "caseSensitive", alias = "case_sensitive")]
         case_sensitive: bool,
     },
     Prompt {
         operator: FilterPromptOperator,
         #[serde(default)]
         values: Vec<String>,
-        #[serde(default)]
+        #[serde(default, rename = "caseSensitive", alias = "case_sensitive")]
         case_sensitive: bool,
     },
     Metadata {
@@ -165,7 +166,7 @@ pub enum LibraryFilter {
         field: FilterGenerationTextField,
         operator: FilterTextOperator,
         value: String,
-        #[serde(default)]
+        #[serde(default, rename = "caseSensitive", alias = "case_sensitive")]
         case_sensitive: bool,
     },
     GenerationNumber {

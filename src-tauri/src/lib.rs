@@ -189,6 +189,7 @@ pub fn run() {
             app::commands::maintenance::backfill_perceptual_hashes,
             app::commands::maintenance::backfill_vibe_statuses,
             app::commands::maintenance::backfill_style_signatures,
+            app::commands::compare::query_compare_custom,
             app::commands::compare::get_compare_sample,
             app::commands::compare::query_compare_same_artists,
             app::commands::compare::query_compare_same_vibe_diff_style,

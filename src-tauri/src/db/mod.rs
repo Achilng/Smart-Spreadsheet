@@ -12,6 +12,8 @@ pub use artist_matching::ArtistMatchingRefresh;
 mod automation_rules;
 mod batches;
 mod compare;
+mod compare_conditions;
+pub use compare_conditions::CompareConditions;
 mod delete;
 mod export;
 mod favorites;
@@ -195,6 +197,7 @@ impl Database {
 
     fn initialize(mut connection: Connection) -> Result<Self, DatabaseError> {
         artist_matching::register(&connection)?;
+        compare_conditions::register(&connection)?;
         connection.busy_timeout(Duration::from_secs(5))?;
         connection.execute_batch(
             "PRAGMA foreign_keys = ON;

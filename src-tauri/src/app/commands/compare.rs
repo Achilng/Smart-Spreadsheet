@@ -3,6 +3,23 @@ use crate::app::AppRuntime;
 use crate::db::{CompareModelSection, CompareSample, CompareSectionPage};
 use tauri::Manager;
 
+#[tauri::command]
+pub(crate) async fn query_compare_custom(
+    row_id: i64,
+    conditions: crate::db::CompareConditions,
+    offset: u64,
+    limit: u32,
+    app: tauri::AppHandle,
+) -> Result<CompareSectionPage, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        app.state::<AppRuntime>()
+            .query_compare_custom(row_id, &conditions, offset, limit)
+            .map_err(error_text)
+    })
+    .await
+    .map_err(error_text)?
+}
+
 /// 图片对比窗口：样本完整信息（提示词、画师串、参数与签名状态）。
 /// 样本行不存在（打开期间被删除）时返回明确错误。
 #[tauri::command]

@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { ArrowLeft, ChevronLeft, ChevronRight, Crosshair, Maximize2 } from "lucide-react";
+import type { DiffTab } from "../../../lib/api/compare-conditions";
 import type { RowRecord } from "../../../lib/api";
 import { diffPromptField, type PromptToken } from "../../../lib/utils/prompt-diff";
 import { modelVersionBadge } from "../../../lib/utils/model-version";
@@ -16,10 +17,10 @@ function Tokens({ items, quality }: { items: PromptToken[]; quality: boolean }) 
 }
 const value = (input: string | number | null | undefined) => input == null || input === "" ? "未记录" : String(input);
 type Navigation = ReturnType<typeof compareNavigation>;
-interface Props { sample: RowRecord; target: RowRecord; relation: string; navigation: Navigation; onMove: (direction: 1 | -1) => Promise<void>; onBack: () => void; onChooseTarget: () => void }
+interface Props { initialTab?: DiffTab; sample: RowRecord; target: RowRecord; relation: string; navigation: Navigation; onMove: (direction: 1 | -1) => Promise<void>; onBack: () => void; onChooseTarget: () => void }
 
-export function SideBySide({ sample, target, relation, navigation, onMove, onBack, onChooseTarget }: Props) {
-  const [tab, setTab] = useState<"positive" | "character" | "negative" | "params">("positive");
+export function SideBySide({ initialTab = "positive", sample, target, relation, navigation, onMove, onBack, onChooseTarget }: Props) {
+  const [tab, setTab] = useState<DiffTab>(initialTab);
   const [showShared, setShowShared] = useState(false);
   const [onlyChangedParams, setOnlyChangedParams] = useState(true);
   const [originalRow, setOriginalRow] = useState<RowRecord | null>(null);

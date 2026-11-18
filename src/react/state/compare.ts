@@ -1,25 +1,32 @@
 import { create } from "zustand";
 import { getRowsByIds, type RowRecord } from "../../lib/api";
+import { queryCompareCustom, startingConditions, type CompareOptions } from "../../lib/api/compare-conditions";
+import type { CompareSectionPage } from "../../lib/api/compare";
 import { notify } from "./notices";
 import { getCompareSample, queryCompareSameArtists, queryCompareSameVibeDiffStyle, queryCompareSameStyleDiffVibe, queryCompareSameStyleAllModels, type CompareSample, type CompareModelSection } from "../../lib/api/compare";
 import { createRequestQueue } from "../../lib/utils/request-queue";
 import { modelComparisonTier, modelVersionBadge } from "../../lib/utils/model-version";
 
-export type CompareSectionKey = "artists" | "vibeDiffStyle" | "styleDiffVibe";
+export type CompareSectionKey = "artists" | "vibeDiffStyle" | "styleDiffVibe" | "custom";
 export type CompareTab = CompareSectionKey | "models";
 export interface SectionState { items: RowRecord[]; total: number; loading: boolean; error: string | null; loaded: boolean; offset: number }
 const emptySection = (): SectionState => ({ items: [], total: 0, loading: false, error: null, loaded: false, offset: 0 });
-const sections = () => ({ artists: emptySection(), vibeDiffStyle: emptySection(), styleDiffVibe: emptySection(), models: { rows: [], totalCount: 0, truncated: false } as CompareModelSection, modelsLoading: false, modelsError: null as string | null, modelsLoaded: false, modelTier: "", modelOffset: 0, manualTarget: false });
-interface CompareState { manualTarget: boolean; rowId: number | null; sample: CompareSample | null; sampleLoading: boolean; sampleError: string | null; activeTab: CompareTab; artists: SectionState; vibeDiffStyle: SectionState; styleDiffVibe: SectionState; models: CompareModelSection; modelsLoading: boolean; modelsError: string | null; modelsLoaded: boolean; modelTier: string; modelOffset: number; target: RowRecord | null }
-export const useCompare = create<CompareState>(() => ({ rowId: null, sample: null, sampleLoading: false, sampleError: null, activeTab: "artists", target: null, ...sections() }));
+const sections = () => ({ custom: emptySection(), artists: emptySection(), vibeDiffStyle: emptySection(), styleDiffVibe: emptySection(), models: { rows: [], totalCount: 0, truncated: false } as CompareModelSection, modelsLoading: false, modelsError: null as string | null, modelsLoaded: false, modelTier: "", modelOffset: 0, manualTarget: false });
+interface CompareState { custom: SectionState; options: CompareOptions; manualTarget: boolean; rowId: number | null; sample: CompareSample | null; sampleLoading: boolean; sampleError: string | null; activeTab: CompareTab; artists: SectionState; vibeDiffStyle: SectionState; styleDiffVibe: SectionState; models: CompareModelSection; modelsLoading: boolean; modelsError: string | null; modelsLoaded: boolean; modelTier: string; modelOffset: number; target: RowRecord | null }
+export const useCompare = create<CompareState>(() => ({ options: startingConditions("blank"), rowId: null, sample: null, sampleLoading: false, sampleError: null, activeTab: "artists", target: null, ...sections() }));
 const enqueue = createRequestQueue();
-const PAGE_SIZE = 24;
+export const COMPARE_PAGE_SIZE = 24;
 let generation = 0;
 const errorText = (error: unknown) => error instanceof Error ? error.message : String(error);
 
+export function applyCompareOptions(options: CompareOptions, page: CompareSectionPage) {
+  useCompare.setState({ options: { ...options }, activeTab: "custom", target: null, manualTarget: false,
+    custom: { items: page.rows, total: page.totalCount, offset: page.offset, loading: false, error: null, loaded: true } });
+}
+
 export function resetCompare(): void {
   generation++;
-  useCompare.setState({ rowId: null, sample: null, sampleError: null, sampleLoading: false, target: null, ...sections() });
+  useCompare.setState({ options: startingConditions("blank"), activeTab: "artists", rowId: null, sample: null, sampleError: null, sampleLoading: false, target: null, ...sections() });
 }
 
 export async function setCompareSample(rowId: number, force = false, targetId?: number): Promise<void> {
@@ -66,13 +73,15 @@ export async function loadCompareSectionPage(section: CompareSectionKey, first =
   if (state.rowId === null || state[section].loading) return;
   const before = state[section];
   if (!first && (direction === 1 ? before.offset + before.items.length >= before.total : before.offset === 0)) return;
-  const offset = first ? 0 : Math.max(0, before.offset + direction * PAGE_SIZE);
+  const offset = first ? 0 : Math.max(0, before.offset + direction * COMPARE_PAGE_SIZE);
   const requestGeneration = generation;
-  const update = (patch: Partial<SectionState>) => { if (generation === requestGeneration) useCompare.setState(current => ({ [section]: { ...current[section], ...patch } })); };
+  const current = () => generation === requestGeneration && (section !== "custom" || useCompare.getState().options === state.options);
+  const update = (patch: Partial<SectionState>) => { if (current()) useCompare.setState(current => ({ [section]: { ...current[section], ...patch } })); };
   update({ loading: true, error: null });
   try {
     const query = section === "artists" ? queryCompareSameArtists : section === "vibeDiffStyle" ? queryCompareSameVibeDiffStyle : queryCompareSameStyleDiffVibe;
-    const page = await enqueue(() => generation === requestGeneration && useCompare.getState().activeTab === section, () => query(state.rowId!, offset, PAGE_SIZE));
+    const page = await enqueue(() => current() && useCompare.getState().activeTab === section,
+      () => section === "custom" ? queryCompareCustom(state.sample!, state.options, offset, COMPARE_PAGE_SIZE) : query(state.rowId!, offset, COMPARE_PAGE_SIZE));
     if (page) update({ items: page.rows, total: page.totalCount, offset: page.offset, loaded: true });
   } catch (error) { update({ error: errorText(error) }); }
   finally { update({ loading: false }); }
@@ -137,7 +146,7 @@ export async function moveCompareTarget(direction: 1 | -1): Promise<void> {
     const group = compareModelGroups(state.models, state.sample?.row).find(item => item.rows.some(row => row.id === state.target!.id));
     const index = (group?.rows.findIndex(row => row.id === state.target!.id) ?? -1) + direction;
     const target = group?.rows[index];
-    if (target && group) useCompare.setState({ target, modelTier: group.tier, modelOffset: Math.floor(index / PAGE_SIZE) * PAGE_SIZE });
+    if (target && group) useCompare.setState({ target, modelTier: group.tier, modelOffset: Math.floor(index / COMPARE_PAGE_SIZE) * COMPARE_PAGE_SIZE });
     return;
   }
   const sectionKey = state.activeTab;
@@ -149,7 +158,7 @@ export async function moveCompareTarget(direction: 1 | -1): Promise<void> {
   await loadCompareSectionPage(sectionKey, false, direction);
   const after = useCompare.getState();
   // A sample switch, back action, or another selection invalidates this navigation.
-  if (generation !== requestGeneration || after.manualTarget || after.activeTab !== sectionKey || after.target?.id !== state.target.id) return;
+  if (generation !== requestGeneration || after.manualTarget || (sectionKey === "custom" && after.options !== state.options) || after.activeTab !== sectionKey || after.target?.id !== state.target.id) return;
   const page = after[sectionKey];
   if (page.error || page.offset === before.offset) return;
   const target = direction === 1 ? page.items[0] : page.items.at(-1);

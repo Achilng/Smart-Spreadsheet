@@ -5,6 +5,7 @@ import type { RowRecord } from "./rows";
 /** 对比样本：行摘要 + 决定各分区空态文案的签名状态。 */
 export interface CompareSample {
   row: RowRecord;
+  modelNames?: string[];
   hasStyleSignature: boolean;
   hasVibeSignature: boolean;
   vibeSignatureUnreadable: boolean;

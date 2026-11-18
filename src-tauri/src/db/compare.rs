@@ -23,6 +23,7 @@ pub const COMPARE_MODEL_SECTION_CAP: i64 = 500;
 #[serde(rename_all = "camelCase")]
 pub struct CompareSample {
     pub row: super::RowRecord,
+    pub model_names: Vec<String>,
     /// 画风签名是否存在；不存在时③④显示“没有可比较的提示词”空态。
     pub has_style_signature: bool,
     /// 样本是否有已知的 VIBE 组合签名；无时②显示空态。
@@ -66,7 +67,7 @@ fn empty_page(offset: u64, limit: u32) -> CompareSectionPage {
     }
 }
 
-fn validate_page(offset: u64, limit: u32) -> Result<i64, DatabaseError> {
+pub(super) fn validate_page(offset: u64, limit: u32) -> Result<i64, DatabaseError> {
     if limit == 0 || limit > MAX_PAGE_SIZE {
         return Err(DatabaseError::InvalidPageSize {
             requested: limit,
@@ -94,7 +95,12 @@ impl Database {
                 .optional()?
                 .ok_or(DatabaseError::RowNotFound(row_id))?;
         let vibe_signature_unreadable = vibe_signature.as_deref() == Some("");
+        let model_names = self.connection
+            .prepare("SELECT DISTINCT generation_model FROM rows WHERE generation_model IS NOT NULL")?
+            .query_map([], |row| row.get(0))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
         Ok(CompareSample {
+            model_names,
             row,
             has_style_signature: style_signature.is_some(),
             has_vibe_signature: vibe_signature
@@ -229,7 +235,7 @@ impl Database {
         })
     }
 
-    fn query_compare_section(
+    pub(super) fn query_compare_section(
         &mut self,
         predicate: &str,
         params: &[Value],

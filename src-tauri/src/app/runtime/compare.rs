@@ -1,6 +1,16 @@
 use super::{AppRuntime, AppRuntimeError};
 
 impl AppRuntime {
+    pub(crate) fn query_compare_custom(
+        &self,
+        row_id: i64,
+        conditions: &crate::db::CompareConditions,
+        offset: u64,
+        limit: u32,
+    ) -> Result<crate::db::CompareSectionPage, AppRuntimeError> {
+        self.with_database(|db| db.query_compare_custom(row_id, conditions, offset, limit))
+    }
+
     pub(crate) fn get_compare_sample(
         &self,
         row_id: i64,

@@ -9,6 +9,9 @@ import type { Material, MaterialDraft, MaterialInspection } from "../api/materia
 import type { PromptDocDetail } from "../api/prompt-docs";
 import type { GroupSummary } from "../api/groups";
 import { emptyAutomationRuleDraft, type AutomationRule, type AutomationRuleDraft, type AutomationRuleImportInspection, type RuleCondition } from "../api/automation-rules";
+import { diffPromptField } from "../utils/prompt-diff";
+import { modelComparisonTier } from "../utils/model-version";
+import type { CompareRule } from "../api/compare-conditions";
 import { splitListText } from "../utils/list-text";
 import { createLlmMock } from "./llm-mock";
 
@@ -185,6 +188,20 @@ export function installIpcMock(): void {
     tags: index % 4 === 0 ? ["收藏", "风景", "柔和光线"] : index % 3 === 0 ? [] : ["风景"],
     vibeReferenceCount: index % 4 === 0 ? 2 : 0,
   }));
+  function compareSampleRow(requested: number) {
+    const sample: MockRow = requested === 2
+      ? { id: requested, positivePrompt: null, generationModel: null }
+      : {
+          id: requested,
+          artists: "artist:alpha",
+          positivePrompt: "artist:alpha, blue hair, school uniform, masterpiece",
+          characterPrompt: "1girl, silver hair\nblue eyes",
+          generationModel: "NovelAI Diffusion V4.5 Full",
+          vibeReferenceCount: 3,
+          tags: ["样本"],
+        };
+    return rowDto(sample);
+  }
   const characterGroups = new Map<number, RowCharacterPrompts>();
   if (params.has("characterGroups")) {
     const characters = [
@@ -777,21 +794,47 @@ export function installIpcMock(): void {
         case "get_compare_sample": {
           // 按请求的 rowId 选样本：set-sample 事件切换后界面可见变化。
           const requested = Number(payload.rowId);
-          const sample: MockRow = requested === 2
-            ? { id: requested, positivePrompt: null, generationModel: null }
-            : {
-                id: requested,
-                artists: "artist:alpha",
-                positivePrompt: "artist:alpha, blue hair, school uniform, masterpiece",
-                characterPrompt: "1girl, silver hair\nblue eyes",
-                generationModel: "NovelAI Diffusion V4.5 Full",
-                vibeReferenceCount: 3,
-                tags: ["样本"],
-              };
           const flags = requested === 2
             ? { hasStyleSignature: false, hasVibeSignature: false, vibeSignatureUnreadable: false }
             : { hasStyleSignature: true, hasVibeSignature: true, vibeSignatureUnreadable: false };
-          return { row: rowDto(sample), ...flags };
+          return { row: compareSampleRow(requested), modelNames: [...new Set(libraryRows.map(row => row.generationModel).filter(Boolean))], ...flags };
+        }
+        case "query_compare_custom": {
+          const conditions = payload.conditions as { rules: CompareRule[]; filters: LibraryFilter[] };
+          const a = compareSampleRow(Number(payload.rowId));
+          const pool = filteredRows({ filters: conditions.filters }).filter(b => b.id !== a.id && conditions.rules.every(rule => {
+            const promptField = { positive: "positivePrompt", character: "characterPrompt", negative: "negativePrompt" } as const;
+            if (rule.field === "positive" || rule.field === "character" || rule.field === "negative") {
+              const field = promptField[rule.field];
+              const diff = diffPromptField(a[field], b[field]);
+              const changed = [...diff.onlyLeft, ...diff.onlyRight];
+              if (rule.relation === "onlyWords") {
+                const allowed = diffPromptField(rule.words, "").onlyLeft.map(token => token.normalized);
+                return changed.length > 0 && changed.every(token => allowed.includes(token.normalized));
+              }
+              return (changed.length === 0) === (rule.relation === "same");
+            }
+            const style = (text: string | null) => diffPromptField(text, "").onlyLeft.filter(token => !token.isQuality).map(token => token.normalized).join(",");
+            const value = (row: RowRecord) => {
+              switch (rule.field) {
+                case "artists": return row.artists?.trim();
+                case "style": return style(row.positivePrompt);
+                case "model": return row.generationModel && modelComparisonTier(row.generationModel);
+                case "vibe": return rule.relation === "same" && !row.vibeReferenceCount ? null : row.vibeReferenceCount ?? 0;
+                case "dimensions": return row.imageWidth && row.imageHeight ? `${row.imageWidth}x${row.imageHeight}` : null;
+                case "sampler": return row.generationSampler;
+                case "steps": return row.generationSteps;
+                case "seed": return row.generationSeed;
+                case "scale": return row.generationScale;
+                case "cfgRescale": return row.generationCfgRescale;
+                case "noiseSchedule": return row.generationNoiseSchedule;
+              }
+            };
+            const left = value(a), right = value(b);
+            return left != null && right != null && (left === right) === (rule.relation === "same");
+          })).reverse();
+          const offset = Number(payload.offset), limit = Number(payload.limit);
+          return { rows: pool.slice(offset, offset + limit), totalCount: pool.length, offset, limit };
         }
         case "query_compare_same_artists":
         case "query_compare_same_vibe_diff_style":
