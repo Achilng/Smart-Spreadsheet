@@ -2,7 +2,8 @@ import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState, type
 import { emit, listen } from "@tauri-apps/api/event";
 import { cjk } from "@streamdown/cjk";
 import { ArrowDown, ArrowUp, Check, ChevronDown, Copy, History, Images, MoreHorizontal, PanelLeft, Sparkles, SquarePen } from "lucide-react";
-import { Streamdown, type StreamdownProps } from "streamdown";
+import { Streamdown, defaultRemarkPlugins, type StreamdownProps } from "streamdown";
+import { GalleryLink, isGalleryLink, remarkGalleryImages } from "./AgentGalleryLinks";
 import { useStickToBottom } from "use-stick-to-bottom";
 import {
   agentCancel, agentMessages, agentModels, agentOperations, agentSend, agentState, applyAgentPreview, deleteAgentConversation, renameAgentConversation, saveAgentPreferences,
@@ -120,13 +121,16 @@ function pretty(text: string): string {
 }
 
 const MARKDOWN_PLUGINS: StreamdownProps["plugins"] = { cjk };
-// The window has no browser chrome to navigate with, so links render as plain text.
+const GALLERY_PLUGINS = [...Object.values(defaultRemarkPlugins), remarkGalleryImages];
+// Local gallery references open the in-window viewer; ordinary links still don't navigate.
 const MARKDOWN_COMPONENTS: StreamdownProps["components"] = {
-  a: ({ children, href }) => <span className="md-link" title={typeof href === "string" ? href : undefined}>{children}</span>,
+  a: ({ children, href, title }) => typeof href === "string" && isGalleryLink(href)
+    ? <GalleryLink href={href} title={title} />
+    : <span className="md-link" title={href}>{children}</span>,
 };
 
 const Markdown = memo(function Markdown({ text, streaming = false, className = "" }: { text: string; streaming?: boolean; className?: string }) {
-  return <Streamdown className={`md${streaming ? " streaming" : ""}${className && ` ${className}`}`} plugins={MARKDOWN_PLUGINS} components={MARKDOWN_COMPONENTS} controls={false} isAnimating={streaming}>{text}</Streamdown>;
+  return <Streamdown className={`md${streaming ? " streaming" : ""}${className && ` ${className}`}`} plugins={MARKDOWN_PLUGINS} remarkPlugins={GALLERY_PLUGINS} components={MARKDOWN_COMPONENTS} controls={false} isAnimating={streaming}>{text}</Streamdown>;
 });
 
 function numbers(value: unknown): number[] {
