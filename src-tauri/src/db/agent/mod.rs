@@ -148,6 +148,20 @@ impl Database {
         serde_json::from_str(&data).map_err(s)
     }
 
+    /// Only return the requested image, never another conversation's bytes or a filesystem path.
+    pub(crate) fn agent_image_attachment(&self, conversation_id: &str, message_id: i64, number: u8) -> Res<(String, String)> {
+        if !(1..=4).contains(&number) { return Err("附件序号应在 1 至 4 之间".into()); }
+        let slot = number - 1;
+        self.connection.query_row(
+            "SELECT json_extract(content, ?3 || '.name'), json_extract(content, ?4)
+             FROM agent_messages WHERE conversation_id = ?1 AND id = ?2 AND kind = 'user'
+             AND json_extract(content, ?3 || '.mime') IN ('image/png','image/jpeg','image/webp')
+             AND json_type(content, ?4) = 'text'",
+            params![conversation_id, message_id, format!("$.attachments[{slot}]"), format!("$.attachmentData[{slot}]")],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        ).optional().map_err(s)?.ok_or_else(|| "当前对话中找不到这个图片附件，请核对消息编号和附件序号".into())
+    }
+
     pub fn agent_push_message(&self, conversation_id: &str, kind: &str, content: &Value) -> Res<i64> {
         self.connection
             .execute(

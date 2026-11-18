@@ -60,6 +60,10 @@ field 取 positive / character / negative。caseSensitive 必须明确给出。�
     let fields = json!({"type": "array", "items": {"type": "string",
         "enum": ["positive", "character", "negative", "artists", "note", "group", "tags", "favorite", "file"]}});
     Value::Array(vec![
+        tool("read_attachment_metadata", "在本地读取当前对话一张上传图片的生成元数据（不是看图，也不是图库 rowId）。使用附件旁的 messageId 和 attachmentNumber。PNG 尝试读取 NovelAI 信息，JPEG/WebP 仅基本信息。", json!({
+            "messageId": {"type":"integer", "minimum":1},
+            "attachmentNumber": {"type":"integer", "minimum":1, "maximum":4, "description":"消息中从 1 开始的附件序号，包含非图片附件"}
+        }), &["messageId", "attachmentNumber"]),
         tool("get_library_overview", "图库概况：总数、收藏数、画师串分组数、全部分组（含 id）和常用 TAG。", json!({}), &[]),
         tool("get_main_window_state", "读取主窗口当前选中了多少张、当前筛选条件和筛选结果数量。用户说「选中的」「现在这些」时先调用。", json!({}), &[]),
         tool("find_rows", "按范围读取图片的文字信息：提示词、画师串、TAG、分组等（分页，每页最多 50 张）。只读文字，看不到画面。", json!({
@@ -181,6 +185,17 @@ pub fn run(app: &AppHandle, conversation_id: &str, call_id: &str, name: &str, ar
                 return plain(json!({"reported": false, "message": "主窗口还没有上报状态（可能没打开资料库）"}));
             }
             plain(json!({"selectedCount": counts.0.unwrap_or(0), "filteredCount": counts.1, "mainWindow": info}))
+        }
+        "read_attachment_metadata" => {
+            use base64::{Engine as _, engine::general_purpose::STANDARD};
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            struct Args { message_id: i64, attachment_number: u8 }
+            let args: Args = parse(arguments)?;
+            let (filename, encoded) = runtime.agent_db(false, |db| db.agent_image_attachment(conversation_id, args.message_id, args.attachment_number))?;
+            let bytes = STANDARD.decode(encoded).map_err(|_| "无法读取已保存的图片附件")?;
+            let metadata = crate::pipeline::attachment_metadata::inspect(&bytes)?;
+            plain(json!({"fileName": filename, "metadata": metadata}))
         }
         "find_rows" => {
             let args: TargetArgs = parse(arguments)?;

@@ -377,17 +377,19 @@ fn user_message(message: &Message, attachment_data: &AttachmentData) -> Value {
     for (index, file) in files.iter().enumerate() {
         let name = file["name"].as_str().unwrap_or("未命名附件");
         let payload = attachment_data.get(&message.id).and_then(|data| data.get(index));
+        let image_ref = format!("messageId={}, attachmentNumber={}", message.id, index + 1);
         match (file["mime"].as_str(), payload) {
             (Some("text/plain"), Some(text)) => {
                 parts.push(json!({"type": "input_text", "text": format!("文本附件「{name}」：\n{text}")}));
             }
             (Some(mime @ ("image/png" | "image/jpeg" | "image/webp")), Some(data)) => {
-                parts.push(json!({"type": "input_text", "text": format!("图片附件「{name}」")}));
+                parts.push(json!({"type": "input_text", "text": format!("图片附件「{name}」（{image_ref}）")}));
                 parts.push(json!({"type": "input_image", "image_url": format!("data:{mime};base64,{data}")}));
             }
             (Some("application/pdf"), Some(data)) => {
                 parts.push(json!({"type": "input_file", "filename": name, "file_data": format!("data:application/pdf;base64,{data}")}));
             }
+            (Some("image/png" | "image/jpeg" | "image/webp"), None) => parts.push(json!({"type": "input_text", "text": format!("较早的图片附件「{name}」（{image_ref}）：本次未附画面，仍可用 read_attachment_metadata 读取原文件的生成信息。 ")})),
             _ => parts.push(json!({"type": "input_text", "text": format!("附件「{name}」（本次仅附带文件名，未发送文件内容）")})),
         }
     }

@@ -3,6 +3,7 @@
 //! SQLite 资料库取代缓存，输出包转为导出功能，去重转为库内查重。
 
 pub mod archive;
+pub mod attachment_metadata;
 mod artist;
 pub mod cancel;
 pub mod json_dedupe;

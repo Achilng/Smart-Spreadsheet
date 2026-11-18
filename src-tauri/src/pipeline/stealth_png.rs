@@ -44,6 +44,14 @@ pub fn read_stealth_png_metadata(
 pub fn read_stealth_png_metadata_from_rgba(
     image: &RgbaImage,
 ) -> Result<Option<BTreeMap<String, String>>, StealthPngError> {
+    read_stealth_limited(image, MAX_METADATA_BYTES, |_, _| true)
+}
+
+pub(super) fn read_stealth_limited(
+    image: &RgbaImage,
+    limit: usize,
+    keep: impl Fn(&str, &Value) -> bool,
+) -> Result<Option<BTreeMap<String, String>>, StealthPngError> {
     let capacity_bytes = usize::try_from(u64::from(image.width()) * u64::from(image.height()) / 8)
         .map_err(|_| StealthPngError::InvalidLength)?;
     if capacity_bytes < HEADER_BYTES {
@@ -64,7 +72,7 @@ pub fn read_stealth_png_metadata_from_rgba(
     }
     let compressed_length =
         usize::try_from(bit_length / 8).map_err(|_| StealthPngError::InvalidLength)?;
-    if compressed_length > MAX_METADATA_BYTES
+    if compressed_length > limit
         || HEADER_BYTES
             .checked_add(compressed_length)
             .is_none_or(|required| required > capacity_bytes)
@@ -77,15 +85,16 @@ pub fn read_stealth_png_metadata_from_rgba(
     let mut json_bytes = Vec::new();
     decoder
         .by_ref()
-        .take((MAX_METADATA_BYTES + 1) as u64)
+        .take((limit + 1) as u64)
         .read_to_end(&mut json_bytes)?;
-    if json_bytes.len() > MAX_METADATA_BYTES {
+    if json_bytes.len() > limit {
         return Err(StealthPngError::InvalidLength);
     }
     let value: Value = serde_json::from_slice(&json_bytes)?;
     let object = value.as_object().ok_or(StealthPngError::NotAnObject)?;
     let mut metadata = BTreeMap::new();
     for (key, value) in object {
+        if !keep(key, value) { continue; }
         let text = match value {
             Value::String(text) => text.clone(),
             value => serde_json::to_string(value)?,

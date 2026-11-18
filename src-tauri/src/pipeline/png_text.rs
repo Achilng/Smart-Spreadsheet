@@ -66,23 +66,8 @@ pub fn read_png_text_chunks_from_reader(
         reader.read_exact(&mut data)?;
         reader.seek(SeekFrom::Current(4))?;
 
-        match &chunk_type {
-            b"tEXt" => {
-                if let Some((keyword, text)) = parse_text_chunk(&data) {
-                    chunks.entry(keyword).or_insert(text);
-                }
-            }
-            b"zTXt" => {
-                if let Some((keyword, text)) = parse_compressed_text_chunk(&data)? {
-                    chunks.entry(keyword).or_insert(text);
-                }
-            }
-            b"iTXt" => {
-                if let Some((keyword, text)) = parse_international_text_chunk(&data)? {
-                    chunks.entry(keyword).or_insert(text);
-                }
-            }
-            _ => unreachable!("non-text chunks are skipped above"),
+        if let Some((keyword, text)) = parse_text_entry(&chunk_type, &data, usize::MAX)? {
+            chunks.entry(keyword).or_insert(text);
         }
     }
 
@@ -94,7 +79,18 @@ fn parse_text_chunk(data: &[u8]) -> Option<(String, String)> {
     Some((decode_text(keyword), decode_text(text)))
 }
 
-fn parse_compressed_text_chunk(data: &[u8]) -> Result<Option<(String, String)>, PngTextError> {
+pub(super) fn parse_text_entry(
+    kind: &[u8; 4], data: &[u8], limit: usize,
+) -> Result<Option<(String, String)>, PngTextError> {
+    match kind {
+        b"tEXt" => Ok(parse_text_chunk(data)),
+        b"zTXt" => parse_compressed_text_chunk(data, limit),
+        b"iTXt" => parse_international_text_chunk(data, limit),
+        _ => Ok(None),
+    }
+}
+
+fn parse_compressed_text_chunk(data: &[u8], limit: usize) -> Result<Option<(String, String)>, PngTextError> {
     let Some((keyword, rest)) = split_once_nul(data) else {
         return Ok(None);
     };
@@ -107,13 +103,13 @@ fn parse_compressed_text_chunk(data: &[u8]) -> Result<Option<(String, String)>, 
         return Err(PngTextError::Invalid("zTXt 使用了不支持的压缩方法"));
     }
 
-    let text = inflate_zlib(&rest[1..])
+    let text = inflate_zlib(&rest[1..], limit)
         .map_err(|_| PngTextError::Invalid("无法解压 zTXt 文本"))?;
     Ok(Some((decode_text(keyword), decode_text(&text))))
 }
 
 fn parse_international_text_chunk(
-    data: &[u8],
+    data: &[u8], limit: usize,
 ) -> Result<Option<(String, String)>, PngTextError> {
     let Some((keyword, rest)) = split_once_nul(data) else {
         return Ok(None);
@@ -139,7 +135,7 @@ fn parse_international_text_chunk(
     };
 
     let text = if compression_flag == 1 {
-        inflate_zlib(text_bytes).map_err(|_| PngTextError::Invalid("无法解压 iTXt 文本"))?
+        inflate_zlib(text_bytes, limit).map_err(|_| PngTextError::Invalid("无法解压 iTXt 文本"))?
     } else {
         text_bytes.to_vec()
     };
@@ -152,10 +148,13 @@ fn split_once_nul(data: &[u8]) -> Option<(&[u8], &[u8])> {
     Some((&data[..index], &data[index + 1..]))
 }
 
-fn inflate_zlib(data: &[u8]) -> Result<Vec<u8>, std::io::Error> {
-    let mut decoder = ZlibDecoder::new(Cursor::new(data));
+fn inflate_zlib(data: &[u8], limit: usize) -> Result<Vec<u8>, std::io::Error> {
+    let decoder = ZlibDecoder::new(Cursor::new(data));
     let mut output = Vec::new();
-    decoder.read_to_end(&mut output)?;
+    decoder.take((limit as u64).saturating_add(1)).read_to_end(&mut output)?;
+    if output.len() > limit {
+        return Err(std::io::Error::other("PNG 文本解压后过大"));
+    }
     Ok(output)
 }
 

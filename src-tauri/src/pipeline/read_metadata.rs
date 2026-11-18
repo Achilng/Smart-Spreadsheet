@@ -32,45 +32,46 @@ pub fn read_novelai_metadata(path: &Path, decoded: Option<&RgbaImage>) -> Metada
         warnings.push(format!("PNG 元数据读取失败：{error}"));
         BTreeMap::new()
     });
-    let primary = parse_novelai_metadata(&chunks);
     let hidden = match decoded {
         Some(image) => stealth_png::read_stealth_png_metadata_from_rgba(image),
         None => stealth_png::read_stealth_png_metadata(path),
     };
     match hidden {
-        Ok(Some(hidden)) => {
-            for (key, value) in hidden {
-                let current = chunks.entry(key.clone()).or_default();
-                if current.trim().is_empty() {
-                    *current = value;
-                } else if key == "Comment" {
-                    if let Ok(fallback) = serde_json::from_str::<Value>(&value) {
-                        let mut primary = serde_json::from_str(current).unwrap_or(Value::Null);
-                        fill_missing(&mut primary, fallback);
-                        *current = primary.to_string();
-                    }
-                }
-            }
-            // Source aliases must not let hidden Description/Source/uc override
-            // an ordinary Comment's effective prompt/model/negative caption.
-            if !primary.positive_prompt.is_empty() {
-                chunks.insert("Description".into(), primary.positive_prompt);
-            }
-            if let Some(model) = primary.generation_model {
-                chunks.insert("Source".into(), model);
-            }
-            if !primary.negative_prompt.is_empty() {
-                if let Some(mut comment) = chunks.get("Comment")
-                    .and_then(|text| serde_json::from_str::<Value>(text).ok())
-                    .filter(Value::is_object)
-                {
-                    comment["uc"] = Value::String(primary.negative_prompt);
-                    chunks.insert("Comment".into(), comment.to_string());
-                }
-            }
-        }
+        Ok(Some(hidden)) => merge_hidden(&mut chunks, hidden),
         Ok(None) => {}
         Err(error) => warnings.push(format!("隐藏元数据读取失败：{error}")),
     }
     MetadataRead { chunks, warnings }
+}
+
+pub(super) fn merge_hidden(chunks: &mut BTreeMap<String, String>, hidden: BTreeMap<String, String>) {
+    let primary = parse_novelai_metadata(chunks);
+    for (key, value) in hidden {
+        let current = chunks.entry(key.clone()).or_default();
+        if current.trim().is_empty() {
+            *current = value;
+        } else if key == "Comment" {
+            if let Ok(fallback) = serde_json::from_str::<Value>(&value) {
+                let mut primary = serde_json::from_str(current).unwrap_or(Value::Null);
+                fill_missing(&mut primary, fallback);
+                *current = primary.to_string();
+            }
+        }
+    }
+    // Preserve the ordinary source's effective values across aliases.
+    if !primary.positive_prompt.is_empty() {
+        chunks.insert("Description".into(), primary.positive_prompt);
+    }
+    if let Some(model) = primary.generation_model {
+        chunks.insert("Source".into(), model);
+    }
+    if !primary.negative_prompt.is_empty() {
+        if let Some(mut comment) = chunks.get("Comment")
+            .and_then(|text| serde_json::from_str::<Value>(text).ok())
+            .filter(Value::is_object)
+        {
+            comment["uc"] = Value::String(primary.negative_prompt);
+            chunks.insert("Comment".into(), comment.to_string());
+        }
+    }
 }

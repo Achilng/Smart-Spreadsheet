@@ -7,6 +7,7 @@ export const TOOL_LABELS: Record<string, string> = {
   get_library_overview: "查看图库概况",
   get_main_window_state: "读取主窗口状态",
   find_rows: "读取图片信息",
+  read_attachment_metadata: "读取上传图片的元数据",
   view_images: "查看图片",
   summarize_rows: "统计提示词与画师分布",
   analyze_text: "统计文字出现情况",
