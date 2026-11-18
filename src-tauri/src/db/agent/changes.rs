@@ -396,25 +396,33 @@ fn edited_span(before: &str, after: &str) -> (String, String) {
     (a[prefix..a.len() - suffix].iter().collect(), b[prefix..b.len() - suffix].iter().collect())
 }
 
-fn prompt_tags(text: &str) -> Vec<String> {
-    text.split([',', '\n']).map(str::trim).filter(|tag| !tag.is_empty()).map(str::to_owned).collect()
+/// Tags of a prompt as (comparison key, display text). The key ignores case and weight syntax, so a
+/// `2::` / `::` / `{` that only moves to a neighbouring tag is not reported as a tag change.
+fn prompt_tags(text: &str) -> Vec<(String, String)> {
+    text.split([',', '，', '\n', '\r'])
+        .filter_map(|fragment| {
+            let core = crate::automation::text::tag_core(fragment);
+            let key = crate::pipeline::prompt_text::normalize_prompt_token(core);
+            (!key.is_empty()).then(|| (key, core.to_owned()))
+        })
+        .collect()
 }
 
 /// Tags present in `a` more often than in `b`, in the order they appear in `a`.
-fn tags_missing_from(a: &[String], b: &[String]) -> Vec<String> {
+fn tags_missing_from(a: &[(String, String)], b: &[(String, String)]) -> Vec<String> {
     let mut left = HashMap::<&str, usize>::new();
-    for tag in b {
-        *left.entry(tag).or_default() += 1;
+    for (key, _) in b {
+        *left.entry(key).or_default() += 1;
     }
     a.iter()
-        .filter(|tag| match left.get_mut(tag.as_str()) {
+        .filter(|(key, _)| match left.get_mut(key.as_str()) {
             Some(count) if *count > 0 => {
                 *count -= 1;
                 false
             }
             _ => true,
         })
-        .cloned()
+        .map(|(_, display)| display.clone())
         .collect()
 }
 
@@ -442,7 +450,12 @@ pub(crate) fn group_changes(changes: &[RowChange]) -> Vec<(ChangeGroup, Vec<i64>
                 let prompt = matches!(item.field.as_str(), "positive" | "character" | "negative");
                 let (removed_tags, added_tags) = if prompt {
                     let (a, b) = (prompt_tags(before), prompt_tags(after));
-                    (tags_missing_from(&a, &b), tags_missing_from(&b, &a))
+                    // Sorted, so rows losing the same tags in a different order share a group.
+                    let sorted = |mut tags: Vec<String>| {
+                        tags.sort_by_key(|tag| tag.to_lowercase());
+                        tags
+                    };
+                    (sorted(tags_missing_from(&a, &b)), sorted(tags_missing_from(&b, &a)))
                 } else {
                     (Vec::new(), Vec::new())
                 };
@@ -627,17 +640,21 @@ fn settled_artists(before: &RuleRow, after: &RuleRow, ai_extracted: bool) -> Opt
     if derive(before) == derived { before.artists.clone() } else { derived }
 }
 
-/// Rows whose AI-extracted artist string no longer appears in the edited positive prompt.
+/// Rows whose positive prompt loses part of their AI-extracted artist string. The AI string is often
+/// reformatted rather than copied, so each artist counts only if it was in the prompt before the edit.
 pub(crate) fn stale_ai_artists(resolved: &Resolved, changes: &[RowChange]) -> usize {
     changes
         .iter()
         .filter(|change| {
             let Some(artists) = resolved.llm_artists(change.id) else { return false };
-            change
-                .text
-                .iter()
-                .find(|item| item.field == "positive")
-                .is_some_and(|item| !item.after.as_deref().unwrap_or("").contains(artists))
+            change.text.iter().find(|item| item.field == "positive").is_some_and(|item| {
+                let (before, after) = (item.before.as_deref().unwrap_or(""), item.after.as_deref().unwrap_or(""));
+                artists
+                    .split([',', '，', '\n'])
+                    .map(str::trim)
+                    .filter(|artist| !artist.is_empty())
+                    .any(|artist| before.contains(artist) && !after.contains(artist))
+            })
         })
         .count()
 }

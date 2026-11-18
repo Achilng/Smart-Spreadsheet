@@ -50,7 +50,7 @@ pub fn definitions() -> Value {
         "type": "array",
         "description": "按顺序执行的修改动作。每个动作是一个对象，type 取值：\
 addTags{tags:[...]}；removeTags{tags:[...]}；setGroup{groupName, onlyIfUngrouped?}（分组不存在会新建）；clearGroup{}；\
-appendPrompt{field,value}（在末尾追加 TAG）；deletePromptTags{field,value}（删除逗号分隔的整个 TAG，value 可写多个，用逗号分隔）；\
+appendPrompt{field,value}（在末尾追加 TAG）；deletePromptTags{field,value}（删除逗号分隔的整个 TAG，value 可写多个，用逗号分隔；忽略大小写和权重写法，masterpiece 也会删掉 {masterpiece}、1.2::masterpiece::；其余内容、分隔符和换行原样保留；跨多个 TAG 的权重组如 2::masterpiece, best quality:: 只删这个 TAG，保留 2:: 和 ::）；\
 replacePrompt{field,find,replace,caseSensitive}（普通文本替换，替换所有出现）；\
 regexReplacePrompt{field,pattern,replace,caseSensitive}（正则替换所有匹配，Rust regex 语法，replace 可用 $1）；\
 setNote{value}；appendNote{value,separator?}；clearNote{}；setNoteSequence{prefix}；setFavorite{favorite}。\

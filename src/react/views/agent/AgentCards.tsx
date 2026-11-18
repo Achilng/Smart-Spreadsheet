@@ -44,7 +44,7 @@ export function describeGroup(group: AgentChangeGroup): string[] {
     else if (removedTags.length && addedTags.length) parts.push(`${field}里${shortTags(removedTags)}改成${shortTags(addedTags)}`);
     else if (removedTags.length) parts.push(`${field}删掉${shortTags(removedTags)}`);
     else if (addedTags.length) parts.push(`${field}加上${shortTags(addedTags)}`);
-    else if (edit.formatOnly) parts.push(`${field}只调整逗号和空格`);
+    else if (edit.formatOnly) parts.push(`${field}只调整写法`);
     else if (edit.removed && edit.added) parts.push(`${field}里${quote(edit.removed)}改成${quote(edit.added)}`);
     else if (edit.removed) parts.push(`${field}删掉${quote(edit.removed)}`);
     else if (edit.added) parts.push(`${field}加上${quote(edit.added)}`);
@@ -105,7 +105,7 @@ function GroupDiffs({ group, context = false }: { group: AgentChangeGroup; conte
       return <div key={edit.field} className="ag-change-field">
         {labelled && <span className="ag-field-label">{FIELD_LABELS[edit.field] ?? edit.field}</span>}
         {chips && <div className="ag-tags"><TagChips tags={removedTags} kind="del" /><TagChips tags={addedTags} kind="ins" /></div>}
-        {edit.formatOnly && !excerpt && <span className="ag-note">文字内容没变，只是逗号、空格的写法会被整理</span>}
+        {edit.formatOnly && !excerpt && <span className="ag-note">TAG 没有增减，只是逗号、空格或权重符号的位置变了</span>}
         {excerpt && <DiffPair before={edit.before} after={edit.after} afterEmpty={edit.afterEmpty} />}
       </div>;
     })}
