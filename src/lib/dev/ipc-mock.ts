@@ -287,6 +287,7 @@ export function installIpcMock(): void {
       return operator === "isEmpty" ? !text.trim() : operator === "containsAll" ? hits.every(Boolean) : operator === "containsNone" ? !hits.some(Boolean) : hits.some(Boolean);
     };
     switch (filter.type) {
+      case "selectedImages": return filter.rowIds.includes(row.id);
       case "tag": return filter.operator === "isEmpty" ? !row.tags.length : filter.operator === "hasAll" ? filter.values.every(tag => row.tags.includes(tag)) : filter.operator === "hasNone" ? filter.values.every(tag => !row.tags.includes(tag)) : filter.values.some(tag => row.tags.includes(tag));
       case "group": return filter.operator === "isEmpty" ? row.groupId === null : filter.operator === "is" ? row.groupId === filter.groupId : row.groupId !== filter.groupId;
       case "artist": {

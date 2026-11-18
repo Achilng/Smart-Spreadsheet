@@ -1,8 +1,27 @@
 import { getDedupeClusterMembers, getGroupMembers, listDedupeClusters, listGroups, queryRows, type RowPage } from "../../lib/api";
 import { useDuplicates } from "./duplicates";
-import { useLibrary, useRows } from "./library";
-import { selectAllFiltered, setExplicitSelection, useSelection } from "./selection";
+import { defaultFilters, setQuery, useLibrary, useRows } from "./library";
+import { materializeSelection, selectAllFiltered, setExplicitSelection, useSelection } from "./selection";
 import { useWorkspace } from "./workspace";
+
+/** A fixed result set can include rows outside the previous view or its deduplication. */
+export function showOnlyImages(rowIds: number[]): void {
+  const { viewMode, setView } = useWorkspace.getState();
+  if (viewMode !== "gallery" && viewMode !== "table") setView("gallery");
+  const { sort, tagMode } = useRows.getState().query;
+  setQuery({ ...defaultFilters, sort, tagMode, filters: [{ type: "selectedImages", rowIds }] });
+  setExplicitSelection(rowIds);
+}
+
+export async function showOnlySelectedImages(): Promise<void> {
+  const selection = useSelection.getState();
+  if (!selection.filtered) {
+    if (selection.ids.size) showOnlyImages([...selection.ids]);
+    return;
+  }
+  const resolved = await materializeSelection();
+  if (resolved.kind === "explicit" && resolved.rowIds.length) showOnlyImages(resolved.rowIds);
+}
 
 /** Enumerate collapsed sections too: the selection must match the whole view. */
 export async function selectAllCurrentView(): Promise<void> {

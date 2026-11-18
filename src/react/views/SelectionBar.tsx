@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { clearSelection, selectedCount, selectionDto, useSelection } from "../state/selection";
-import { selectAllCurrentView } from "../state/view-selection";
+import { selectAllCurrentView, showOnlySelectedImages } from "../state/view-selection";
 import { favoriteSelection, requestDelete, requestGroupAssign, requestPromptEdit, requestTagEdit, useRowActions } from "../state/row-actions";
 import { buildExportItems } from "../state/export-actions";
 import { useTasks } from "../state/tasks";
@@ -10,12 +10,18 @@ import { Button, Menu } from "../ui/controls";
 
 export function SelectionBar() {
   const count = useSelection(selectedCount), busy = useTasks(state => state.busy), preparing = useRowActions(state => state.preparing);
-  const [selecting, setSelecting] = useState(false);
+  const [pending, setPending] = useState<"selectAll" | "showOnly" | null>(null);
   if (!count) return null;
-  const disabled = busy || preparing || selecting;
+  const disabled = busy || preparing || pending !== null;
   return <div className="r-selection-bar"><strong>已选择 {count.toLocaleString()} 张</strong><div>
-    <Button variant="ghost" disabled={selecting} onClick={clearSelection}>取消选择</Button>
-    <Button disabled={disabled} onClick={async () => { setSelecting(true); try { await selectAllCurrentView(); } catch (error) { notify(`全选失败：${errorText(error)}`, "error"); } finally { setSelecting(false); } }}>{selecting ? "选择中…" : "全选当前视图"}</Button>
+    <Button variant="ghost" disabled={pending !== null} onClick={clearSelection}>取消选择</Button>
+    <Button disabled={disabled} onClick={async () => {
+      setPending("showOnly");
+      try { await showOnlySelectedImages(); }
+      catch (error) { notify(`查看所选图片失败：${errorText(error)}`, "error"); }
+      finally { setPending(null); }
+    }}>仅看所选图片</Button>
+    <Button disabled={disabled} onClick={async () => { setPending("selectAll"); try { await selectAllCurrentView(); } catch (error) { notify(`全选失败：${errorText(error)}`, "error"); } finally { setPending(null); } }}>{pending === "selectAll" ? "选择中…" : "全选当前视图"}</Button>
     <Button disabled={disabled} onClick={() => void requestTagEdit(selectionDto(), count)}>编辑 Tag</Button>
     <Menu label="更多操作" disabled={disabled} direction="up" items={[
       { label: "收藏", action: () => void favoriteSelection(selectionDto()) },

@@ -31,7 +31,13 @@ export function FilterPanel({ onClose, initialFilters, onApply }: { onClose: () 
     return () => { disposed = true; };
   }, []);
   const applyFilters = (filters: LibraryFilter[]) => { if (onApply) onApply(filters); else setQuery({ filters }); };
-  const apply = () => { try { applyFilters(buildFilters(draft)); onClose(); } catch (failure) { setError(errorText(failure)); } };
+  const apply = () => {
+    try {
+      const scope = (initialFilters ?? useRows.getState().query.filters).filter(filter => filter.type === "selectedImages");
+      applyFilters([...scope, ...buildFilters(draft)]);
+      onClose();
+    } catch (failure) { setError(errorText(failure)); }
+  };
   return <Modal open onClose={onClose} title="过滤" description="图片需同时满足所有已选择的条件" width={520} footer={<><Button variant="ghost" className="r-footer-summary" onClick={() => { applyFilters([]); onClose(); }}>清除过滤</Button><Button onClick={onClose}>取消</Button><Button variant="primary" onClick={apply}>应用过滤</Button></>}>
     <div className="r-filter-sections">
       <Section title="Tag" hint="按资料库 Tag 过滤"><Select label="Tag 条件" value={draft.tagMode} onChange={value => update("tagMode", value)} options={[["any", "任何 Tag 状态"], ["hasAll", "拥有全部所选 Tag"], ["hasAny", "拥有任意所选 Tag"], ["hasNone", "不拥有所选 Tag"], ["isEmpty", "没有任何 Tag"]]} />

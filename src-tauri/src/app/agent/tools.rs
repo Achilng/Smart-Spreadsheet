@@ -98,6 +98,9 @@ field 取 positive / character / negative。caseSensitive 必须明确给出。�
         tool("set_main_selection", "在主窗口中选中范围内的所有图片（不改数据）。", json!({
             "target": target_schema("要选中的图片")
         }), &["target"]),
+        tool("show_selected_images", "在主窗口选中并仅显示目标图片。筛图给用户查看时优先调用，可直接传完整筛选条件；查看已勾选的图片用 scope=selection。", json!({
+            "target": target_schema("要单独展示的图片范围")
+        }), &["target"]),
         tool("set_main_filters", "设置主窗口的筛选（不改数据）。clear=true 先清空所有筛选。", json!({
             "clear": {"type": "boolean"},
             "search": {"type": "string", "description": "搜索框文字"},
@@ -246,16 +249,17 @@ pub fn run(app: &AppHandle, conversation_id: &str, name: &str, arguments: &Value
                 "state": item.state, "createdAt": item.created_at, "undoMessage": item.undo_message,
             })).collect::<Vec<_>>()))
         }
-        "set_main_selection" => {
+        "set_main_selection" | "show_selected_images" => {
+            let show_only = name == "show_selected_images";
             let args: TargetArgs = parse(arguments)?;
             let (ids, notes) = runtime.agent_db(false, |db| {
                 let resolved = db.agent_resolve(&args.target, &view)?;
                 Ok((resolved.rows.iter().map(|row| row.id).collect::<Vec<_>>(), resolved.notes))
             })?;
-            if ids.is_empty() {
+            if ids.is_empty() && !show_only {
                 return Err("范围内没有图片，主窗口的选择没有改变".into());
             }
-            app.emit("agent://main-selection", json!({"rowIds": ids})).map_err(|e| e.to_string())?;
+            app.emit_to("main", "agent://main-selection", json!({"rowIds": ids, "showOnly": show_only})).map_err(|e| e.to_string())?;
             Ok(ToolOutput {
                 output: json!({"selected": ids.len(), "notes": notes}),
                 display: json!({"kind": "selection", "count": ids.len(), "notes": notes}),

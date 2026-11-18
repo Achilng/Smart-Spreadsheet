@@ -118,6 +118,10 @@ pub enum FilterGenerationNumberField {
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum LibraryFilter {
+    SelectedImages {
+        #[serde(rename = "rowIds")]
+        row_ids: Vec<i64>,
+    },
     Favorite,
     Tag {
         operator: FilterTagOperator,
@@ -287,6 +291,10 @@ fn prompt_contains(value: &str, case_sensitive: bool, params: &mut Vec<Value>) -
 
 fn compile_filter(filter: &LibraryFilter, params: &mut Vec<Value>) -> String {
     match filter {
+        LibraryFilter::SelectedImages { row_ids } => {
+            let ids = push_text(params, serde_json::to_string(row_ids).expect("integer array"));
+            format!("rows.id IN (SELECT value FROM json_each({ids}))")
+        }
         LibraryFilter::Favorite => "rows.favorite = 1".into(),
         LibraryFilter::Tag { operator, values } => {
             let values = normalized_values(values);

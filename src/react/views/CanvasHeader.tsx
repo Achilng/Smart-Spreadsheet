@@ -44,7 +44,7 @@ export function FilterLayout({ children }: { children: ReactNode }) {
     ...(query.untaggedOnly ? [{ key: "untaggedOnly", label: "无 Tag", remove: () => setQuery({ untaggedOnly: false }) }] : []),
     ...(query.hideGrouped ? [{ key: "hideGrouped", label: "隐藏已分组", remove: () => setQuery({ hideGrouped: false }) }] : []),
     ...query.filters.map((filter, index) => {
-      const value = JSON.stringify(filter), occurrence = occurrences.get(value) ?? 0;
+      const value = filter.type === "selectedImages" ? filter.type : JSON.stringify(filter), occurrence = occurrences.get(value) ?? 0;
       occurrences.set(value, occurrence + 1);
       return { key: `filter:${value}:${occurrence}`, label: libraryFilterLabel(filter, groups), remove: () => setQuery({ filters: query.filters.filter((_, cursor) => cursor !== index) }) };
     }),

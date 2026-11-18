@@ -6,6 +6,7 @@ import { clearHistory } from "../state/history";
 import { defaultFilters, setQuery, useLibrary, useRows } from "../state/library";
 import { refreshLibrary } from "../state/library-changes";
 import { selectedCount, selectionDto, setExplicitSelection, useSelection } from "../state/selection";
+import { showOnlyImages } from "../state/view-selection";
 import { syncGroups } from "../state/groups";
 import { syncDuplicates } from "../state/duplicates";
 import { useTasks } from "../state/tasks";
@@ -43,10 +44,12 @@ export function installAgentBridge(): () => void {
       if (!snapshot?.dataDirectory || snapshot.startupError) return;
       const query = useRows.getState().query;
       const count = selectedCount(useSelection.getState());
-      const filtered = { kind: "filtered", ...snapshotQueryFilters(query), excludedRowIds: [] };
+      const filters = snapshotQueryFilters(query);
+      const filtered = { kind: "filtered", ...filters, excludedRowIds: [] };
       void reportAgentMainView(count ? selectionDto() : null, filtered, {
         selectedCount: count,
-        filters: snapshotQueryFilters(query),
+        filters: { ...filters, filters: filters.filters.map(filter => filter.type === "selectedImages"
+          ? { type: filter.type, count: filter.rowIds.length } : filter) },
         visibleCount: useRows.getState().total,
         viewMode: useWorkspace.getState().viewMode,
       }).catch(() => {});
@@ -57,9 +60,10 @@ export function installAgentBridge(): () => void {
   stops.push(useWorkspace.subscribe((next, previous) => { if (next.viewMode !== previous.viewMode) report(); }));
   stops.push(useLibrary.subscribe((next, previous) => { if (next.snapshot !== previous.snapshot) report(); }));
   retain(listen("agent://request-main-view", report));
-  retain(listen<{ rowIds: number[] }>("agent://main-selection", event => {
-    setExplicitSelection(event.payload.rowIds);
-    notify(`整理助手已选中 ${formatCount(event.payload.rowIds.length)} 张图片`);
+  retain(listen<{ rowIds: number[]; showOnly?: boolean }>("agent://main-selection", ({ payload }) => {
+    if (payload.showOnly) showOnlyImages(payload.rowIds);
+    else setExplicitSelection(payload.rowIds);
+    notify(`整理助手已${payload.showOnly ? "筛出" : "选中"} ${formatCount(payload.rowIds.length)} 张图片`);
   }));
   retain(listen<{ clear: boolean; patch: Record<string, unknown> }>("agent://main-filters", event => {
     const patch = sanitizePatch(event.payload.patch ?? {});

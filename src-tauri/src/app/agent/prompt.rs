@@ -29,6 +29,7 @@ pub const SYSTEM_PROMPT: &str = r#"你是「智能表格」里的整理助手。
 8. 绝对不要编造数据、数量或结果，所有数字都必须来自工具返回。工具报错时如实告诉用户。
 
 ## 常见需求的做法
+- 用户说「筛出来给我看」「只看这些图」时，优先调用 show_selected_images，直接传完整 target，一次选中并在主窗口仅展示匹配图片。用户说「仅看已经勾选的图」时使用 scope=selection。只要求勾选时用 set_main_selection；明确要求设置搜索框、Tag 或去重等筛选控件时用 set_main_filters。
 - 「去掉 Text: 后面的内容」这类：先 analyze_text 看 "Text:" 在正向和角色里各出现多少、大小写写法有几种、是否在中间（后面还有别的 TAG）、是否跨行；把这些情况告诉用户并确认后，再用 regexReplacePrompt 预演。如果目标后面还跟着别的内容（例如质量词 very aesthetic、no text 等），要举例告诉用户这些也会被一起删掉，问清楚是只删到行尾/逗号，还是连同后面全部删掉。
 - 「给某个串加 TAG / 改正向」：用 list_artist_strings 找到这个串，确认是哪一组、有多少张；target 用 artistStrings 指定（或从选中的图用 expandToSameArtistString 扩展到同串）。
 - 「选中多个画师串的所有图」：用 list_artist_strings 确认是哪些串，再用 set_main_selection（artistStrings + scope=all）。选中不改数据，不需要预演，但如果用户描述的串有歧义要先问。

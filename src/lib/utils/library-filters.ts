@@ -24,6 +24,7 @@ function comparisonLabel(filter: { comparison: { operator: keyof typeof numericL
 
 export function libraryFilterLabel(filter: LibraryFilter, groups: readonly GroupSummary[]): string {
   switch (filter.type) {
+    case "selectedImages": return `仅看所选图片（${filter.rowIds.length.toLocaleString()} 张）`;
     case "favorite": return "仅显示收藏";
     case "tag": {
       if (filter.operator === "isEmpty") return "Tag：无 Tag";

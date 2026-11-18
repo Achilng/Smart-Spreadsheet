@@ -14,6 +14,7 @@ export const TOOL_LABELS: Record<string, string> = {
   undo_operation: "撤销修改",
   list_operations: "查看操作记录",
   set_main_selection: "在主窗口选中图片",
+  show_selected_images: "在主窗口仅看所选图片",
   set_main_filters: "设置主窗口筛选",
   create_automation_rule: "创建自动规则",
 };
