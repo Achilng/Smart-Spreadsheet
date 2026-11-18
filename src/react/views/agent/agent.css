@@ -221,6 +221,15 @@
   /* ---------- Composer ---------- */
   .chat-jump { position: absolute; z-index: 5; left: 50%; bottom: 10px; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--line-ctl); background: var(--chat-input); color: var(--text); box-shadow: 0 6px 18px var(--shadow-small); transform: translateX(-50%); }
   .chat-composer { position: relative; display: flex; flex-direction: column; gap: 6px; padding: 10px 10px 10px 14px; border-radius: 26px; border: 1px solid var(--line-ctl); background: var(--chat-input); box-shadow: 0 10px 32px var(--shadow-small); cursor: text; transition: border-color .15s, box-shadow .15s; }
+  .chat-main:has(.ag-drop-target) { position: relative; }
+  .ag-drop-target { position: absolute; z-index: 12; inset: 8px; pointer-events: none; display: flex; align-items: center; justify-content: center; gap: 8px; border: 2px dashed var(--brand); border-radius: 20px; background: color-mix(in srgb, var(--chat-bg) 88%, transparent); color: var(--text); font-weight: 600; }
+  .ag-file-list { display: flex; flex-wrap: wrap; gap: 6px; max-width: 100%; }
+  .ag-file-chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0; padding: 4px 8px; background: var(--chat-active); border-radius: 8px; color: var(--text-2); font-size: 12px; }
+  .ag-file-chip > span { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ag-file-chip img { width: 44px; height: 44px; object-fit: contain; border-radius: 5px; }
+  .ag-file-chip button { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 6px; }
+  .ag-file-chip button:hover { background: var(--chat-hover); }
+  .ag-file-note { font-size: 12px; color: var(--text-3); }
   .chat-composer:focus-within { border-color: var(--line-hover); }
   .chat-composer textarea { display: block; width: 100%; min-height: 30px; max-height: 220px; padding: 6px 4px 4px; border: 0; border-radius: 0; background: transparent; box-shadow: none; outline: none; resize: none; field-sizing: content; color: var(--text); font-size: 15px; line-height: 1.6; overflow-y: auto; }
   .chat-composer textarea:hover, .chat-composer textarea:focus, .chat-composer textarea:focus-visible { border: 0; box-shadow: none; outline: none; }

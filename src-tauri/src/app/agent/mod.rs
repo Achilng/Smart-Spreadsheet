@@ -8,13 +8,14 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::app::AppRuntime;
-use crate::db::RowSelection;
-use crate::db::agent::MainView;
+use crate::db::{Database, RowSelection};
+use crate::db::agent::{MainView, Message};
 
 pub const PREFERENCES_KEY: &str = "agent_preferences_v1";
 const MAX_STEPS: usize = 30;
@@ -22,6 +23,111 @@ const OLD_OUTPUT_LIMIT: usize = 1500;
 const RECENT_FULL_OUTPUTS: usize = 6;
 /// Images from at most this many recent `view_images` calls (in the current user turn) are re-sent.
 const RECENT_VIEWS: usize = 4;
+const MAX_ATTACHMENTS: usize = 4;
+const ATTACHMENT_BYTES: usize = 8 * 1024 * 1024;
+const TEXT_ATTACHMENT_BYTES: usize = 256 * 1024;
+/// Consider at most this many user turns (including the newest) for attachment replay.
+const ATTACHMENT_TURNS: usize = 3;
+
+#[derive(Deserialize)]
+pub(crate) struct AttachmentInput {
+    name: String,
+    mime: String,
+    data: String,
+}
+
+#[derive(Serialize)]
+struct AttachmentMetadata {
+    name: String,
+    mime: &'static str,
+    size: usize,
+}
+
+fn text_mime_matches(extension: &str, mime: &str) -> bool {
+    mime == "text/plain" || match extension {
+        "md" => matches!(mime, "text/markdown" | "text/x-markdown"),
+        "csv" => mime == "text/csv",
+        "tsv" => mime == "text/tab-separated-values",
+        "json" => matches!(mime, "application/json" | "text/json"),
+        "log" => mime == "text/x-log",
+        "yaml" | "yml" => matches!(mime, "application/yaml" | "application/x-yaml" | "text/yaml" | "text/x-yaml"),
+        "xml" => matches!(mime, "application/xml" | "text/xml"),
+        _ => false,
+    }
+}
+
+fn base64_size(data: &str) -> Option<usize> {
+    if !data.len().is_multiple_of(4) {
+        return None;
+    }
+    let padding = if data.ends_with("==") { 2 } else { usize::from(data.ends_with('=')) };
+    Some(data.len() / 4 * 3 - padding)
+}
+
+fn validate_attachments(inputs: Vec<AttachmentInput>) -> Result<(Vec<AttachmentMetadata>, Vec<String>), String> {
+    if inputs.len() > MAX_ATTACHMENTS {
+        return Err("每条消息最多可以添加 4 个附件".into());
+    }
+    let mut remaining = ATTACHMENT_BYTES;
+    let mut metadata = Vec::with_capacity(inputs.len());
+    let mut payloads = Vec::with_capacity(inputs.len());
+    for (index, AttachmentInput { name, mime, data }) in inputs.into_iter().enumerate() {
+        if name.is_empty() || name.len() > 255 || name.trim() != name || name.ends_with('.')
+            || name.chars().any(|c| c.is_control() || "/\\:<>\"|?*".contains(c))
+        {
+            return Err(format!("第 {} 个附件的文件名无效：只允许不含路径的文件名（最多 255 字节）", index + 1));
+        }
+        let extension = name.rsplit_once('.').filter(|(stem, _)| !stem.is_empty())
+            .map(|(_, ext)| ext.to_ascii_lowercase()).unwrap_or_default();
+        let mime = mime.split(';').next().unwrap_or_default().trim().to_ascii_lowercase();
+        let (canonical, image_format) = match extension.as_str() {
+            "png" => ("image/png", Some(image::ImageFormat::Png)),
+            "jpg" | "jpeg" => ("image/jpeg", Some(image::ImageFormat::Jpeg)),
+            "webp" => ("image/webp", Some(image::ImageFormat::WebP)),
+            "pdf" => ("application/pdf", None),
+            "txt" | "md" | "csv" | "tsv" | "json" | "log" | "yaml" | "yml" | "xml" => ("text/plain", None),
+            _ => return Err(format!("附件「{name}」的扩展名不受支持；请选择 PNG、JPEG、WebP、PDF 或支持的文本文件")),
+        };
+        let is_text = canonical == "text/plain";
+        if if is_text { !text_mime_matches(&extension, &mime) } else { mime != canonical } {
+            return Err(format!("附件「{name}」的 MIME 类型和文件扩展名不匹配"));
+        }
+        let invalid_base64 = || format!("附件「{name}」的数据不是有效的纯 Base64（不应带 data: 前缀）");
+        let size = base64_size(&data).ok_or_else(&invalid_base64)?;
+        if is_text && size > TEXT_ATTACHMENT_BYTES {
+            return Err(format!("文本附件「{name}」超过 256 KiB"));
+        }
+        remaining = remaining.checked_sub(size).ok_or("每条消息的附件原始大小合计不能超过 8 MiB")?;
+        if size == 0 { return Err(format!("附件「{name}」是空文件")); }
+        let mut bytes = STANDARD.decode(&data).map_err(|_| invalid_base64())?;
+        let payload = if is_text {
+            if bytes.starts_with(b"\xef\xbb\xbf") { bytes.drain(..3); }
+            String::from_utf8(bytes).ok().filter(|text| !text.contains('\0'))
+                .ok_or_else(|| format!("附件「{name}」不是有效的 UTF-8 文本"))?
+        } else if let Some(format) = image_format {
+            if image::guess_format(&bytes).ok() != Some(format)
+                || !matches!(
+                    image::ImageReader::with_format(std::io::Cursor::new(&bytes), format).into_dimensions(),
+                    Ok((width, height)) if width > 0 && height > 0
+                )
+            {
+                return Err(format!("图片附件「{name}」损坏或与声明的格式不符"));
+            }
+            data
+        } else {
+            let valid_header = (bytes.starts_with(b"%PDF-1.") || bytes.starts_with(b"%PDF-2."))
+                && bytes.get(7).is_some_and(u8::is_ascii_digit)
+                && matches!(bytes.get(8), Some(b'\r' | b'\n'));
+            if !valid_header || !bytes.trim_ascii_end().ends_with(b"%%EOF") {
+                return Err(format!("附件「{name}」不是有效的 PDF（文件头或结束标记无效）"));
+            }
+            data
+        };
+        metadata.push(AttachmentMetadata { name, mime: canonical, size });
+        payloads.push(payload);
+    }
+    Ok((metadata, payloads))
+}
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -135,10 +241,16 @@ fn new_conversation_id() -> String {
 }
 
 /// Start (or continue) a conversation with a user message; the model loop runs in the background.
-pub fn send(app: AppHandle, conversation_id: Option<String>, text: String) -> Result<String, String> {
-    let text = text.trim().to_owned();
-    if text.is_empty() {
-        return Err("消息不能为空".into());
+pub(crate) fn send(
+    app: AppHandle,
+    conversation_id: Option<String>,
+    text: String,
+    attachments: Vec<AttachmentInput>,
+) -> Result<String, String> {
+    let text = text.trim();
+    let (metadata, payloads) = validate_attachments(attachments)?;
+    if text.is_empty() && metadata.is_empty() {
+        return Err("请输入消息或添加附件".into());
     }
     let runtime = app.state::<AppRuntime>();
     let conversation_id = match conversation_id {
@@ -150,14 +262,20 @@ pub fn send(app: AppHandle, conversation_id: Option<String>, text: String) -> Re
         }
         None => {
             let id = new_conversation_id();
-            let title = text.chars().take(24).collect::<String>();
+            let title_source = if text.is_empty() { metadata[0].name.as_str() } else { text };
+            let title = title_source.chars().take(24).collect::<String>();
             runtime.agent_db(false, |db| db.agent_create_conversation(&id, &title))?;
             id
         }
     };
     let engine = app.state::<Engine>();
     let cancel = engine.begin(&conversation_id)?;
-    if let Err(error) = push(&app, &conversation_id, "user", json!({"text": text})) {
+    let mut content = json!({"text": text});
+    if !metadata.is_empty() {
+        content["attachments"] = json!(metadata);
+        content["attachmentData"] = json!(payloads);
+    }
+    if let Err(error) = push(&app, &conversation_id, "user", content) {
         engine.finish(&conversation_id);
         return Err(error);
     }
@@ -218,7 +336,65 @@ fn image_message(content: &Value, images: &[String]) -> Value {
     json!({"role": "user", "content": parts})
 }
 
-fn build_input(messages: &[crate::db::agent::Message], attached: &vision::Attached) -> Vec<Value> {
+type AttachmentData = HashMap<i64, Vec<String>>;
+
+/// Prefer newer user turns and admit a whole set of attachments or just its filenames.
+/// The newest turn always fits; older files never make the request exceed one upload's limits.
+fn load_attachment_data(db: &Database, conversation_id: &str, messages: &[Message]) -> AttachmentData {
+    let (mut bytes_left, mut files_left) = (ATTACHMENT_BYTES, MAX_ATTACHMENTS);
+    let mut data = AttachmentData::new();
+    for message in messages.iter().rev().filter(|message| message.kind == "user").take(ATTACHMENT_TURNS) {
+        let Some(files) = message.content["attachments"].as_array() else { continue };
+        if files.is_empty() || files.len() > files_left {
+            continue;
+        }
+        let remaining = files.iter().try_fold(bytes_left, |budget, file| {
+            let size = usize::try_from(file["size"].as_u64()?).ok()?;
+            budget.checked_sub(size)
+        });
+        if let Some(remaining) = remaining
+            && let Ok(payloads) = db.agent_attachment_data(conversation_id, message.id)
+            && payloads.len() == files.len()
+        {
+            bytes_left = remaining;
+            files_left -= files.len();
+            data.insert(message.id, payloads);
+        }
+    }
+    data
+}
+
+fn user_message(message: &Message, attachment_data: &AttachmentData) -> Value {
+    let content = &message.content;
+    let text = content["text"].as_str().unwrap_or_default();
+    let Some(files) = content["attachments"].as_array().filter(|files| !files.is_empty()) else {
+        return json!({"role": "user", "content": text});
+    };
+    let mut parts = Vec::new();
+    if !text.is_empty() {
+        parts.push(json!({"type": "input_text", "text": text}));
+    }
+    for (index, file) in files.iter().enumerate() {
+        let name = file["name"].as_str().unwrap_or("未命名附件");
+        let payload = attachment_data.get(&message.id).and_then(|data| data.get(index));
+        match (file["mime"].as_str(), payload) {
+            (Some("text/plain"), Some(text)) => {
+                parts.push(json!({"type": "input_text", "text": format!("文本附件「{name}」：\n{text}")}));
+            }
+            (Some(mime @ ("image/png" | "image/jpeg" | "image/webp")), Some(data)) => {
+                parts.push(json!({"type": "input_text", "text": format!("图片附件「{name}」")}));
+                parts.push(json!({"type": "input_image", "image_url": format!("data:{mime};base64,{data}")}));
+            }
+            (Some("application/pdf"), Some(data)) => {
+                parts.push(json!({"type": "input_file", "filename": name, "file_data": format!("data:application/pdf;base64,{data}")}));
+            }
+            _ => parts.push(json!({"type": "input_text", "text": format!("附件「{name}」（本次仅附带文件名，未发送文件内容）")})),
+        }
+    }
+    json!({"role": "user", "content": parts})
+}
+
+fn build_input(messages: &[Message], attached: &vision::Attached, attachment_data: &AttachmentData) -> Vec<Value> {
     let answered = messages
         .iter()
         .filter(|message| message.kind == "tool_result")
@@ -247,7 +423,7 @@ fn build_input(messages: &[crate::db::agent::Message], attached: &vision::Attach
         let content = &message.content;
         index += 1;
         match message.kind.as_str() {
-            "user" => input.push(json!({"role": "user", "content": content["text"]})),
+            "user" => input.push(user_message(message, attachment_data)),
             "user_action" => input.push(json!({"role": "user", "content": content["text"]})),
             "assistant" => {
                 input.extend(content["reasoning"].as_array().into_iter().flatten().cloned());
@@ -340,14 +516,19 @@ async fn run_loop(app: &AppHandle, conversation_id: &str, cancel: Arc<AtomicBool
         if runtime.agent_library_id()? != library {
             return Err("资料库已切换，这轮对话已停止".into());
         }
-        let messages = runtime.agent_db(false, |db| db.agent_messages(conversation_id))?;
+        let (messages, attachment_data) = runtime.agent_db(false, |db| {
+            let messages = db.agent_messages(conversation_id)?;
+            let data = load_attachment_data(db, conversation_id, &messages);
+            Ok((messages, data))
+        })?;
         let request = responses::Request {
             base_url: &channel.base_url,
             key: &key,
             model: &model,
             effort: &preferences.effort,
             instructions: prompt::SYSTEM_PROMPT,
-            input: build_input(&messages, &attach_views(app, &messages).await),
+            input: build_input(&messages, &attach_views(app, &messages).await, &attachment_data),
+            has_user_attachments: !attachment_data.is_empty(),
             tools: tools.clone(),
         };
         let outcome = responses::stream(request, cancel.clone(), |delta| match delta {

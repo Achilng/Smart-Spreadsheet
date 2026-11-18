@@ -115,8 +115,10 @@ impl Database {
         let mut statement = self
             .connection
             .prepare(
-                "SELECT id, created_at, kind, content FROM agent_messages
-                 WHERE conversation_id = ?1 ORDER BY id",
+                "SELECT id, created_at, kind,
+                        CASE WHEN kind = 'user' AND json_valid(content)
+                             THEN json_remove(content, '$.attachmentData') ELSE content END
+                 FROM agent_messages WHERE conversation_id = ?1 ORDER BY id",
             )
             .map_err(s)?;
         let rows = statement
@@ -133,6 +135,17 @@ impl Database {
             .collect::<Result<Vec<_>, _>>()
             .map_err(s)?;
         Ok(rows)
+    }
+
+    /// Load only a user message whose attachment metadata fits the model's replay budget.
+    pub(crate) fn agent_attachment_data(&self, conversation_id: &str, message_id: i64) -> Res<Vec<String>> {
+        let data: String = self.connection.query_row(
+            "SELECT json_extract(content, '$.attachmentData') FROM agent_messages
+             WHERE conversation_id = ?1 AND id = ?2 AND kind = 'user'",
+            params![conversation_id, message_id],
+            |row| row.get(0),
+        ).map_err(s)?;
+        serde_json::from_str(&data).map_err(s)
     }
 
     pub fn agent_push_message(&self, conversation_id: &str, kind: &str, content: &Value) -> Res<i64> {

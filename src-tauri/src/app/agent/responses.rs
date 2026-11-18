@@ -15,6 +15,7 @@ pub struct Request<'a> {
     pub effort: &'a str,
     pub instructions: &'a str,
     pub input: Vec<Value>,
+    pub has_user_attachments: bool,
     pub tools: Value,
 }
 
@@ -37,7 +38,7 @@ pub enum Delta<'a> {
     Reasoning(&'a str),
 }
 
-fn friendly_status(status: u16, body: &str, model: &str) -> String {
+fn friendly_status(status: u16, body: &str, model: &str, has_user_attachments: bool) -> String {
     let lower = body.to_lowercase();
     let unsupported = lower.contains("not support")
         || lower.contains("unsupported")
@@ -46,29 +47,37 @@ fn friendly_status(status: u16, body: &str, model: &str) -> String {
         || lower.contains("not found")
         || lower.contains("invalid model")
         || lower.contains("model_not_found");
-    let detail = body.chars().take(300).collect::<String>();
-    let image_rejected = (lower.contains("image") || lower.contains("vision") || lower.contains("multimodal"))
-        && matches!(status, 400 | 415 | 422 | 500..=599);
-    if image_rejected {
-        return format!(
-            "模型「{model}」好像不支持看图。请在右上角换一个支持图片输入的模型，然后重新发一条消息（之前看过的图不会再附带）。\n（站点返回：{detail}）"
-        );
+    // Some gateways echo request fields in their errors. Never save or emit those for uploads.
+    let detail = if has_user_attachments {
+        String::new()
+    } else {
+        format!("\n（站点返回：{}）", body.chars().take(300).collect::<String>())
+    };
+    let input_rejected = matches!(status, 400 | 415 | 422 | 500..=599);
+    if status == 413 {
+        return "模型站点拒绝了过大的请求。请减少附件大小，或新建对话以避免发送近期附件。".into();
+    }
+    if input_rejected && has_user_attachments && (lower.contains("input_file") || lower.contains("file_data") || lower.contains("pdf")) {
+        return format!("模型「{model}」或这个站点未能处理 PDF。请检查文件，或换一个支持 PDF 输入的模型。");
+    }
+    if input_rejected && (lower.contains("image") || lower.contains("vision") || lower.contains("multimodal")) {
+        return format!("模型「{model}」未能处理图片。请在右上角换一个支持图片输入的模型，然后重新发送消息。{detail}");
     }
     match status {
         401 => "Key 无效或已失效，请到工具箱的模型设置里检查这个渠道的 Key。".into(),
-        403 => format!("这个 Key 没有权限使用模型「{model}」。请换一个模型或检查 Key 权限。\n（站点返回：{detail}）"),
+        403 => format!("这个 Key 没有权限使用模型「{model}」。请换一个模型或检查 Key 权限。{detail}"),
         404 | 405 => format!(
-            "模型「{model}」或这个站点不支持 Responses 接口，Agent 用不了它。请在右上角换一个模型（例如 GPT 系列）。\n（站点返回：{detail}）"
+            "模型「{model}」或这个站点不支持 Responses 接口，Agent 用不了它。请在右上角换一个模型（例如 GPT 系列）。{detail}"
         ),
         429 => "请求太频繁或额度不足，请稍后再试。".into(),
         400 | 422 if unsupported => format!(
-            "模型「{model}」不支持 Agent 需要的 Responses 接口或工具调用，请在右上角换一个模型。\n（站点返回：{detail}）"
+            "模型「{model}」不支持 Agent 需要的 Responses 接口或工具调用，请在右上角换一个模型。{detail}"
         ),
         500..=599 if unsupported => format!(
-            "模型「{model}」暂时不可用或不支持 Responses 接口，请换一个模型。\n（站点返回：{detail}）"
+            "模型「{model}」暂时不可用或不支持 Responses 接口，请换一个模型。{detail}"
         ),
-        500..=599 => format!("模型站点暂时出错（HTTP {status}），请稍后重试。\n（站点返回：{detail}）"),
-        _ => format!("模型请求失败（HTTP {status}）。\n（站点返回：{detail}）"),
+        500..=599 => format!("模型站点暂时出错（HTTP {status}），请稍后重试。{detail}"),
+        _ => format!("模型请求失败（HTTP {status}）。{detail}"),
     }
 }
 
@@ -142,7 +151,7 @@ pub async fn stream(
     let status = response.status().as_u16();
     if !(200..300).contains(&status) {
         let text = response.text().await.unwrap_or_default();
-        return Err(friendly_status(status, &text, request.model));
+        return Err(friendly_status(status, &text, request.model, request.has_user_attachments));
     }
     let is_json = response
         .headers()
@@ -223,7 +232,7 @@ pub async fn stream(
                         .or(value["error"]["message"].as_str())
                         .or(value["message"].as_str())
                         .unwrap_or("未知错误");
-                    return Err(friendly_status(500, message, request.model)
+                    return Err(friendly_status(500, message, request.model, request.has_user_attachments)
                         .replace("模型站点暂时出错（HTTP 500）", "模型返回了错误"));
                 }
                 _ => {}

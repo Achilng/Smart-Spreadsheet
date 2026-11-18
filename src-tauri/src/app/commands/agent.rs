@@ -34,6 +34,7 @@ pub(crate) async fn open_agent_window(app: tauri::AppHandle) -> Result<(), Strin
         .resizable(true)
         .decorations(false)
         .skip_taskbar(false)
+        .disable_drag_drop_handler()
         .build()
         .map_err(error_text)?;
     Ok(())
@@ -114,12 +115,15 @@ pub(crate) async fn agent_messages(conversation_id: String, app: tauri::AppHandl
 #[tauri::command]
 pub(crate) async fn agent_send(
     conversation_id: Option<String>,
-    text: String,
+    text: Option<String>,
+    attachments: Option<Vec<agent::AttachmentInput>>,
     app: tauri::AppHandle,
 ) -> Result<String, String> {
-    tauri::async_runtime::spawn_blocking(move || agent::send(app, conversation_id, text))
-        .await
-        .map_err(|_| "后台任务异常中断".to_owned())?
+    tauri::async_runtime::spawn_blocking(move || {
+        agent::send(app, conversation_id, text.unwrap_or_default(), attachments.unwrap_or_default())
+    })
+    .await
+    .map_err(|_| "后台任务异常中断".to_owned())?
 }
 
 #[tauri::command]

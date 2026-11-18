@@ -1,7 +1,8 @@
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { emit, listen } from "@tauri-apps/api/event";
 import { cjk } from "@streamdown/cjk";
-import { ArrowDown, ArrowUp, Check, ChevronDown, Copy, History, Images, MoreHorizontal, PanelLeft, Sparkles, SquarePen } from "lucide-react";
+import { ArrowDown, ArrowUp, Check, ChevronDown, Copy, FileText, History, Images, MoreHorizontal, PanelLeft, Paperclip, Sparkles, SquarePen } from "lucide-react";
+import { attachmentAccept, attachmentNames, DraftAttachment, encodeAttachment, validateFiles } from "./AgentAttachments";
 import { Streamdown, defaultRemarkPlugins, type StreamdownProps } from "streamdown";
 import { GalleryLink, isGalleryLink, remarkGalleryImages } from "./AgentGalleryLinks";
 import { useStickToBottom } from "use-stick-to-bottom";
@@ -40,7 +41,7 @@ type Live = { text: string; reasoning: string; tool: string | null };
 type StepItem = { type: "step"; id: number; at: number; doneAt: number | null; name: string; args: string; output: string | null; ok: boolean; display: Record<string, unknown> | null };
 type ReasoningItem = { type: "reasoning"; id: number; at: number; text: string };
 type Item =
-  | { type: "user"; id: number; at: number; text: string }
+  | { type: "user"; id: number; at: number; text: string; files: string[] }
   | { type: "assistant"; id: number; at: number; text: string }
   | { type: "error"; id: number; at: number; text: string; stopped: boolean }
   | { type: "action"; id: number; at: number; action: string; title: string; operationId: number | null }
@@ -73,7 +74,7 @@ function toItems(messages: AgentMessage[]): Item[] {
     const at = timestamp(message.createdAt);
     const reasoning = reasoningText(content.reasoning);
     if (reasoning) items.push({ type: "reasoning", id: message.id, at, text: reasoning });
-    if (message.kind === "user") items.push({ type: "user", id: message.id, at, text: String(content.text ?? "") });
+    if (message.kind === "user") items.push({ type: "user", id: message.id, at, text: String(content.text ?? ""), files: attachmentNames(content.attachments) });
     else if (message.kind === "assistant") items.push({ type: "assistant", id: message.id, at, text: String(content.text ?? "") });
     else if (message.kind === "user_action") items.push({ type: "action", id: message.id, at, action: String(content.action ?? ""), title: String(content.title ?? ""), operationId: typeof content.operationId === "number" ? content.operationId : null });
     else if (message.kind === "error") items.push({ type: "error", id: message.id, at, text: String(content.message ?? ""), stopped: content.stopped === true });
@@ -273,6 +274,16 @@ export function AgentWindow() {
   const [live, setLive] = useState<Live>(NO_LIVE);
   const liveRef = useRef<Live>(NO_LIVE);
   const [input, setInput] = useState("");
+  const [files, setFiles] = useState<File[]>([]);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [dragging, setDragging] = useState(false);
+  const dragDepth = useRef(0);
+  const addFiles = (incoming: FileList | File[]) => {
+    if (sending || !incoming.length) return;
+    const next = [...files, ...Array.from(incoming)];
+    try { validateFiles(next); setFiles(next); inputRef.current?.focus(); }
+    catch (error) { notify(errorText(error), "error"); }
+  };
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [sending, setSending] = useState(false);
   const [collapsed, setCollapsed] = useState(readCollapsed);
@@ -323,7 +334,14 @@ export function AgentWindow() {
     return () => { stops.forEach(stop => void stop.then(fn => fn()).catch(() => {})); };
   }, [reloadOperations, reloadState, settleLive, updateLive]);
 
-  useEffect(() => { updateLive(() => NO_LIVE); void reloadMessages(current); }, [current, reloadMessages, updateLive]);
+  useEffect(() => { setFiles([]); setDragging(false); dragDepth.current = 0; updateLive(() => NO_LIVE); void reloadMessages(current); }, [current, reloadMessages, updateLive]);
+  useEffect(() => {
+    // Outside the chat pane, reject file drops instead of navigating the WebView to a local file.
+    const preventNavigation = (e: DragEvent) => { if (e.dataTransfer?.types.includes("Files")) e.preventDefault(); };
+    window.addEventListener("dragover", preventNavigation);
+    window.addEventListener("drop", preventNavigation);
+    return () => { window.removeEventListener("dragover", preventNavigation); window.removeEventListener("drop", preventNavigation); };
+  }, []);
 
   const running = !!current && !!state?.running.includes(current);
   const items = useMemo(() => toItems(messages), [messages]);
@@ -343,11 +361,14 @@ export function AgentWindow() {
 
   const send = async (text = input) => {
     const value = text.trim();
-    if (!value || sending || running) return;
+    if ((!value && !files.length) || sending || running) return;
     if (!modelName) { setSettingsOpen(true); notify("请先选择助手使用的模型", "error"); return; }
     setSending(true);
     try {
-      const id = await agentSend(current, value);
+      const attachments = await Promise.all(files.map(encodeAttachment));
+      const id = await agentSend(current, value, attachments);
+      if (currentRef.current !== current) { await reloadState(); return; }
+      setFiles([]);
       setInput("");
       if (id !== current) setCurrent(id);
       else void reloadMessages(id);
@@ -364,7 +385,7 @@ export function AgentWindow() {
     try { await renameAgentConversation(renaming.id, renaming.title); setRenaming(null); await reloadState(); }
     catch (error) { notify(errorText(error), "error"); }
   };
-  const newChat = () => { setCurrent(null); setPage("chat"); inputRef.current?.focus(); };
+  const newChat = () => { setFiles([]); setCurrent(null); setPage("chat"); inputRef.current?.focus(); };
   const toggleSidebar = () => {
     const next = !collapsed;
     setCollapsed(next);
@@ -410,7 +431,10 @@ export function AgentWindow() {
   };
   const renderBlock = (block: Block, index: number) => {
     switch (block.type) {
-      case "user": return <div key={block.id} className="msg msg-user"><p className="msg-bubble">{block.text}</p></div>;
+      case "user": return <div key={block.id} className="msg msg-user">
+        {block.files.length > 0 && <div className="ag-file-list">{block.files.map((name, i) => <span className="ag-file-chip" key={i} title={name}><FileText className="icon sm" /><span>{name}</span></span>)}</div>}
+        {block.text && <p className="msg-bubble">{block.text}</p>}
+      </div>;
       case "assistant": return <div key={block.id} className="msg msg-assistant">
         <Markdown text={block.text} />
         <div className="msg-actions"><CopyAction text={block.text} /></div>
@@ -452,7 +476,12 @@ export function AgentWindow() {
         <p className="chat-side-note">改动前会先预演给你看；每次修改都能在「操作记录」里撤销，原图文件不会被改动。</p>
       </aside>
 
-      <div className={`chat-main${empty ? " is-empty" : ""}`}>
+      <div className={`chat-main${empty ? " is-empty" : ""}`}
+        onDragEnter={event => { if (page === "chat" && !loadError && !sending && event.dataTransfer.types.includes("Files")) { event.preventDefault(); dragDepth.current++; setDragging(true); } }}
+        onDragLeave={() => { dragDepth.current = Math.max(0, dragDepth.current - 1); if (!dragDepth.current) setDragging(false); }}
+        onDragOver={event => { if (event.dataTransfer.types.includes("Files")) { event.preventDefault(); event.dataTransfer.dropEffect = page === "chat" && !sending && !loadError ? "copy" : "none"; } }}
+        onDrop={event => { if (!event.dataTransfer.types.includes("Files")) return; event.preventDefault(); dragDepth.current = 0; setDragging(false); if (page === "chat" && !loadError) addFiles(event.dataTransfer.files); }}>
+        {dragging && <div className="ag-drop-target"><Paperclip className="icon" />松开以添加附件</div>}
         <header className="chat-head" data-tauri-drag-region>
           {collapsed && <>
             <button type="button" className="icon-btn" title="展开侧栏" aria-label="展开侧栏" onClick={toggleSidebar}><PanelLeft className="icon" /></button>
@@ -479,7 +508,9 @@ export function AgentWindow() {
               </ChatScroll>}
               <div className="chat-dock">
                 <form className="chat-composer" onSubmit={event => { event.preventDefault(); void send(); }} onClick={event => { if (!(event.target instanceof Element && event.target.closest("button"))) inputRef.current?.focus(); }}>
-                  <textarea ref={inputRef} rows={1} value={input} autoFocus aria-label="给整理助手发消息" placeholder={running ? "助手正在处理…" : "描述你想怎么整理图片"}
+                  <input ref={fileInput} type="file" hidden multiple accept={attachmentAccept} onChange={event => { if (event.currentTarget.files) addFiles(event.currentTarget.files); event.currentTarget.value = ""; }} />
+                  {files.length > 0 && <><div className="ag-file-list">{files.map((file, i) => <DraftAttachment key={`${file.name}-${file.lastModified}-${file.size}-${i}`} file={file} disabled={sending} onRemove={() => setFiles(old => old.filter((_, at) => at !== i))} />)}</div><small className="ag-file-note">点击发送后，附件内容将发送给当前模型。</small></>}
+                  <textarea ref={inputRef} readOnly={sending} onPaste={event => { if (event.clipboardData.files.length) { event.preventDefault(); addFiles(event.clipboardData.files); } }} rows={1} value={input} autoFocus aria-label="给整理助手发消息" placeholder={running ? "助手正在处理…" : "描述你想怎么整理图片"}
                     onChange={event => setInput(event.target.value)}
                     onKeyDown={event => {
                       // Enter that confirms an IME candidate must not send.
@@ -488,6 +519,7 @@ export function AgentWindow() {
                       void send();
                     }} />
                   <div className="composer-bar">
+                    <button type="button" className="icon-btn" aria-label="添加图片或文件" title="添加图片、PDF 或文本；也可拖入或粘贴截图" disabled={sending || files.length >= 4} onClick={() => fileInput.current?.click()}><Paperclip className="icon" /></button>
                     <button type="button" className="chip" title="选择助手使用的模型和思考强度" onClick={() => setSettingsOpen(true)}>
                       <Sparkles className="icon sm" />
                       <span className="chip-text">{modelName || "选择模型"}</span>
@@ -497,7 +529,7 @@ export function AgentWindow() {
                     <span className="composer-spacer" />
                     {running
                       ? <button type="button" className="composer-send is-stop" aria-label="停止" title="停止（已经完成的修改会保留）" onClick={() => { if (current) void agentCancel(current); }}><svg className="icon" viewBox="0 0 24 24" aria-hidden="true"><rect width="12" height="12" x="6" y="6" rx="2" fill="currentColor" stroke="none" /></svg></button>
-                      : <button type="submit" className="composer-send" aria-label="发送" title="发送（Enter）" disabled={!input.trim() || sending}>{sending ? <span className="spinner" aria-hidden="true" /> : <ArrowUp className="icon" />}</button>}
+                      : <button type="submit" className="composer-send" aria-label="发送" title="发送（Enter）" disabled={(!input.trim() && !files.length) || sending}>{sending ? <span className="spinner" aria-hidden="true" /> : <ArrowUp className="icon" />}</button>}
                   </div>
                 </form>
                 {!current && <div className="chat-suggestions" role="group" aria-label="开场示例">

@@ -13,6 +13,7 @@ tauri-build = { version = "2.6.2", features = [] }
 
 [dependencies]
 anyhow = "1.0"
+base64 = "0.22.1"
 chrono = { version = "0.4.44", default-features = false, features = ["clock"] }
 flate2 = "1.1"
 image = { version = "0.25.10", default-features = false, features = ["bmp", "gif", "ico", "jpeg", "png", "tiff", "webp"] }
