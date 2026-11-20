@@ -7,6 +7,9 @@ export const TOOL_LABELS: Record<string, string> = {
   get_library_overview: "查看图库概况",
   get_main_window_state: "读取主窗口状态",
   find_rows: "读取图片信息",
+  list_generation_values: "统计模型与采样参数",
+  list_library_items: "查看资料库目录",
+  read_library_item: "读取资料详情",
   view_attachment_image: "查看上传图片的画面",
   read_attachment_metadata: "读取上传图片的元数据",
   view_images: "查看图片",
@@ -36,6 +39,7 @@ export function describeTarget(target: Record<string, unknown> | undefined): str
   const ids = target.rowIds as number[] | undefined;
   if (target.scope === "rowIds" && ids?.length) lines.push(`图片 ID：${ids.slice(0, 12).join("、")}${ids.length > 12 ? ` 等 ${ids.length} 张` : ""}`);
   if (target.expandToSameArtistString) lines.push("扩展到同画师串的所有图");
+  if (typeof target.modelBadge === "string") lines.push(`模型徽章：${target.modelBadge}`);
   if (typeof target.favorite === "boolean") lines.push(target.favorite ? "只限已收藏" : "只限未收藏");
   const conditions = target.conditions as Record<string, unknown>[] | undefined;
   if (conditions?.length) lines.push(`附加条件（${target.conditionMatch === "any" ? "满足任一" : "全部满足"}）：${conditions.map(describeCondition).join("；")}`);

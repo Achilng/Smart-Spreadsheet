@@ -348,6 +348,7 @@ impl Database {
                 artist_strings: vec![],
                 expand_to_same_artist_string: false,
                 favorite: None,
+                model_badge: None,
                 conditions: vec![],
                 condition_match: None,
             };

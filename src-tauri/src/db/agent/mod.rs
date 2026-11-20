@@ -1,12 +1,13 @@
 //! Agent persistence: conversations, dry-run previews and undoable operations.
 mod apply;
 mod changes;
+mod model_badge;
 mod read;
 mod target;
 
 pub use apply::{OperationRecord, UndoOutcome};
 pub use changes::{Action, RowChange};
-pub(crate) use read::{DEFAULT_PROMPT_STATS_LIMIT, MAX_PROMPT_STATS_LIMIT, PromptStatsSort};
+pub(crate) use read::{DEFAULT_PROMPT_STATS_LIMIT, MAX_PROMPT_STATS_LIMIT, PromptStatsSort, ROW_FIELDS};
 pub use target::{MainView, Target};
 
 use rusqlite::{OptionalExtension, params};

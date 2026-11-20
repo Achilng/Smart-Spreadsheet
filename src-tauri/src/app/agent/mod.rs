@@ -1,4 +1,5 @@
 //! Conversational library agent: model loop, cancellation and main-window state.
+mod library_data;
 mod prompt;
 mod responses;
 pub(crate) mod tools;

@@ -4,6 +4,7 @@ use std::collections::{HashMap, HashSet};
 use serde::{Deserialize, Serialize};
 
 use super::{Res, s};
+use super::model_badge::{badge_key, badge_label};
 use crate::automation::matching::PreparedConditionSet;
 use crate::automation::model::{
     RuleCondition, RuleConditionGroup, RuleConditionSet, RuleMatchMode, RuleRow,
@@ -22,7 +23,7 @@ pub enum Scope {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Target {
     pub scope: Scope,
     #[serde(default)]
@@ -33,10 +34,20 @@ pub struct Target {
     pub expand_to_same_artist_string: bool,
     #[serde(default)]
     pub favorite: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_badge: Option<String>,
     #[serde(default)]
     pub conditions: Vec<RuleCondition>,
     #[serde(default)]
     pub condition_match: Option<RuleMatchMode>,
+}
+
+impl Target {
+    /// Whether the base scope covers the library before applying rule conditions.
+    pub(super) fn whole_library_scope(&self) -> bool {
+        self.scope == Scope::All && self.artist_strings.is_empty()
+            && !self.expand_to_same_artist_string && self.model_badge.is_none() && self.favorite.is_none()
+    }
 }
 
 /// What the main window last reported; the agent never guesses a selection.
@@ -206,6 +217,27 @@ impl Database {
         }
         if let Some(favorite) = target.favorite {
             ids.retain(|id| index.get(id).is_some_and(|entry| entry.favorite == favorite));
+        }
+        if let Some(label) = &target.model_badge {
+            let key = badge_key(label);
+            if key.is_empty() {
+                return Err("模型徽章不能为空".into());
+            }
+            let mut statement = self.connection.prepare(
+                "SELECT id, generation_model FROM rows WHERE generation_model IS NOT NULL"
+            ).map_err(s)?;
+            let mut rows = statement.query([]).map_err(s)?;
+            let mut matching = HashSet::new();
+            let mut models = HashMap::new();
+            while let Some(row) = rows.next().map_err(s)? {
+                let id: i64 = row.get(0).map_err(s)?;
+                if !ids.contains(&id) { continue; }
+                let model: String = row.get(1).map_err(s)?;
+                let matched = models.entry(model).or_insert_with_key(|model|
+                    badge_label(Some(model)).is_some_and(|label| badge_key(label) == key));
+                if *matched { matching.insert(id); }
+            }
+            ids = matching;
         }
         Ok((ids, notes))
     }

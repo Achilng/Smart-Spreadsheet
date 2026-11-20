@@ -5,7 +5,8 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::changes::analyze_matches;
-use super::target::{MainView, Scope, Target, target_conditions};
+use super::model_badge::badge_label;
+use super::target::{MainView, Target, target_conditions};
 use super::{Res, s};
 use crate::automation::{matching::{PreparedConditionSet, build_regex}, text::tag_core};
 use crate::db::{Database, automation_rules::execution::load_rule_rows};
@@ -13,6 +14,13 @@ use crate::pipeline::prompt_text::normalize_prompt_token;
 
 pub(crate) const DEFAULT_PROMPT_STATS_LIMIT: usize = 20;
 pub(crate) const MAX_PROMPT_STATS_LIMIT: usize = 50;
+pub(crate) const ROW_FIELDS: &[&str] = &[
+    "positive", "character", "negative", "artists", "note", "group", "tags", "favorite", "file",
+    "model", "modelBadge", "sampler", "steps", "seed", "scale", "cfgRescale", "noiseSchedule",
+    "width", "height", "time", "vibeReferenceCount", "metadataFailed", "artistRepresentative",
+    "groupId", "batchId", "sourceOrdinal", "sourceType", "sourcePath", "sourceSize",
+    "imageFolder", "imagePath", "storedImagePath",
+];
 
 #[derive(Clone, Copy, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -146,7 +154,7 @@ fn clip(text: Option<&String>, max: usize) -> Value {
 }
 
 impl Database {
-    pub fn agent_overview(&self) -> Res<Value> {
+    pub fn agent_overview(&self, offset: usize, limit: usize) -> Res<Value> {
         let (total, favorites, without_artist, artist_groups): (i64, i64, i64, i64) = self
             .connection
             .query_row(
@@ -165,9 +173,11 @@ impl Database {
             "artistStringGroups": artist_groups,
             "imagesWithoutArtistString": without_artist,
             "groupCount": groups.len(),
-            "groups": groups.iter().take(60).map(|g| json!({"id": g.id, "name": g.name, "images": g.member_count})).collect::<Vec<_>>(),
+            "offset": offset,
+            "limit": limit,
+            "groups": groups.iter().skip(offset).take(limit).map(|g| json!({"id": g.id, "name": g.name, "images": g.member_count})).collect::<Vec<_>>(),
             "tagCount": tags.len(),
-            "tags": tags.iter().take(80).map(|t| json!({"name": t.name, "images": t.row_count})).collect::<Vec<_>>(),
+            "tags": tags.iter().skip(offset).take(limit).map(|t| json!({"name": t.name, "images": t.row_count})).collect::<Vec<_>>(),
         }))
     }
 
@@ -179,63 +189,129 @@ impl Database {
         limit: usize,
         offset: usize,
     ) -> Res<Value> {
-        let resolved = self.agent_resolve(target, view)?;
-        let group_names = self
-            .list_groups()
-            .map_err(s)?
-            .into_iter()
-            .map(|group| (group.id, group.name))
-            .collect::<HashMap<_, _>>();
-        let want = |name: &str| fields.is_empty() || fields.iter().any(|field| field == name);
+        for field in fields {
+            if !ROW_FIELDS.contains(&field.as_str()) {
+                return Err(format!("未知图片字段：{field}。可用字段：{}", ROW_FIELDS.join(", ")));
+            }
+        }
         let limit = limit.clamp(1, 50);
-        let rows = resolved
-            .rows
-            .iter()
-            .skip(offset)
-            .take(limit)
-            .map(|row| {
-                let mut value = json!({"id": row.id});
-                if want("positive") {
-                    value["positive"] = clip(row.positive_prompt.as_ref(), 600);
-                }
-                if want("character") {
-                    value["character"] = clip(row.character_prompt.as_ref(), 400);
-                }
-                if want("negative") {
-                    value["negative"] = clip(row.negative_prompt.as_ref(), 300);
-                }
-                if want("artists") {
-                    value["artists"] = clip(row.artists.as_ref(), 200);
-                }
-                if want("note") {
-                    value["note"] = clip(row.note.as_ref(), 200);
-                }
-                if want("group") {
-                    value["group"] = json!(row.group_id.and_then(|id| group_names.get(&id)));
-                }
-                if want("tags") {
-                    let mut tags = row.tags.iter().collect::<Vec<_>>();
-                    tags.sort();
-                    value["tags"] = json!(tags);
-                }
-                if want("favorite") {
-                    value["favorite"] = json!(resolved.favorite(row.id));
-                }
-                if want("file") {
-                    value["file"] = json!(row.image_path.as_deref().map(|path| {
-                        path.rsplit(['/', '\\']).next().unwrap_or(path).to_owned()
-                    }));
-                }
-                value
-            })
-            .collect::<Vec<_>>();
+        let (total, notes, page) = if target.conditions.is_empty() {
+            // Most reads need only a single page. Leave the remaining prompts and TAGs in SQLite.
+            let index = self.agent_row_index()?;
+            let (ids, notes) = self.agent_target_ids(target, view, &index)?;
+            let mut ids: Vec<_> = ids.into_iter().collect();
+            ids.sort_unstable();
+            let start = offset.min(ids.len());
+            let end = start.saturating_add(limit).min(ids.len());
+            let page = load_rule_rows(&self.connection, Some(&ids[start..end])).map_err(s)?;
+            (ids.len(), notes, page)
+        } else {
+            let resolved = self.agent_resolve(target, view)?;
+            (resolved.rows.len(), resolved.notes, resolved.rows.into_iter().skip(offset).take(limit).collect())
+        };
+        let ids: Vec<_> = page.iter().map(|row| row.id).collect();
+        let records = self.get_rows_by_ids(&ids).map_err(s)?;
+        let mut rows = Vec::with_capacity(records.len());
+        for (row, source) in records.iter().zip(page) {
+            let mut value = json!({"id": row.id});
+            for &field in ROW_FIELDS {
+                let requested = if fields.is_empty() {
+                    !matches!(field, "imageFolder" | "imagePath" | "storedImagePath" | "sourcePath")
+                } else {
+                    fields.iter().any(|name| name == field)
+                };
+                if !requested { continue; }
+                value[field] = match field {
+                    "positive" => clip(row.positive_prompt.as_ref(), 600),
+                    "character" => clip(row.character_prompt.as_ref(), 400),
+                    "negative" => clip(row.negative_prompt.as_ref(), 300),
+                    "artists" => clip(row.artists.as_ref(), 200),
+                    "note" => clip(row.note.as_ref(), 200),
+                    "group" => json!(row.group_name),
+                    "groupId" => json!(row.group_id),
+                    "tags" => json!(row.tags),
+                    "favorite" => json!(row.favorite),
+                    "file" => json!(row.image_path.as_deref().and_then(|path| path.rsplit(['/', '\\']).next())),
+                    "model" => json!(row.generation_model),
+                    "modelBadge" => json!(badge_label(row.generation_model.as_deref())),
+                    "sampler" => json!(row.generation_sampler),
+                    "steps" => json!(row.generation_steps),
+                    "seed" => json!(row.generation_seed),
+                    "scale" => json!(source.generation_scale),
+                    "cfgRescale" => json!(source.generation_cfg_rescale),
+                    "noiseSchedule" => json!(row.generation_noise_schedule),
+                    "width" => json!(row.image_width),
+                    "height" => json!(row.image_height),
+                    "time" => json!(row.time),
+                    "vibeReferenceCount" => json!(row.vibe_reference_count),
+                    "metadataFailed" => json!(row.metadata_failed),
+                    "artistRepresentative" => json!(row.artist_representative),
+                    "batchId" => json!(row.batch_id),
+                    "sourceOrdinal" => json!(row.source_ordinal),
+                    "sourceType" => json!(source.source_type),
+                    "sourcePath" => json!(source.source_path),
+                    "sourceSize" => json!(source.source_size),
+                    "imageFolder" => json!(row.image_folder),
+                    "imagePath" => json!(row.image_path),
+                    "storedImagePath" => json!(row.stored_image_path),
+                    _ => unreachable!(),
+                };
+            }
+            rows.push(value);
+        }
         Ok(json!({
-            "total": resolved.rows.len(),
+            "total": total,
             "offset": offset,
             "returned": rows.len(),
-            "notes": resolved.notes,
+            "notes": notes,
             "rows": rows,
         }))
+    }
+
+    pub fn agent_generation_values(&mut self, target: &Target, view: &MainView, field: &str, offset: usize) -> Res<Value> {
+        let column = match field {
+            "model" | "modelBadge" => "generation_model",
+            "sampler" => "generation_sampler",
+            "noiseSchedule" => "generation_noise_schedule",
+            _ => return Err(format!("不支持统计生成字段：{field}")),
+        };
+        // Aggregate only the requested column. A whole-library inventory needs no row IDs or prompts.
+        let (ids, notes) = if target.conditions.is_empty() && target.whole_library_scope() {
+            (None, Vec::new())
+        } else if target.conditions.is_empty() {
+            let index = self.agent_row_index()?;
+            let (ids, notes) = self.agent_target_ids(target, view, &index)?;
+            (Some(serde_json::to_string(&ids).map_err(s)?), notes)
+        } else {
+            let resolved = self.agent_resolve(target, view)?;
+            let ids: Vec<_> = resolved.rows.iter().map(|row| row.id).collect();
+            (Some(serde_json::to_string(&ids).map_err(s)?), resolved.notes)
+        };
+        let predicate = if ids.is_some() { "WHERE id IN (SELECT value FROM json_each(?1))" } else { "" };
+        let sql = format!("SELECT {column}, COUNT(*) FROM rows {predicate} GROUP BY {column}");
+        let mut statement = self.connection.prepare(&sql).map_err(s)?;
+        let mut groups = statement.query(rusqlite::params_from_iter(ids.iter())).map_err(s)?;
+        let mut counts = HashMap::new();
+        let mut missing = 0;
+        let mut scanned = 0;
+        while let Some(group) = groups.next().map_err(s)? {
+            let raw: Option<String> = group.get(0).map_err(s)?;
+            let images: i64 = group.get(1).map_err(s)?;
+            scanned += images;
+            let value = if field == "modelBadge" { badge_label(raw.as_deref()).map(str::to_owned) } else { raw };
+            if let Some(value) = value.filter(|text| !text.trim().is_empty()) {
+                *counts.entry(value).or_insert(0i64) += images;
+            } else {
+                missing += images;
+            }
+        }
+        let mut counts: Vec<_> = counts.into_iter().collect();
+        counts.sort_unstable_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+        let total = counts.len();
+        let items: Vec<_> = counts.into_iter().skip(offset).take(50)
+            .map(|(value, count)| json!({"value":value,"images":count})).collect();
+        Ok(json!({"scannedRows":scanned,"notes":notes,"missing":missing,
+            "distinctValues":total,"offset":offset,"items":items}))
     }
 
     pub fn agent_analyze_text(
@@ -277,10 +353,7 @@ impl Database {
         let compare_library = compare_library || matches!(sort_by, PromptStatsSort::Enrichment);
         let conditions = target_conditions(target)?;
         let prepared = conditions.as_ref().map(PreparedConditionSet::new).transpose().map_err(s)?;
-        let unrestricted = target.scope == Scope::All
-            && target.artist_strings.is_empty()
-            && !target.expand_to_same_artist_string
-            && target.favorite.is_none();
+        let unrestricted = target.whole_library_scope();
         let (ids, notes, index) = if unrestricted {
             (None, Vec::new(), None)
         } else {
@@ -357,6 +430,7 @@ impl Database {
         view: &MainView,
         contains: Option<&str>,
         limit: usize,
+        offset: usize,
     ) -> Res<Value> {
         let resolved = self.agent_resolve(target, view)?;
         let mut library_counts: HashMap<String, usize> = HashMap::new();
@@ -404,6 +478,7 @@ impl Database {
         let total = list.len();
         let items = list
             .into_iter()
+            .skip(offset)
             .take(limit.clamp(1, 100))
             .map(|(key, (count, text, sample))| {
                 json!({
@@ -419,6 +494,7 @@ impl Database {
             "scannedRows": resolved.rows.len(),
             "rowsWithoutArtistString": without,
             "matchingGroups": total,
+            "offset": offset,
             "groups": items,
             "notes": resolved.notes,
         }))

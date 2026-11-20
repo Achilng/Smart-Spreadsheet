@@ -7,8 +7,8 @@ import { defaultFilters, setQuery, useLibrary, useRows } from "../state/library"
 import { refreshLibrary } from "../state/library-changes";
 import { selectedCount, selectionDto, setExplicitSelection, useSelection } from "../state/selection";
 import { showOnlyImages } from "../state/view-selection";
-import { syncGroups } from "../state/groups";
-import { syncDuplicates } from "../state/duplicates";
+import { syncGroups, useGroups } from "../state/groups";
+import { syncDuplicates, useDuplicates } from "../state/duplicates";
 import { useTasks } from "../state/tasks";
 import { useWorkspace } from "../state/workspace";
 import { notify } from "../state/notices";
@@ -42,7 +42,12 @@ export function installAgentBridge(): () => void {
     timer = setTimeout(() => {
       const snapshot = useLibrary.getState().snapshot;
       if (!snapshot?.dataDirectory || snapshot.startupError) return;
-      const query = useRows.getState().query;
+      const { query, total, activeRow } = useRows.getState();
+      const { viewMode, detailOpen } = useWorkspace.getState();
+      const groups = useGroups.getState(), duplicates = useDuplicates.getState();
+      const detailVisible = detailOpen && (viewMode === "gallery" || viewMode === "table"
+        || (viewMode === "group" && groups.expanded.length > 0)
+        || (viewMode === "duplicates" && (duplicates.layout === "list" || duplicates.expanded.length > 0)));
       const count = selectedCount(useSelection.getState());
       const filters = snapshotQueryFilters(query);
       const filtered = { kind: "filtered", ...filters, excludedRowIds: [] };
@@ -50,14 +55,17 @@ export function installAgentBridge(): () => void {
         selectedCount: count,
         filters: { ...filters, filters: filters.filters.map(filter => filter.type === "selectedImages"
           ? { type: filter.type, count: filter.rowIds.length } : filter) },
-        visibleCount: useRows.getState().total,
-        viewMode: useWorkspace.getState().viewMode,
+        visibleCount: total,
+        viewMode,
+        detailRowId: detailVisible ? activeRow?.id ?? null : null,
       }).catch(() => {});
     }, 150);
   };
   stops.push(useSelection.subscribe((next, previous) => { if (next.version !== previous.version) report(); }));
-  stops.push(useRows.subscribe((next, previous) => { if (next.query !== previous.query || next.total !== previous.total) report(); }));
-  stops.push(useWorkspace.subscribe((next, previous) => { if (next.viewMode !== previous.viewMode) report(); }));
+  stops.push(useRows.subscribe((next, previous) => { if (next.query !== previous.query || next.total !== previous.total || next.activeRow?.id !== previous.activeRow?.id) report(); }));
+  stops.push(useWorkspace.subscribe((next, previous) => { if (next.viewMode !== previous.viewMode || next.detailOpen !== previous.detailOpen) report(); }));
+  stops.push(useGroups.subscribe((next, previous) => { if (next.expanded !== previous.expanded) report(); }));
+  stops.push(useDuplicates.subscribe((next, previous) => { if (next.expanded !== previous.expanded || next.layout !== previous.layout) report(); }));
   stops.push(useLibrary.subscribe((next, previous) => { if (next.snapshot !== previous.snapshot) report(); }));
   retain(listen("agent://request-main-view", report));
   retain(listen<{ rowIds: number[]; showOnly?: boolean }>("agent://main-selection", ({ payload }) => {

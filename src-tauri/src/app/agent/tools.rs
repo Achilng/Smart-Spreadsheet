@@ -3,10 +3,10 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use tauri::{AppHandle, Emitter, Manager};
 
-use super::{Engine, vision};
+use super::{Engine, library_data, vision};
 use crate::app::AppRuntime;
 use crate::automation::model::AutomationRuleDraft;
-use crate::db::agent::{Action, DEFAULT_PROMPT_STATS_LIMIT, MAX_PROMPT_STATS_LIMIT, PromptStatsSort, Target};
+use crate::db::agent::{Action, DEFAULT_PROMPT_STATS_LIMIT, MAX_PROMPT_STATS_LIMIT, PromptStatsSort, ROW_FIELDS, Target};
 
 pub struct ToolOutput {
     /// Sent back to the model.
@@ -28,11 +28,13 @@ fn target_schema(description: &str) -> Value {
             "expandToSameArtistString": {"type": "boolean",
                 "description": "先把范围扩展到与范围内图片同画师串的全库所有图"},
             "favorite": {"type": "boolean", "description": "只保留收藏/未收藏的图"},
+            "modelBadge": {"type":"string","description":"精确匹配图库卡片上的模型徽章，如 V4.5F、5F、v4 C；自动识别已知构建哈希。"},
             "conditions": {"type": "array", "items": {"type": "object"},
-                "description": "额外条件，格式同自动规则条件。常用：{type:'prompt',scope:'positive'|'character'|'negative'|'positiveAndCharacter'|'all',operator:'containsAll'|'containsAny'|'containsNone'|'textContains'|'textEquals'|'regex',value,caseSensitive}；{type:'tag',operator:'hasAll'|'hasAny'|'hasNone'|'isEmpty',tags:[]}；{type:'group',operator:'is'|'isNot'|'isEmpty',groupId}；{type:'note',operator:'contains'|'isEmpty',value}；{type:'artist',operator:'containsAny'|'containsNone'|'isSingle'|'isMultiple'|'isEmpty',artists:[]}"},
+                "description": "附加自动规则条件，格式见系统提示中的条件格式。按实际记录的采样器名筛选示例：{type:'generationText',field:'sampler',operator:'equals',value:'k_euler_ancestral'}。"},
             "conditionMatch": {"type": "string", "enum": ["all", "any"], "description": "多个条件是全部满足还是任一满足，默认 all"}
         },
-        "required": ["scope"]
+        "required": ["scope"],
+        "additionalProperties": false
     })
 }
 
@@ -57,8 +59,7 @@ setNote{value}；appendNote{value,separator?}；clearNote{}；setNoteSequence{pr
 field 取 positive / character / negative。caseSensitive 必须明确给出。改正向和角色要分别写两个动作。",
         "items": {"type": "object", "properties": {"type": {"type": "string"}}, "required": ["type"]}
     });
-    let fields = json!({"type": "array", "items": {"type": "string",
-        "enum": ["positive", "character", "negative", "artists", "note", "group", "tags", "favorite", "file"]}});
+    let fields = json!({"type": "array", "items": {"type": "string", "enum": ROW_FIELDS}});
     Value::Array(vec![
         tool("read_attachment_metadata", "在本地读取当前对话一张上传图片的生成元数据（不是看图，也不是图库 rowId）。使用附件旁的 messageId 和 attachmentNumber。PNG 尝试读取 NovelAI 信息，JPEG/WebP 仅基本信息。", json!({
             "messageId": {"type":"integer", "minimum":1},
@@ -73,9 +74,25 @@ field 取 positive / character / negative。caseSensitive 必须明确给出。�
                 "width":{"type":"integer","minimum":1}, "height":{"type":"integer","minimum":1}
             }, "required":["x","y","width","height"], "additionalProperties":false}
         }), &["messageId", "attachmentNumber"]),
-        tool("get_library_overview", "图库概况：总数、收藏数、画师串分组数、全部分组（含 id）和常用 TAG。", json!({}), &[]),
-        tool("get_main_window_state", "读取主窗口当前选中了多少张、当前筛选条件和筛选结果数量。用户说「选中的」「现在这些」时先调用。", json!({}), &[]),
-        tool("find_rows", "按范围读取图片的文字信息：提示词、画师串、TAG、分组等（分页，每页最多 50 张）。只读文字，看不到画面。", json!({
+        tool("get_library_overview", "图库概况、分组和 TAG 总数及列表。分组和 TAG 各自分页，同一 offset 和 limit。", json!({
+            "offset":{"type":"integer","minimum":0}, "limit":{"type":"integer","minimum":1,"maximum":100}
+        }), &[]),
+        tool("list_library_items", "分页列出素材、提示词文档、自动规则或导入批次。用返回的 ID 查详情。", json!({
+            "collection":{"type":"string","enum":["materials","promptDocs","automationRules","importBatches"]},
+            "offset":{"type":"integer","minimum":0}
+        }), &["collection"]),
+        tool("read_library_item", "按 ID 读取图库记录、PNG 原图元数据（含逐角色正负词）、素材版本、提示词文档或自动规则。省略 path 可查看字段，按 JSON Pointer 路径展开对象、数组或长文本，例如 /positivePrompt、/chunks/Comment/sampler、/characters/0/negativePrompt、/versions/0/text。按 nextOffset 续读。", json!({
+            "kind":{"type":"string","enum":["row","imageMetadata","material","promptDoc","automationRule"]},
+            "id":{"type":"string","description":"条目 ID，数字编号也可写成字符串"},
+            "path":{"type":"string"}, "offset":{"type":"integer","minimum":0}
+        }), &["kind","id"]),
+        tool("get_main_window_state", "读取主窗口当前详情图 ID、勾选数、筛选条件和筛选结果数。用户说「这张」「选中的」「现在这些」时先调用。", json!({}), &[]),
+        tool("list_generation_values", "列出范围内实际记录的模型原名、模型徽章、采样器或噪声调度，统计各值张数及缺失数。每页 50 种。", json!({
+            "target":target_schema("要统计的范围"),
+            "field":{"type":"string","enum":["model","modelBadge","sampler","noiseSchedule"]},
+            "offset":{"type":"integer","minimum":0}
+        }), &["target","field"]),
+        tool("find_rows", "按范围读取图库图片的模型原名、徽章、采样器、生成参数、尺寸、提示词、整理信息和文件来源。每页最多 50 张。长文字显示摘要，可用 read_library_item 续读。", json!({
             "target": target_schema("要查看的图片范围"),
             "fields": fields,
             "limit": {"type": "integer"},
@@ -101,7 +118,7 @@ field 取 positive / character / negative。caseSensitive 必须明确给出。�
         tool("list_artist_strings", "列出范围内的画师串分组（与主窗口画师串去重视角一致），可按文字或别名搜索。返回每组在范围内和全库的图片数。", json!({
             "target": target_schema("统计范围，一般用 all"),
             "contains": {"type": "string", "description": "画师串或别名包含的文字（不区分大小写）"},
-            "limit": {"type": "integer"}
+            "limit": {"type": "integer"}, "offset":{"type":"integer","minimum":0}
         }), &["target"]),
         tool("preview_changes", "预演一次修改（不会改数据）。返回 previewId、会改多少张、每个字段改多少、匹配分析、边界提醒和修改前后样例。用户会在界面上看到这份预演。", json!({
             "title": {"type": "string", "description": "一句话说明这次修改，例如「删除正向里 Text: 及之后的内容」"},
@@ -178,7 +195,20 @@ pub fn run(app: &AppHandle, conversation_id: &str, call_id: &str, name: &str, ar
     let view = engine.main_view();
     let plain = |output: Value| Ok(ToolOutput { display: json!({"kind": "info"}), output });
     match name {
-        "get_library_overview" => plain(runtime.agent_db(false, |db| db.agent_overview())?),
+        "get_library_overview" => {
+            #[derive(Deserialize)]
+            struct Page { #[serde(default)] offset: usize, limit: Option<usize> }
+            let args: Page = parse(arguments)?;
+            plain(runtime.agent_db(false, |db| db.agent_overview(args.offset, args.limit.unwrap_or(80).clamp(1,100)))?)
+        }
+        "list_library_items" => plain(library_data::list(&runtime, parse(arguments)?)?),
+        "read_library_item" => plain(library_data::read(&runtime, parse(arguments)?)?),
+        "list_generation_values" => {
+            #[derive(Deserialize)]
+            struct Args { target: Target, field: String, #[serde(default)] offset: usize }
+            let args: Args = parse(arguments)?;
+            plain(runtime.agent_db(false, |db| db.agent_generation_values(&args.target, &view, &args.field, args.offset))?)
+        }
         "get_main_window_state" => {
             let info = engine.main_info();
             let counts = runtime.agent_db(false, |db| {
@@ -295,10 +325,12 @@ pub fn run(app: &AppHandle, conversation_id: &str, call_id: &str, name: &str, ar
                 contains: Option<String>,
                 #[serde(default)]
                 limit: Option<usize>,
+                #[serde(default)]
+                offset: usize,
             }
             let args: Args = parse(arguments)?;
             plain(runtime.agent_db(false, |db| {
-                db.agent_artist_strings(&args.target, &view, args.contains.as_deref(), args.limit.unwrap_or(30))
+                db.agent_artist_strings(&args.target, &view, args.contains.as_deref(), args.limit.unwrap_or(30), args.offset)
             })?)
         }
         "preview_changes" => {

@@ -1,3 +1,5 @@
+import modelBuilds from "./model-builds.json" with { type: "json" };
+
 /** 预览图左上角版本徽章的显示内容与配色档位。 */
 export interface ModelVersionBadge {
   label: string;
@@ -9,15 +11,7 @@ export interface ModelVersionBadge {
  * 不再写 Full/Curated，而是在模型名后附 8 位十六进制构建哈希（如
  * "NovelAI Diffusion V4.5 4BDE2A90"），此表按哈希识别已知构建。
  */
-const KNOWN_MODEL_HASHES: ReadonlyMap<string, { version: string; full: boolean }> = new Map([
-  ["0adf9ab7", { version: "v5", full: true }], // V5 Full
-  ["db276663", { version: "v5", full: false }], // V5 Curated
-  ["4bde2a90", { version: "v4.5", full: true }], // V4.5 Full
-  ["37442fca", { version: "v4", full: true }], // V4 Full
-  ["4f49ec75", { version: "v4", full: true }], // V4 Full（早期构建）
-  ["f6e18726", { version: "v4", full: false }], // V4 Curated Preview
-  ["79f47848", { version: "v4", full: false }], // V4 Curated
-]);
+const KNOWN_MODEL_HASHES = new Map(Object.entries(modelBuilds));
 
 /**
  * 把图片元数据里的完整模型名（如 NovelAI Diffusion V4.5 Full 或带哈希
@@ -94,9 +88,9 @@ function hashedVariantBadge(normalized: string): ModelVersionBadge | null {
   if (!known) {
     return null;
   }
-  const stem = known.version.replace(".", "");
+  const [version, suffix] = known.split(" ");
   return {
-    label: `${known.version} ${known.full ? "F" : "C"}`,
-    className: `${stem}-${known.full ? "full" : "curated"}`,
+    label: known,
+    className: `${version.replace(".", "")}-${suffix === "F" ? "full" : "curated"}`,
   };
 }
