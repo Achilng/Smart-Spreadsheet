@@ -33,8 +33,8 @@ export function ContextMeter({ usage, window }: { usage: AgentContextUsage; wind
         <span>{usedPercent}% 已用（剩余 {100 - usedPercent}%）</span>
         <span>已用 {tokens(used)} tokens，共 {tokens(window)}</span>
         {usage.source === "estimate" && <span className="context-meter__note">站点没有返回用量，这是估算值</span>}
-        {!!usage.compacted && <span className="context-meter__note">已压缩 {usage.compacted} 条较早的查询结果</span>}
-        {!usage.compacted && usedShare >= 0.7 && <span className="context-meter__note">快满时会自动压缩较早的查询结果</span>}
+        {!!usage.compactions && <span className="context-meter__note">较早的对话已自动整理成摘要 {usage.compactions} 次</span>}
+        {!usage.compactions && usedShare >= 0.7 && <span className="context-meter__note">快满时会自动把较早的对话整理成摘要</span>}
       </Tooltip.Content>
     </Tooltip.Portal>
   </Tooltip.Root>;

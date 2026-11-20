@@ -141,6 +141,11 @@ impl Database {
         Self::initialize(connection)
     }
 
+    /// 资料库文件路径（内存库为 None），供只读查询另开连接。
+    pub fn path(&self) -> Option<String> {
+        self.connection.path().filter(|path| !path.is_empty()).map(str::to_owned)
+    }
+
     /// 数据发生变更（本连接或其它连接）后调用，使筛选结果缓存失效。
     pub fn bump_data_version(&mut self) {
         self.query_cache = None;

@@ -8,7 +8,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use tauri::{AppHandle, Emitter, Manager};
 
-use super::{Engine, library_data, vision};
+use super::{Engine, library_data, sql, vision};
 use crate::app::AppRuntime;
 use crate::automation::model::AutomationRuleDraft;
 use crate::db::agent::{
@@ -75,6 +75,13 @@ pub const GROUPS: &[ToolGroup] = &[
         guide: "- read_attachment_metadata 读上传图片里的 NovelAI 生成信息；view_attachment_image 看画面，可要高清或按原图坐标裁切。附件的 messageId / attachmentNumber 不是图库 rowId。",
         tools: &["read_attachment_metadata", "view_attachment_image"],
     },
+    ToolGroup {
+        key: "sql",
+        label: "只读 SQL 查询",
+        summary: "现有工具查不了的组合条件、按命中几个 TAG 筛图、跨表统计时，直接写只读 SQL 查图库；查到的图可用 target.sql 交给预演等工具",
+        guide: super::sql::GUIDE,
+        tools: &["query_library_sql"],
+    },
 ];
 
 /// Tools kept only so that older conversations that called them still replay.
@@ -123,7 +130,8 @@ fn target_schema(description: &str) -> Value {
             "ruleId": {"type":"integer","description":"只保留会被这条自动规则的条件命中的图"},
             "conditions": {"type": "array", "items": {"type": "object"},
                 "description": "附加自动规则条件，格式见系统提示中的条件格式。按实际记录的采样器名筛选示例：{type:'generationText',field:'sampler',operator:'equals',value:'k_euler_ancestral'}。"},
-            "conditionMatch": {"type": "string", "enum": ["all", "any"], "description": "多个条件是全部满足还是任一满足，默认 all"}
+            "conditionMatch": {"type": "string", "enum": ["all", "any"], "description": "多个条件是全部满足还是任一满足，默认 all"},
+            "sql": {"type": "string", "description": "只读 SQL（先 load_tools 加载 sql 工具组看表结构），第一列是图片 id。scope=all 时范围就是查出来的图，scope=rowIds 时和 rowIds 取交集；其它字段照常叠加"}
         },
         "required": ["scope"],
         "additionalProperties": false
@@ -300,6 +308,10 @@ field 取 positive / character / negative。caseSensitive 必须明确给出。�
             "ruleId": {"type":"integer"},
             "target": target_schema("在哪些图上试跑，默认全库")
         }), &["ruleId"]),
+        tool("query_library_sql", "对图库执行一条只读 SQL（SQLite，只能 SELECT / WITH），返回列名和结果行。表结构、可用函数（has_tag、tag_hits、prompt_tags、REGEXP）和例子见 sql 工具组说明。默认返回 100 行，limit 最多 1000，并给出总行数。", json!({
+            "sql": {"type":"string","description":"一条 SELECT 语句"},
+            "limit": {"type":"integer","minimum":1,"maximum":1000,"description":"最多返回多少行，默认 100"}
+        }), &["sql"]),
     ]
 }
 
@@ -383,6 +395,8 @@ pub fn run(app: &AppHandle, conversation_id: &str, call_id: &str, name: &str, ar
     let runtime = app.state::<AppRuntime>();
     let engine = app.state::<Engine>();
     let view = engine.main_view();
+    let expanded = sql::expand_target(&runtime, arguments)?;
+    let arguments = expanded.as_ref().unwrap_or(arguments);
     let plain = |output: Value| Ok(ToolOutput { display: json!({"kind": "info"}), output });
     match name {
         "load_tools" => {
@@ -394,7 +408,11 @@ pub fn run(app: &AppHandle, conversation_id: &str, call_id: &str, name: &str, ar
             for key in &args.groups {
                 let group = GROUPS.iter().find(|group| group.key == key).ok_or_else(|| format!("没有名为 {key} 的工具组"))?;
                 loaded.push(group.key);
-                guides.push(json!({"group": group.key, "label": group.label, "tools": group.tools, "guide": group.guide}));
+                let mut guide = json!({"group": group.key, "label": group.label, "tools": group.tools, "guide": group.guide});
+                if group.key == "sql" {
+                    guide["schema"] = sql::schema(&runtime)?;
+                }
+                guides.push(guide);
             }
             Ok(ToolOutput {
                 output: json!({"loaded": guides, "note": "这些工具从下一步起可用"}),
@@ -410,6 +428,10 @@ pub fn run(app: &AppHandle, conversation_id: &str, call_id: &str, name: &str, ar
         }
         "list_library_items" => plain(library_data::list(&runtime, parse(arguments)?)?),
         "read_library_item" => plain(library_data::read(&runtime, parse(arguments)?)?),
+        "query_library_sql" => {
+            let output = sql::query(&runtime, parse(arguments)?)?;
+            Ok(ToolOutput { display: json!({"kind": "sql", "totalRows": output["totalRows"]}), output })
+        }
         "list_generation_values" => {
             #[derive(Deserialize)]
             struct Args { target: Target, field: String, #[serde(default)] offset: usize }

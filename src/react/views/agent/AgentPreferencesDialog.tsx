@@ -145,7 +145,7 @@ function PreferencesForm({ state, catalogs, loadModels, onClose, onSaved }: {
             aria-label="上下文长度（千 tokens）" onChange={event => { setContextK(event.target.value); setSaveError(""); }} />
           <span>k tokens</span>
         </div>
-        <p className="ag-hint">对话快到这个长度时，才会压缩较早的查询结果。不清楚模型上限就保持 200k。</p>
+        <p className="ag-hint">对话快到这个长度时，会自动把较早的内容整理成摘要再继续。不清楚模型上限就保持 200k。</p>
       </div>}
       {saveError && <p className="ag-hint" role="alert">{saveError}</p>}
     </div>}

@@ -39,6 +39,8 @@ pub struct Outcome {
     /// Reasoning items some providers (e.g. DeepSeek thinking mode) require to be sent back.
     pub reasoning: Vec<Value>,
     pub usage: Option<Usage>,
+    /// The site stopped the reply early (e.g. output token cap).
+    pub truncated: bool,
 }
 
 /// Why a request failed, and whether sending it again could help.
@@ -197,12 +199,14 @@ pub async fn stream(
         "model": request.model,
         "instructions": request.instructions,
         "input": request.input,
-        "tools": request.tools,
-        "tool_choice": "auto",
-        "parallel_tool_calls": false,
         "store": false,
         "stream": true,
     });
+    if request.tools.as_array().is_some_and(|tools| !tools.is_empty()) {
+        body["tools"] = request.tools;
+        body["tool_choice"] = json!("auto");
+        body["parallel_tool_calls"] = json!(false);
+    }
     if !request.effort.is_empty() && request.effort != "default" {
         body["reasoning"] = json!({"effort": request.effort, "summary": "auto"});
     }
@@ -301,6 +305,7 @@ pub async fn stream(
                     if value["type"] == "response.incomplete" && outcome.calls.is_empty() {
                         let reason = value["response"]["incomplete_details"]["reason"].as_str().unwrap_or("未知原因");
                         outcome.text.push_str(&format!("\n\n（模型输出被截断：{reason}）"));
+                        outcome.truncated = true;
                     }
                     outcome.usage = parse_usage(&value["response"]["usage"]);
                     completed = true;

@@ -8,8 +8,8 @@ export interface AgentPreferences {
   contextWindow?: number;
 }
 export const DEFAULT_CONTEXT_WINDOW = 200_000;
-/** How full the context was after the latest model reply (stored on that turn's first message). */
-export interface AgentContextUsage { used: number; window: number; source: "api" | "estimate"; compacted?: number }
+/** How full the context was after the latest model reply or summary (stored on that message). `compactions`: summaries made so far. */
+export interface AgentContextUsage { used: number; window: number; source: "api" | "estimate"; compactions?: number }
 export interface AgentChannel { id: string; name: string; model: string; hasKey: boolean; catalogRevision: string }
 export interface AgentState { libraryId: string; conversations: AgentConversation[]; running: string[]; preferences: AgentPreferences; channels: AgentChannel[] }
 
@@ -87,8 +87,8 @@ export interface AgentUndoOutcome { operationId: number; restoredRows: number; s
 export interface AgentEvent {
   conversationId: string; kind: "run-start" | "text-delta" | "reasoning-delta" | "tool-start" | "tool-end" | "messages-changed" | "run-end" | "retry";
   delta?: string; name?: string;
-  /** Retry events: why the request is being sent again, and which attempt this is. */
-  reason?: "network" | "too-long"; attempt?: number; message?: string;
+  /** Retry events: why the request is being sent again (or the older conversation summarized first), and which attempt this is. */
+  reason?: "network" | "too-long" | "compact"; attempt?: number; message?: string;
 }
 
 export const agentState = () => invoke<AgentState>("agent_state");

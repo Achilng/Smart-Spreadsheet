@@ -1,7 +1,9 @@
 //! Conversational library agent: model loop, cancellation and main-window state.
+mod compaction;
 mod library_data;
 mod prompt;
 mod responses;
+mod sql;
 pub(crate) mod tools;
 pub(crate) mod vision;
 
@@ -21,13 +23,11 @@ use crate::db::agent::{MainView, Message};
 pub const PREFERENCES_KEY: &str = "agent_preferences_v1";
 /// Context window assumed when the user has not set one (tokens).
 const DEFAULT_CONTEXT_WINDOW: u64 = 200_000;
-/// Room kept free for the model's reply and reasoning when deciding whether to compact.
+/// Room kept free for the model's reply and reasoning; past this the older conversation is summarized.
 const REPLY_RESERVE: u64 = 16_000;
 /// Rough cost of one attached image.
 const IMAGE_TOKENS: u64 = 1_500;
-/// What stays of an old tool result once the conversation has to be compacted.
-const COMPACT_KEEP: usize = 1500;
-/// Automatic re-sends after a network error or a busy site, and after "request too long".
+/// Automatic re-sends after a network error or a busy site, and compactions after "request too long".
 const NETWORK_RETRIES: u32 = 2;
 const SHRINK_RETRIES: u32 = 2;
 /// Images from at most this many recent `view_images` calls (in the current user turn) are re-sent.
@@ -514,28 +514,7 @@ fn calibration(messages: &[Message]) -> f64 {
         .unwrap_or(1.0)
 }
 
-/// Oldest tool results to shorten so the request drops by about `excess` (calibrated) tokens.
-/// The newest result is always kept whole: the model is working on it right now.
-fn plan_compaction(messages: &[Message], excess: u64, ratio: f64) -> HashSet<i64> {
-    let results = messages.iter().filter(|message| message.kind == "tool_result").collect::<Vec<_>>();
-    let mut chosen = HashSet::new();
-    let mut saved = 0u64;
-    for message in results.iter().take(results.len().saturating_sub(1)) {
-        if saved >= excess {
-            break;
-        }
-        let output = message.content["output"].as_str().unwrap_or_default();
-        if output.chars().count() <= COMPACT_KEEP + 200 {
-            continue;
-        }
-        let kept: String = output.chars().take(COMPACT_KEEP).collect();
-        saved += ((estimate_text(output) - estimate_text(&kept)) as f64 * ratio) as u64;
-        chosen.insert(message.id);
-    }
-    chosen
-}
-
-fn build_input(messages: &[Message], attached: &vision::Attached, attachment_data: &AttachmentData, compact: &HashSet<i64>) -> Vec<Value> {
+fn build_input(messages: &[Message], attached: &vision::Attached, attachment_data: &AttachmentData) -> Vec<Value> {
     let answered = messages
         .iter()
         .filter(|message| message.kind == "tool_result")
@@ -545,9 +524,6 @@ fn build_input(messages: &[Message], attached: &vision::Attached, attachment_dat
     let tool_output = |message: &Message, images: &mut Vec<Value>| {
         let content = &message.content;
         let mut output = content["output"].as_str().unwrap_or_default().to_owned();
-        if compact.contains(&message.id) {
-            output = output.chars().take(COMPACT_KEEP).collect::<String>() + "…（对话太长，这条较早的结果已压缩；需要时请重新查询）";
-        }
         if attachment_view(content) || vision::viewed_ids(content).is_some() {
             match content["callId"].as_str().and_then(|id| attached.get(id)) {
                 Some(urls) => images.push(image_message(content, urls)),
@@ -628,6 +604,77 @@ fn build_input(messages: &[Message], attached: &vision::Attached, attachment_dat
     input
 }
 
+/// The model site and model a conversation talks to.
+struct Site<'a> {
+    base_url: &'a str,
+    key: &'a str,
+    model: &'a str,
+    effort: &'a str,
+}
+
+/// Wait 2 s, then 4 s, … before retrying; stops early when the user cancels.
+async fn wait_before_retry(attempt: u32, cancel: &AtomicBool) -> Result<(), String> {
+    let wait = std::time::Duration::from_secs(2 * u64::from(attempt));
+    let started = std::time::Instant::now();
+    while started.elapsed() < wait {
+        if cancel.load(Ordering::SeqCst) {
+            return Err("已停止".into());
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    Ok(())
+}
+
+/// One summarization request (no tools), retried on network trouble like a normal turn.
+async fn summarize(site: &Site<'_>, prompt: &str, cancel: Arc<AtomicBool>) -> Result<String, String> {
+    let mut attempt = 0;
+    loop {
+        let request = responses::Request {
+            base_url: site.base_url,
+            key: site.key,
+            model: site.model,
+            effort: site.effort,
+            instructions: compaction::SYSTEM_PROMPT,
+            input: vec![json!({"role": "user", "content": prompt})],
+            has_user_attachments: false,
+            tools: json!([]),
+        };
+        match responses::stream(request, cancel.clone(), |_: responses::Delta<'_>| {}).await {
+            // A cut-off summary must not become the conversation's memory.
+            Ok(outcome) if outcome.truncated => {
+                return Err("整理较早的对话时，模型的输出被截断了，摘要不完整，所以没有压缩。可以换一个输出上限更大的模型，或新开一个对话。".into());
+            }
+            Ok(outcome) if !outcome.text.trim().is_empty() => return Ok(outcome.text.trim().to_owned()),
+            Ok(_) => return Err("整理较早的对话时，模型没有返回摘要内容。".into()),
+            Err(failure) => {
+                if cancel.load(Ordering::SeqCst) {
+                    return Err("已停止".into());
+                }
+                if failure.retry && attempt < NETWORK_RETRIES {
+                    attempt += 1;
+                    wait_before_retry(attempt, &cancel).await?;
+                    continue;
+                }
+                return Err(format!("整理较早的对话（压缩上下文）失败：{}", failure.message));
+            }
+        }
+    }
+}
+
+/// Summarize what `plan` drops: whole turns (merged into the previous summary) and, when the cut
+/// splits a turn, that turn's beginning (pi's `compact`).
+async fn compact(site: &Site<'_>, plan: &compaction::Plan, limit: u64, cancel: Arc<AtomicBool>) -> Result<String, String> {
+    let history = match compaction::history_prompt(plan, limit) {
+        Some(prompt) => Some(summarize(site, &prompt, cancel.clone()).await?),
+        None => None,
+    };
+    let prefix = match compaction::prefix_prompt(plan, limit) {
+        Some(prompt) => Some(summarize(site, &prompt, cancel.clone()).await?),
+        None => None,
+    };
+    Ok(compaction::merge(plan, history, prefix))
+}
+
 async fn run_loop(app: &AppHandle, conversation_id: &str, cancel: Arc<AtomicBool>) -> Result<(), String> {
     let runtime = app.state::<AppRuntime>();
     let (_, library, settings) = runtime.llm_context()?;
@@ -665,9 +712,14 @@ async fn run_loop(app: &AppHandle, conversation_id: &str, cancel: Arc<AtomicBool
         chrono::Local::now().format("%Y-%m-%d %H:%M（UTC%:z）"),
     );
     let window = preferences.context_window();
-    // Tokens the request itself may use; lowered for the rest of the run if the site says it is too long.
+    // Past this the older conversation is summarized; lowered for the rest of the run if the site says it is too long.
     let mut budget = window.saturating_sub(REPLY_RESERVE).max(window / 2);
+    let site = Site { base_url: &channel.base_url, key: &key, model, effort: &preferences.effort };
     let (mut network_retries, mut shrink_retries) = (0, 0);
+    // Set when the site said the request is too long: compact now, keeping this much recent conversation.
+    let mut forced_keep: Option<u64> = None;
+    // At most one automatic compaction between two model replies, so it can never loop.
+    let mut compacted_since_reply = false;
     loop {
         if cancel.load(Ordering::SeqCst) {
             return Err("已停止".into());
@@ -675,32 +727,55 @@ async fn run_loop(app: &AppHandle, conversation_id: &str, cancel: Arc<AtomicBool
         if runtime.agent_library_id()? != library {
             return Err("资料库已切换，这轮对话已停止".into());
         }
-        let (messages, attachment_data) = runtime.agent_db(false, |db| {
-            let messages = db.agent_messages(conversation_id)?;
-            let data = load_attachment_data(db, conversation_id, &messages);
-            Ok((messages, data))
-        })?;
+        let all = runtime.agent_db(false, |db| db.agent_messages(conversation_id))?;
+        let compaction::View { summary, messages } = compaction::view(&all);
+        let attachment_data = runtime.agent_db(false, |db| Ok(load_attachment_data(db, conversation_id, &messages)))?;
         let attached = attach_views(app, conversation_id, &messages).await;
-        let tools = tools::definitions(&tools::active_tools(&messages));
+        // Tool groups loaded before a compaction stay loaded.
+        let tools = tools::definitions(&tools::active_tools(&all));
         let fixed = estimate_text(&instructions) + estimate_value(&tools);
-        let ratio = calibration(&messages);
-        let mut input = build_input(&messages, &attached, &attachment_data, &HashSet::new());
-        let mut estimate = fixed + input.iter().map(estimate_value).sum::<u64>();
-        let mut compacted = 0;
+        let ratio = calibration(&all);
+        let mut input = summary.as_deref().map(compaction::summary_message).into_iter().collect::<Vec<_>>();
+        input.extend(build_input(&messages, &attached, &attachment_data));
+        let estimate = fixed + input.iter().map(estimate_value).sum::<u64>();
         let expected = (estimate as f64 * ratio) as u64;
-        if expected > budget {
-            let compact = plan_compaction(&messages, expected - budget, ratio);
-            if !compact.is_empty() {
-                compacted = compact.len();
-                input = build_input(&messages, &attached, &attachment_data, &compact);
-                estimate = fixed + input.iter().map(estimate_value).sum::<u64>();
+        let compactions = all.iter().filter(|message| message.kind == "compaction").count();
+        let forced = forced_keep.take();
+        if forced.is_some() || (expected > budget && !compacted_since_reply) {
+            match compaction::prepare(&all, forced.unwrap_or(compaction::KEEP_RECENT_TOKENS)) {
+                Some(plan) => {
+                    emit(app, conversation_id, "retry", json!({"reason": if forced.is_some() { "too-long" } else { "compact" }}));
+                    // The summarizer's own request has to fit as well.
+                    let limit = (budget as f64 / ratio * 0.7) as u64;
+                    let summary = compact(&site, &plan, limit, cancel.clone()).await?;
+                    // What the next request will roughly be, for the context meter until the site reports.
+                    let kept = messages.iter().filter(|message| message.id >= plan.first_kept).cloned().collect::<Vec<_>>();
+                    let after = fixed
+                        + estimate_value(&compaction::summary_message(&summary))
+                        + build_input(&kept, &attached, &attachment_data).iter().map(estimate_value).sum::<u64>();
+                    push(app, conversation_id, "compaction", json!({
+                        "summary": summary,
+                        "firstKeptId": plan.first_kept,
+                        "tokensBefore": expected,
+                        "usage": {
+                            "window": window, "estimate": after, "used": (after as f64 * ratio) as u64,
+                            "source": "estimate", "compactions": compactions + 1,
+                        },
+                    }))?;
+                    compacted_since_reply = true;
+                    continue;
+                }
+                None if forced.is_some() => {
+                    return Err("对话已经超出模型能接收的长度，又没有可以再压缩的较早内容。请新开一个对话继续。".into());
+                }
+                None => {}
             }
         }
         let request = responses::Request {
-            base_url: &channel.base_url,
-            key: &key,
-            model,
-            effort: &preferences.effort,
+            base_url: site.base_url,
+            key: site.key,
+            model: site.model,
+            effort: site.effort,
             instructions: &instructions,
             input,
             has_user_attachments: !attachment_data.is_empty(),
@@ -721,34 +796,28 @@ async fn run_loop(app: &AppHandle, conversation_id: &str, cancel: Arc<AtomicBool
                 // so sending again is safe; the "retry" event tells the window to drop the partial text.
                 if failure.too_long && shrink_retries < SHRINK_RETRIES {
                     shrink_retries += 1;
-                    budget = ((estimate as f64 * ratio) as u64) * 6 / 10;
-                    emit(app, conversation_id, "retry", json!({"reason": "too-long", "attempt": shrink_retries}));
+                    budget = budget.min(expected * 8 / 10);
+                    forced_keep = Some(compaction::KEEP_RECENT_TOKENS >> shrink_retries);
                     continue;
                 }
                 if failure.retry && network_retries < NETWORK_RETRIES {
                     network_retries += 1;
                     emit(app, conversation_id, "retry", json!({"reason": "network", "attempt": network_retries, "message": failure.message}));
-                    let wait = std::time::Duration::from_secs(2 * u64::from(network_retries));
-                    let started = std::time::Instant::now();
-                    while started.elapsed() < wait {
-                        if cancel.load(Ordering::SeqCst) {
-                            return Err("已停止".into());
-                        }
-                        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-                    }
+                    wait_before_retry(network_retries, &cancel).await?;
                     continue;
                 }
                 return Err(failure.message);
             }
         };
         network_retries = 0;
+        compacted_since_reply = false;
         // What the next request will start from: this request plus the reply that joins it.
         let reply = estimate_text(&outcome.text)
             + outcome.calls.iter().map(|call| estimate_text(&call.arguments) + 20).sum::<u64>();
         let mut usage = json!({
             "window": window,
             "estimate": estimate,
-            "compacted": compacted,
+            "compactions": compactions,
         });
         match outcome.usage {
             Some(real) => {

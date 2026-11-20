@@ -47,6 +47,7 @@ type Item =
   | { type: "assistant"; id: number; at: number; text: string }
   | { type: "error"; id: number; at: number; text: string; stopped: boolean }
   | { type: "action"; id: number; at: number; action: string; title: string; operationId: number | null }
+  | { type: "compaction"; id: number; at: number; summary: string; tokensBefore: number }
   | ReasoningItem
   | StepItem;
 /** A run of reasoning and tool steps, shown as one thought line. */
@@ -80,6 +81,7 @@ function toItems(messages: AgentMessage[]): Item[] {
     else if (message.kind === "assistant") items.push({ type: "assistant", id: message.id, at, text: String(content.text ?? "") });
     else if (message.kind === "user_action") items.push({ type: "action", id: message.id, at, action: String(content.action ?? ""), title: String(content.title ?? ""), operationId: typeof content.operationId === "number" ? content.operationId : null });
     else if (message.kind === "error") items.push({ type: "error", id: message.id, at, text: String(content.message ?? ""), stopped: content.stopped === true });
+    else if (message.kind === "compaction") items.push({ type: "compaction", id: message.id, at, summary: String(content.summary ?? ""), tokensBefore: Number(content.tokensBefore) || 0 });
     else if (message.kind === "tool_call") {
       const step: StepItem = { type: "step", id: message.id, at, doneAt: null, name: String(content.name ?? ""), args: String(content.arguments ?? ""), output: null, ok: true, display: null };
       steps.set(String(content.callId), step); items.push(step);
@@ -95,14 +97,15 @@ function toItems(messages: AgentMessage[]): Item[] {
 function latestUsage(messages: AgentMessage[]): AgentContextUsage | null {
   for (let index = messages.length - 1; index >= 0; index--) {
     const usage = messages[index].content.usage as Partial<AgentContextUsage> | undefined;
-    if (usage && typeof usage.used === "number") return { used: usage.used, window: Number(usage.window) || DEFAULT_CONTEXT_WINDOW, source: usage.source === "api" ? "api" : "estimate", compacted: Number(usage.compacted) || 0 };
+    if (usage && typeof usage.used === "number") return { used: usage.used, window: Number(usage.window) || DEFAULT_CONTEXT_WINDOW, source: usage.source === "api" ? "api" : "estimate", compactions: Number(usage.compactions) || 0 };
   }
   return null;
 }
 
 function retryText(payload: AgentEvent): string {
+  if (payload.reason === "compact") return "对话快到上下文上限了，正在把较早的内容整理成摘要…";
   return payload.reason === "too-long"
-    ? "对话超出了模型能接收的长度，正在压缩较早的查询结果后重新发送…"
+    ? "对话超出了模型能接收的长度，正在把较早的内容整理成摘要后重新发送…"
     : `连接模型站点出错，正在自动重试（第 ${payload.attempt ?? 1} 次）…${payload.message ? `
 ${payload.message}` : ""}`;
 }
@@ -195,6 +198,7 @@ function stepSummary(item: StepItem, interrupted: boolean, failure: string): str
     return total > count ? `${count} 张（范围内共 ${total} 张）` : `${count} 张`;
   }
   if (display?.kind === "tools" || display?.kind === "control") return describeStepDisplay(display);
+  if (display?.kind === "sql" && typeof display.totalRows === "number") return `查到 ${display.totalRows} 行`;
   if (interrupted) return "被中断，没有执行";
   return !item.ok && !failure ? "没有成功" : "";
 }
@@ -441,6 +445,10 @@ export function AgentWindow() {
         ? <p key={block.id} className="msg msg-notice">{block.text}</p>
         : <p key={block.id} className="msg msg-error" role="alert">{block.text}</p>;
       case "thought": return renderThought(block, index === blocks.length - 1);
+      case "compaction": return <details key={block.id} className="msg msg-compaction">
+        <summary><span>较早的对话已整理成摘要{block.tokensBefore > 0 && `（压缩前约 ${Math.round(block.tokensBefore / 1000)}k tokens）`}</span></summary>
+        <Markdown className="msg-compaction__body" text={block.summary} />
+      </details>;
     }
   };
 

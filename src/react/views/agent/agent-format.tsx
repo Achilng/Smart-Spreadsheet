@@ -33,12 +33,13 @@ export const TOOL_LABELS: Record<string, string> = {
   control_main_window: "操作主窗口界面",
   preview_library_change: "预演分组 / TAG 整理",
   list_artist_prefix_candidates: "查找可补 artist: 前缀的画师",
+  query_library_sql: "用 SQL 查询图库",
 };
 
 const SAME_LABELS: Record<string, string> = { artists: "画师串", positivePrompt: "正向提示词", vibes: "VIBE 组合" };
 
 const TOOL_GROUP_LABELS: Record<string, string> = {
-  mainWindow: "主窗口控制", library: "分组 / TAG 管理", automation: "自动规则", records: "素材与导入记录", attachments: "聊天附件",
+  mainWindow: "主窗口控制", library: "分组 / TAG 管理", automation: "自动规则", records: "素材与导入记录", attachments: "聊天附件", sql: "只读 SQL 查询",
 };
 const VIEW_LABELS: Record<string, string> = { gallery: "画廊", table: "表格", group: "分组", duplicates: "重复", materials: "素材", promptDocs: "提示词" };
 const SORT_LABELS: Record<string, string> = { timeAsc: "按导入先后", timeDesc: "最新在前", recentlyUpdated: "最近修改在前" };

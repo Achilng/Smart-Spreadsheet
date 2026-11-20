@@ -178,6 +178,14 @@
   .msg-action:hover { background: var(--chat-hover); color: var(--text); }
   .msg-notice { align-self: center; max-width: 92%; padding: 5px 14px; border-radius: 999px; background: var(--chat-hover); font-size: 12px; line-height: 1.6; color: var(--text-2); text-align: center; }
   .msg-error { padding: 10px 14px; border-radius: var(--r-lg); background: var(--bad-bg); color: var(--bad); font-size: 13px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
+  /* A summary of the older conversation: a divider that opens to show what the model now remembers. */
+  .msg-compaction { align-self: stretch; }
+  .msg-compaction > summary { display: flex; align-items: center; gap: 12px; color: var(--text-3); font-size: 12px; cursor: pointer; list-style: none; }
+  .msg-compaction > summary::-webkit-details-marker { display: none; }
+  .msg-compaction > summary::before, .msg-compaction > summary::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+  .msg-compaction > summary:hover { color: var(--text-2); }
+  .msg-compaction[open] > summary { margin-bottom: 10px; }
+  .md.msg-compaction__body { padding: 10px 14px; border-radius: var(--r-lg); background: var(--chat-hover); font-size: 13px; line-height: 1.7; }
 
   /* Assistant text. Streamdown brings its own utility classes; these rules give it H3's look. */
   .md { font-size: 15px; line-height: 1.8; overflow-wrap: anywhere; white-space: normal; }
