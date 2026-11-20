@@ -5,7 +5,7 @@ mod responses;
 pub(crate) mod tools;
 pub(crate) mod vision;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -19,9 +19,17 @@ use crate::db::{Database, RowSelection};
 use crate::db::agent::{MainView, Message};
 
 pub const PREFERENCES_KEY: &str = "agent_preferences_v1";
-const MAX_STEPS: usize = 30;
-const OLD_OUTPUT_LIMIT: usize = 1500;
-const RECENT_FULL_OUTPUTS: usize = 6;
+/// Context window assumed when the user has not set one (tokens).
+const DEFAULT_CONTEXT_WINDOW: u64 = 200_000;
+/// Room kept free for the model's reply and reasoning when deciding whether to compact.
+const REPLY_RESERVE: u64 = 16_000;
+/// Rough cost of one attached image.
+const IMAGE_TOKENS: u64 = 1_500;
+/// What stays of an old tool result once the conversation has to be compacted.
+const COMPACT_KEEP: usize = 1500;
+/// Automatic re-sends after a network error or a busy site, and after "request too long".
+const NETWORK_RETRIES: u32 = 2;
+const SHRINK_RETRIES: u32 = 2;
 /// Images from at most this many recent `view_images` calls (in the current user turn) are re-sent.
 const RECENT_VIEWS: usize = 4;
 const MAX_ATTACHMENTS: usize = 4;
@@ -154,6 +162,18 @@ pub struct Preferences {
     pub effort: String,
     #[serde(default)]
     pub channel_models: std::collections::HashMap<String, ChannelModels>,
+    /// Context window in tokens; 0 means the default.
+    #[serde(default)]
+    pub context_window: u64,
+}
+
+impl Preferences {
+    pub fn context_window(&self) -> u64 {
+        match self.context_window {
+            0 => DEFAULT_CONTEXT_WINDOW,
+            window => window.clamp(16_000, 10_000_000),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -457,20 +477,76 @@ fn user_message(message: &Message, attachment_data: &AttachmentData) -> Value {
     json!({"role": "user", "content": parts})
 }
 
-fn build_input(messages: &[Message], attached: &vision::Attached, attachment_data: &AttachmentData) -> Vec<Value> {
+/// Rough token count: about 3 ASCII characters per token, one per CJK or other character.
+fn estimate_text(text: &str) -> u64 {
+    let (ascii, other) = text.chars().fold((0u64, 0u64), |(a, o), c| if c.is_ascii() { (a + 1, o) } else { (a, o + 1) });
+    ascii.div_ceil(3) + other
+}
+
+fn estimate_value(value: &Value) -> u64 {
+    match value {
+        Value::String(text) => estimate_text(text),
+        Value::Array(items) => items.iter().map(estimate_value).sum(),
+        Value::Object(fields) => fields
+            .iter()
+            .map(|(key, value)| match key.as_str() {
+                "image_url" => IMAGE_TOKENS,
+                "file_data" => value.as_str().map_or(0, |data| data.len() as u64 / 6),
+                "encrypted_content" => value.as_str().map_or(0, |data| data.len() as u64 / 4),
+                _ => estimate_value(value) + 1,
+            })
+            .sum(),
+        _ => 1,
+    }
+}
+
+/// How the site's real token counts compared with our estimate last time (1.0 when unknown).
+fn calibration(messages: &[Message]) -> f64 {
+    messages
+        .iter()
+        .rev()
+        .find_map(|message| {
+            let usage = &message.content["usage"];
+            let input = usage["input"].as_u64()? as f64;
+            let estimate = usage["estimate"].as_u64().filter(|&value| value > 0)? as f64;
+            Some((input / estimate).clamp(0.25, 2.5))
+        })
+        .unwrap_or(1.0)
+}
+
+/// Oldest tool results to shorten so the request drops by about `excess` (calibrated) tokens.
+/// The newest result is always kept whole: the model is working on it right now.
+fn plan_compaction(messages: &[Message], excess: u64, ratio: f64) -> HashSet<i64> {
+    let results = messages.iter().filter(|message| message.kind == "tool_result").collect::<Vec<_>>();
+    let mut chosen = HashSet::new();
+    let mut saved = 0u64;
+    for message in results.iter().take(results.len().saturating_sub(1)) {
+        if saved >= excess {
+            break;
+        }
+        let output = message.content["output"].as_str().unwrap_or_default();
+        if output.chars().count() <= COMPACT_KEEP + 200 {
+            continue;
+        }
+        let kept: String = output.chars().take(COMPACT_KEEP).collect();
+        saved += ((estimate_text(output) - estimate_text(&kept)) as f64 * ratio) as u64;
+        chosen.insert(message.id);
+    }
+    chosen
+}
+
+fn build_input(messages: &[Message], attached: &vision::Attached, attachment_data: &AttachmentData, compact: &HashSet<i64>) -> Vec<Value> {
     let answered = messages
         .iter()
         .filter(|message| message.kind == "tool_result")
         .filter_map(|message| message.content["callId"].as_str().map(str::to_owned))
-        .collect::<std::collections::HashSet<_>>();
-    let result_count = messages.iter().filter(|message| message.kind == "tool_result").count();
-    let mut seen_results = 0;
+        .collect::<HashSet<_>>();
     let mut input = Vec::new();
-    let tool_output = |content: &Value, seen_results: &mut usize, images: &mut Vec<Value>| {
-        *seen_results += 1;
+    let tool_output = |message: &Message, images: &mut Vec<Value>| {
+        let content = &message.content;
         let mut output = content["output"].as_str().unwrap_or_default().to_owned();
-        if *seen_results + RECENT_FULL_OUTPUTS <= result_count && output.chars().count() > OLD_OUTPUT_LIMIT {
-            output = output.chars().take(OLD_OUTPUT_LIMIT).collect::<String>() + "…（较早的结果已截断，需要时请重新查询）";
+        if compact.contains(&message.id) {
+            output = output.chars().take(COMPACT_KEEP).collect::<String>() + "…（对话太长，这条较早的结果已压缩；需要时请重新查询）";
         }
         if attachment_view(content) || vision::viewed_ids(content).is_some() {
             match content["callId"].as_str().and_then(|id| attached.get(id)) {
@@ -528,7 +604,7 @@ fn build_input(messages: &[Message], attached: &vision::Attached, attachment_dat
                 for call in &batch {
                     let call_id = call.content["callId"].as_str().unwrap_or_default();
                     if let Some(result) = results.iter().find(|result| result.content["callId"] == call.content["callId"]) {
-                        input.push(tool_output(&result.content, &mut seen_results, &mut images));
+                        input.push(tool_output(result, &mut images));
                     } else if !answered.contains(call_id) {
                         input.push(json!({"type": "function_call_output", "call_id": call_id,
                             "output": "已被用户中断，未执行"}));
@@ -538,7 +614,7 @@ fn build_input(messages: &[Message], attached: &vision::Attached, attachment_dat
             }
             "tool_result" => {
                 let mut images = Vec::new();
-                input.push(tool_output(content, &mut seen_results, &mut images));
+                input.push(tool_output(message, &mut images));
                 input.extend(images);
             }
             "error" => {
@@ -588,7 +664,11 @@ async fn run_loop(app: &AppHandle, conversation_id: &str, cancel: Arc<AtomicBool
         tools::groups_prompt(),
         chrono::Local::now().format("%Y-%m-%d %H:%M（UTC%:z）"),
     );
-    for _ in 0..MAX_STEPS {
+    let window = preferences.context_window();
+    // Tokens the request itself may use; lowered for the rest of the run if the site says it is too long.
+    let mut budget = window.saturating_sub(REPLY_RESERVE).max(window / 2);
+    let (mut network_retries, mut shrink_retries) = (0, 0);
+    loop {
         if cancel.load(Ordering::SeqCst) {
             return Err("已停止".into());
         }
@@ -600,27 +680,97 @@ async fn run_loop(app: &AppHandle, conversation_id: &str, cancel: Arc<AtomicBool
             let data = load_attachment_data(db, conversation_id, &messages);
             Ok((messages, data))
         })?;
+        let attached = attach_views(app, conversation_id, &messages).await;
+        let tools = tools::definitions(&tools::active_tools(&messages));
+        let fixed = estimate_text(&instructions) + estimate_value(&tools);
+        let ratio = calibration(&messages);
+        let mut input = build_input(&messages, &attached, &attachment_data, &HashSet::new());
+        let mut estimate = fixed + input.iter().map(estimate_value).sum::<u64>();
+        let mut compacted = 0;
+        let expected = (estimate as f64 * ratio) as u64;
+        if expected > budget {
+            let compact = plan_compaction(&messages, expected - budget, ratio);
+            if !compact.is_empty() {
+                compacted = compact.len();
+                input = build_input(&messages, &attached, &attachment_data, &compact);
+                estimate = fixed + input.iter().map(estimate_value).sum::<u64>();
+            }
+        }
         let request = responses::Request {
             base_url: &channel.base_url,
             key: &key,
             model,
             effort: &preferences.effort,
             instructions: &instructions,
-            input: build_input(&messages, &attach_views(app, conversation_id, &messages).await, &attachment_data),
+            input,
             has_user_attachments: !attachment_data.is_empty(),
-            tools: tools::definitions(&tools::active_tools(&messages)),
+            tools,
         };
-        let outcome = responses::stream(request, cancel.clone(), |delta| match delta {
+        let result = responses::stream(request, cancel.clone(), |delta| match delta {
             responses::Delta::Text(text) => emit(app, conversation_id, "text-delta", json!({"delta": text})),
             responses::Delta::Reasoning(text) => emit(app, conversation_id, "reasoning-delta", json!({"delta": text})),
         })
-        .await?;
+        .await;
+        let outcome = match result {
+            Ok(outcome) => outcome,
+            Err(failure) => {
+                if cancel.load(Ordering::SeqCst) {
+                    return Err("已停止".into());
+                }
+                // Nothing from a failed attempt is saved and tools only run after a complete reply,
+                // so sending again is safe; the "retry" event tells the window to drop the partial text.
+                if failure.too_long && shrink_retries < SHRINK_RETRIES {
+                    shrink_retries += 1;
+                    budget = ((estimate as f64 * ratio) as u64) * 6 / 10;
+                    emit(app, conversation_id, "retry", json!({"reason": "too-long", "attempt": shrink_retries}));
+                    continue;
+                }
+                if failure.retry && network_retries < NETWORK_RETRIES {
+                    network_retries += 1;
+                    emit(app, conversation_id, "retry", json!({"reason": "network", "attempt": network_retries, "message": failure.message}));
+                    let wait = std::time::Duration::from_secs(2 * u64::from(network_retries));
+                    let started = std::time::Instant::now();
+                    while started.elapsed() < wait {
+                        if cancel.load(Ordering::SeqCst) {
+                            return Err("已停止".into());
+                        }
+                        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                    }
+                    continue;
+                }
+                return Err(failure.message);
+            }
+        };
+        network_retries = 0;
+        // What the next request will start from: this request plus the reply that joins it.
+        let reply = estimate_text(&outcome.text)
+            + outcome.calls.iter().map(|call| estimate_text(&call.arguments) + 20).sum::<u64>();
+        let mut usage = json!({
+            "window": window,
+            "estimate": estimate,
+            "compacted": compacted,
+        });
+        match outcome.usage {
+            Some(real) => {
+                usage["input"] = json!(real.input);
+                usage["used"] = json!(real.input + real.output);
+                usage["source"] = json!("api");
+            }
+            None => {
+                usage["used"] = json!(((estimate + reply) as f64 * ratio) as u64);
+                usage["source"] = json!("estimate");
+            }
+        }
+        let mut usage = Some(usage);
         // Reasoning precedes this turn's output, so it rides on the first stored message.
         let mut reasoning = (!outcome.reasoning.is_empty()).then(|| Value::Array(outcome.reasoning));
         if !outcome.text.trim().is_empty() {
             let mut content = json!({"text": outcome.text});
             if let Some(items) = reasoning.take() {
                 content["reasoning"] = items;
+            }
+            if let Some(usage) = usage.take() {
+                content["usage"] = usage;
             }
             push(app, conversation_id, "assistant", content)?;
         }
@@ -640,6 +790,9 @@ async fn run_loop(app: &AppHandle, conversation_id: &str, cancel: Arc<AtomicBool
             });
             if let Some(items) = reasoning.take() {
                 content["reasoning"] = items;
+            }
+            if let Some(usage) = usage.take() {
+                content["usage"] = usage;
             }
             push(app, conversation_id, "tool_call", content)?;
             emit(app, conversation_id, "tool-start", json!({"name": call.name}));
@@ -661,6 +814,4 @@ async fn run_loop(app: &AppHandle, conversation_id: &str, cancel: Arc<AtomicBool
             emit(app, conversation_id, "tool-end", json!({"name": call.name}));
         }
     }
-    push(app, conversation_id, "assistant", json!({"text": "（这一轮步骤太多，我先停下来了。需要的话请告诉我继续。）"}))?;
-    Ok(())
 }

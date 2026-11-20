@@ -183,7 +183,7 @@ field 取 positive / character / negative。caseSensitive 必须明确给出。�
             "collection":{"type":"string","enum":["materials","promptDocs","automationRules","importBatches"]},
             "offset":{"type":"integer","minimum":0}
         }), &["collection"]),
-        tool("read_library_item", "按 ID 读取图库记录、PNG 原图元数据（含逐角色正负词）、素材版本、提示词文档或自动规则。省略 path 可查看字段，按 JSON Pointer 路径展开对象、数组或长文本，例如 /positivePrompt、/chunks/Comment/sampler、/characters/0/negativePrompt、/versions/0/text。按 nextOffset 续读。", json!({
+        tool("read_library_item", "按 ID 读取图库记录、PNG 原图元数据（含逐角色正负词）、素材版本、提示词文档或自动规则。条目不大时（如自动规则）一次返回全部内容（complete=true），不必再逐层展开；内容很大时只给出大字段的摘要，再按 JSON Pointer 路径展开，例如 /positivePrompt、/chunks/Comment/sampler、/characters/0/negativePrompt、/versions/0/text。按 nextOffset 续读。", json!({
             "kind":{"type":"string","enum":["row","imageMetadata","material","promptDoc","automationRule"]},
             "id":{"type":"string","description":"条目 ID，数字编号也可写成字符串"},
             "path":{"type":"string"}, "offset":{"type":"integer","minimum":0}

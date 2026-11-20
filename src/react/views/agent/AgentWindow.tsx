@@ -8,7 +8,7 @@ import { GalleryLink, isGalleryLink, remarkGalleryImages } from "./AgentGalleryL
 import { useStickToBottom } from "use-stick-to-bottom";
 import {
   agentCancel, agentMessages, agentOperations, agentSend, agentState, applyAgentPreview, deleteAgentConversation, renameAgentConversation, selectedAgentModel,
-  type AgentEvent, type AgentMessage, type AgentOperation, type AgentPreviewReport, type AgentState,
+  DEFAULT_CONTEXT_WINDOW, type AgentContextUsage, type AgentEvent, type AgentMessage, type AgentOperation, type AgentPreviewReport, type AgentState,
 } from "../../../lib/api/agent";
 import { errorText } from "../../../lib/utils/format";
 import { Button, Menu, Modal, Tooltip } from "../../ui/controls";
@@ -19,6 +19,7 @@ import { thumbnails } from "../../../lib/images/thumbnails";
 import { clearProgressiveImages } from "../../../lib/images/progressive-images";
 import { OperationCard, PreviewCard } from "./AgentCards";
 import { AgentPreferencesDialog } from "./AgentPreferencesDialog";
+import { ContextMeter } from "./ContextMeter";
 import { ImageViewerProvider, ThumbStrip, useImageViewer } from "./AgentMedia";
 import { ThoughtLine, type ThoughtStep } from "./ThoughtLine";
 import { TOOL_LABELS, describeStepDisplay, formatTime } from "./agent-format";
@@ -34,10 +35,11 @@ const SUGGESTIONS = [
   { label: "同时选中几个画师串的图", text: "在主窗口同时选中几个画师串的图" },
   { label: "还有多少图没分组？", text: "图库里有多少张图还没分组？" },
 ];
-const NO_LIVE: Live = { text: "", reasoning: "", tool: null };
+const NO_LIVE: Live = { text: "", reasoning: "", tool: null, retry: null };
 const SIDEBAR_KEY = "agent-sidebar-collapsed";
 
-type Live = { text: string; reasoning: string; tool: string | null };
+/** `retry` describes an automatic re-send in progress (network error, or context too long). */
+type Live = { text: string; reasoning: string; tool: string | null; retry: string | null };
 type StepItem = { type: "step"; id: number; at: number; doneAt: number | null; name: string; args: string; output: string | null; ok: boolean; display: Record<string, unknown> | null };
 type ReasoningItem = { type: "reasoning"; id: number; at: number; text: string };
 type Item =
@@ -87,6 +89,22 @@ function toItems(messages: AgentMessage[]): Item[] {
     }
   }
   return items;
+}
+
+/** Context usage recorded with the latest model reply. */
+function latestUsage(messages: AgentMessage[]): AgentContextUsage | null {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const usage = messages[index].content.usage as Partial<AgentContextUsage> | undefined;
+    if (usage && typeof usage.used === "number") return { used: usage.used, window: Number(usage.window) || DEFAULT_CONTEXT_WINDOW, source: usage.source === "api" ? "api" : "estimate", compacted: Number(usage.compacted) || 0 };
+  }
+  return null;
+}
+
+function retryText(payload: AgentEvent): string {
+  return payload.reason === "too-long"
+    ? "对话超出了模型能接收的长度，正在压缩较早的查询结果后重新发送…"
+    : `连接模型站点出错，正在自动重试（第 ${payload.attempt ?? 1} 次）…${payload.message ? `
+${payload.message}` : ""}`;
 }
 
 /** Groups items for display; `thinking` adds (or keeps open) a trailing thought block for the work in progress. */
@@ -280,7 +298,7 @@ export function AgentWindow() {
   const settleLive = useCallback((id: string) => {
     const shown = liveRef.current;
     void reloadMessages(id).then(() => {
-      if (currentRef.current === id) updateLive(previous => ({ text: previous.text.slice(shown.text.length), reasoning: previous.reasoning.slice(shown.reasoning.length), tool: previous.tool }));
+      if (currentRef.current === id) updateLive(previous => ({ text: previous.text.slice(shown.text.length), reasoning: previous.reasoning.slice(shown.reasoning.length), tool: previous.tool, retry: null }));
     });
   }, [reloadMessages, updateLive]);
 
@@ -293,8 +311,9 @@ export function AgentWindow() {
         if (payload.kind === "run-start" || payload.kind === "run-end") void reloadState();
         if (payload.conversationId !== currentRef.current) return;
         switch (payload.kind) {
-          case "text-delta": updateLive(previous => ({ ...previous, text: previous.text + (payload.delta ?? "") })); break;
-          case "reasoning-delta": updateLive(previous => ({ ...previous, reasoning: previous.reasoning + (payload.delta ?? "") })); break;
+          case "text-delta": updateLive(previous => ({ ...previous, retry: null, text: previous.text + (payload.delta ?? "") })); break;
+          case "reasoning-delta": updateLive(previous => ({ ...previous, retry: null, reasoning: previous.reasoning + (payload.delta ?? "") })); break;
+          case "retry": updateLive(previous => ({ ...previous, text: "", reasoning: "", retry: retryText(payload) })); break;
           case "tool-start": updateLive(previous => ({ ...previous, tool: payload.name ?? null })); break;
           case "tool-end": updateLive(previous => ({ ...previous, tool: null })); break;
           case "messages-changed": case "run-end": settleLive(payload.conversationId); break;
@@ -317,6 +336,8 @@ export function AgentWindow() {
 
   const running = !!current && !!state?.running.includes(current);
   const items = useMemo(() => toItems(messages), [messages]);
+  const usage = useMemo(() => latestUsage(messages), [messages]);
+  const contextWindow = state?.preferences.contextWindow || DEFAULT_CONTEXT_WINDOW;
   const thinking = running && !live.text;
   const blocks = useMemo(() => toBlocks(items, thinking), [items, thinking]);
   const appliedByPreview = useMemo(() => {
@@ -376,6 +397,7 @@ export function AgentWindow() {
       return { key: `step-${entry.id}`, state: pending ? (running ? "active" : "failed") : entry.ok ? "done" : "failed", content: <StepRow item={entry} interrupted={pending && !running} /> };
     });
     if (last && running && live.reasoning) steps.push({ key: "live", state: working ? "active" : "note", content: <Markdown className="thought-note" text={live.reasoning} /> });
+    if (last && running && live.retry) steps.push({ key: "retry", state: "active", content: <p className="thought-retry">{live.retry}</p> });
     if (!working && !steps.length) return null;
     const calls = block.entries.filter((entry): entry is StepItem => entry.type === "step");
     const doneLabel = calls.some(step => step.output === null) ? "已中断" : calls.length ? `已完成 ${calls.length} 步` : "已思考";
@@ -502,6 +524,7 @@ export function AgentWindow() {
                       <ChevronDown className="icon sm chip-caret" />
                     </button>
                     <span className="composer-spacer" />
+                    {current && usage && <ContextMeter usage={usage} window={contextWindow} />}
                     {running
                       ? <button type="button" className="composer-send is-stop" aria-label="停止" title="停止（已经完成的修改会保留）" onClick={() => { if (current) void agentCancel(current); }}><svg className="icon" viewBox="0 0 24 24" aria-hidden="true"><rect width="12" height="12" x="6" y="6" rx="2" fill="currentColor" stroke="none" /></svg></button>
                       : <button type="submit" className="composer-send" aria-label="发送" title="发送（Enter）" disabled={(!input.trim() && !files.length) || sending}>{sending ? <span className="spinner" aria-hidden="true" /> : <ArrowUp className="icon" />}</button>}

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { Check, ChevronDown } from "lucide-react";
 import {
-  agentModels, saveAgentPreferences, selectedAgentModel,
+  agentModels, DEFAULT_CONTEXT_WINDOW, saveAgentPreferences, selectedAgentModel,
   type AgentChannel, type AgentPreferences, type AgentState,
 } from "../../../lib/api/agent";
 import { errorText } from "../../../lib/utils/format";
@@ -47,6 +47,7 @@ function PreferencesForm({ state, catalogs, loadModels, onClose, onSaved }: {
   const [modelDrafts, setModelDrafts] = useState<Record<string, string>>({});
   const model = channel ? modelDrafts[channel.id] ?? selectedAgentModel(saved, channel.id) : "";
   const [effort, setEffort] = useState(saved.effort || "medium");
+  const [contextK, setContextK] = useState(String(Math.round((saved.contextWindow || DEFAULT_CONTEXT_WINDOW) / 1000)));
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [expanded, setExpanded] = useState(false);
@@ -72,6 +73,8 @@ function PreferencesForm({ state, catalogs, loadModels, onClose, onSaved }: {
 
   const save = async () => {
     if (!channel || saving || !(model || channel.model.trim())) return;
+    const k = Number(contextK);
+    if (!Number.isInteger(k) || k < 16 || k > 10000) { setSaveError("上下文长度请填 16 到 10000 之间的整数（单位：k tokens）。"); return; }
     setSaveError("");
     setSaving(true);
     const channelModels = { ...saved.channelModels };
@@ -81,7 +84,7 @@ function PreferencesForm({ state, catalogs, loadModels, onClose, onSaved }: {
     }
     const recent = channelModels[channel.id]?.recent ?? [];
     channelModels[channel.id] = { model, recent: model ? [model, ...recent.filter(item => item !== model)].slice(0, 5) : recent };
-    const preferences = { channelId: channel.id, model, effort, channelModels };
+    const preferences = { channelId: channel.id, model, effort, channelModels, contextWindow: k * 1000 };
     try {
       await saveAgentPreferences(state.libraryId, preferences);
       onSaved(preferences);
@@ -136,6 +139,14 @@ function PreferencesForm({ state, catalogs, loadModels, onClose, onSaved }: {
           recent={saved.channelModels[channel.id]?.recent ?? NO_MODELS} onChoose={chooseModel} />}
       </div>
       {!expanded && <p className="ag-hint">如果模型不支持调节思考强度，请选「模型默认」。</p>}
+      {!expanded && <div className="field"><span className="field-label">上下文长度</span>
+        <div className="ag-context-input">
+          <input type="number" className="r-input" inputMode="numeric" min={16} max={10000} step={1} value={contextK} disabled={saving}
+            aria-label="上下文长度（千 tokens）" onChange={event => { setContextK(event.target.value); setSaveError(""); }} />
+          <span>k tokens</span>
+        </div>
+        <p className="ag-hint">对话快到这个长度时，才会压缩较早的查询结果。不清楚模型上限就保持 200k。</p>
+      </div>}
       {saveError && <p className="ag-hint" role="alert">{saveError}</p>}
     </div>}
   </Modal>;

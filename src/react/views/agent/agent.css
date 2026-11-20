@@ -242,6 +242,20 @@
   .chip-caret { color: var(--text-3); opacity: .7; }
   .chip:hover { background: var(--chat-hover); color: var(--text); }
   .composer-spacer { flex: 1; }
+  .context-meter { flex: none; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; color: var(--text-3); transition: background .15s; }
+  .context-meter:hover { background: var(--chat-hover); }
+  .context-meter svg { width: 20px; height: 20px; fill: none; stroke-width: 2.6; }
+  .context-meter__track { stroke: var(--line); }
+  .context-meter__fuel { stroke: currentColor; stroke-linecap: round; transition: stroke-dasharray .4s var(--ease); }
+  .context-meter.is-warn { color: var(--warning); }
+  .context-meter.is-low { color: var(--danger); }
+  .context-meter__tip { display: flex; flex-direction: column; gap: 1px; }
+  .context-meter__tip strong { font-weight: 600; }
+  .context-meter__note { opacity: .72; }
+  .thought-retry { margin: 0; color: var(--warning); font-size: 13px; white-space: pre-line; overflow-wrap: anywhere; }
+  .ag-context-input { display: flex; align-items: center; gap: 8px; }
+  .ag-context-input .r-input { width: 120px; }
+  .ag-context-input > span { color: var(--text-3); font-size: 13px; }
   .composer-send { flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: var(--inverse); color: var(--on-inverse); transition: background .15s, transform .1s; }
   .composer-send .icon { width: 18px; height: 18px; stroke-width: 2.2; }
   .composer-send:hover:not(:disabled) { background: var(--inverse-hover); }

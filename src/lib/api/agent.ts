@@ -4,7 +4,12 @@ export interface AgentConversation { id: string; title: string; createdAt: strin
 export interface AgentChannelModels { model: string; recent: string[] }
 export interface AgentPreferences {
   channelId: string; model: string; effort: string; channelModels: Record<string, AgentChannelModels>;
+  /** Context window in tokens; 0 or missing means the 200k default. */
+  contextWindow?: number;
 }
+export const DEFAULT_CONTEXT_WINDOW = 200_000;
+/** How full the context was after the latest model reply (stored on that turn's first message). */
+export interface AgentContextUsage { used: number; window: number; source: "api" | "estimate"; compacted?: number }
 export interface AgentChannel { id: string; name: string; model: string; hasKey: boolean; catalogRevision: string }
 export interface AgentState { libraryId: string; conversations: AgentConversation[]; running: string[]; preferences: AgentPreferences; channels: AgentChannel[] }
 
@@ -79,7 +84,12 @@ export interface AgentOperation {
   changedRows: number; state: "applied" | "undone"; undoMessage: string | null; undoneAt: string | null;
 }
 export interface AgentUndoOutcome { operationId: number; restoredRows: number; skippedRows: number; message: string }
-export interface AgentEvent { conversationId: string; kind: "run-start" | "text-delta" | "reasoning-delta" | "tool-start" | "tool-end" | "messages-changed" | "run-end"; delta?: string; name?: string }
+export interface AgentEvent {
+  conversationId: string; kind: "run-start" | "text-delta" | "reasoning-delta" | "tool-start" | "tool-end" | "messages-changed" | "run-end" | "retry";
+  delta?: string; name?: string;
+  /** Retry events: why the request is being sent again, and which attempt this is. */
+  reason?: "network" | "too-long"; attempt?: number; message?: string;
+}
 
 export const agentState = () => invoke<AgentState>("agent_state");
 export const saveAgentPreferences = (libraryId: string, preferences: AgentPreferences) =>

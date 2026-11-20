@@ -25,12 +25,84 @@ pub struct FunctionCall {
     pub arguments: String,
 }
 
+/// Token counts the site reported for one request.
+#[derive(Clone, Copy)]
+pub struct Usage {
+    pub input: u64,
+    pub output: u64,
+}
+
 #[derive(Default)]
 pub struct Outcome {
     pub text: String,
     pub calls: Vec<FunctionCall>,
     /// Reasoning items some providers (e.g. DeepSeek thinking mode) require to be sent back.
     pub reasoning: Vec<Value>,
+    pub usage: Option<Usage>,
+}
+
+/// Why a request failed, and whether sending it again could help.
+pub struct Failure {
+    pub message: String,
+    /// Network trouble or a busy site: the same request may succeed in a moment.
+    pub retry: bool,
+    /// The site said the request is longer than the model can take.
+    pub too_long: bool,
+}
+
+impl Failure {
+    fn new(message: impl Into<String>) -> Self {
+        Self { message: message.into(), retry: false, too_long: false }
+    }
+
+    fn retry(message: impl Into<String>) -> Self {
+        Self { message: message.into(), retry: true, too_long: false }
+    }
+}
+
+impl From<String> for Failure {
+    fn from(message: String) -> Self {
+        Self::new(message)
+    }
+}
+
+impl From<&str> for Failure {
+    fn from(message: &str) -> Self {
+        Self::new(message)
+    }
+}
+
+fn parse_usage(value: &Value) -> Option<Usage> {
+    let number = |keys: [&str; 2]| keys.iter().find_map(|key| value[*key].as_u64());
+    let input = number(["input_tokens", "prompt_tokens"])?;
+    let output = number(["output_tokens", "completion_tokens"]).unwrap_or(0);
+    (input > 0).then_some(Usage { input, output })
+}
+
+fn context_overflow(text: &str) -> bool {
+    let lower = text.to_lowercase();
+    [
+        "context_length", "context length", "context window", "maximum context", "too many tokens",
+        "prompt is too long", "input is too long", "too long for", "token limit", "tokens exceed",
+        "exceeds the maximum", "input token count",
+    ]
+    .iter()
+    .any(|needle| lower.contains(needle))
+}
+
+/// The innermost causes of a connection error, e.g. "connection closed before message completed".
+fn network_detail(error: &reqwest::Error) -> String {
+    let mut causes = Vec::new();
+    let mut source = std::error::Error::source(error);
+    while let Some(cause) = source {
+        let text = cause.to_string();
+        if !text.is_empty() && !causes.contains(&text) {
+            causes.push(text);
+        }
+        source = cause.source();
+    }
+    let detail = if causes.is_empty() { error.to_string() } else { causes.join("；") };
+    detail.chars().take(300).collect()
 }
 
 pub enum Delta<'a> {
@@ -120,7 +192,7 @@ pub async fn stream(
     request: Request<'_>,
     cancel: Arc<AtomicBool>,
     mut on_delta: impl FnMut(Delta<'_>),
-) -> Result<Outcome, String> {
+) -> Result<Outcome, Failure> {
     let mut body = json!({
         "model": request.model,
         "instructions": request.instructions,
@@ -143,15 +215,18 @@ pub async fn stream(
         .await
         .map_err(|error| {
             if error.is_timeout() {
-                "连接模型站点超时，请检查网络后重试。".to_owned()
+                Failure::new("连接模型站点超时，请检查网络后重试。")
             } else {
-                "无法连接模型站点，请检查网络或渠道地址。".to_owned()
+                Failure::retry(format!("无法连接模型站点，请检查网络或渠道地址。\n（错误详情：{}）", network_detail(&error)))
             }
         })?;
     let status = response.status().as_u16();
     if !(200..300).contains(&status) {
         let text = response.text().await.unwrap_or_default();
-        return Err(friendly_status(status, &text, request.model, request.has_user_attachments));
+        let message = friendly_status(status, &text, request.model, request.has_user_attachments);
+        let too_long = status == 413 || (matches!(status, 400 | 422 | 500..=599) && context_overflow(&text));
+        let retry = !too_long && matches!(status, 408 | 429 | 500 | 502 | 503 | 504 | 520..=524);
+        return Err(Failure { message, retry, too_long });
     }
     let is_json = response
         .headers()
@@ -160,10 +235,11 @@ pub async fn stream(
         .is_some_and(|value| value.contains("application/json"));
     let mut outcome = Outcome::default();
     if is_json {
-        let value: Value = response.json().await.map_err(|_| "模型返回的内容无法解析")?;
+        let value: Value = response.json().await.map_err(|_| Failure::retry("模型返回的内容无法解析"))?;
         for item in value["output"].as_array().into_iter().flatten() {
             collect_item(item, &mut outcome, false);
         }
+        outcome.usage = parse_usage(&value["usage"]);
         if !outcome.text.is_empty() {
             on_delta(Delta::Text(&outcome.text.clone()));
         }
@@ -181,7 +257,9 @@ pub async fn stream(
         let chunk = match tokio::time::timeout(Duration::from_millis(300), stream.next()).await {
             Err(_) => continue,
             Ok(None) => break,
-            Ok(Some(Err(_))) => return Err("与模型站点的连接中断了，请重试。".into()),
+            Ok(Some(Err(error))) => {
+                return Err(Failure::retry(format!("与模型站点的连接中断了，请重试。\n（错误详情：{}）", network_detail(&error))));
+            }
             Ok(Some(Ok(chunk))) => chunk,
         };
         buffer.extend_from_slice(&chunk);
@@ -224,6 +302,7 @@ pub async fn stream(
                         let reason = value["response"]["incomplete_details"]["reason"].as_str().unwrap_or("未知原因");
                         outcome.text.push_str(&format!("\n\n（模型输出被截断：{reason}）"));
                     }
+                    outcome.usage = parse_usage(&value["response"]["usage"]);
                     completed = true;
                 }
                 "response.failed" | "error" => {
@@ -232,18 +311,27 @@ pub async fn stream(
                         .or(value["error"]["message"].as_str())
                         .or(value["message"].as_str())
                         .unwrap_or("未知错误");
-                    return Err(friendly_status(500, message, request.model, request.has_user_attachments)
-                        .replace("模型站点暂时出错（HTTP 500）", "模型返回了错误"));
+                    let lower = message.to_lowercase();
+                    let busy = ["overloaded", "rate limit", "temporarily", "try again", "unavailable", "timeout"]
+                        .iter()
+                        .any(|needle| lower.contains(needle));
+                    let too_long = context_overflow(message);
+                    return Err(Failure {
+                        message: friendly_status(500, message, request.model, request.has_user_attachments)
+                            .replace("模型站点暂时出错（HTTP 500）", "模型返回了错误"),
+                        retry: busy && !too_long,
+                        too_long,
+                    });
                 }
                 _ => {}
             }
         }
     }
     if !completed && outcome.text.is_empty() && outcome.calls.is_empty() {
-        return Err(format!(
+        return Err(Failure::retry(format!(
             "模型「{}」没有返回任何内容。它可能不支持 Responses 接口，请换一个模型再试。",
             request.model
-        ));
+        )));
     }
     if outcome.reasoning.is_empty() && !raw_reasoning.trim().is_empty() {
         outcome.reasoning.push(json!({

@@ -147,10 +147,23 @@ fn next_offset(offset: usize, returned: usize, total: usize) -> Option<usize> {
     (end < total).then_some(end)
 }
 
+/// A value up to this size (as JSON) comes back whole, nested fields included.
+const WHOLE_VALUE_CHARS: usize = 16_000;
+/// Inside a larger value, each field up to this size is still shown in full.
+const WHOLE_FIELD_CHARS: usize = 2_000;
+const TEXT_PAGE_CHARS: usize = 16_000;
+
+fn json_chars(value: &Value) -> usize {
+    serde_json::to_string(value).map_or(usize::MAX, |text| text.chars().count())
+}
+
 fn preview(value: &Value) -> Value {
+    if json_chars(value) <= WHOLE_FIELD_CHARS {
+        return value.clone();
+    }
     match value {
-        Value::String(text) if text.chars().take(201).count() > 200 => {
-            json!({"type":"text","preview":text.chars().take(200).collect::<String>(),"truncated":true})
+        Value::String(text) => {
+            json!({"type":"text","length":text.chars().count(),"preview":text.chars().take(200).collect::<String>(),"truncated":true})
         }
         Value::Array(items) => json!({"type":"array","length":items.len()}),
         Value::Object(fields) => json!({"type":"object","fields":fields.len()}),
@@ -159,9 +172,12 @@ fn preview(value: &Value) -> Value {
 }
 
 fn value_page(value: &Value, offset: usize) -> Value {
+    if offset == 0 && !value.is_string() && json_chars(value) <= WHOLE_VALUE_CHARS {
+        return json!({"value":value,"complete":true,"nextOffset":null});
+    }
     let (data, returned, total) = match value {
         Value::String(text) => {
-            let page: String = text.chars().skip(offset).take(4096).collect();
+            let page: String = text.chars().skip(offset).take(TEXT_PAGE_CHARS).collect();
             let returned = page.chars().count();
             (Value::String(page), returned, text.chars().count())
         }
