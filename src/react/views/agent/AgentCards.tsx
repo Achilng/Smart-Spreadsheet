@@ -33,6 +33,23 @@ const shortTags = (tags: string[]) => {
     + (tally.length > TAGS_NAMED ? ` 等 ${tally.length} 个` : "");
 };
 const CHIPS_SHOWN = 16;
+/** New groups / TAGs named in a preview before the rest are counted. */
+const NEW_NAMED = 8;
+const namedList = (names: string[]) => names.slice(0, NEW_NAMED).map(name => `「${clip(name, FRAGMENT_CLIP)}」`).join("")
+  + (names.length > NEW_NAMED ? ` 等 ${names.length} 个` : "");
+
+/** Plain-language lines the backend wrote for group / TAG operations and rule trial runs. */
+function SummaryLines({ lines }: { lines?: string[] }) {
+  const [open, setOpen] = useState(false);
+  if (!lines?.length) return null;
+  const shown = open ? lines : lines.slice(0, GROUPS_SHOWN);
+  return <div className="ag-summary">
+    <ul>{shown.map((line, index) => <li key={index}>{line}</li>)}</ul>
+    {lines.length > GROUPS_SHOWN && <button type="button" className="ag-link" onClick={() => setOpen(!open)}>
+      {open ? <><ChevronDown size={14} />收起</> : <><ChevronRight size={14} />还有 {lines.length - GROUPS_SHOWN} 条</>}
+    </button>}
+  </div>;
+}
 
 /** Plain-language parts of one change group, e.g. ["加上 TAG「双人」", "移到分组「A」"]. */
 export function describeGroup(group: AgentChangeGroup): string[] {
@@ -319,10 +336,16 @@ export function PreviewCard({ report, applied, onApply, onChanged }: {
     finally { setApplying(false); }
   };
   const badge = !applied ? "预演 · 还没改动" : undone ? "已撤销" : "已执行";
+  const library = Boolean(report.library);
   const extras = [
-    report.newTags.length > 0 && `${tagList(report.newTags)}是新 TAG，执行时会自动创建`,
-    report.newGroups.length > 0 && `分组${report.newGroups.map(name => `「${name}」`).join("")}还不存在，执行时会自动创建`,
+    report.newTags.length > 0 && `${namedList(report.newTags)}是新 TAG，执行时会自动创建`,
+    report.newGroups.length > 0 && `分组${namedList(report.newGroups)}还不存在，执行时会自动创建`,
   ].filter(Boolean) as string[];
+  const lede = library
+    ? !applied ? report.changedRows > 0 ? <>会影响 <b>{formatCount(report.changedRows)}</b> 张图片的分组或 TAG，图片本身不会被删除</> : <>不涉及图片的分组或 TAG</>
+      : undone ? <>这次整理已撤销</> : <>已完成{applied.changedRows > 0 && <>，影响了 <b>{formatCount(applied.changedRows)}</b> 张图片</>}，原图文件没有被改动</>
+    : !applied ? <>将修改 <b>{formatCount(report.changedRows)}</b> 张图片</> : undone ? <>这次修改已撤销</> : <>已修改 <b>{formatCount(applied.changedRows)}</b> 张图片，原图文件没有被改动</>;
+  const canApply = !applied && (report.changedRows > 0 || library);
   return <section className={`ag-card${applied ? " is-applied" : ""}${undone ? " is-undone" : ""}`}>
     <header className="ag-card-head">
       {applied ? <Check size={16} /> : <Wand2 size={16} />}
@@ -331,16 +354,17 @@ export function PreviewCard({ report, applied, onApply, onChanged }: {
       {applied && <span className="ag-time">#{applied.id} · {formatTime(applied.createdAt)}</span>}
     </header>
     <p className="ag-lede">
-      {!applied ? <>将修改 <b>{formatCount(report.changedRows)}</b> 张图片</> : undone ? <>这次修改已撤销</> : <>已修改 <b>{formatCount(applied.changedRows)}</b> 张图片，原图文件没有被改动</>}
+      {lede}
       {!applied && report.unchangedRows > 0 && <span className="ag-muted">，另有 {formatCount(report.unchangedRows)} 张本来就符合，不用改</span>}
     </p>
+    <SummaryLines lines={report.summary} />
     {undone && applied?.undoMessage && <p className="ag-op-line is-muted">{applied.undoMessage}</p>}
     {report.warnings.length > 0 && <div className="ag-warnings">{report.warnings.map(text => <p key={text}><AlertTriangle size={14} />{text}</p>)}</div>}
     {extras.length > 0 && !applied && <p className="ag-note">{extras.join("；")}</p>}
     <ChangeGroups groups={groups} otherRows={report.otherRows} source={source} compact={!!applied} legacy={!report.changeGroups} />
     <div className="ag-card-actions">
-      {!applied && report.changedRows > 0 && <Button variant="primary" size="sm" disabled={!onApply || applying} title={onApply ? undefined : "助手正在处理，等它停下来再执行"} onClick={() => void apply()}>
-        <Check size={14} />{applying ? "执行中…" : `确认执行（${formatCount(report.changedRows)} 张）`}
+      {canApply && <Button variant="primary" size="sm" disabled={!onApply || applying} title={onApply ? undefined : "助手正在处理，等它停下来再执行"} onClick={() => void apply()}>
+        <Check size={14} />{applying ? "执行中…" : report.changedRows > 0 ? `确认执行（${formatCount(report.changedRows)} 张）` : "确认执行"}
       </Button>}
       {applied && !undone && <Button size="sm" disabled={undoing} onClick={() => void undo()}><Undo2 size={14} />{undoing ? "撤销中…" : "撤销这次修改"}</Button>}
       {report.changedRows > 0 && !undone && <Button size="sm" variant="ghost" onClick={() => void showInMain(source)}><MonitorUp size={14} />在主窗口查看</Button>}
@@ -354,8 +378,15 @@ export function OperationCard({ operation, onChanged }: { operation: AgentOperat
   const [details, setDetails] = useState(false);
   const { busy, undo } = useUndo(operation, onChanged);
   const undone = operation.state === "undone";
-  const isRule = operation.kind === "rule";
+  const isRule = operation.kind === "rule" || operation.kind === "rule_update" || operation.kind === "rule_delete";
   const report = operation.report;
+  const ruleName = report.after?.name ?? report.before?.name ?? report.rule?.name ?? "";
+  const ruleLine = operation.kind === "rule_update"
+    ? `修改了自动规则「${ruleName}」${report.changed?.length ? `（${report.changed.join("、")}）` : ""}。撤销 = 改回修改前的样子。`
+    : operation.kind === "rule_delete" ? `删除了自动规则「${ruleName}」。撤销 = 恢复这条规则。`
+      : `新建了自动规则「${ruleName}」，以后导入新图时会自动执行。撤销 = 删除这条规则。`;
+  const undoLabel = operation.kind === "rule_update" ? "撤销（改回原样）" : operation.kind === "rule_delete" ? "撤销（恢复规则）" : isRule ? "撤销（删除规则）" : "撤销这次修改";
+  const library = operation.kind === "library";
   const source: Source = { source: "operation", id: String(operation.id) };
   const groups = report.changeGroups ?? samplesAsGroups(report.samples ?? []);
   return <section className={`ag-card is-operation${undone ? " is-undone" : ""}`}>
@@ -366,13 +397,15 @@ export function OperationCard({ operation, onChanged }: { operation: AgentOperat
       <span className="ag-time">#{operation.id} · {formatTime(operation.createdAt)}</span>
     </header>
     {isRule
-      ? <p className="ag-op-line">新建了自动规则「{report.rule?.name ?? ""}」，以后导入新图时会自动执行。撤销 = 删除这条规则。</p>
-      : <p className="ag-lede">修改了 <b>{formatCount(operation.changedRows)}</b> 张图片，原图文件没有被改动</p>}
+      ? <p className="ag-op-line">{ruleLine}</p>
+      : library ? <p className="ag-lede">{operation.changedRows > 0 ? <>影响了 <b>{formatCount(operation.changedRows)}</b> 张图片的分组或 TAG，</> : null}原图文件没有被改动</p>
+        : <p className="ag-lede">修改了 <b>{formatCount(operation.changedRows)}</b> 张图片，原图文件没有被改动</p>}
+    {library && <SummaryLines lines={report.summary} />}
     {undone && operation.undoMessage && <p className="ag-op-line is-muted">{operation.undoMessage}</p>}
     {!isRule && <ChangeGroups groups={groups} otherRows={report.otherRows} source={source} compact legacy={!report.changeGroups} />}
     <div className="ag-card-actions">
-      {!undone && <Button size="sm" disabled={busy} onClick={() => void undo()}><Undo2 size={14} />{busy ? "撤销中…" : isRule ? "撤销（删除规则）" : "撤销这次修改"}</Button>}
-      {!isRule && !undone && <Button size="sm" variant="ghost" onClick={() => void showInMain(source)}><MonitorUp size={14} />在主窗口查看</Button>}
+      {!undone && <Button size="sm" disabled={busy} onClick={() => void undo()}><Undo2 size={14} />{busy ? "撤销中…" : undoLabel}</Button>}
+      {!isRule && !undone && operation.changedRows > 0 && <Button size="sm" variant="ghost" onClick={() => void showInMain(source)}><MonitorUp size={14} />在主窗口查看</Button>}
       {!isRule && <button type="button" className="ag-link ag-details-toggle" aria-expanded={details} onClick={() => setDetails(!details)}>{details ? <ChevronDown size={14} /> : <ChevronRight size={14} />}详细信息</button>}
     </div>
     {!isRule && details && <Details report={report} source={source} total={operation.changedRows} />}

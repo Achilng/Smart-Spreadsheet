@@ -5,12 +5,13 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+use super::model_badge::badge_label;
 use super::target::Resolved;
 use super::{Res, s};
 use crate::automation::actions::{note_sequence_prefixes, simulate_actions};
 use crate::automation::matching::build_regex;
 use crate::automation::model::{PromptActionField, RuleAction, RuleRow, default_note_separator};
-use crate::automation::text::{normalized_strings, parse_prompt_tokens, prompt_token_set};
+use crate::automation::text::{parse_prompt_tokens, prompt_token_set};
 use crate::automation::validation::validate_action;
 use crate::db::Database;
 use crate::db::automation_rules::execution::seed_note_sequence_counters;
@@ -71,6 +72,54 @@ pub enum Action {
     SetFavorite {
         favorite: bool,
     },
+    PrefixArtist {
+        artists: Vec<String>,
+    },
+}
+
+/// Per-image values usable as `{name}` in group names, notes and TAGs.
+pub(crate) const PLACEHOLDERS: &[&str] = &[
+    "id", "artists", "artistAlias", "model", "modelBadge", "sampler", "steps", "scale", "seed",
+    "width", "height", "fileName",
+];
+
+fn uses_placeholder(text: &str) -> bool {
+    PLACEHOLDERS.iter().any(|name| text.contains(&format!("{{{name}}}")))
+}
+
+impl Action {
+    /// Whether this action's text varies per image.
+    fn templated(&self) -> bool {
+        match self {
+            Action::SetGroup { group_name, .. } => uses_placeholder(group_name),
+            Action::SetNote { value } | Action::AppendNote { value, .. } => uses_placeholder(value),
+            Action::AddTags { tags } => tags.iter().any(|tag| uses_placeholder(tag)),
+            _ => false,
+        }
+    }
+
+    /// Convert an automation rule action; `None` for actions that only make sense during import.
+    pub(crate) fn from_rule(action: &RuleAction, group_names: &HashMap<i64, String>) -> Res<Option<Action>> {
+        Ok(Some(match action.clone() {
+            RuleAction::AddTags { tags } => Action::AddTags { tags },
+            RuleAction::RemoveTags { tags } => Action::RemoveTags { tags },
+            RuleAction::SetGroup { group_id, only_if_ungrouped } => Action::SetGroup {
+                group_name: group_names.get(&group_id).cloned().ok_or_else(|| format!("规则里的分组 #{group_id} 已不存在"))?,
+                only_if_ungrouped,
+            },
+            RuleAction::ClearGroup => Action::ClearGroup,
+            RuleAction::AppendPrompt { field, value } => Action::AppendPrompt { field, value },
+            RuleAction::DeletePromptTags { field, value } => Action::DeletePromptTags { field, value },
+            RuleAction::ReplacePrompt { field, find, replace, case_sensitive } => Action::ReplacePrompt { field, find, replace, case_sensitive },
+            RuleAction::RegexReplacePrompt { field, pattern, replace, case_sensitive } => Action::RegexReplacePrompt { field, pattern, replace, case_sensitive },
+            RuleAction::PrefixArtist { artists } => Action::PrefixArtist { artists },
+            RuleAction::SetNote { value } => Action::SetNote { value },
+            RuleAction::SetNoteSequence { prefix } => Action::SetNoteSequence { prefix },
+            RuleAction::AppendNote { value, separator } => Action::AppendNote { value, separator },
+            RuleAction::ClearNote => Action::ClearNote,
+            RuleAction::StopProcessing => return Ok(None),
+        }))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -108,9 +157,85 @@ pub struct RowChange {
 
 /// Groups that do not exist yet get negative placeholder IDs until apply creates them.
 pub(crate) struct Plan {
+    /// Fixed rule per action; `None` for favourites and for templated actions.
     pub(crate) rule_actions: Vec<Option<RuleAction>>,
+    templated: Vec<bool>,
     pub(crate) new_groups: Vec<String>,
     pub(crate) group_names: HashMap<i64, String>,
+    group_ids: HashMap<String, i64>,
+    aliases: HashMap<String, String>,
+}
+
+impl Plan {
+    fn group_id(&mut self, name: &str) -> i64 {
+        if let Some(id) = self.group_ids.get(name) {
+            return *id;
+        }
+        self.new_groups.push(name.to_owned());
+        let placeholder = -(self.new_groups.len() as i64);
+        self.group_names.insert(placeholder, name.to_owned());
+        self.group_ids.insert(name.to_owned(), placeholder);
+        placeholder
+    }
+
+    fn placeholder(&self, name: &str, row: &RuleRow, resolved: &Resolved) -> Option<String> {
+        let text = |value: &Option<String>| value.as_deref().map(str::trim).filter(|v| !v.is_empty()).map(str::to_owned);
+        match name {
+            "id" => Some(row.id.to_string()),
+            "artists" => text(&row.artists),
+            "artistAlias" => resolved
+                .index
+                .get(&row.id)
+                .and_then(|entry| entry.artist_key.as_ref())
+                .and_then(|key| self.aliases.get(key))
+                .map(|alias| alias.trim().to_owned())
+                .filter(|alias| !alias.is_empty())
+                .or_else(|| text(&row.artists)),
+            "model" => text(&row.generation_model),
+            "modelBadge" => badge_label(row.generation_model.as_deref()).map(str::to_owned),
+            "sampler" => text(&row.generation_sampler),
+            "steps" => row.generation_steps.map(|v| v.to_string()),
+            "scale" => row.generation_scale.map(|v| v.to_string()),
+            "seed" => text(&row.generation_seed),
+            "width" => row.image_width.map(|v| v.to_string()),
+            "height" => row.image_height.map(|v| v.to_string()),
+            "fileName" => row.image_path.as_deref().and_then(|path| path.rsplit(['/', '\\']).next()).map(str::to_owned),
+            _ => None,
+        }
+    }
+
+    /// Fill in a template for one image; `None` when a value it needs is missing.
+    fn expand(&self, template: &str, row: &RuleRow, resolved: &Resolved) -> Option<String> {
+        let mut text = template.to_owned();
+        for name in PLACEHOLDERS {
+            let token = format!("{{{name}}}");
+            if text.contains(&token) {
+                text = text.replace(&token, &self.placeholder(name, row, resolved)?);
+            }
+        }
+        let text = text.trim().to_owned();
+        (!text.is_empty()).then_some(text)
+    }
+
+    /// The rule a templated action becomes for one image.
+    fn expanded(&self, action: &Action, row: &RuleRow, resolved: &Resolved) -> Option<RuleAction> {
+        match action {
+            Action::SetGroup { group_name, only_if_ungrouped } => {
+                let name = self.expand(group_name, row, resolved)?;
+                Some(RuleAction::SetGroup { group_id: *self.group_ids.get(&name)?, only_if_ungrouped: *only_if_ungrouped })
+            }
+            Action::SetNote { value } => Some(RuleAction::SetNote { value: self.expand(value, row, resolved)? }),
+            Action::AppendNote { value, separator } => Some(RuleAction::AppendNote {
+                value: self.expand(value, row, resolved)?,
+                separator: separator.clone(),
+            }),
+            Action::AddTags { tags } => {
+                let tags = tags.iter().filter_map(|tag| self.expand(tag, row, resolved)).collect::<Vec<_>>();
+                (!tags.is_empty()).then_some(RuleAction::AddTags { tags })
+            }
+            _ => None,
+        }
+    }
 }
 
 pub(crate) fn field_name(field: PromptActionField) -> &'static str {
@@ -133,19 +258,47 @@ fn field_value(row: &RuleRow, field: &str) -> Option<String> {
 }
 
 impl Database {
-    pub(crate) fn agent_plan(&self, actions: &[Action]) -> Res<Plan> {
+    /// Rules for each action. Templated actions are filled in per image, so the plan sees the rows.
+    pub(crate) fn agent_plan(&self, actions: &[Action], resolved: &Resolved) -> Res<Plan> {
         if actions.is_empty() {
             return Err("至少需要一个修改动作".into());
         }
-        let mut group_names = HashMap::new();
-        let mut name_to_id = HashMap::new();
+        let mut plan = Plan {
+            rule_actions: Vec::new(),
+            templated: Vec::new(),
+            new_groups: Vec::new(),
+            group_names: HashMap::new(),
+            group_ids: HashMap::new(),
+            aliases: HashMap::new(),
+        };
         for group in self.list_groups().map_err(s)? {
-            group_names.insert(group.id, group.name.clone());
-            name_to_id.insert(group.name, group.id);
+            plan.group_names.insert(group.id, group.name.clone());
+            plan.group_ids.insert(group.name, group.id);
         }
-        let mut new_groups: Vec<String> = Vec::new();
-        let mut rule_actions = Vec::new();
+        if actions.iter().any(Action::templated) {
+            let mut statement = self
+                .connection
+                .prepare("SELECT key, alias FROM dedupe_aliases WHERE mode = 'artists' AND alias != ''")
+                .map_err(s)?;
+            plan.aliases = statement
+                .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+                .map_err(s)?
+                .collect::<Result<HashMap<_, _>, _>>()
+                .map_err(s)?;
+        }
         for action in actions {
+            if action.templated() {
+                if let Action::SetGroup { group_name, .. } = action {
+                    for row in &resolved.rows {
+                        if let Some(name) = plan.expand(group_name, row, resolved) {
+                            plan.group_id(&name);
+                        }
+                    }
+                }
+                plan.rule_actions.push(None);
+                plan.templated.push(true);
+                continue;
+            }
             let rule = match action {
                 Action::AddTags { tags } => Some(RuleAction::AddTags { tags: tags.clone() }),
                 Action::RemoveTags { tags } => Some(RuleAction::RemoveTags { tags: tags.clone() }),
@@ -154,22 +307,7 @@ impl Database {
                     if name.is_empty() {
                         return Err("分组名称不能为空".into());
                     }
-                    let id = match name_to_id.get(name) {
-                        Some(id) => *id,
-                        None => {
-                            let position = match new_groups.iter().position(|value| value == name) {
-                                Some(position) => position,
-                                None => {
-                                    new_groups.push(name.to_owned());
-                                    new_groups.len() - 1
-                                }
-                            };
-                            let placeholder = -1 - position as i64;
-                            group_names.insert(placeholder, name.to_owned());
-                            placeholder
-                        }
-                    };
-                    Some(RuleAction::SetGroup { group_id: id, only_if_ungrouped: *only_if_ungrouped })
+                    Some(RuleAction::SetGroup { group_id: plan.group_id(name), only_if_ungrouped: *only_if_ungrouped })
                 }
                 Action::ClearGroup => Some(RuleAction::ClearGroup),
                 Action::AppendPrompt { field, value } => {
@@ -203,6 +341,7 @@ impl Database {
                 Action::SetNoteSequence { prefix } => {
                     Some(RuleAction::SetNoteSequence { prefix: prefix.clone() })
                 }
+                Action::PrefixArtist { artists } => Some(RuleAction::PrefixArtist { artists: artists.clone() }),
                 Action::SetFavorite { .. } => None,
             };
             if let Some(rule) = &rule {
@@ -212,26 +351,39 @@ impl Database {
                     other => validate_action(other).map_err(s)?,
                 }
             }
-            rule_actions.push(rule);
+            plan.rule_actions.push(rule);
+            plan.templated.push(false);
         }
-        Ok(Plan { rule_actions, new_groups, group_names })
+        Ok(plan)
     }
 
+    /// Per-row changes, plus how many (row, templated action) pairs were skipped for a missing value.
     pub(crate) fn agent_simulate(
         &self,
         resolved: &Resolved,
         actions: &[Action],
         plan: &Plan,
-    ) -> Res<Vec<RowChange>> {
+    ) -> Res<(Vec<RowChange>, usize)> {
         let rule_list = plan.rule_actions.iter().flatten().cloned().collect::<Vec<_>>();
         let mut counters =
             seed_note_sequence_counters(&self.connection, &note_sequence_prefixes(&rule_list))
                 .map_err(s)?;
         let mut changes = Vec::new();
+        let mut skipped = 0;
         for row in &resolved.rows {
             let mut updated = row.clone();
             let mut favorite = resolved.favorite(row.id);
-            for (action, rule) in actions.iter().zip(&plan.rule_actions) {
+            for (index, action) in actions.iter().enumerate() {
+                let expanded;
+                let rule = if plan.templated[index] {
+                    expanded = plan.expanded(action, row, resolved);
+                    if expanded.is_none() {
+                        skipped += 1;
+                    }
+                    expanded.as_ref()
+                } else {
+                    plan.rule_actions[index].as_ref()
+                };
                 match (action, rule) {
                     (Action::SetFavorite { favorite: value }, _) => favorite = *value,
                     (Action::DeletePromptTags { field, value }, Some(rule)) => {
@@ -290,10 +442,11 @@ impl Database {
                 changes.push(change);
             }
         }
-        Ok(changes)
+        Ok((changes, skipped))
     }
 
-    pub(crate) fn agent_missing_tags(&self, actions: &[Action]) -> Res<Vec<String>> {
+    /// TAGs the changes add that the library does not have yet.
+    pub(crate) fn agent_missing_tags(&self, changes: &[RowChange]) -> Res<Vec<String>> {
         let existing = self
             .list_tags()
             .map_err(s)?
@@ -301,13 +454,9 @@ impl Database {
             .map(|tag| tag.name)
             .collect::<HashSet<_>>();
         let mut missing = Vec::new();
-        for action in actions {
-            if let Action::AddTags { tags } = action {
-                for tag in normalized_strings(tags) {
-                    if !existing.contains(&tag) && !missing.contains(&tag) {
-                        missing.push(tag);
-                    }
-                }
+        for tag in changes.iter().flat_map(|change| &change.tags_added) {
+            if !existing.contains(tag) && !missing.contains(tag) {
+                missing.push(tag.clone());
             }
         }
         Ok(missing)
@@ -343,6 +492,12 @@ pub struct PreviewReport {
     /// Rows left out of `change_groups` once it reaches its size limit.
     #[serde(default)]
     pub other_rows: usize,
+    /// Plain-language lines for changes that are not per-row edits (renaming a group, merging TAGs…).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub summary: Vec<String>,
+    /// Set on library-management previews: the operation that will run.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub library: Option<Value>,
 }
 
 const GROUP_LIMIT: usize = 40;

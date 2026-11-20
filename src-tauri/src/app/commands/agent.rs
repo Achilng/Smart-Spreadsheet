@@ -199,6 +199,9 @@ pub(crate) async fn agent_undo(operation_id: i64, app: tauri::AppHandle) -> Resu
     .await?;
     let _ = handle.emit("agent://library-changed", ());
     let _ = handle.emit("agent://operations-changed", ());
+    if operation.as_ref().is_some_and(|operation| operation.kind.starts_with("rule")) {
+        let _ = handle.emit("automation-rules://changed", ());
+    }
     if let Some(operation) = operation {
         note_user_action(
             &handle,
@@ -221,10 +224,11 @@ pub(crate) async fn agent_apply_preview(conversation_id: String, preview_id: Str
     let record = blocking(app, move |runtime| runtime.agent_db(true, |db| db.agent_apply(&id, &preview_id))).await?;
     let _ = handle.emit("agent://library-changed", ());
     let _ = handle.emit("agent://operations-changed", ());
+    let rows = if record.changed_rows > 0 { format!("，影响了 {} 张", record.changed_rows) } else { String::new() };
     note_user_action(
         &handle,
         Some(&conversation_id),
-        format!("（我在预演卡片上点了「确认执行」：「{}」已执行，修改了 {} 张，操作记录 #{}）", record.title, record.changed_rows, record.id),
+        format!("（我在预演卡片上点了「确认执行」：「{}」已执行{rows}，操作记录 #{}）", record.title, record.id),
         json!({"action": "apply", "operationId": record.id, "title": record.title}),
     );
     Ok(record)
@@ -275,4 +279,9 @@ pub(crate) fn agent_report_main_view(
     app: tauri::AppHandle,
 ) {
     app.state::<Engine>().report_main_view(selection, filtered, info);
+}
+
+#[tauri::command]
+pub(crate) fn agent_report_compare_view(info: Value, app: tauri::AppHandle) {
+    app.state::<Engine>().report_compare_view(info);
 }

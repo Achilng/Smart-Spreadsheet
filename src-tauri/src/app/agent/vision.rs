@@ -12,6 +12,28 @@ use crate::app::AppRuntime;
 #[path = "attachment_view.rs"]
 mod attachment_view;
 pub use attachment_view::{AttachmentView, render_attachment};
+use attachment_view::{Crop, Detail, render_bytes};
+
+/// A closer look at one gallery image: its original file, in high detail or cropped.
+#[derive(serde::Serialize, serde::Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct OriginalView {
+    #[serde(default)]
+    pub detail: Detail,
+    #[serde(default)]
+    pub crop: Option<Crop>,
+}
+
+/// Render one row's original image; returns the image URL and size information for the model.
+pub fn render_original(runtime: &AppRuntime, id: i64, view: &OriginalView) -> Result<(String, serde_json::Value), String> {
+    let bytes = runtime.row_original(id).map_err(|error| format!("读取 #{id} 的原图失败：{error}"))?;
+    render_bytes(&bytes, view.detail, view.crop)
+}
+
+/// The original-image view a stored `view_images` result asked for, if any.
+pub fn original_view(result: &serde_json::Value) -> Option<OriginalView> {
+    serde_json::from_value(result["display"]["view"].clone()).ok()
+}
 
 pub const MAX_IMAGES: usize = 16;
 /// Up to this many images are sent one by one; more are combined into a contact sheet.

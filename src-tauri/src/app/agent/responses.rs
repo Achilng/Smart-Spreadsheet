@@ -64,7 +64,7 @@ fn friendly_status(status: u16, body: &str, model: &str, has_user_attachments: b
         return format!("模型「{model}」未能处理图片。请在右上角换一个支持图片输入的模型，然后重新发送消息。{detail}");
     }
     match status {
-        401 => "Key 无效或已失效，请到工具箱的模型设置里检查这个渠道的 Key。".into(),
+        401 => "Key 无效或已失效，请到工具箱「LLM提取」→「渠道设置」里检查这个渠道的 Key。".into(),
         403 => format!("这个 Key 没有权限使用模型「{model}」。请换一个模型或检查 Key 权限。{detail}"),
         404 | 405 => format!(
             "模型「{model}」或这个站点不支持 Responses 接口，Agent 用不了它。请在右上角换一个模型（例如 GPT 系列）。{detail}"

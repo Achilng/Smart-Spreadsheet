@@ -69,6 +69,7 @@ pub fn run() {
             app::commands::agent::agent_show_changed_rows,
             app::commands::agent::agent_change_page,
             app::commands::agent::agent_report_main_view,
+            app::commands::agent::agent_report_compare_view,
             app::commands::library::get_app_snapshot,
             app::commands::library::reset_configuration,
             app::commands::library::reset_data,

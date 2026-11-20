@@ -24,7 +24,41 @@ export const TOOL_LABELS: Record<string, string> = {
   show_selected_images: "在主窗口仅看所选图片",
   set_main_filters: "设置主窗口筛选",
   create_automation_rule: "创建自动规则",
+  update_automation_rule: "修改自动规则",
+  delete_automation_rule: "删除自动规则",
+  preview_rule_on_library: "在图库上试跑自动规则",
+  count_rows: "统计图片张数",
+  read_app_guide: "查看软件功能说明",
+  load_tools: "加载更多工具",
+  control_main_window: "操作主窗口界面",
+  preview_library_change: "预演分组 / TAG 整理",
+  list_artist_prefix_candidates: "查找可补 artist: 前缀的画师",
 };
+
+const SAME_LABELS: Record<string, string> = { artists: "画师串", positivePrompt: "正向提示词", vibes: "VIBE 组合" };
+
+const TOOL_GROUP_LABELS: Record<string, string> = {
+  mainWindow: "主窗口控制", library: "分组 / TAG 管理", automation: "自动规则", records: "素材与导入记录", attachments: "聊天附件",
+};
+const VIEW_LABELS: Record<string, string> = { gallery: "画廊", table: "表格", group: "分组", duplicates: "重复", materials: "素材", promptDocs: "提示词" };
+const SORT_LABELS: Record<string, string> = { timeAsc: "按导入先后", timeDesc: "最新在前", recentlyUpdated: "最近修改在前" };
+
+/** One-line result for the "tools" and "control" step displays. */
+export function describeStepDisplay(display: Record<string, unknown> | null): string {
+  if (display?.kind === "tools") return (Array.isArray(display.groups) ? display.groups : []).map(key => TOOL_GROUP_LABELS[str(key)] ?? str(key)).join("、");
+  if (display?.kind !== "control") return "";
+  const request = (display.request ?? {}) as Record<string, unknown>;
+  const parts: string[] = [];
+  if (typeof request.viewMode === "string") parts.push(`切到${VIEW_LABELS[request.viewMode] ?? request.viewMode}视图`);
+  if (typeof request.duplicatesMode === "string") parts.push(`重复视图按${SAME_LABELS[request.duplicatesMode] ?? request.duplicatesMode}分组`);
+  if (typeof request.sort === "string") parts.push(SORT_LABELS[request.sort] ?? request.sort);
+  if (typeof request.openGroupId === "number") parts.push(`打开分组 #${request.openGroupId}`);
+  if (typeof request.openDetailRowId === "number") parts.push(`详情显示 #${request.openDetailRowId}`);
+  if (typeof request.locateRowId === "number") parts.push(`定位到 #${request.locateRowId}`);
+  const compare = request.compare as { rowId?: number; targetRowId?: number | null } | null | undefined;
+  if (compare?.rowId) parts.push(`对比 #${compare.rowId}${compare.targetRowId ? ` 和 #${compare.targetRowId}` : ""}`);
+  return parts.join("，");
+}
 
 const SCOPE_LABELS: Record<string, string> = { selection: "主窗口当前选中", filteredView: "主窗口当前筛选结果", all: "全库", rowIds: "指定图片" };
 
@@ -38,8 +72,20 @@ export function describeTarget(target: Record<string, unknown> | undefined): str
   const lines = [`范围：${SCOPE_LABELS[str(target.scope)] ?? str(target.scope)}`];
   const ids = target.rowIds as number[] | undefined;
   if (target.scope === "rowIds" && ids?.length) lines.push(`图片 ID：${ids.slice(0, 12).join("、")}${ids.length > 12 ? ` 等 ${ids.length} 张` : ""}`);
-  if (target.expandToSameArtistString) lines.push("扩展到同画师串的所有图");
+  const same = new Set(Array.isArray(target.expandToSame) ? target.expandToSame.map(str) : []);
+  if (target.expandToSameArtistString) same.add("artists");
+  if (same.size) lines.push(`扩展到${[...same].map(key => SAME_LABELS[key] ?? key).join("、")}相同的所有图`);
   if (typeof target.modelBadge === "string") lines.push(`模型徽章：${target.modelBadge}`);
+  const batches = target.batchIds as number[] | undefined;
+  if (batches?.length) lines.push(`导入批次：${batches.map(id => `#${id}`).join("、")}`);
+  const span = (label: string, after: unknown, before: unknown) => {
+    if (typeof after === "string" && typeof before === "string") lines.push(`${label}在 ${after} 到 ${before} 之间`);
+    else if (typeof after === "string") lines.push(`${label}不早于 ${after}`);
+    else if (typeof before === "string") lines.push(`${label}早于 ${before}`);
+  };
+  span("导入时间", target.importedAfter, target.importedBefore);
+  span("修改时间", target.updatedAfter, target.updatedBefore);
+  if (typeof target.ruleId === "number") lines.push(`符合自动规则 #${target.ruleId} 的条件`);
   if (typeof target.favorite === "boolean") lines.push(target.favorite ? "只限已收藏" : "只限未收藏");
   const conditions = target.conditions as Record<string, unknown>[] | undefined;
   if (conditions?.length) lines.push(`附加条件（${target.conditionMatch === "any" ? "满足任一" : "全部满足"}）：${conditions.map(describeCondition).join("；")}`);
@@ -78,6 +124,7 @@ export function describeAction(action: Record<string, unknown>): string {
     case "clearNote": return "清空备注";
     case "setNoteSequence": return `备注按顺序编号，前缀 ${quote(action.prefix)}`;
     case "setFavorite": return action.favorite ? "设为收藏" : "取消收藏";
+    case "prefixArtist": return `给画师 ${((action.artists as string[]) ?? []).map(quote).join("、")} 补上 artist: 前缀`;
     default: return JSON.stringify(action);
   }
 }

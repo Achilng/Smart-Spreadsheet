@@ -324,6 +324,8 @@
   .ag-muted { color: var(--text-3); font-size: 13px; }
   .ag-note { color: var(--text-3); font-size: 12px; line-height: 1.65; }
   .ag-card.is-undone .ag-lede { color: var(--text-2); }
+  .ag-summary ul { margin: 0; padding-left: 18px; list-style: disc; line-height: 1.75; color: var(--text); font-size: 13px; overflow-wrap: anywhere; }
+  .ag-summary li::marker { color: var(--text-3); }
   .ag-params ul { margin: 0; padding-left: 18px; list-style: disc; line-height: 1.75; color: var(--text-2); overflow-wrap: anywhere; }
   .ag-params li::marker { color: var(--text-3); }
   .ag-params li.ag-note { color: var(--text-3); }

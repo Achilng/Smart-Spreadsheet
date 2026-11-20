@@ -21,7 +21,7 @@ import { OperationCard, PreviewCard } from "./AgentCards";
 import { AgentPreferencesDialog } from "./AgentPreferencesDialog";
 import { ImageViewerProvider, ThumbStrip, useImageViewer } from "./AgentMedia";
 import { ThoughtLine, type ThoughtStep } from "./ThoughtLine";
-import { TOOL_LABELS, formatTime } from "./agent-format";
+import { TOOL_LABELS, describeStepDisplay, formatTime } from "./agent-format";
 import "./agent.css";
 
 // The window carries its own palette; the class also reaches dialogs and menus portalled to <body>.
@@ -176,6 +176,7 @@ function stepSummary(item: StepItem, interrupted: boolean, failure: string): str
     const total = typeof display.total === "number" ? display.total : count;
     return total > count ? `${count} 张（范围内共 ${total} 张）` : `${count} 张`;
   }
+  if (display?.kind === "tools" || display?.kind === "control") return describeStepDisplay(display);
   if (interrupted) return "被中断，没有执行";
   return !item.ok && !failure ? "没有成功" : "";
 }

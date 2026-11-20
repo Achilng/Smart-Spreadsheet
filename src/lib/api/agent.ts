@@ -66,10 +66,16 @@ export interface AgentPreviewReport {
   matchAnalysis: AgentMatchAnalysis[]; samples: AgentSample[]; warnings: string[];
   /** Missing on reports made before grouping existed. */
   changeGroups?: AgentChangeGroup[]; otherRows?: number;
+  /** Plain-language lines for group / TAG / artist-string operations and rule trial runs. */
+  summary?: string[];
+  /** Set when the preview is a library operation (rename / merge / delete groups or TAGs, aliases). */
+  library?: { type: string; [key: string]: unknown } | null;
 }
+export type AgentRuleSnapshot = { id: number; name: string; description?: string; enabled?: boolean };
 export interface AgentOperation {
-  id: number; conversationId: string | null; createdAt: string; kind: "rows" | "rule" | string; title: string;
-  report: AgentPreviewReport & { ruleId?: number; rule?: { name: string; description?: string } };
+  id: number; conversationId: string | null; createdAt: string;
+  kind: "rows" | "rule" | "library" | "rule_update" | "rule_delete" | string; title: string;
+  report: AgentPreviewReport & { ruleId?: number; rule?: AgentRuleSnapshot; before?: AgentRuleSnapshot; after?: AgentRuleSnapshot; changed?: string[] };
   changedRows: number; state: "applied" | "undone"; undoMessage: string | null; undoneAt: string | null;
 }
 export interface AgentUndoOutcome { operationId: number; restoredRows: number; skippedRows: number; message: string }
@@ -96,3 +102,4 @@ export const agentChangePage = (source: "preview" | "operation", id: string, off
 export const openAgentWindow = () => invoke<void>("open_agent_window");
 export const reportAgentMainView = (selection: unknown, filtered: unknown, info: unknown) =>
   invoke<void>("agent_report_main_view", { selection, filtered, info });
+export const reportAgentCompareView = (info: unknown) => invoke<void>("agent_report_compare_view", { info });

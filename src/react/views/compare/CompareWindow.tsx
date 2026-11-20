@@ -18,6 +18,7 @@ import { notify } from "../../state/notices";
 import { COMPARE_PAGE_SIZE, closeSideBySide, compareModelGroups, compareNavigation, loadCompareModels, loadCompareSectionPage, moveCompareTarget, openSideBySide, refreshCompare, resetCompare, selectCompareModel, selectCompareTab, setCompareModelOffset, setCompareSample, useCompare, type CompareSectionKey } from "../../state/compare";
 import { ArtistText } from "../../ui/ArtistText";
 import { focusMainWindow } from "../../../lib/windows/toolbox";
+import { reportAgentCompareView } from "../../../lib/api/agent";
 import { PaneImage } from "./CompareImages";
 import { SideBySide } from "./SideBySide";
 import { CompareRowContextMenu } from "./CompareRowContextMenu";
@@ -86,6 +87,19 @@ export function CompareWindow() {
     if (initialRowId > 0) void setCompareSample(initialRowId, false, Number(params.get("target")) || undefined);
     return () => { disposed = true; cleanups.forEach(fn => fn()); };
   }, []);
+  const listed = state.activeTab === "models" ? null : state[state.activeTab].items;
+  const listedKey = listed?.map(row => row.id).join(",") ?? "";
+  useEffect(() => {
+    // Lets the library agent see what the user is comparing ("these two", "the A image").
+    const tab = state.activeTab === "custom" ? "自定义对比" : tabs.find(item => item.key === state.activeTab)?.label ?? state.activeTab;
+    void reportAgentCompareView(state.rowId === null ? null : {
+      sampleRowId: state.rowId,
+      targetRowId: state.target?.id ?? null,
+      relation: state.target ? (state.manualTarget ? "手动选择的 B" : tab) : null,
+      activeTab: tab,
+      listedRowIds: listedKey ? listedKey.split(",").map(Number) : [],
+    }).catch(() => {});
+  }, [state.rowId, state.target?.id, state.manualTarget, state.activeTab, listedKey]);
   useEffect(() => { results.current?.scrollTo({ top: 0 }); }, [state.rowId, state.activeTab, state.artists.offset, state.vibeDiffStyle.offset, state.styleDiffVibe.offset, state.custom.offset, state.modelTier, state.modelOffset]);
   useLayoutEffect(() => {
     if (state.target) { lastTarget.current = state.target.id; return; }

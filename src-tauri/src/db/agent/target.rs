@@ -1,6 +1,7 @@
 //! Resolve an agent's target description into concrete rows.
 use std::collections::{HashMap, HashSet};
 
+use rusqlite::params_from_iter;
 use serde::{Deserialize, Serialize};
 
 use super::{Res, s};
@@ -22,6 +23,15 @@ pub enum Scope {
     RowIds,
 }
 
+/// Identities shared by the main window's dedupe views.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SameKind {
+    Artists,
+    PositivePrompt,
+    Vibes,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Target {
@@ -32,10 +42,25 @@ pub struct Target {
     pub artist_strings: Vec<String>,
     #[serde(default)]
     pub expand_to_same_artist_string: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub expand_to_same: Vec<SameKind>,
     #[serde(default)]
     pub favorite: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model_badge: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub batch_ids: Vec<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub imported_after: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub imported_before: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_after: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_before: Option<String>,
+    /// Keep only rows an automation rule's conditions would match.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rule_id: Option<i64>,
     #[serde(default)]
     pub conditions: Vec<RuleCondition>,
     #[serde(default)]
@@ -43,10 +68,45 @@ pub struct Target {
 }
 
 impl Target {
+    pub fn row_ids(ids: Vec<i64>) -> Self {
+        Self {
+            scope: Scope::RowIds,
+            row_ids: ids,
+            artist_strings: Vec::new(),
+            expand_to_same_artist_string: false,
+            expand_to_same: Vec::new(),
+            favorite: None,
+            model_badge: None,
+            batch_ids: Vec::new(),
+            imported_after: None,
+            imported_before: None,
+            updated_after: None,
+            updated_before: None,
+            rule_id: None,
+            conditions: Vec::new(),
+            condition_match: None,
+        }
+    }
+
+    pub fn all() -> Self {
+        Self { scope: Scope::All, ..Self::row_ids(Vec::new()) }
+    }
+
     /// Whether the base scope covers the library before applying rule conditions.
-    pub(super) fn whole_library_scope(&self) -> bool {
+    pub(crate) fn whole_library_scope(&self) -> bool {
         self.scope == Scope::All && self.artist_strings.is_empty()
-            && !self.expand_to_same_artist_string && self.model_badge.is_none() && self.favorite.is_none()
+            && !self.expand_to_same_artist_string && self.expand_to_same.is_empty()
+            && self.model_badge.is_none() && self.favorite.is_none() && !self.has_time_filter()
+    }
+
+    fn has_time_filter(&self) -> bool {
+        !self.batch_ids.is_empty() || self.imported_after.is_some() || self.imported_before.is_some()
+            || self.updated_after.is_some() || self.updated_before.is_some()
+    }
+
+    /// Conditions that need full rows to evaluate.
+    pub(crate) fn has_row_filters(&self) -> bool {
+        !self.conditions.is_empty() || self.rule_id.is_some()
     }
 }
 
@@ -80,6 +140,46 @@ impl Resolved {
     }
 }
 
+/// Local time as typed by the user, normalised to the stored UTC text for comparison.
+pub(crate) fn parse_local_time(text: &str) -> Res<String> {
+    use chrono::{DateTime, Local, NaiveDate, NaiveDateTime, TimeZone, Utc};
+    let text = text.trim();
+    let utc = if let Ok(time) = DateTime::parse_from_rfc3339(text) {
+        time.with_timezone(&Utc)
+    } else {
+        let naive = ["%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M"]
+            .iter()
+            .find_map(|format| NaiveDateTime::parse_from_str(text, format).ok())
+            .or_else(|| NaiveDate::parse_from_str(text, "%Y-%m-%d").ok().and_then(|day| day.and_hms_opt(0, 0, 0)))
+            .ok_or_else(|| format!("看不懂时间「{text}」，请写成 2026-11-20 或 2026-11-20 14:30（本地时间）"))?;
+        Local
+            .from_local_datetime(&naive)
+            .earliest()
+            .ok_or_else(|| format!("本地时间「{text}」不存在"))?
+            .with_timezone(&Utc)
+    };
+    Ok(utc.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string())
+}
+
+/// Stored UTC text shown as local time.
+pub(crate) fn local_time(text: Option<&str>) -> Option<String> {
+    use chrono::{DateTime, Local};
+    let text = text?;
+    Some(match DateTime::parse_from_rfc3339(text) {
+        Ok(time) => time.with_timezone(&Local).format("%Y-%m-%d %H:%M:%S").to_string(),
+        Err(_) => text.to_owned(),
+    })
+}
+
+/// Condition sets a target adds on top of its row IDs; all must match.
+pub(crate) fn prepare_sets(sets: &[RuleConditionSet]) -> Res<Vec<PreparedConditionSet<'_>>> {
+    sets.iter().map(|set| PreparedConditionSet::new(set).map_err(s)).collect()
+}
+
+pub(crate) fn matches_all(prepared: &[PreparedConditionSet<'_>], row: &RuleRow) -> bool {
+    prepared.iter().all(|set| set.matches(row))
+}
+
 impl Database {
     pub(crate) fn agent_row_index(&self) -> Res<HashMap<i64, RowIndexEntry>> {
         let mut statement = self
@@ -107,11 +207,29 @@ impl Database {
         Ok(entries)
     }
 
+    /// The target's own conditions and, when it names one, an automation rule's conditions.
+    pub(crate) fn agent_filter_sets(&self, target: &Target) -> Res<Vec<RuleConditionSet>> {
+        let mut sets = Vec::new();
+        if let Some(set) = target_conditions(target)? {
+            sets.push(set);
+        }
+        if let Some(id) = target.rule_id {
+            let rule = self
+                .list_automation_rules()
+                .map_err(s)?
+                .into_iter()
+                .find(|rule| rule.id == id)
+                .ok_or_else(|| format!("自动规则 #{id} 不存在"))?;
+            sets.push(rule.conditions);
+        }
+        Ok(sets)
+    }
+
     pub(crate) fn agent_resolve(&mut self, target: &Target, view: &MainView) -> Res<Resolved> {
-        let conditions = target_conditions(target)?;
-        let prepared = conditions.as_ref().map(PreparedConditionSet::new).transpose().map_err(s)?;
+        let sets = self.agent_filter_sets(target)?;
+        let prepared = prepare_sets(&sets)?;
         let index = self.agent_row_index()?;
-        let (ids, notes) = self.agent_target_ids(target, view, &index)?;
+        let (ids, mut notes) = self.agent_target_ids(target, view, &index)?;
         let mut ids = ids.into_iter().collect::<Vec<_>>();
         ids.sort_unstable();
         let mut rows = if ids.is_empty() {
@@ -119,14 +237,17 @@ impl Database {
         } else {
             load_rule_rows(&self.connection, Some(&ids)).map_err(s)?
         };
-        if let Some(prepared) = prepared {
-            rows.retain(|row| prepared.matches(row));
+        if !prepared.is_empty() {
+            rows.retain(|row| matches_all(&prepared, row));
+        }
+        if let Some(id) = target.rule_id {
+            notes.push(format!("按自动规则 #{id} 的条件筛选后剩 {} 张", rows.len()));
         }
         Ok(Resolved { rows, index, notes })
     }
 
     /// Resolve the initial target, including artist/favorite filters, before rule conditions.
-    pub(super) fn agent_target_ids(
+    pub(crate) fn agent_target_ids(
         &mut self,
         target: &Target,
         view: &MainView,
@@ -165,7 +286,8 @@ impl Database {
         if ids.is_empty() && target.scope == Scope::Selection {
             return Err("主窗口当前没有选中任何图片".into());
         }
-        if target.expand_to_same_artist_string {
+        let expand_artists = target.expand_to_same_artist_string || target.expand_to_same.contains(&SameKind::Artists);
+        if expand_artists {
             let keys = ids
                 .iter()
                 .filter_map(|id| index.get(id)?.artist_key.clone())
@@ -189,6 +311,27 @@ impl Database {
             if without > 0 {
                 notes.push(format!("其中 {without} 张没有可识别的画师串，只保留本身"));
             }
+        }
+        for kind in &target.expand_to_same {
+            let (expression, label) = match kind {
+                SameKind::Artists => continue,
+                SameKind::PositivePrompt => ("NULLIF(TRIM(COALESCE(positive_prompt, '')), '')", "正向提示词"),
+                SameKind::Vibes => ("NULLIF(TRIM(COALESCE(vibe_signature, '')), '')", "VIBE 组合"),
+            };
+            let before = ids.len();
+            let seed = serde_json::to_string(&ids.iter().collect::<Vec<_>>()).map_err(s)?;
+            let sql = format!(
+                "SELECT id FROM rows WHERE {expression} IN
+                 (SELECT {expression} FROM rows WHERE id IN (SELECT value FROM json_each(?1)) AND {expression} IS NOT NULL)"
+            );
+            let mut statement = self.connection.prepare(&sql).map_err(s)?;
+            let found = statement
+                .query_map([seed], |row| row.get::<_, i64>(0))
+                .map_err(s)?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(s)?;
+            ids.extend(found);
+            notes.push(format!("已扩展到{label}完全相同的图：图片从 {before} 张扩展到 {} 张", ids.len()));
         }
         if !target.artist_strings.is_empty() {
             let mut keys = HashSet::new();
@@ -238,6 +381,39 @@ impl Database {
                 if *matched { matching.insert(id); }
             }
             ids = matching;
+        }
+        if target.has_time_filter() {
+            let mut clauses = Vec::new();
+            let mut values: Vec<String> = Vec::new();
+            if !target.batch_ids.is_empty() {
+                clauses.push("rows.batch_id IN (SELECT value FROM json_each(?))".to_owned());
+                values.push(serde_json::to_string(&target.batch_ids).map_err(s)?);
+            }
+            let stamp = |column: &str| format!("strftime('%Y-%m-%dT%H:%M:%fZ', {column})");
+            for (value, column, operator) in [
+                (&target.imported_after, "import_batches.imported_at", ">="),
+                (&target.imported_before, "import_batches.imported_at", "<"),
+                (&target.updated_after, "rows.updated_at", ">="),
+                (&target.updated_before, "rows.updated_at", "<"),
+            ] {
+                if let Some(text) = value {
+                    clauses.push(format!("{} {operator} ?", stamp(column)));
+                    values.push(parse_local_time(text)?);
+                }
+            }
+            let sql = format!(
+                "SELECT rows.id FROM rows JOIN import_batches ON import_batches.id = rows.batch_id WHERE {}",
+                clauses.join(" AND ")
+            );
+            let mut statement = self.connection.prepare(&sql).map_err(s)?;
+            let matching = statement
+                .query_map(params_from_iter(values.iter()), |row| row.get::<_, i64>(0))
+                .map_err(s)?
+                .collect::<Result<HashSet<_>, _>>()
+                .map_err(s)?;
+            let before = ids.len();
+            ids.retain(|id| matching.contains(id));
+            notes.push(format!("按导入批次 / 时间筛选：{before} 张中剩 {} 张", ids.len()));
         }
         Ok((ids, notes))
     }

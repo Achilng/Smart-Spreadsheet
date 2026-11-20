@@ -1,4 +1,4 @@
-//! Render exactly one metadata-free view of a conversation attachment, never of a gallery row.
+//! Render exactly one metadata-free view of an image: a conversation attachment or one gallery original.
 use std::io::Cursor;
 use std::sync::Mutex;
 
@@ -20,17 +20,17 @@ const MAX_BASE64: usize = 2 << 20;
 // Concurrent conversations must not each reserve a full decoder working set.
 static RENDER_SLOT: Mutex<()> = Mutex::new(());
 
-#[derive(Serialize, Deserialize, Clone, Copy, Default)]
+#[derive(Serialize, Deserialize, Clone, Copy, Default, PartialEq, Eq, Debug)]
 #[serde(rename_all = "lowercase")]
-enum Detail {
+pub(crate) enum Detail {
     #[default]
     Standard,
     High,
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy)]
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
 #[serde(deny_unknown_fields)]
-struct Crop {
+pub(crate) struct Crop {
     x: u32,
     y: u32,
     width: u32,
@@ -64,7 +64,6 @@ pub fn render_attachment(
     if view.message_id <= 0 || !(1..=4).contains(&view.attachment_number) {
         return Err("无效的消息编号或附件序号".into());
     }
-    let _slot = RENDER_SLOT.lock().map_err(|_| "图片处理暂不可用")?;
     let (_, encoded) = runtime.agent_db(false, |db| {
         db.agent_image_attachment(conversation, view.message_id, view.attachment_number)
     })?;
@@ -72,8 +71,16 @@ pub fn render_attachment(
         return Err("附件超过大小限制".into());
     }
     let bytes = STANDARD.decode(encoded).map_err(|_| "附件编码无效")?;
+    let (url, mut info) = render_bytes(&bytes, view.detail, view.crop)?;
+    info["view"] = json!(view);
+    Ok((url, info))
+}
+
+/// One metadata-free JPEG view of an encoded image: whole or cropped, standard or high detail.
+pub(crate) fn render_bytes(bytes: &[u8], detail: Detail, crop_box: Option<Crop>) -> Result<(String, Value), String> {
+    let _slot = RENDER_SLOT.lock().map_err(|_| "图片处理暂不可用")?;
     if bytes.len() > MAX_SOURCE {
-        return Err("附件超过大小限制".into());
+        return Err("图片超过大小限制".into());
     }
     let format = image::guess_format(&bytes).map_err(|_| "无法识别图片格式")?;
     if !matches!(
@@ -82,7 +89,7 @@ pub fn render_attachment(
     ) {
         return Err("仅支持 PNG、JPEG 或 WebP".into());
     }
-    let mut reader = ImageReader::with_format(Cursor::new(&bytes), format);
+    let mut reader = ImageReader::with_format(Cursor::new(bytes), format);
     let mut limits = Limits::default();
     limits.max_image_width = Some(MAX_SIDE);
     limits.max_image_height = Some(MAX_SIDE);
@@ -100,7 +107,7 @@ pub fn render_attachment(
     {
         return Err("图片尺寸或解码内存超出限制".into());
     }
-    let crop = view.crop.unwrap_or(Crop {
+    let crop = crop_box.unwrap_or(Crop {
         x: 0,
         y: 0,
         width: w,
@@ -116,7 +123,7 @@ pub fn render_attachment(
         return Err(format!("裁切框必须完整落在原图 {w}×{h} 内（左上为 0,0）"));
     }
     let image = DynamicImage::from_decoder(decoder).map_err(|_| "图片解码失败")?;
-    let pixels = if view.crop.is_some() {
+    let pixels = if crop_box.is_some() {
         image.crop_imm(crop.x, crop.y, crop.width, crop.height)
     } else {
         image
@@ -128,7 +135,7 @@ pub fn render_attachment(
         Rgb([r, g, b].map(|v| (255 - ((255 - u32::from(v)) * u32::from(a) + 127) / 255) as u8))
     });
     drop(rgba);
-    let side = match view.detail {
+    let side = match detail {
         Detail::Standard => 2000,
         Detail::High => 3072,
     };
@@ -146,7 +153,7 @@ pub fn render_attachment(
             .is_ok()
         {
             let size = writer.position() as usize;
-            let info = json!({"view":view,"sourceWidth":w,"sourceHeight":h,"sourceRegion":crop,
+            let info = json!({"sourceWidth":w,"sourceHeight":h,"sourceRegion":crop,
                 "previewWidth":rgb.width(),"previewHeight":rgb.height(),"note":"下一条消息仅附此视图；裁切坐标基于原始像素，不是预览像素。"});
             return Ok((
                 format!("data:image/jpeg;base64,{}", STANDARD.encode(&buf[..size])),

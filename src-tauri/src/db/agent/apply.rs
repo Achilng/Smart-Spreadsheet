@@ -10,9 +10,10 @@ use super::changes::{
     Action, PreviewReport, RowChange, action_regex, analyze_matches, field_name, group_changes, report_groups, sample_json,
     stale_ai_artists,
 };
-use super::target::{MainView, Scope, Target};
+use super::library::LibraryOp;
+use super::target::{MainView, Target};
 use super::{Res, s};
-use crate::automation::model::AutomationRule;
+use crate::automation::model::{AutomationRule, AutomationRuleDraft, draft_from_rule};
 use crate::db::Database;
 
 const OPERATION_LIMIT: i64 = 100;
@@ -184,6 +185,33 @@ fn still_as_applied(transaction: &Transaction<'_>, change: &RowChange) -> Res<bo
     Ok(true)
 }
 
+/// Put rows back where every field still holds what the operation wrote. Returns (restored, skipped).
+pub(super) fn restore_changes(transaction: &Transaction<'_>, changes: &[RowChange]) -> Res<(usize, usize)> {
+    let (mut restored, mut skipped) = (0, 0);
+    for change in changes {
+        if still_as_applied(transaction, change)? {
+            write_side(transaction, change, false, &HashMap::new())?;
+            restored += 1;
+        } else {
+            skipped += 1;
+        }
+    }
+    Ok((restored, skipped))
+}
+
+/// What a partial rule edit may change; unset fields keep their value.
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RulePatch {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub enabled: Option<bool>,
+    pub run_on_import: Option<bool>,
+    pub run_on_update: Option<bool>,
+    pub conditions: Option<crate::automation::model::RuleConditionSet>,
+    pub actions: Option<Vec<crate::automation::model::RuleAction>>,
+}
+
 impl Database {
     pub fn agent_preview(
         &mut self,
@@ -194,8 +222,8 @@ impl Database {
         view: &MainView,
     ) -> Res<PreviewReport> {
         let resolved = self.agent_resolve(target, view)?;
-        let plan = self.agent_plan(actions)?;
-        let changes = self.agent_simulate(&resolved, actions, &plan)?;
+        let plan = self.agent_plan(actions, &resolved)?;
+        let (changes, skipped_templates) = self.agent_simulate(&resolved, actions, &plan)?;
         let mut field_counts = std::collections::BTreeMap::new();
         for change in &changes {
             for item in &change.text {
@@ -266,9 +294,17 @@ impl Database {
         if changes.is_empty() {
             warnings.push("没有任何图片需要修改".into());
         }
+        if skipped_templates > 0 {
+            warnings.push(format!(
+                "有 {skipped_templates} 处按图片代入的占位符找不到对应信息（例如没有画师串或模型），这些图的对应步骤没有生效"
+            ));
+        }
+        if plan.new_groups.len() > 20 {
+            warnings.push(format!("执行时会新建 {} 个分组", plan.new_groups.len()));
+        }
         let samples = pick_samples(&changes, &match_analysis);
         let (change_groups, other_rows) = report_groups(&changes);
-        let new_tags = self.agent_missing_tags(actions)?;
+        let new_tags = self.agent_missing_tags(&changes)?;
         let row_ids = resolved.rows.iter().map(|row| row.id).collect::<Vec<_>>();
         let preview_id = new_id();
         let report = PreviewReport {
@@ -288,17 +324,24 @@ impl Database {
             warnings,
             change_groups,
             other_rows,
+            summary: Vec::new(),
+            library: None,
         };
         let plan_json = json!({"rowIds": row_ids, "actions": actions, "title": report.title});
+        self.store_preview(conversation_id, &plan_json, &changes, &report)?;
+        Ok(report)
+    }
+
+    fn store_preview(&self, conversation_id: &str, plan: &Value, changes: &[RowChange], report: &PreviewReport) -> Res<()> {
         self.connection
             .execute(
                 "INSERT INTO agent_previews(id, conversation_id, plan, changes, report) VALUES (?1, ?2, ?3, ?4, ?5)",
                 params![
-                    preview_id,
+                    report.preview_id,
                     conversation_id,
-                    plan_json.to_string(),
-                    serde_json::to_string(&changes).map_err(s)?,
-                    serde_json::to_string(&report).map_err(s)?
+                    plan.to_string(),
+                    serde_json::to_string(changes).map_err(s)?,
+                    serde_json::to_string(report).map_err(s)?
                 ],
             )
             .map_err(s)?;
@@ -309,6 +352,48 @@ impl Database {
                 [PREVIEW_LIMIT],
             )
             .map_err(s)?;
+        Ok(())
+    }
+
+    /// Dry run of a group / TAG / artist-string change; applied later with `agent_apply`.
+    pub fn agent_preview_library(&mut self, conversation_id: &str, title: &str, op: &LibraryOp) -> Res<PreviewReport> {
+        let plan = self.agent_library_plan(op)?;
+        let mut field_counts = std::collections::BTreeMap::new();
+        for change in &plan.changes {
+            for (key, present) in [
+                ("group", change.group.is_some()),
+                ("tagsAdded", !change.tags_added.is_empty()),
+                ("tagsRemoved", !change.tags_removed.is_empty()),
+            ] {
+                if present {
+                    *field_counts.entry(key.into()).or_insert(0) += 1;
+                }
+            }
+        }
+        let (change_groups, other_rows) = report_groups(&plan.changes);
+        let affected = plan.changes.iter().filter(|change| change.group.is_some() || !change.tags_added.is_empty() || !change.tags_removed.is_empty()).count();
+        let report = PreviewReport {
+            preview_id: new_id(),
+            title: title.trim().to_owned(),
+            target: Value::Null,
+            target_notes: Vec::new(),
+            actions: Vec::new(),
+            scanned_rows: affected,
+            changed_rows: affected,
+            unchanged_rows: 0,
+            field_counts,
+            new_groups: plan.new_groups.clone(),
+            new_tags: plan.new_tags.clone(),
+            match_analysis: Vec::new(),
+            samples: Vec::new(),
+            warnings: plan.warnings.clone(),
+            change_groups,
+            other_rows,
+            summary: plan.summary.clone(),
+            library: Some(serde_json::to_value(op).map_err(s)?),
+        };
+        let plan_json = json!({"kind": "library", "op": op, "title": report.title});
+        self.store_preview(conversation_id, &plan_json, &plan.changes, &report)?;
         Ok(report)
     }
 
@@ -331,37 +416,25 @@ impl Database {
             return Err("这个预览已经执行过了；如需再次修改请重新预览".into());
         }
         let plan: Value = serde_json::from_str(&plan_json).map_err(s)?;
-        let actions: Vec<Action> = serde_json::from_value(plan["actions"].clone()).map_err(s)?;
-        let row_ids: Vec<i64> = serde_json::from_value(plan["rowIds"].clone()).map_err(s)?;
         let changes: Vec<RowChange> = serde_json::from_str(&changes_json).map_err(s)?;
         let mut report: Value = serde_json::from_str(&report_json).map_err(s)?;
+        if plan["kind"] == "library" {
+            return self.apply_library(conversation_id, preview_id, &plan, changes, report);
+        }
+        let actions: Vec<Action> = serde_json::from_value(plan["actions"].clone()).map_err(s)?;
+        let row_ids: Vec<i64> = serde_json::from_value(plan["rowIds"].clone()).map_err(s)?;
         if changes.is_empty() {
             return Err("这个预览没有任何需要修改的图片".into());
         }
         // Recompute on current data: any drift since the preview means the user saw stale numbers.
-        let current = if row_ids.is_empty() {
-            Vec::new()
-        } else {
-            let target = Target {
-                scope: Scope::RowIds,
-                row_ids: row_ids.clone(),
-                artist_strings: vec![],
-                expand_to_same_artist_string: false,
-                favorite: None,
-                model_badge: None,
-                conditions: vec![],
-                condition_match: None,
-            };
-            let resolved = self
-                .agent_resolve(&target, &MainView::default())
-                .map_err(|_| "预览之后有图片被删除，请重新预览".to_owned())?;
-            let plan = self.agent_plan(&actions)?;
-            self.agent_simulate(&resolved, &actions, &plan)?
-        };
+        let resolved = self
+            .agent_resolve(&Target::row_ids(row_ids), &MainView::default())
+            .map_err(|_| "预览之后有图片被删除，请重新预览".to_owned())?;
+        let plan = self.agent_plan(&actions, &resolved)?;
+        let (current, _) = self.agent_simulate(&resolved, &actions, &plan)?;
         if current != changes {
             return Err("预览之后数据已经变化，结果可能不同。请重新调用 preview_changes 并把新结果告诉用户".into());
         }
-        let plan = self.agent_plan(&actions)?;
         let transaction = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
@@ -418,13 +491,38 @@ impl Database {
         self.agent_operation(id)?.ok_or_else(|| "读取操作记录失败".into())
     }
 
-    pub fn agent_record_rule(&mut self, conversation_id: &str, rule: &AutomationRule) -> Res<OperationRecord> {
-        let report = json!({"ruleId": rule.id, "rule": rule});
+    fn apply_library(&mut self, conversation_id: &str, preview_id: &str, plan: &Value, changes: Vec<RowChange>, mut report: Value) -> Res<OperationRecord> {
+        let op: LibraryOp = serde_json::from_value(plan["op"].clone()).map_err(s)?;
+        let current = self.agent_library_plan(&op).map_err(|error| format!("预览之后数据已经变化：{error}。请重新预览"))?;
+        if current.changes != changes || json!(current.summary) != report["summary"] {
+            return Err("预览之后数据已经变化，结果可能不同。请重新调用 preview_library_change 并把新结果告诉用户".into());
+        }
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(s)?;
+        let (stored_changes, undo) = super::library::library_apply(&transaction, &op, &current)?;
+        report["undo"] = undo;
+        let title = report["title"].as_str().unwrap_or("图库整理").to_owned();
+        transaction
+            .execute(
+                "INSERT INTO agent_operations(conversation_id, kind, title, report, changes) VALUES (?1, 'library', ?2, ?3, ?4)",
+                params![conversation_id, title, report.to_string(), serde_json::to_string(&stored_changes).map_err(s)?],
+            )
+            .map_err(s)?;
+        let id = transaction.last_insert_rowid();
+        transaction.execute("UPDATE agent_previews SET used = 1 WHERE id = ?1", [preview_id]).map_err(s)?;
+        prune_operations(&transaction)?;
+        transaction.commit().map_err(s)?;
+        self.bump_data_version();
+        self.agent_operation(id)?.ok_or_else(|| "读取操作记录失败".into())
+    }
+
+    fn record_operation(&mut self, conversation_id: &str, kind: &str, title: &str, report: &Value) -> Res<OperationRecord> {
         self.connection
             .execute(
-                "INSERT INTO agent_operations(conversation_id, kind, title, report, changes)
-                 VALUES (?1, 'rule', ?2, ?3, '[]')",
-                params![conversation_id, format!("创建自动规则「{}」", rule.name), report.to_string()],
+                "INSERT INTO agent_operations(conversation_id, kind, title, report, changes) VALUES (?1, ?2, ?3, ?4, '[]')",
+                params![conversation_id, kind, title, report.to_string()],
             )
             .map_err(s)?;
         let id = self.connection.last_insert_rowid();
@@ -432,6 +530,74 @@ impl Database {
         prune_operations(&transaction)?;
         transaction.commit().map_err(s)?;
         self.agent_operation(id)?.ok_or_else(|| "读取操作记录失败".into())
+    }
+
+    pub fn agent_record_rule(&mut self, conversation_id: &str, rule: &AutomationRule) -> Res<OperationRecord> {
+        let report = json!({"ruleId": rule.id, "rule": rule});
+        self.record_operation(conversation_id, "rule", &format!("创建自动规则「{}」", rule.name), &report)
+    }
+
+    fn rule_by_id(&self, id: i64) -> Res<AutomationRule> {
+        self.list_automation_rules()
+            .map_err(s)?
+            .into_iter()
+            .find(|rule| rule.id == id)
+            .ok_or_else(|| format!("自动规则 #{id} 不存在"))
+    }
+
+    /// Change some fields of a rule; recorded so the old version can be put back.
+    pub fn agent_update_rule(&mut self, conversation_id: &str, id: i64, patch: RulePatch) -> Res<OperationRecord> {
+        let before = self.rule_by_id(id)?;
+        let mut draft: AutomationRuleDraft = draft_from_rule(&before);
+        let mut changed = Vec::new();
+        if let Some(name) = patch.name { changed.push("名称"); draft.name = name; }
+        if let Some(description) = patch.description { changed.push("说明"); draft.description = description; }
+        if let Some(enabled) = patch.enabled { changed.push(if enabled { "启用" } else { "停用" }); draft.enabled = enabled; }
+        if let Some(value) = patch.run_on_import { changed.push("导入时执行"); draft.run_on_import = value; }
+        if let Some(value) = patch.run_on_update { changed.push("更新时执行"); draft.run_on_update = value; }
+        if let Some(conditions) = patch.conditions { changed.push("条件"); draft.conditions = conditions; }
+        if let Some(actions) = patch.actions { changed.push("动作"); draft.actions = actions; }
+        if changed.is_empty() {
+            return Err("没有提供要修改的内容".into());
+        }
+        if draft == draft_from_rule(&before) {
+            return Err("修改后的规则和现在完全一样".into());
+        }
+        let after = self.update_automation_rule(id, &draft).map_err(s)?;
+        let title = match (patch.enabled, changed.len()) {
+            (Some(true), 1) => format!("启用自动规则「{}」", after.name),
+            (Some(false), 1) => format!("停用自动规则「{}」", after.name),
+            _ => format!("修改自动规则「{}」（{}）", after.name, changed.join("、")),
+        };
+        let report = json!({"ruleId": id, "before": before, "after": after, "changed": changed});
+        self.record_operation(conversation_id, "rule_update", &title, &report)
+    }
+
+    pub fn agent_delete_rule(&mut self, conversation_id: &str, id: i64) -> Res<OperationRecord> {
+        let before = self.rule_by_id(id)?;
+        self.delete_automation_rule(id).map_err(s)?;
+        let report = json!({"ruleId": id, "before": before});
+        self.record_operation(conversation_id, "rule_delete", &format!("删除自动规则「{}」", before.name), &report)
+    }
+
+    fn undo_rule_change(&mut self, operation: &OperationRecord) -> Res<(usize, String)> {
+        let before: AutomationRule = serde_json::from_value(operation.report["before"].clone()).map_err(s)?;
+        if operation.kind == "rule_update" {
+            let after: AutomationRule = serde_json::from_value(operation.report["after"].clone()).map_err(s)?;
+            let Ok(current) = self.rule_by_id(before.id) else {
+                return Ok((0, "这条自动规则已经被删除，无法改回".into()));
+            };
+            if current.updated_at != after.updated_at || draft_from_rule(&current) != draft_from_rule(&after) {
+                return Ok((0, "这条自动规则之后又被改过，保留现状".into()));
+            }
+            self.update_automation_rule(before.id, &draft_from_rule(&before)).map_err(s)?;
+            return Ok((1, "自动规则已改回修改前的样子".into()));
+        }
+        let restored = self.create_automation_rule(&draft_from_rule(&before)).map_err(s)?;
+        let mut order = self.list_automation_rules().map_err(s)?.into_iter().map(|rule| rule.id).filter(|id| *id != restored.id).collect::<Vec<_>>();
+        order.insert((before.position as usize).min(order.len()), restored.id);
+        self.reorder_automation_rules(&order).map_err(s)?;
+        Ok((1, format!("已恢复自动规则「{}」（新编号 #{}）", restored.name, restored.id)))
     }
 
     pub fn agent_undo(&mut self, operation_id: i64) -> Res<UndoOutcome> {
@@ -446,6 +612,14 @@ impl Database {
             self.mark_undone(operation_id, &message)?;
             return Ok(UndoOutcome { operation_id, restored_rows: usize::from(deleted), skipped_rows: 0, message });
         }
+        if operation.kind == "rule_update" || operation.kind == "rule_delete" {
+            let (restored, message) = self.undo_rule_change(&operation)?;
+            if restored == 0 {
+                return Err(message);
+            }
+            self.mark_undone(operation_id, &message)?;
+            return Ok(UndoOutcome { operation_id, restored_rows: restored, skipped_rows: 0, message });
+        }
         let (changes_json, tags_json, groups_json): (String, String, String) = self
             .connection
             .query_row(
@@ -455,42 +629,41 @@ impl Database {
             )
             .map_err(s)?;
         let changes: Vec<RowChange> = serde_json::from_str(&changes_json).map_err(s)?;
-        let created_tags: Vec<String> = serde_json::from_str(&tags_json).map_err(s)?;
-        let created_groups: Vec<i64> = serde_json::from_str(&groups_json).map_err(s)?;
         let transaction = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(s)?;
-        let (mut restored, mut skipped) = (0, 0);
-        for change in &changes {
-            if still_as_applied(&transaction, change)? {
-                write_side(&transaction, change, false, &HashMap::new())?;
-                restored += 1;
-            } else {
-                skipped += 1;
-            }
-        }
-        for group in created_groups {
-            transaction
-                .execute(
-                    "DELETE FROM groups WHERE id = ?1 AND NOT EXISTS (SELECT 1 FROM rows WHERE group_id = ?1)",
-                    [group],
-                )
-                .map_err(s)?;
-        }
-        for tag in created_tags {
-            transaction
-                .execute(
-                    "DELETE FROM tags WHERE name = ?1
-                     AND NOT EXISTS (SELECT 1 FROM row_tags WHERE row_tags.tag_id = tags.id)",
-                    [tag],
-                )
-                .map_err(s)?;
-        }
-        let message = if skipped == 0 {
-            format!("已撤销，{restored} 张图恢复原样")
+        let (restored, skipped, message) = if operation.kind == "library" {
+            let op: LibraryOp = serde_json::from_value(operation.report["library"].clone()).map_err(s)?;
+            super::library::library_undo(&transaction, &op, &operation.report["undo"], &changes)?
         } else {
-            format!("已撤销 {restored} 张；另有 {skipped} 张在这之后又被改过（或已删除），保留现状")
+            let created_tags: Vec<String> = serde_json::from_str(&tags_json).map_err(s)?;
+            let created_groups: Vec<i64> = serde_json::from_str(&groups_json).map_err(s)?;
+            let (restored, skipped) = restore_changes(&transaction, &changes)?;
+            for group in created_groups {
+                transaction
+                    .execute(
+                        "DELETE FROM groups WHERE id = ?1 AND NOT EXISTS (SELECT 1 FROM rows WHERE group_id = ?1)",
+                        [group],
+                    )
+                    .map_err(s)?;
+            }
+            for tag in created_tags {
+                transaction
+                    .execute(
+                        "DELETE FROM tags WHERE name = ?1
+                         AND NOT EXISTS (SELECT 1 FROM row_tags WHERE row_tags.tag_id = tags.id)
+                         AND NOT EXISTS (SELECT 1 FROM material_tags WHERE material_tags.tag_id = tags.id)",
+                        [tag],
+                    )
+                    .map_err(s)?;
+            }
+            let message = if skipped == 0 {
+                format!("已撤销，{restored} 张图恢复原样")
+            } else {
+                format!("已撤销 {restored} 张；另有 {skipped} 张在这之后又被改过（或已删除），保留现状")
+            };
+            (restored, skipped, message)
         };
         transaction
             .execute(

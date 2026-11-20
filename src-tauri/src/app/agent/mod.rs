@@ -176,6 +176,8 @@ struct MainState {
 #[derive(Default)]
 pub struct Engine {
     main: Mutex<MainState>,
+    /// What the image comparison window last reported (sample A, B, open tab).
+    compare: Mutex<Value>,
     runs: Mutex<HashMap<String, Arc<AtomicBool>>>,
     pub(crate) vision: vision::Cache,
 }
@@ -196,6 +198,16 @@ impl Engine {
 
     pub fn main_info(&self) -> Value {
         self.main.lock().map(|main| main.info.clone()).unwrap_or(Value::Null)
+    }
+
+    pub fn report_compare_view(&self, info: Value) {
+        if let Ok(mut compare) = self.compare.lock() {
+            *compare = info;
+        }
+    }
+
+    pub fn compare_info(&self) -> Value {
+        self.compare.lock().map(|compare| compare.clone()).unwrap_or(Value::Null)
     }
 
     pub fn is_running(&self, conversation_id: &str) -> bool {
@@ -320,7 +332,9 @@ fn attachment_view(content: &Value) -> bool {
     content["name"] == "view_attachment_image" && content["ok"] == true
 }
 
-fn recent_views(messages: &[crate::db::agent::Message]) -> Vec<(String, Option<Vec<i64>>)> {
+type RecentView = (String, Option<Vec<i64>>, Option<vision::OriginalView>);
+
+fn recent_views(messages: &[crate::db::agent::Message]) -> Vec<RecentView> {
     let start = messages.iter().rposition(|message| message.kind == "user").unwrap_or(0);
     let mut views = messages[start..]
         .iter()
@@ -328,7 +342,7 @@ fn recent_views(messages: &[crate::db::agent::Message]) -> Vec<(String, Option<V
         .filter_map(|message| {
             let ids = vision::viewed_ids(&message.content);
             if ids.is_none() && !attachment_view(&message.content) { return None; }
-            Some((message.content["callId"].as_str()?.to_owned(), ids))
+            Some((message.content["callId"].as_str()?.to_owned(), ids, vision::original_view(&message.content)))
         })
         .collect::<Vec<_>>();
     views.drain(..views.len().saturating_sub(RECENT_VIEWS));
@@ -338,7 +352,7 @@ fn recent_views(messages: &[crate::db::agent::Message]) -> Vec<(String, Option<V
 /// Images for the recent views, rendered again when they are no longer cached.
 async fn attach_views(app: &AppHandle, conversation_id: &str, messages: &[crate::db::agent::Message]) -> vision::Attached {
     let mut attached = vision::Attached::new();
-    for (call_id, ids) in recent_views(messages) {
+    for (call_id, ids, original) in recent_views(messages) {
         if ids.is_none() {
             if let Some(view) = messages.iter().rev().filter(|m| m.content["callId"].as_str() == Some(&call_id)).find_map(|m| vision::AttachmentView::from_result(&m.content))
                 && let Some(images) = app.state::<Engine>().vision.attachment(conversation_id, &call_id, &view) {
@@ -352,10 +366,16 @@ async fn attach_views(app: &AppHandle, conversation_id: &str, messages: &[crate:
         }
         let Some(ids) = ids else { continue; }; // Attachment cache miss: never interpret the reference as a gallery row.
         let handle = app.clone();
-        let rendered = tauri::async_runtime::spawn_blocking(move || vision::render(&handle.state::<AppRuntime>(), &ids)).await;
-        if let Ok(Ok(rendered)) = rendered {
-            app.state::<Engine>().vision.put(&call_id, rendered.images.clone());
-            attached.insert(call_id, rendered.images);
+        let rendered = tauri::async_runtime::spawn_blocking(move || {
+            let runtime = handle.state::<AppRuntime>();
+            match (original, ids.as_slice()) {
+                (Some(view), [id]) => vision::render_original(&runtime, *id, &view).map(|(url, _)| vec![url]),
+                _ => vision::render(&runtime, &ids).map(|rendered| rendered.images),
+            }
+        }).await;
+        if let Ok(Ok(images)) = rendered {
+            app.state::<Engine>().vision.put(&call_id, images.clone());
+            attached.insert(call_id, images);
         }
     }
     attached
@@ -366,6 +386,9 @@ fn image_message(content: &Value, images: &[String]) -> Value {
     let list = ids.iter().map(|id| format!("#{id}")).collect::<Vec<_>>().join("、");
     let text = if attachment_view(content) {
         "（view_attachment_image 的结果）这是工具返回的附件预览或局部裁切，不是原图文件。".to_owned()
+    } else if let Some(view) = vision::original_view(content) {
+        format!("（view_images 的结果，不是用户发的消息）#{} 的原图{}", ids.first().copied().unwrap_or_default(),
+            if view.crop.is_some() { "局部裁切" } else { "高清视图" })
     } else if ids.len() > vision::SEPARATE_LIMIT {
         format!("（view_images 的结果，不是用户发的消息）这 {} 张图拼成了一张总览图，从左到右、从上到下排列，每格下方标着图片编号：{list}", ids.len())
     } else {
@@ -538,7 +561,7 @@ async fn run_loop(app: &AppHandle, conversation_id: &str, cancel: Arc<AtomicBool
         .iter()
         .find(|channel| channel.id == preferences.channel_id)
         .or_else(|| settings.channels.first())
-        .ok_or("还没有可用的模型渠道。请先在工具箱的「模型设置」里添加渠道和 Key。")?
+        .ok_or("还没有可用的模型渠道。请先在工具箱「LLM提取」→「渠道设置」里添加渠道和 Key。")?
         .clone();
     let selected_model = if channel.id == preferences.channel_id || preferences.channel_id.is_empty() {
         preferences.model.as_str()
@@ -553,7 +576,18 @@ async fn run_loop(app: &AppHandle, conversation_id: &str, cancel: Arc<AtomicBool
     if key.is_empty() {
         return Err(format!("渠道「{}」还没有填写 Key。", channel.name));
     }
-    let tools = tools::definitions();
+    let instructions = format!(
+        "{}
+
+## 可按需加载的工具组
+需要时用 load_tools 加载，加载后本对话一直可用：
+{}
+
+当前本地时间：{}",
+        prompt::SYSTEM_PROMPT,
+        tools::groups_prompt(),
+        chrono::Local::now().format("%Y-%m-%d %H:%M（UTC%:z）"),
+    );
     for _ in 0..MAX_STEPS {
         if cancel.load(Ordering::SeqCst) {
             return Err("已停止".into());
@@ -571,10 +605,10 @@ async fn run_loop(app: &AppHandle, conversation_id: &str, cancel: Arc<AtomicBool
             key: &key,
             model,
             effort: &preferences.effort,
-            instructions: prompt::SYSTEM_PROMPT,
+            instructions: &instructions,
             input: build_input(&messages, &attach_views(app, conversation_id, &messages).await, &attachment_data),
             has_user_attachments: !attachment_data.is_empty(),
-            tools: tools.clone(),
+            tools: tools::definitions(&tools::active_tools(&messages)),
         };
         let outcome = responses::stream(request, cancel.clone(), |delta| match delta {
             responses::Delta::Text(text) => emit(app, conversation_id, "text-delta", json!({"delta": text})),
