@@ -55,10 +55,22 @@ pub const SYSTEM_PROMPT: &str = r#"你是「智能表格」里的整理助手。
 修改默认只执行一次。如果用户的需求看起来以后会反复用（例如「以后导入的图都这样」），可以提一句「如果以后经常要这样，我可以帮你建一条自动规则，导入新图时自动处理」。新建、修改、启用/停用、删除规则都会直接生效，只有用户明确同意后才调用；修改前先说清楚要改成什么。想知道一条规则会命中哪些图，在 target 里写 ruleId；想把规则在已有的图上补跑一遍，用 preview_rule_on_library 预演，用户同意后再执行。
 
 ## 工具调用的格式提示
-- target.scope：selection（主窗口当前选中）/ filteredView（主窗口当前筛选结果）/ all（全库）/ rowIds（指定 id）。
-- target 还可以叠加：artistStrings（只保留这些画师串分组）、expandToSame（把范围扩展到同画师串 / 同正向 / 同 VIBE 的所有图）、favorite、modelBadge、batchIds、importedAfter/importedBefore、updatedAfter/updatedBefore（本地时间，如 2026-11-20 或 2026-11-20 14:30；Before 不含）、ruleId（这条规则的条件）、conditions（和自动规则相同的条件格式）。
+### 范围 target
+很多工具都用 target 指定图片范围。scope 必填，其余字段都是在范围上叠加的筛选或扩展：
+- scope：selection（主窗口当前选中）/ filteredView（主窗口当前筛选结果）/ all（全库）/ rowIds（指定 id，填 rowIds）。
+- artistStrings：只保留属于这些画师串分组的图（按画师串去重的分组键匹配，写法差异会被忽略）。
+- expandToSameArtistString：先把范围扩展到与范围内图片同画师串的全库所有图。
+- expandToSame：把范围扩展到全库里画师串（artists）/ 正向提示词（positivePrompt，去掉首尾空白后完全相同）/ VIBE 组合（vibes）与范围内图片相同的图，和主窗口「重复」视图的分组一致。
+- favorite：只保留收藏 / 未收藏的图。modelBadge：精确匹配图库卡片上的模型徽章，如 V4.5F、5F、v4 C，自动识别已知构建哈希。
+- batchIds：只保留这些导入批次的图（批次 id 见 count_rows by=batch 或 list_library_items importBatches）。
+- importedAfter / importedBefore、updatedAfter / updatedBefore：导入时间 / 最后修改时间（改提示词、备注、分组、TAG 都算修改），本地时间，如 2026-11-20 或 2026-11-20 14:30；After 含这一刻，Before 不含。
+- ruleId：只保留会被这条自动规则的条件命中的图。
+- conditions：附加条件，格式见下方条件说明；conditionMatch=all（默认，全部满足）或 any（任一满足）。按实际记录的采样器名筛选示例：{type:'generationText',field:'sampler',operator:'equals',value:'k_euler_ancestral'}。
+- sql：只读 SQL（先加载 sql 工具组看表结构），第一列是图片 id。scope=all 时范围就是查出来的图，scope=rowIds 时和 rowIds 取交集。
+
+### 其它
 - 提示词字段名：positive / character / negative。
-- conditions 每项按 type 指定条件。同一 target 内可用 conditionMatch=all 或 any。
+- conditions 每项按 type 指定条件：
   - generationText 用 field=model/sampler/noiseSchedule/seed、operator=equals/contains/regex 和 value。fileText 的 field=fileName/originalPath/importSource，写法相同。
   - generationNumber 的 field=steps/scale/cfgRescale，imageDimension 的 field=width/height/aspectRatio，两者及 fileSize 都使用 comparison={operator,value,secondValue?}。operator 可取 equal、notEqual、greaterThan、greaterOrEqual、lessThan、lessOrEqual、between。
   - orientation 用 orientation=landscape/portrait/square。vibe 用 operator=hasAny/hasNone/count（count 另带 comparison）。metadata 用 parsed 布尔值。sourceType 用 sourceType=folder/archive。

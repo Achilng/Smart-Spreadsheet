@@ -100,38 +100,57 @@ pub fn groups_prompt() -> String {
         .join("\n")
 }
 
+/// Usage notes of every group the conversation has loaded. They go into the system prompt rather
+/// than the conversation, so a compaction summary can never drop them while the tools stay.
+pub fn loaded_guides(runtime: &AppRuntime, active: &HashSet<String>) -> String {
+    GROUPS
+        .iter()
+        .filter(|group| group.tools.iter().any(|name| active.contains(*name)))
+        .map(|group| {
+            let mut text = format!("### {}（{}）\n{}", group.key, group.label, group.guide);
+            if group.key == "sql" {
+                match sql::schema(runtime) {
+                    Ok(schema) => text.push_str(&format!("\n- 当前资料库里各表的实际列：\n{schema}")),
+                    Err(error) => text.push_str(&format!("\n- （读取表结构失败：{error}）")),
+                }
+            }
+            text
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
 /// Tool names to offer: the core set, everything the conversation loaded or used, and `extra`.
 pub fn definitions(active: &HashSet<String>) -> Value {
     let names = CORE.iter().map(|name| (*name).to_owned()).chain(active.iter().cloned()).collect::<HashSet<_>>();
     Value::Array(all_definitions().into_iter().filter(|tool| tool["name"].as_str().is_some_and(|name| names.contains(name))).collect())
 }
 
+/// The target shape shared by many tools. Field meanings live once in the system prompt
+/// (「范围 target」) instead of being repeated in every tool definition.
 fn target_schema(description: &str) -> Value {
+    let strings = json!({"type": "array", "items": {"type": "string"}});
+    let integers = json!({"type": "array", "items": {"type": "integer"}});
     json!({
         "type": "object",
-        "description": description,
+        "description": format!("{description}（字段含义见系统提示「范围 target」）"),
         "properties": {
-            "scope": {"type": "string", "enum": ["selection", "filteredView", "all", "rowIds"],
-                "description": "selection=主窗口当前选中；filteredView=主窗口当前筛选结果；all=全库；rowIds=指定 id"},
-            "rowIds": {"type": "array", "items": {"type": "integer"}},
-            "artistStrings": {"type": "array", "items": {"type": "string"},
-                "description": "只保留属于这些画师串分组的图（按画师串去重的分组键匹配，写法差异会被忽略）"},
-            "expandToSameArtistString": {"type": "boolean",
-                "description": "先把范围扩展到与范围内图片同画师串的全库所有图"},
-            "expandToSame": {"type": "array", "items": {"type": "string", "enum": ["artists", "positivePrompt", "vibes"]},
-                "description": "把范围扩展到全库里画师串 / 正向提示词（去掉首尾空白后完全相同）/ VIBE 组合与范围内图片相同的图，和主窗口「重复」视图的分组一致"},
-            "favorite": {"type": "boolean", "description": "只保留收藏/未收藏的图"},
-            "modelBadge": {"type":"string","description":"精确匹配图库卡片上的模型徽章，如 V4.5F、5F、v4 C；自动识别已知构建哈希。"},
-            "batchIds": {"type":"array","items":{"type":"integer"},"description":"只保留这些导入批次的图（批次 id 见 count_rows by=batch 或 list_library_items importBatches）"},
-            "importedAfter": {"type":"string","description":"导入时间不早于此（本地时间，如 2026-11-20 或 2026-11-20 14:30）"},
-            "importedBefore": {"type":"string","description":"导入时间早于此（不含）"},
-            "updatedAfter": {"type":"string","description":"最后修改时间不早于此（改提示词、备注、分组、TAG 都算修改）"},
-            "updatedBefore": {"type":"string","description":"最后修改时间早于此（不含）"},
-            "ruleId": {"type":"integer","description":"只保留会被这条自动规则的条件命中的图"},
-            "conditions": {"type": "array", "items": {"type": "object"},
-                "description": "附加自动规则条件，格式见系统提示中的条件格式。按实际记录的采样器名筛选示例：{type:'generationText',field:'sampler',operator:'equals',value:'k_euler_ancestral'}。"},
-            "conditionMatch": {"type": "string", "enum": ["all", "any"], "description": "多个条件是全部满足还是任一满足，默认 all"},
-            "sql": {"type": "string", "description": "只读 SQL（先 load_tools 加载 sql 工具组看表结构），第一列是图片 id。scope=all 时范围就是查出来的图，scope=rowIds 时和 rowIds 取交集；其它字段照常叠加"}
+            "scope": {"type": "string", "enum": ["selection", "filteredView", "all", "rowIds"]},
+            "rowIds": integers,
+            "artistStrings": strings,
+            "expandToSameArtistString": {"type": "boolean"},
+            "expandToSame": {"type": "array", "items": {"type": "string", "enum": ["artists", "positivePrompt", "vibes"]}},
+            "favorite": {"type": "boolean"},
+            "modelBadge": {"type": "string"},
+            "batchIds": integers,
+            "importedAfter": {"type": "string"},
+            "importedBefore": {"type": "string"},
+            "updatedAfter": {"type": "string"},
+            "updatedBefore": {"type": "string"},
+            "ruleId": {"type": "integer"},
+            "conditions": {"type": "array", "items": {"type": "object"}},
+            "conditionMatch": {"type": "string", "enum": ["all", "any"]},
+            "sql": {"type": "string"}
         },
         "required": ["scope"],
         "additionalProperties": false
@@ -165,7 +184,7 @@ field 取 positive / character / negative。caseSensitive 必须明确给出。�
     });
     let fields = json!({"type": "array", "items": {"type": "string", "enum": ROW_FIELDS}});
     vec![
-        tool("load_tools", "加载一组额外工具（系统提示里列出的工具组）。加载后从下一步起可用，并返回这组工具的用法说明；本对话里一直有效。", json!({
+        tool("load_tools", "加载一组额外工具（系统提示里列出的工具组）。加载后从下一步起可用，这组的用法说明会加到系统提示末尾；本对话里一直有效。", json!({
             "groups": {"type":"array","items":{"type":"string","enum": GROUPS.iter().map(|group| group.key).collect::<Vec<_>>()}}
         }), &["groups"]),
         tool("read_app_guide", "查看智能表格的功能说明：某个功能在软件里的入口和用法（导入、导出、删除图片、筛选、分组、TAG、对比、素材、自动规则、模型设置等）。用户问「怎么做 / 在哪里」或者你做不到需要告诉用户去哪手动操作时先查这里，不要凭印象回答。不带 topic 返回总览和主题目录。", json!({
@@ -404,18 +423,17 @@ pub fn run(app: &AppHandle, conversation_id: &str, call_id: &str, name: &str, ar
             struct Args { groups: Vec<String> }
             let args: Args = parse(arguments)?;
             let mut loaded = Vec::new();
-            let mut guides = Vec::new();
+            let mut groups = Vec::new();
             for key in &args.groups {
                 let group = GROUPS.iter().find(|group| group.key == key).ok_or_else(|| format!("没有名为 {key} 的工具组"))?;
                 loaded.push(group.key);
-                let mut guide = json!({"group": group.key, "label": group.label, "tools": group.tools, "guide": group.guide});
-                if group.key == "sql" {
-                    guide["schema"] = sql::schema(&runtime)?;
-                }
-                guides.push(guide);
+                groups.push(json!({"group": group.key, "label": group.label, "tools": group.tools}));
             }
             Ok(ToolOutput {
-                output: json!({"loaded": guides, "note": "这些工具从下一步起可用"}),
+                output: json!({
+                    "loaded": groups,
+                    "note": "这些工具从下一步起可用。每组的用法说明已加到系统提示末尾的「已加载的工具组用法」里，本对话一直保留，用之前先看。",
+                }),
                 display: json!({"kind": "tools", "groups": loaded}),
             })
         }

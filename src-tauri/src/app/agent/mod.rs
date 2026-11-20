@@ -699,18 +699,16 @@ async fn run_loop(app: &AppHandle, conversation_id: &str, cancel: Arc<AtomicBool
     if key.is_empty() {
         return Err(format!("渠道「{}」还没有填写 Key。", channel.name));
     }
-    let instructions = format!(
+    let base_instructions = format!(
         "{}
 
 ## 可按需加载的工具组
 需要时用 load_tools 加载，加载后本对话一直可用：
-{}
-
-当前本地时间：{}",
+{}",
         prompt::SYSTEM_PROMPT,
         tools::groups_prompt(),
-        chrono::Local::now().format("%Y-%m-%d %H:%M（UTC%:z）"),
     );
+    let now = chrono::Local::now().format("%Y-%m-%d %H:%M（UTC%:z）").to_string();
     let window = preferences.context_window();
     // Past this the older conversation is summarized; lowered for the rest of the run if the site says it is too long.
     let mut budget = window.saturating_sub(REPLY_RESERVE).max(window / 2);
@@ -731,8 +729,15 @@ async fn run_loop(app: &AppHandle, conversation_id: &str, cancel: Arc<AtomicBool
         let compaction::View { summary, messages } = compaction::view(&all);
         let attachment_data = runtime.agent_db(false, |db| Ok(load_attachment_data(db, conversation_id, &messages)))?;
         let attached = attach_views(app, conversation_id, &messages).await;
-        // Tool groups loaded before a compaction stay loaded.
-        let tools = tools::definitions(&tools::active_tools(&all));
+        // Tool groups loaded before a compaction stay loaded, and so do their usage notes.
+        let active = tools::active_tools(&all);
+        let tools = tools::definitions(&active);
+        let guides = tools::loaded_guides(&runtime, &active);
+        let instructions = if guides.is_empty() {
+            format!("{base_instructions}\n\n当前本地时间：{now}")
+        } else {
+            format!("{base_instructions}\n\n## 已加载的工具组用法\n{guides}\n\n当前本地时间：{now}")
+        };
         let fixed = estimate_text(&instructions) + estimate_value(&tools);
         let ratio = calibration(&all);
         let mut input = summary.as_deref().map(compaction::summary_message).into_iter().collect::<Vec<_>>();

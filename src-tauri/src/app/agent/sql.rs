@@ -42,7 +42,7 @@ const MAX_TARGET_IDS: usize = 200_000;
 pub const GUIDE: &str = r#"- query_library_sql 执行一条只读 SQL（SQLite 语法，只能 SELECT / WITH），用来做现有工具做不到的查询和统计：多条件组合、按命中几个 TAG 筛图、跨表统计、找异常数据等。改数据仍然只能走预演 → 执行 → 撤销。
 - 查到的图片可以直接交给其它工具：在任何 target 里写 sql（第一列是图片 id），配合 scope=all 表示「就是这些图」，配合 scope=rowIds 表示和 rowIds 取交集；其它 target 字段照常叠加。不用把 id 抄成长列表。
 - 先想清楚再查：能用 COUNT / GROUP BY 聚合就不要把大量行拉回来；只选需要的列，长提示词用 substr() 截短。默认返回 100 行，limit 最多 1000；超过 15 秒的查询会被中止。
-- 表（具体列见 schema）：
+- 表（各表的实际列见本节末尾）：
   - rows：每张图一行。id=图片编号（就是其它工具里的 rowId）；positive_prompt / character_prompt / negative_prompt 是正向 / 角色（多角色合在一起）/ 负面提示词；artists=画师串，artist_match_key=画师串去重分组键（同一个画师串的图这个值相同）；note 备注；group_id→groups.id（NULL=未分组）；favorite 0/1；batch_id→import_batches.id；generation_model 模型原名、generation_sampler、generation_steps、generation_seed（文本）、generation_scale（CFG）、generation_cfg_rescale、generation_noise_schedule；image_width / image_height；vibe_reference_count；image_path / image_folder 原文件位置；metadata_failed=1 表示没读到生成信息；updated_at 最后修改时间；time 是旧数据自带的时间文本，可能为空。
   - tags(id, name) 与 row_tags(row_id, tag_id)：图片 TAG（TAG 名区分大小写）。groups(id, name)：分组。
   - import_batches：导入批次，imported_at 是导入时间。automation_rules：自动规则，conditions_json / actions_json 是 JSON 文本。
@@ -291,10 +291,10 @@ pub fn expand_target(runtime: &AppRuntime, arguments: &Value) -> Result<Option<V
     Ok(Some(arguments))
 }
 
-/// Columns of every readable table, read from the open library so they never go stale.
-pub fn schema(runtime: &AppRuntime) -> Result<Value, String> {
+/// Columns of every readable table, one line each, read from the open library so they never go stale.
+pub fn schema(runtime: &AppRuntime) -> Result<String, String> {
     let connection = open(runtime)?;
-    let mut tables = serde_json::Map::new();
+    let mut lines = Vec::new();
     for table in TABLES {
         let mut statement = connection.prepare(&format!("SELECT name, type FROM pragma_table_info('{table}')")).map_err(|error| error.to_string())?;
         let columns = statement
@@ -306,8 +306,8 @@ pub fn schema(runtime: &AppRuntime) -> Result<Value, String> {
             .filter(|column| !HIDDEN_COLUMNS.iter().any(|(t, c)| t == table && column.split(' ').next() == Some(*c)))
             .collect::<Vec<_>>();
         if !columns.is_empty() {
-            tables.insert((*table).to_owned(), json!(columns.join(", ")));
+            lines.push(format!("  - {table}({})", columns.join(", ")));
         }
     }
-    Ok(Value::Object(tables))
+    Ok(lines.join("\n"))
 }
