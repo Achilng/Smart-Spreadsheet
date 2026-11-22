@@ -1,5 +1,12 @@
 # 项目计划
 
+## v_51 发布及本机升级（2026-11-22）
+
+- 从 feat/library-agent 的 889ef67 发布 v_51（0.12.28）：整理助手可以以图搜图、发起 LLM 提取、准备导出卡片，修复「请求太长」，入口和用法见 .github/release-notes/v_51.md。
+- 安装包在本机编译并签名，没有触发 GitHub Actions。发布前核对了更新清单的版本、说明、下载地址和签名，三个附件的大小和 SHA-256 与本地一致；公开后重新下载的清单版本是 0.12.28，安装器 SHA-256 一致（57FD07AC…F061）。前端 45 项、Rust 316 项测试通过（顺手把漏了 agent_image_attachments 的旧建表测试补上）。
+- 本机：关闭正在运行的程序，旧主程序备份到 D:/应用/智能表格/backups/smart-spreadsheet-before-v51-20261122.exe。新的 target/release 主程序写入 NSIS 类型标记后替换安装目录的 exe，Windows 应用登记版本改为 0.12.28；试启动正常。
+- 构建日志和中间文件在 D:/Agent/Agent_temp/smart-spreadsheet-release-v51/。
+
 ## 整理助手：以图搜图、LLM 提取、导出卡片，请求太长修复（2026-11-22）
 
 - 新增三个按需加载的工具组，执行逻辑在 `src-tauri/src/app/agent/toolbox.rs`：
