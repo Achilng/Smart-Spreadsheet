@@ -173,6 +173,22 @@ pub(crate) async fn agent_delete_conversation(id: String, app: tauri::AppHandle)
 }
 
 #[tauri::command]
+pub(crate) async fn agent_dismiss_error(conversation_id: String, message_id: i64, app: tauri::AppHandle) -> Result<(), String> {
+    blocking(app, move |runtime| runtime.agent_db(false, |db| db.agent_dismiss_error(&conversation_id, message_id))).await
+}
+
+/// The user finished (or failed) an export from a card the assistant prepared.
+#[tauri::command]
+pub(crate) fn agent_note_export(conversation_id: String, export_id: String, title: String, result: String, app: tauri::AppHandle) {
+    note_user_action(
+        &app,
+        Some(&conversation_id),
+        format!("（我在导出卡片「{title}」上完成了导出：{result}）"),
+        json!({"action": "export", "exportId": export_id, "title": title, "result": result}),
+    );
+}
+
+#[tauri::command]
 pub(crate) async fn agent_operations(limit: Option<usize>, app: tauri::AppHandle) -> Result<Vec<OperationRecord>, String> {
     blocking(app, move |runtime| runtime.agent_db(false, |db| db.agent_operations(limit.unwrap_or(100)))).await
 }

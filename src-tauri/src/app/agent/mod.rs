@@ -4,6 +4,7 @@ mod library_data;
 mod prompt;
 mod responses;
 mod sql;
+mod toolbox;
 pub(crate) mod tools;
 pub(crate) mod vision;
 
@@ -24,7 +25,9 @@ pub const PREFERENCES_KEY: &str = "agent_preferences_v1";
 /// Context window assumed when the user has not set one (tokens).
 const DEFAULT_CONTEXT_WINDOW: u64 = 200_000;
 /// Room kept free for the model's reply and reasoning; past this the older conversation is summarized.
-const REPLY_RESERVE: u64 = 16_000;
+/// Also sent as the request's output cap: some sites otherwise reserve their own default (e.g. 65535)
+/// on top of the prompt and reject a request that still fits our budget.
+const REPLY_RESERVE: u64 = 32_000;
 /// Rough cost of one attached image.
 const IMAGE_TOKENS: u64 = 1_500;
 /// Automatic re-sends after a network error or a busy site, and compactions after "request too long".
@@ -610,6 +613,8 @@ struct Site<'a> {
     key: &'a str,
     model: &'a str,
     effort: &'a str,
+    /// Output cap sent with every request (reply plus reasoning).
+    max_output: u64,
 }
 
 /// Wait 2 s, then 4 s, … before retrying; stops early when the user cancels.
@@ -638,6 +643,7 @@ async fn summarize(site: &Site<'_>, prompt: &str, cancel: Arc<AtomicBool>) -> Re
             input: vec![json!({"role": "user", "content": prompt})],
             has_user_attachments: false,
             tools: json!([]),
+            max_output_tokens: site.max_output,
         };
         match responses::stream(request, cancel.clone(), |_: responses::Delta<'_>| {}).await {
             // A cut-off summary must not become the conversation's memory.
@@ -711,8 +717,9 @@ async fn run_loop(app: &AppHandle, conversation_id: &str, cancel: Arc<AtomicBool
     let now = chrono::Local::now().format("%Y-%m-%d %H:%M（UTC%:z）").to_string();
     let window = preferences.context_window();
     // Past this the older conversation is summarized; lowered for the rest of the run if the site says it is too long.
-    let mut budget = window.saturating_sub(REPLY_RESERVE).max(window / 2);
-    let site = Site { base_url: &channel.base_url, key: &key, model, effort: &preferences.effort };
+    let reserve = REPLY_RESERVE.min(window / 4);
+    let mut budget = window.saturating_sub(reserve);
+    let site = Site { base_url: &channel.base_url, key: &key, model, effort: &preferences.effort, max_output: reserve };
     let (mut network_retries, mut shrink_retries) = (0, 0);
     // Set when the site said the request is too long: compact now, keeping this much recent conversation.
     let mut forced_keep: Option<u64> = None;
@@ -785,6 +792,7 @@ async fn run_loop(app: &AppHandle, conversation_id: &str, cancel: Arc<AtomicBool
             input,
             has_user_attachments: !attachment_data.is_empty(),
             tools,
+            max_output_tokens: site.max_output,
         };
         let result = responses::stream(request, cancel.clone(), |delta| match delta {
             responses::Delta::Text(text) => emit(app, conversation_id, "text-delta", json!({"delta": text})),

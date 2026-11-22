@@ -1,13 +1,13 @@
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { emit, listen } from "@tauri-apps/api/event";
 import { cjk } from "@streamdown/cjk";
-import { ArrowDown, ArrowUp, Check, ChevronDown, Copy, FileText, History, Images, MoreHorizontal, PanelLeft, Paperclip, Sparkles, SquarePen } from "lucide-react";
+import { ArrowDown, ArrowUp, Check, ChevronDown, Copy, FileText, History, Images, MoreHorizontal, PanelLeft, Paperclip, Sparkles, SquarePen, X } from "lucide-react";
 import { attachmentAccept, attachmentNames, DraftAttachment, encodeAttachment, validateFiles } from "./AgentAttachments";
 import { Streamdown, defaultRemarkPlugins, type StreamdownProps } from "streamdown";
 import { GalleryLink, isGalleryLink, remarkGalleryImages } from "./AgentGalleryLinks";
 import { useStickToBottom } from "use-stick-to-bottom";
 import {
-  agentCancel, agentMessages, agentOperations, agentSend, agentState, applyAgentPreview, deleteAgentConversation, renameAgentConversation, selectedAgentModel,
+  agentCancel, agentMessages, agentOperations, agentSend, agentState, applyAgentPreview, deleteAgentConversation, dismissAgentError, renameAgentConversation, selectedAgentModel,
   DEFAULT_CONTEXT_WINDOW, type AgentContextUsage, type AgentEvent, type AgentMessage, type AgentOperation, type AgentPreviewReport, type AgentState,
 } from "../../../lib/api/agent";
 import { errorText } from "../../../lib/utils/format";
@@ -18,6 +18,7 @@ import { notify } from "../../state/notices";
 import { thumbnails } from "../../../lib/images/thumbnails";
 import { clearProgressiveImages } from "../../../lib/images/progressive-images";
 import { OperationCard, PreviewCard } from "./AgentCards";
+import { ExportCard, type ExportDisplay } from "./AgentExport";
 import { AgentPreferencesDialog } from "./AgentPreferencesDialog";
 import { ContextMeter } from "./ContextMeter";
 import { ImageViewerProvider, ThumbStrip, useImageViewer } from "./AgentMedia";
@@ -46,7 +47,7 @@ type Item =
   | { type: "user"; id: number; at: number; text: string; files: string[] }
   | { type: "assistant"; id: number; at: number; text: string }
   | { type: "error"; id: number; at: number; text: string; stopped: boolean }
-  | { type: "action"; id: number; at: number; action: string; title: string; operationId: number | null }
+  | { type: "action"; id: number; at: number; action: string; title: string; operationId: number | null; exportId: string | null; result: string }
   | { type: "compaction"; id: number; at: number; summary: string; tokensBefore: number }
   | ReasoningItem
   | StepItem;
@@ -79,7 +80,11 @@ function toItems(messages: AgentMessage[]): Item[] {
     if (reasoning) items.push({ type: "reasoning", id: message.id, at, text: reasoning });
     if (message.kind === "user") items.push({ type: "user", id: message.id, at, text: String(content.text ?? ""), files: attachmentNames(content.attachments) });
     else if (message.kind === "assistant") items.push({ type: "assistant", id: message.id, at, text: String(content.text ?? "") });
-    else if (message.kind === "user_action") items.push({ type: "action", id: message.id, at, action: String(content.action ?? ""), title: String(content.title ?? ""), operationId: typeof content.operationId === "number" ? content.operationId : null });
+    else if (message.kind === "user_action") items.push({
+      type: "action", id: message.id, at, action: String(content.action ?? ""), title: String(content.title ?? ""),
+      operationId: typeof content.operationId === "number" ? content.operationId : null,
+      exportId: typeof content.exportId === "string" ? content.exportId : null, result: String(content.result ?? ""),
+    });
     else if (message.kind === "error") items.push({ type: "error", id: message.id, at, text: String(content.message ?? ""), stopped: content.stopped === true });
     else if (message.kind === "compaction") items.push({ type: "compaction", id: message.id, at, summary: String(content.summary ?? ""), tokensBefore: Number(content.tokensBefore) || 0 });
     else if (message.kind === "tool_call") {
@@ -350,6 +355,12 @@ export function AgentWindow() {
     return map;
   }, [operations]);
   const operationById = useMemo(() => new Map(operations.map(operation => [operation.id, operation])), [operations]);
+  /** Latest recorded outcome of each export card in this conversation. */
+  const exportResults = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const item of items) if (item.type === "action" && item.action === "export" && item.exportId) map.set(item.exportId, item.result);
+    return map;
+  }, [items]);
   /** Previews already on screen in this conversation; their operations update those cards instead of adding new ones. */
   const shownPreviews = useMemo(() => new Set(items.flatMap(item => item.type === "step" && item.display?.kind === "preview" ? [String((item.display.report as AgentPreviewReport).previewId)] : [])), [items]);
   const channel = state?.channels.find(item => item.id === state.preferences.channelId) ?? state?.channels[0];
@@ -392,6 +403,11 @@ export function AgentWindow() {
     try { localStorage.setItem(SIDEBAR_KEY, next ? "1" : "0"); } catch { /* Preference only. */ }
   };
 
+  const dismissError = async (conversationId: string, messageId: number) => {
+    setMessages(list => list.filter(message => message.id !== messageId));
+    try { await dismissAgentError(conversationId, messageId); }
+    catch (error) { notify(errorText(error), "error"); void reloadMessages(conversationId); }
+  };
   const onCardChanged = () => { void reloadOperations(); if (current) void reloadMessages(current); };
   const renderThought = (block: ThoughtBlock, last: boolean) => {
     const working = last && thinking;
@@ -426,6 +442,10 @@ export function AgentWindow() {
           if (previewId && shownPreviews.has(previewId)) return null;
           return <div key={step.id} className="msg msg-card"><OperationCard operation={operationById.get(stored.id) ?? stored} onChanged={onCardChanged} /></div>;
         }
+        if (display?.kind === "export") {
+          const card = display as unknown as ExportDisplay;
+          return <div key={step.id} className="msg msg-card"><ExportCard display={card} conversationId={current} exported={exportResults.get(card.exportId) ?? null} busy={running} /></div>;
+        }
         return null;
       })}
     </Fragment>;
@@ -440,10 +460,13 @@ export function AgentWindow() {
         <Markdown text={block.text} />
         <div className="msg-actions"><CopyAction text={block.text} /></div>
       </div>;
-      case "action": return <p key={block.id} className="msg msg-user-action"><Check className="icon sm" aria-hidden="true" /><span>{block.action === "undo" ? "你撤销了" : "你确认执行了"}「{block.title}」</span>{block.operationId !== null && <span className="ag-time">#{block.operationId}</span>}</p>;
+      case "action": return <p key={block.id} className="msg msg-user-action"><Check className="icon sm" aria-hidden="true" /><span>{block.action === "undo" ? `你撤销了「${block.title}」` : block.action === "export" ? (block.result.startsWith("导出失败") ? `导出「${block.title}」没有成功` : `你导出了「${block.title}」`) : `你确认执行了「${block.title}」`}</span>{block.operationId !== null && <span className="ag-time">#{block.operationId}</span>}</p>;
       case "error": return block.stopped
         ? <p key={block.id} className="msg msg-notice">{block.text}</p>
-        : <p key={block.id} className="msg msg-error" role="alert">{block.text}</p>;
+        : <div key={block.id} className="msg msg-error" role="alert">
+          {block.text}
+          {current && <button type="button" className="msg-error__close" title="关闭这条报错" aria-label="关闭这条报错" onClick={() => void dismissError(current, block.id)}><X className="icon sm" aria-hidden="true" /></button>}
+        </div>;
       case "thought": return renderThought(block, index === blocks.length - 1);
       case "compaction": return <details key={block.id} className="msg msg-compaction">
         <summary><span>较早的对话已整理成摘要{block.tokensBefore > 0 && `（压缩前约 ${Math.round(block.tokensBefore / 1000)}k tokens）`}</span></summary>

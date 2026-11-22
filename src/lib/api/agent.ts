@@ -102,6 +102,10 @@ export const agentSend = (conversationId: string | null, text: string, attachmen
 export const agentCancel = (conversationId: string) => invoke<void>("agent_cancel", { conversationId });
 export const renameAgentConversation = (id: string, title: string) => invoke<void>("agent_rename_conversation", { id, title });
 export const deleteAgentConversation = (id: string) => invoke<void>("agent_delete_conversation", { id });
+export const dismissAgentError = (conversationId: string, messageId: number) => invoke<void>("agent_dismiss_error", { conversationId, messageId });
+/** Tell the conversation that the user finished (or failed) an export from its card. */
+export const noteAgentExport = (conversationId: string, exportId: string, title: string, result: string) =>
+  invoke<void>("agent_note_export", { conversationId, exportId, title, result });
 export const agentOperations = (limit?: number) => invoke<AgentOperation[]>("agent_operations", { limit });
 export const undoAgentOperation = (operationId: number) => invoke<AgentUndoOutcome>("agent_undo", { operationId });
 export const applyAgentPreview = (conversationId: string, previewId: string) => invoke<AgentOperation>("agent_apply_preview", { conversationId, previewId });

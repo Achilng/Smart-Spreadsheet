@@ -125,6 +125,21 @@ impl DataDirectory {
 
 pub(crate) fn compute_phash(path: &Path) -> Result<String, io::Error> {
     let img = image::open(path).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+    Ok(phash_of(&img))
+}
+
+/// pHash of an image already in memory (e.g. a chat attachment), same algorithm as for files.
+pub(crate) fn compute_phash_bytes(bytes: &[u8]) -> Result<String, io::Error> {
+    let img = image::load_from_memory(bytes).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+    Ok(phash_of(&img))
+}
+
+/// Distance between two stored hashes (16 hex digits); None when either is malformed.
+pub(crate) fn phash_distance(a: &str, b: &str) -> Option<u32> {
+    Some(hamming_distance(u64::from_str_radix(a, 16).ok()?, u64::from_str_radix(b, 16).ok()?))
+}
+
+fn phash_of(img: &image::DynamicImage) -> String {
     let gray = img
         .resize_exact(DCT_SIZE as u32, DCT_SIZE as u32, FilterType::Triangle)
         .to_luma8();
@@ -179,7 +194,7 @@ pub(crate) fn compute_phash(path: &Path) -> Result<String, io::Error> {
         }
     }
 
-    Ok(format!("{hash:016x}"))
+    format!("{hash:016x}")
 }
 
 fn hamming_distance(a: u64, b: u64) -> u32 {

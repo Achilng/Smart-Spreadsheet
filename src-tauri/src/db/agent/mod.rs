@@ -116,6 +116,18 @@ impl Database {
         Ok(())
     }
 
+    /// Remove an error notice the user closed. Errors are never sent to the model, so nothing else changes.
+    pub fn agent_dismiss_error(&self, conversation_id: &str, message_id: i64) -> Res<()> {
+        self.connection
+            .execute(
+                "DELETE FROM agent_messages WHERE id = ?1 AND conversation_id = ?2 AND kind = 'error'
+                   AND COALESCE(json_extract(content, '$.stopped'), 0) = 0",
+                params![message_id, conversation_id],
+            )
+            .map_err(s)?;
+        Ok(())
+    }
+
     pub fn agent_messages(&self, conversation_id: &str) -> Res<Vec<Message>> {
         let mut statement = self
             .connection

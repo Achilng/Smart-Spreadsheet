@@ -82,6 +82,27 @@ pub const GROUPS: &[ToolGroup] = &[
         guide: super::sql::GUIDE,
         tools: &["query_library_sql"],
     },
+    ToolGroup {
+        key: "similar",
+        label: "以图搜图",
+        summary: "用一张图库图片或聊天里上传的图片，找出图库里画面几乎相同的图（同一张图的不同保存版本、缩放、轻微裁切）；也能在后台补算缺少的相似度指纹",
+        guide: "- find_similar_images 只能找「几乎是同一张画面」的图，找不到画风或构图相似的图；用户要找相似风格时，改用画师串、提示词统计或 view_images。\n- 来源二选一：rowId（图库图片）或 messageId + attachmentNumber（聊天上传的图片）。threshold 是允许的差异，默认 10（和工具箱一样），越小越严格，0 = 指纹完全相同；一般不超过 16，太大会混进不相干的图。\n- 结果会以缩略图显示给用户；要用户在主窗口里看，把 matches 的 rowId 交给 show_selected_images。\n- 结果里 missingHashes > 0 表示有些图还没算指纹、不会被搜到。告诉用户张数，用户同意后用 refresh_perceptual_hashes 在后台补算，算完再搜一次。",
+        tools: &["find_similar_images", "refresh_perceptual_hashes"],
+    },
+    ToolGroup {
+        key: "styleExtraction",
+        label: "LLM 提取画师串",
+        summary: "对一批图用 AI 渠道在后台提取画师串：估算数量、发起任务、查看进度、暂停/继续/结束/重试失败项、撤销某次任务的写入",
+        guide: "- 发起前必须先 estimate_style_extraction，把要写入的图片张数（affectedRows）和需要真正调用模型的条数（requestPrompts，会消耗 AI 渠道额度）告诉用户；用户明确同意后再用同样的参数 start_style_extraction。requestPrompts 为 0 时不花额度，也要说明。\n- 默认跳过已经提取过的图；用户明确要重新提取时才设 includeProcessed=true（会重新花额度）。allMatching=true 会把全库里正文相同的其它图也一起写入。\n- 渠道用「LLM提取」页里已启用的渠道，不能选；没有可用渠道时告诉用户去 工具箱 →「LLM提取」→「渠道设置」配置。\n- 任务在后台跑，发起后马上返回 jobId；用户问进度时用 get_style_extraction_status。正在跑的任务要先 pause 才能 undo；undo 会还原这次任务写入的画师串（之后又改过的图保留现状）。\n- 任务结果也能在 工具箱 →「LLM提取」→「提取任务」里看和操作。",
+        tools: &["estimate_style_extraction", "start_style_extraction", "get_style_extraction_status", "control_style_extraction"],
+    },
+    ToolGroup {
+        key: "export",
+        label: "导出",
+        summary: "把一批图导出为带图 Excel、智绘姬 JSON、轮询脚本 JSON，或复制 / 硬链接 / 去元数据导出图片文件；助手只准备导出卡片，由用户在卡片上选位置并导出",
+        guide: "- 你不能直接写文件。prepare_export 只在对话里显示一张导出卡片，用户点卡片上的按钮、自己选保存位置后才真正导出；结果会以一条「你导出了…」的消息出现。在那之前不要说已经导出。\n- format：xlsx=带缩略图的 Excel 表格；zhihuijiJson=智绘姬 JSON（options.noteNumberNames 用备注里的编号当名字，默认 false；artistsAsPositive 把画师串当正向，默认 true；deduplicate 去掉最终正向相同的重复项，默认 false）；rotationJson=轮询脚本 JSON；copyImages=把原图复制到一个新文件夹；hardlinkImages=硬链接到新文件夹（不占额外空间，要求同一个磁盘）；cleanImages=导出图片副本，可改名、可去掉生成信息（options.rename=original|random|custom，custom 时给 customName；stripMetadata 默认 true）。\n- 用户只说「导出」没说格式时，先问要哪种。范围不清楚时先问清楚，张数很多时先说明。",
+        tools: &["prepare_export"],
+    },
 ];
 
 /// Tools kept only so that older conversations that called them still replay.
@@ -331,6 +352,40 @@ field 取 positive / character / negative。caseSensitive 必须明确给出。�
             "sql": {"type":"string","description":"一条 SELECT 语句"},
             "limit": {"type":"integer","minimum":1,"maximum":1000,"description":"最多返回多少行，默认 100"}
         }), &["sql"]),
+        tool("find_similar_images", "以图搜图：按相似度指纹找图库里画面几乎相同的图（不是画风相似），按差异从小到大返回图片 ID 和差异值，以及还没算指纹、搜不到的图片数。来源二选一：rowId，或聊天附件的 messageId + attachmentNumber。", json!({
+            "rowId": {"type":"integer","description":"图库图片 ID"},
+            "messageId": {"type":"integer","minimum":1},
+            "attachmentNumber": {"type":"integer","minimum":1,"maximum":4},
+            "threshold": {"type":"integer","minimum":0,"maximum":64,"description":"允许的指纹差异，默认 10，越小越严格"},
+            "limit": {"type":"integer","minimum":1,"maximum":200,"description":"最多返回多少张，默认 30"}
+        }), &[]),
+        tool("refresh_perceptual_hashes", "在后台给还没有相似度指纹的图片补算指纹（只读原图，不改其它数据），立即返回；算完后 find_similar_images 的 missingHashes 会变少。", json!({}), &[]),
+        tool("estimate_style_extraction", "估算一次 LLM 提取画师串会处理多少（不发起任务、不花额度）：会写入多少张图、需要调用模型的不同正文条数、可复用历史结果的条数，以及可用的渠道。", json!({
+            "target": target_schema("要提取的图片范围"),
+            "includeProcessed": {"type":"boolean","description":"重新提取已经提取过的图，默认 false"},
+            "allMatching": {"type":"boolean","description":"把全库正文相同的其它图也一起写入，默认 false"}
+        }), &["target"]),
+        tool("start_style_extraction", "发起一次后台 LLM 提取画师串任务，返回任务 ID，结果自动写入画师串。会消耗 AI 渠道额度：必须先 estimate 并得到用户同意后才调用，参数和估算时一致。", json!({
+            "target": target_schema("要提取的图片范围"),
+            "includeProcessed": {"type":"boolean"},
+            "allMatching": {"type":"boolean"}
+        }), &["target"]),
+        tool("get_style_extraction_status", "查看 LLM 提取任务的状态和进度（不同正文条数、已完成、失败、无画师、已写入的图片张数）。不给 jobId 时列出最近 5 个任务。", json!({
+            "jobId": {"type":"string"}
+        }), &[]),
+        tool("control_style_extraction", "操作一个 LLM 提取任务：pause 暂停、resume 继续、cancel 结束（保留已完成结果）、retry 重新排队失败项、undo 撤销这次任务写入的画师串（运行中的任务要先暂停）。", json!({
+            "jobId": {"type":"string"},
+            "action": {"type":"string","enum":["pause","resume","cancel","retry","undo"]}
+        }), &["jobId","action"]),
+        tool("prepare_export", "准备一次导出：在对话里显示导出卡片（不写任何文件）。用户在卡片上选择保存位置后才真正导出，结果会以消息告诉你。格式和选项见 export 工具组说明。", json!({
+            "title": {"type":"string","description":"卡片标题，例如「导出收藏的风景图」"},
+            "target": target_schema("要导出的图片范围"),
+            "format": {"type":"string","enum": super::toolbox::EXPORT_FORMATS},
+            "options": {"type":"object","additionalProperties":false,"properties":{
+                "noteNumberNames":{"type":"boolean"}, "artistsAsPositive":{"type":"boolean"}, "deduplicate":{"type":"boolean"},
+                "rename":{"type":"string","enum":["original","random","custom"]}, "customName":{"type":"string"}, "stripMetadata":{"type":"boolean"}
+            }}
+        }), &["title","target","format"]),
     ]
 }
 
@@ -418,6 +473,10 @@ pub fn run(app: &AppHandle, conversation_id: &str, call_id: &str, name: &str, ar
     let arguments = expanded.as_ref().unwrap_or(arguments);
     let plain = |output: Value| Ok(ToolOutput { display: json!({"kind": "info"}), output });
     match name {
+        "find_similar_images" | "refresh_perceptual_hashes" | "estimate_style_extraction" | "start_style_extraction"
+        | "get_style_extraction_status" | "control_style_extraction" | "prepare_export" => {
+            super::toolbox::run(app, conversation_id, call_id, name, arguments, &view)
+        }
         "load_tools" => {
             #[derive(Deserialize)]
             struct Args { groups: Vec<String> }

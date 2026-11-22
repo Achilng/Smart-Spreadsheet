@@ -1,11 +1,33 @@
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use super::{AppRuntime, AppRuntimeError};
 use crate::storage::PerceptualHashProgress;
 
+/// One pHash backfill at a time: the toolbox and the agent can both start one, and two runs
+/// would race to fill the same rows.
+static PHASH_RUNNING: AtomicBool = AtomicBool::new(false);
+
+struct PhashRun;
+
+impl Drop for PhashRun {
+    fn drop(&mut self) {
+        PHASH_RUNNING.store(false, Ordering::SeqCst);
+    }
+}
+
 impl AppRuntime {
+    pub(crate) fn perceptual_hash_backfill_running(&self) -> bool {
+        PHASH_RUNNING.load(Ordering::SeqCst)
+    }
+
     pub(crate) fn backfill_perceptual_hashes(
         &self,
         progress: impl Fn(PerceptualHashProgress),
     ) -> Result<PerceptualHashProgress, AppRuntimeError> {
+        if PHASH_RUNNING.swap(true, Ordering::SeqCst) {
+            return Err(AppRuntimeError::Busy("感知哈希正在计算中，请等这一轮结束".into()));
+        }
+        let _run = PhashRun;
         let directory = self.active_directory()?;
         let outcome = directory.backfill_perceptual_hashes(progress)?;
         Ok(PerceptualHashProgress {

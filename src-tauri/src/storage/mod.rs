@@ -45,6 +45,7 @@ pub use migration::{MigrationOutcome, MigrationProgress, MigrationStage, Prepare
 pub use perceptual_hash::{
     PerceptualHashBackfillOutcome, PerceptualHashProgress, SimilarImageMatch,
 };
+pub(crate) use perceptual_hash::{compute_phash_bytes, phash_distance};
 pub use prompt_docs::{PromptDocAsset, PromptDocDetail, PromptDocError, PromptDocSummary};
 pub use style_signatures::StyleSignatureProgress;
 pub use vibe_status::VibeStatusProgress;

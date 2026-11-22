@@ -17,6 +17,9 @@ pub struct Request<'a> {
     pub input: Vec<Value>,
     pub has_user_attachments: bool,
     pub tools: Value,
+    /// Cap on the reply (reasoning included). Sites that add their own default reservation to the
+    /// prompt when checking the context limit then reserve exactly this much.
+    pub max_output_tokens: u64,
 }
 
 pub struct FunctionCall {
@@ -86,7 +89,8 @@ fn context_overflow(text: &str) -> bool {
     [
         "context_length", "context length", "context window", "maximum context", "too many tokens",
         "prompt is too long", "input is too long", "too long for", "token limit", "tokens exceed",
-        "exceeds the maximum", "input token count",
+        "exceeds the maximum", "input token count", "context size", "context limit", "context_size",
+        "exceeds the context", "exceed the context", "too large for the model",
     ]
     .iter()
     .any(|needle| lower.contains(needle))
@@ -189,6 +193,32 @@ fn collect_item(item: &Value, outcome: &mut Outcome, text_seen: bool) {
     }
 }
 
+/// POST one request body; connection trouble becomes a retryable failure.
+async fn send(url: &str, key: &str, body: &Value) -> Result<reqwest::Response, Failure> {
+    client()?
+        .post(url)
+        .bearer_auth(key)
+        .timeout(Duration::from_secs(900))
+        .json(body)
+        .send()
+        .await
+        .map_err(|error| {
+            if error.is_timeout() {
+                Failure::new("连接模型站点超时，请检查网络后重试。")
+            } else {
+                Failure::retry(format!("无法连接模型站点，请检查网络或渠道地址。\n（错误详情：{}）", network_detail(&error)))
+            }
+        })
+}
+
+/// The failure for a non-success HTTP status.
+fn rejected(status: u16, text: &str, model: &str, has_user_attachments: bool) -> Failure {
+    let message = friendly_status(status, text, model, has_user_attachments);
+    let too_long = status == 413 || (matches!(status, 400 | 422 | 500..=599) && context_overflow(text));
+    let retry = !too_long && matches!(status, 408 | 429 | 500 | 502 | 503 | 504 | 520..=524);
+    Failure { message, retry, too_long }
+}
+
 /// Stream one model turn. `on_delta` receives text as it arrives; `cancel` aborts promptly.
 pub async fn stream(
     request: Request<'_>,
@@ -201,6 +231,7 @@ pub async fn stream(
         "input": request.input,
         "store": false,
         "stream": true,
+        "max_output_tokens": request.max_output_tokens,
     });
     if request.tools.as_array().is_some_and(|tools| !tools.is_empty()) {
         body["tools"] = request.tools;
@@ -210,27 +241,25 @@ pub async fn stream(
     if !request.effort.is_empty() && request.effort != "default" {
         body["reasoning"] = json!({"effort": request.effort, "summary": "auto"});
     }
-    let response = client()?
-        .post(format!("{}/responses", normalize_url(request.base_url)?))
-        .bearer_auth(request.key)
-        .timeout(Duration::from_secs(900))
-        .json(&body)
-        .send()
-        .await
-        .map_err(|error| {
-            if error.is_timeout() {
-                Failure::new("连接模型站点超时，请检查网络后重试。")
-            } else {
-                Failure::retry(format!("无法连接模型站点，请检查网络或渠道地址。\n（错误详情：{}）", network_detail(&error)))
+    let url = format!("{}/responses", normalize_url(request.base_url)?);
+    let mut response = send(&url, request.key, &body).await?;
+    let mut status = response.status().as_u16();
+    if matches!(status, 400 | 422) {
+        let text = response.text().await.unwrap_or_default();
+        // A site that does not know the output cap: send the same request once more without it.
+        if text.contains("max_output_tokens") && !context_overflow(&text) {
+            if let Some(fields) = body.as_object_mut() {
+                fields.remove("max_output_tokens");
             }
-        })?;
-    let status = response.status().as_u16();
+            response = send(&url, request.key, &body).await?;
+            status = response.status().as_u16();
+        } else {
+            return Err(rejected(status, &text, request.model, request.has_user_attachments));
+        }
+    }
     if !(200..300).contains(&status) {
         let text = response.text().await.unwrap_or_default();
-        let message = friendly_status(status, &text, request.model, request.has_user_attachments);
-        let too_long = status == 413 || (matches!(status, 400 | 422 | 500..=599) && context_overflow(&text));
-        let retry = !too_long && matches!(status, 408 | 429 | 500 | 502 | 503 | 504 | 520..=524);
-        return Err(Failure { message, retry, too_long });
+        return Err(rejected(status, &text, request.model, request.has_user_attachments));
     }
     let is_json = response
         .headers()

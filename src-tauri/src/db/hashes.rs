@@ -134,6 +134,25 @@ impl Database {
         Ok(())
     }
 
+    /// The stored pHash of one row: Ok(None) when the row exists but has none yet.
+    pub fn perceptual_hash_of(&self, row_id: i64) -> Result<Option<String>, DatabaseError> {
+        self.connection
+            .query_row("SELECT perceptual_hash FROM rows WHERE id = ?1", [row_id], |row| row.get(0))
+            .map_err(|error| match error {
+                rusqlite::Error::QueryReturnedNoRows => DatabaseError::RowNotFound(row_id),
+                other => other.into(),
+            })
+    }
+
+    pub fn missing_perceptual_hash_count(&self) -> Result<usize, DatabaseError> {
+        let count: i64 = self.connection.query_row(
+            "SELECT COUNT(*) FROM rows WHERE perceptual_hash IS NULL",
+            [],
+            |row| row.get(0),
+        )?;
+        Ok(count as usize)
+    }
+
     pub fn all_perceptual_hashes(&self) -> Result<Vec<(i64, String)>, DatabaseError> {
         let mut statement = self.connection.prepare(
             "SELECT id, perceptual_hash FROM rows WHERE perceptual_hash IS NOT NULL",

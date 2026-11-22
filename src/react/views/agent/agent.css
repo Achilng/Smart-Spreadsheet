@@ -177,7 +177,10 @@
   .msg-action { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; color: var(--text-3); transition: background .15s, color .15s; }
   .msg-action:hover { background: var(--chat-hover); color: var(--text); }
   .msg-notice { align-self: center; max-width: 92%; padding: 5px 14px; border-radius: 999px; background: var(--chat-hover); font-size: 12px; line-height: 1.6; color: var(--text-2); text-align: center; }
-  .msg-error { padding: 10px 14px; border-radius: var(--r-lg); background: var(--bad-bg); color: var(--bad); font-size: 13px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .msg-error { position: relative; padding: 10px 40px 10px 14px; border-radius: var(--r-lg); background: var(--bad-bg); color: var(--bad); font-size: 13px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .msg-error__close { position: absolute; top: 6px; right: 6px; display: grid; place-items: center; width: 26px; height: 26px; border: 0; border-radius: 8px; background: transparent; color: inherit; opacity: .7; cursor: pointer; transition: background .15s, opacity .15s; }
+  .msg-error__close:hover { opacity: 1; background: rgb(0 0 0 / 6%); }
+  .msg-error__close:focus-visible { outline: 2px solid currentColor; outline-offset: 1px; opacity: 1; }
   /* A summary of the older conversation: a divider that opens to show what the model now remembers. */
   .msg-compaction { align-self: stretch; }
   .msg-compaction > summary { display: flex; align-items: center; gap: 12px; color: var(--text-3); font-size: 12px; cursor: pointer; list-style: none; }
@@ -396,7 +399,6 @@
 
   /* ---------- Thumbnails and change groups ---------- */
   .ag-chat-images { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-block: 6px; }
-  .ag-chat-images .ag-thumb img { object-fit: contain; }
   .ag-strip { display: flex; flex-wrap: wrap; gap: 6px; }
   .ag-thumb { position: relative; display: grid; place-items: center; flex: none; overflow: hidden; border-radius: 10px; background: var(--raised-2); color: var(--text-3); box-shadow: inset 0 0 0 1px rgb(0 0 0 / 6%); }
   .ag-thumb img { width: 100%; height: 100%; object-fit: cover; animation: ag-fade .2s ease-out; }

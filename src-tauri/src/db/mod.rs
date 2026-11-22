@@ -661,6 +661,7 @@ mod tests {
             tables,
             vec![
                 "agent_conversations",
+                "agent_image_attachments",
                 "agent_messages",
                 "agent_operations",
                 "agent_previews",

@@ -62,6 +62,8 @@ pub(crate) enum AppRuntimeError {
     AlreadyConfigured,
     #[error("尚未配置应用数据目录")]
     NotConfigured,
+    #[error("{0}")]
+    Busy(String),
     #[error("启动状态存在错误，请先修复定位文件: {0}")]
     StartupStateInvalid(String),
     #[error("定位文件操作失败: {0}")]
