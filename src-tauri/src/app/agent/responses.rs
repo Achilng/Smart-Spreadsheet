@@ -1,6 +1,7 @@
 //! Minimal streaming client for the OpenAI-compatible `/v1/responses` endpoint.
-use std::sync::Arc;
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
 
 use futures_util::StreamExt;
@@ -20,6 +21,27 @@ pub struct Request<'a> {
     /// Cap on the reply (reasoning included). Sites that add their own default reservation to the
     /// prompt when checking the context limit then reserve exactly this much.
     pub max_output_tokens: u64,
+    /// Sent as `prompt_cache_key` so a conversation's requests reach the same prompt cache.
+    pub cache_key: Option<&'a str>,
+}
+
+/// Endpoints that rejected `prompt_cache_key` this session; it is no longer sent to them.
+static NO_CACHE_KEY: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(Default::default);
+
+/// Optional request fields a site may not know, dropped one at a time when it rejects the request.
+const OPTIONAL_FIELDS: [&str; 2] = ["max_output_tokens", "prompt_cache_key"];
+
+/// Which optional field to drop after a 400/422: the one the error names, otherwise the cache
+/// key (some gateways reject unknown fields without naming them). None when it is a real error.
+fn droppable_field(body: &Value, text: &str) -> Option<&'static str> {
+    if context_overflow(text) {
+        return None;
+    }
+    let present = |field: &str| body.get(field).is_some();
+    OPTIONAL_FIELDS
+        .into_iter()
+        .find(|field| present(field) && text.contains(field))
+        .or_else(|| present("prompt_cache_key").then_some("prompt_cache_key"))
 }
 
 pub struct FunctionCall {
@@ -33,6 +55,8 @@ pub struct FunctionCall {
 pub struct Usage {
     pub input: u64,
     pub output: u64,
+    /// Part of `input` served from the site's prompt cache, when the site reports it.
+    pub cached: Option<u64>,
 }
 
 #[derive(Default)]
@@ -81,7 +105,11 @@ fn parse_usage(value: &Value) -> Option<Usage> {
     let number = |keys: [&str; 2]| keys.iter().find_map(|key| value[*key].as_u64());
     let input = number(["input_tokens", "prompt_tokens"])?;
     let output = number(["output_tokens", "completion_tokens"]).unwrap_or(0);
-    (input > 0).then_some(Usage { input, output })
+    let cached = value["input_tokens_details"]["cached_tokens"]
+        .as_u64()
+        .or(value["prompt_tokens_details"]["cached_tokens"].as_u64())
+        .or(value["cache_read_input_tokens"].as_u64());
+    (input > 0).then_some(Usage { input, output, cached })
 }
 
 fn context_overflow(text: &str) -> bool {
@@ -242,20 +270,35 @@ pub async fn stream(
         body["reasoning"] = json!({"effort": request.effort, "summary": "auto"});
     }
     let url = format!("{}/responses", normalize_url(request.base_url)?);
+    if let Some(key) = request.cache_key
+        && !NO_CACHE_KEY.lock().is_ok_and(|urls| urls.contains(&url))
+    {
+        body["prompt_cache_key"] = json!(key);
+    }
     let mut response = send(&url, request.key, &body).await?;
     let mut status = response.status().as_u16();
-    if matches!(status, 400 | 422) {
-        let text = response.text().await.unwrap_or_default();
-        // A site that does not know the output cap: send the same request once more without it.
-        if text.contains("max_output_tokens") && !context_overflow(&text) {
-            if let Some(fields) = body.as_object_mut() {
-                fields.remove("max_output_tokens");
-            }
-            response = send(&url, request.key, &body).await?;
-            status = response.status().as_u16();
-        } else {
-            return Err(rejected(status, &text, request.model, request.has_user_attachments));
+    let mut dropped_cache_key = false;
+    // A site that does not know an optional field: send the same request again without it.
+    for _ in 0..OPTIONAL_FIELDS.len() {
+        if !matches!(status, 400 | 422) {
+            break;
         }
+        let text = response.text().await.unwrap_or_default();
+        let Some(field) = droppable_field(&body, &text) else {
+            return Err(rejected(status, &text, request.model, request.has_user_attachments));
+        };
+        if let Some(fields) = body.as_object_mut() {
+            fields.remove(field);
+        }
+        dropped_cache_key |= field == "prompt_cache_key";
+        response = send(&url, request.key, &body).await?;
+        status = response.status().as_u16();
+    }
+    if dropped_cache_key
+        && (200..300).contains(&status)
+        && let Ok(mut urls) = NO_CACHE_KEY.lock()
+    {
+        urls.insert(url.clone());
     }
     if !(200..300).contains(&status) {
         let text = response.text().await.unwrap_or_default();

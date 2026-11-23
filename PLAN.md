@@ -1,5 +1,11 @@
 # 项目计划
 
+## 整理助手：提高前缀缓存命中（2026-11-23）
+
+- 「当前本地时间」不再写进系统提示（以前每发一条消息就变，后面整段对话都吃不到缓存），改为每条用户消息开头带它自己的发送时间；整轮回复都被压缩掉、没有用户消息时，才在摘要后补一条当前时间。
+- 请求带 `prompt_cache_key`=对话 ID。站点返回 400/422 时先去掉它重发一次；去掉后成功的站点，本次运行内不再发。用本地模拟站点验证过：先拒绝后重发成功，第二次直接不带。
+- 读取站点返回的缓存命中数（`input_tokens_details.cached_tokens`、`prompt_tokens_details.cached_tokens`、`cache_read_input_tokens`），记进 usage，上下文圆环提示里显示「上次请求输入 X，其中 Y 命中缓存」。
+
 ## v_53 发布及本机升级（2026-11-23）
 
 - 从 feat/library-agent 的 c9b584a 发布 v_53（0.12.30）：整理助手新增「图片对比」工具组（compare_images 读结果、control_compare_window 操作窗口，含自定义对比），说明见 .github/release-notes/v_53.md。

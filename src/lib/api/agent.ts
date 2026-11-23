@@ -8,8 +8,9 @@ export interface AgentPreferences {
   contextWindow?: number;
 }
 export const DEFAULT_CONTEXT_WINDOW = 200_000;
-/** How full the context was after the latest model reply or summary (stored on that message). `compactions`: summaries made so far. */
-export interface AgentContextUsage { used: number; window: number; source: "api" | "estimate"; compactions?: number }
+/** How full the context was after the latest model reply or summary (stored on that message). `compactions`: summaries made so far.
+ * `input` / `cached`: that request's input tokens and how many of them the site served from its prompt cache (when reported). */
+export interface AgentContextUsage { used: number; window: number; source: "api" | "estimate"; compactions?: number; input?: number; cached?: number }
 export interface AgentChannel { id: string; name: string; model: string; hasKey: boolean; catalogRevision: string }
 export interface AgentState { libraryId: string; conversations: AgentConversation[]; running: string[]; preferences: AgentPreferences; channels: AgentChannel[] }
 

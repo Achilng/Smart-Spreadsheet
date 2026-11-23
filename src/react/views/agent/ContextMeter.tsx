@@ -32,6 +32,9 @@ export function ContextMeter({ usage, window }: { usage: AgentContextUsage; wind
         <strong>上下文窗口</strong>
         <span>{usedPercent}% 已用（剩余 {100 - usedPercent}%）</span>
         <span>已用 {tokens(used)} tokens，共 {tokens(window)}</span>
+        {usage.source === "api" && !!usage.input && (usage.cached === undefined
+          ? <span className="context-meter__note">站点没有返回缓存命中数</span>
+          : <span>上次请求输入 {tokens(usage.input)}，其中 {tokens(usage.cached)} 命中缓存（{Math.round(Math.min(1, usage.cached / usage.input) * 100)}%）</span>)}
         {usage.source === "estimate" && <span className="context-meter__note">站点没有返回用量，这是估算值</span>}
         {!!usage.compactions && <span className="context-meter__note">较早的对话已自动整理成摘要 {usage.compactions} 次</span>}
         {!usage.compactions && usedShare >= 0.7 && <span className="context-meter__note">快满时会自动把较早的对话整理成摘要</span>}

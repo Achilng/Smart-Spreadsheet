@@ -102,7 +102,10 @@ function toItems(messages: AgentMessage[]): Item[] {
 function latestUsage(messages: AgentMessage[]): AgentContextUsage | null {
   for (let index = messages.length - 1; index >= 0; index--) {
     const usage = messages[index].content.usage as Partial<AgentContextUsage> | undefined;
-    if (usage && typeof usage.used === "number") return { used: usage.used, window: Number(usage.window) || DEFAULT_CONTEXT_WINDOW, source: usage.source === "api" ? "api" : "estimate", compactions: Number(usage.compactions) || 0 };
+    if (usage && typeof usage.used === "number") {
+      const count = (value: unknown) => typeof value === "number" ? value : undefined;
+      return { used: usage.used, window: Number(usage.window) || DEFAULT_CONTEXT_WINDOW, source: usage.source === "api" ? "api" : "estimate", compactions: Number(usage.compactions) || 0, input: count(usage.input), cached: count(usage.cached) };
+    }
   }
   return null;
 }

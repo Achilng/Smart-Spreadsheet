@@ -451,13 +451,25 @@ fn load_attachment_data(db: &Database, conversation_id: &str, messages: &[Messag
     data
 }
 
+/// Local time to the minute, from a stored UTC timestamp (now when absent or unreadable).
+fn local_minute(utc: Option<&str>) -> String {
+    use chrono::{DateTime, Local};
+    let time = utc
+        .and_then(|text| DateTime::parse_from_rfc3339(text).ok())
+        .map_or_else(Local::now, |time| time.with_timezone(&Local));
+    time.format("%Y-%m-%d %H:%M（UTC%:z）").to_string()
+}
+
+/// A user message, headed by when it was sent. The time lives here rather than in the system
+/// prompt so earlier requests stay a byte-identical prefix of later ones (prompt caching).
 fn user_message(message: &Message, attachment_data: &AttachmentData) -> Value {
     let content = &message.content;
+    let sent = format!("（发送时间：{}）", local_minute(Some(&message.created_at)));
     let text = content["text"].as_str().unwrap_or_default();
     let Some(files) = content["attachments"].as_array().filter(|files| !files.is_empty()) else {
-        return json!({"role": "user", "content": text});
+        return json!({"role": "user", "content": format!("{sent}\n{text}")});
     };
-    let mut parts = Vec::new();
+    let mut parts = vec![json!({"type": "input_text", "text": sent})];
     if !text.is_empty() {
         parts.push(json!({"type": "input_text", "text": text}));
     }
@@ -645,6 +657,7 @@ async fn summarize(site: &Site<'_>, prompt: &str, cancel: Arc<AtomicBool>) -> Re
             has_user_attachments: false,
             tools: json!([]),
             max_output_tokens: site.max_output,
+            cache_key: None,
         };
         match responses::stream(request, cancel.clone(), |_: responses::Delta<'_>| {}).await {
             // A cut-off summary must not become the conversation's memory.
@@ -715,8 +728,8 @@ async fn run_loop(app: &AppHandle, conversation_id: &str, cancel: Arc<AtomicBool
         prompt::SYSTEM_PROMPT,
         tools::groups_prompt(),
     );
-    let now = chrono::Local::now().format("%Y-%m-%d %H:%M（UTC%:z）").to_string();
     let window = preferences.context_window();
+    let now = local_minute(None);
     // Past this the older conversation is summarized; lowered for the rest of the run if the site says it is too long.
     let reserve = REPLY_RESERVE.min(window / 4);
     let mut budget = window.saturating_sub(reserve);
@@ -742,13 +755,17 @@ async fn run_loop(app: &AppHandle, conversation_id: &str, cancel: Arc<AtomicBool
         let tools = tools::definitions(&active);
         let guides = tools::loaded_guides(&runtime, &active);
         let instructions = if guides.is_empty() {
-            format!("{base_instructions}\n\n当前本地时间：{now}")
+            base_instructions.clone()
         } else {
-            format!("{base_instructions}\n\n## 已加载的工具组用法\n{guides}\n\n当前本地时间：{now}")
+            format!("{base_instructions}\n\n## 已加载的工具组用法\n{guides}")
         };
         let fixed = estimate_text(&instructions) + estimate_value(&tools);
         let ratio = calibration(&all);
         let mut input = summary.as_deref().map(compaction::summary_message).into_iter().collect::<Vec<_>>();
+        // The send time normally rides on each user message; a long turn compacted past its user message gets it here.
+        if !messages.iter().any(|message| message.kind == "user") {
+            input.push(json!({"role": "user", "content": format!("（当前本地时间：{now}）")}));
+        }
         input.extend(build_input(&messages, &attached, &attachment_data));
         let estimate = fixed + input.iter().map(estimate_value).sum::<u64>();
         let expected = (estimate as f64 * ratio) as u64;
@@ -794,6 +811,7 @@ async fn run_loop(app: &AppHandle, conversation_id: &str, cancel: Arc<AtomicBool
             has_user_attachments: !attachment_data.is_empty(),
             tools,
             max_output_tokens: site.max_output,
+            cache_key: Some(conversation_id),
         };
         let result = responses::stream(request, cancel.clone(), |delta| match delta {
             responses::Delta::Text(text) => emit(app, conversation_id, "text-delta", json!({"delta": text})),
@@ -836,6 +854,9 @@ async fn run_loop(app: &AppHandle, conversation_id: &str, cancel: Arc<AtomicBool
         match outcome.usage {
             Some(real) => {
                 usage["input"] = json!(real.input);
+                if let Some(cached) = real.cached {
+                    usage["cached"] = json!(cached);
+                }
                 usage["used"] = json!(real.input + real.output);
                 usage["source"] = json!("api");
             }
