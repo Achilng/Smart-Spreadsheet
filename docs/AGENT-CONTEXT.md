@@ -69,7 +69,7 @@ input         = ⑥ 较早对话的摘要（压缩过才有）+ 之后的原始�
 > - 上传的图片默认只有文件引用，不代表你已看过画面。用户问画面或细节时，用 view_attachment_image 读取附带的 messageId 和 attachmentNumber 对应的预览；默认看整图，要辨认小字或纹理再请求高清或按原图坐标裁切。只查生成信息时不要调用看图工具。
 > - 给用户看图：提到具体图片、举例、比较候选或询问边界时，尽量在对应说明旁直接放图库图片，不要让用户对着一串编号猜。写成 Markdown 图片 `![简短说明](row:实际编号)`，同组图片用空格紧接排列，不要放在代码块里。只引用工具实际返回的图片编号，不使用文件路径或外部网址。展示链接只让用户看到图，不等于你自己看过；只读过提示词时要说清楚。
 > - 改：TAG、分组、备注、正向/角色/负面提示词（追加、删除 TAG、文本替换、正则替换、给画师名补 artist: 前缀）、收藏。分组名、备注、TAG 可以写占位符按每张图代入不同的值（例如按画师串别名各自分组、按模型徽章打 TAG），格式见 preview_changes 的说明。
-> - 更多能力在工具组里（列表见末尾），需要时先 load_tools 加载：主窗口控制（勾选、筛选、切换视图和排序、打开分组/详情/对比窗口）、分组/TAG/画师串管理（重命名、合并、删除分组和 TAG，设别名和代表图）、自动规则（新建、修改、启停、删除、在全库试跑）、素材/提示词文档/导入批次列表、聊天附件、只读 SQL 查询、以图搜图（找画面几乎相同的图）、LLM 提取画师串（后台任务，会花 AI 额度，先估算并得到同意）、导出（只准备导出卡片，由用户选位置）。
+> - 更多能力在工具组里（列表见末尾），需要时先 load_tools 加载：主窗口控制（勾选、筛选、切换视图和排序、打开分组/详情/对比窗口）、分组/TAG/画师串管理（重命名、合并、删除分组和 TAG，设别名和代表图）、自动规则（新建、修改、启停、删除、在全库试跑）、素材/提示词文档/导入批次列表、聊天附件、只读 SQL 查询、以图搜图（找画面几乎相同的图）、LLM 提取画师串（后台任务，会花 AI 额度，先估算并得到同意）、导出（只准备导出卡片，由用户选位置）、图片对比（以一张图为 A 查出只在某些方面不同的图并给出差别，或操作对比窗口，含自定义对比）。
 > - 现有工具做起来要绕很多步的查询（多条件组合、「几个特征里至少中几个」、跨表统计、找异常数据等），加载 sql 工具组，用 query_library_sql 一条只读 SQL 查出来，不要一页页翻。查出来的图可以在 target.sql 里直接交给预演、选中、统计等工具；改数据仍然只能走预演 → 执行。
 > - 撤销：每次修改都会记录，可以撤销（重启后也能撤销）。
 > - 用户问软件某个功能在哪、怎么用，或者你做不到要指引用户手动操作时，先用 read_app_guide 查，不要凭印象回答。
@@ -147,6 +147,7 @@ input         = ⑥ 较早对话的摘要（压缩过才有）+ 之后的原始�
 - similar（以图搜图）：用一张图库图片或聊天里上传的图片，找出图库里画面几乎相同的图（同一张图的不同保存版本、缩放、轻微裁切）；也能在后台补算缺少的相似度指纹
 - styleExtraction（LLM 提取画师串）：对一批图用 AI 渠道在后台提取画师串：估算数量、发起任务、查看进度、暂停/继续/结束/重试失败项、撤销某次任务的写入
 - export（导出）：把一批图导出为带图 Excel、智绘姬 JSON、轮询脚本 JSON，或复制 / 硬链接 / 去元数据导出图片文件；助手只准备导出卡片，由用户在卡片上选位置并导出
+- compare（图片对比）：以一张图为参考 A，查出和它只在某些方面不同的图（相同画师串 / 相同 VIBE / 相同提示词 / 不同模型 / 自定义对比条件），结果直接返回给你；也能操作对比窗口给用户看
 ```
 
 **加载机制**：模型调用 `load_tools(groups=[...])` 后，下一步起这组工具出现在 tools 里，这组的 `guide` 追加到系统提示的「已加载的工具组用法」，本对话一直保留（压缩摘要后也不丢）。对话里出现过图片附件时自动加载 attachments 组。
@@ -155,7 +156,7 @@ input         = ⑥ 较早对话的摘要（压缩过才有）+ 之后的原始�
 
 ## 3. 工具清单
 
-→ 工具名、描述、参数：`tools.rs:169` 的 `all_definitions()`；常驻哪些：`tools.rs:36` 的 `CORE`
+→ 工具名、描述、参数：`tools.rs:211` 的 `all_definitions()`；常驻哪些：`tools.rs:36` 的 `CORE`
 
 下面「描述」是模型看到的原文；参数只列要点（类型、可选值、说明），带 * 的是必填。
 
@@ -249,7 +250,7 @@ input         = ⑥ 较早对话的摘要（压缩过才有）+ 之后的原始�
 
 组用法（加载后进系统提示）：
 > - 只要求勾选时用 set_main_selection；要设置搜索框、TAG、画师串、去重、只看单画师、只看有 VIBE 等筛选控件时用 set_main_filters。
-> - control_main_window 可切换视图（画廊/表格/分组/重复/素材/提示词）、排序、重复视图的去重方式，打开某个分组、在详情面板显示某张图、清空筛选并在画廊定位某张图，或打开图片对比窗口（A 必填、B 可选）。
+> - control_main_window 可切换视图（画廊/表格/分组/重复/素材/提示词）、排序、重复视图的去重方式，打开某个分组、在详情面板显示某张图、清空筛选并在画廊定位某张图，或打开图片对比窗口（A 必填、B 可选；要切对比关系、运行自定义对比或自己读对比结果，加载 compare 工具组）。
 > - 这些操作只改界面不改数据，不需要预演；发出后可再调用 get_main_window_state 确认结果。定位图片会清空用户当前的筛选，用之前先说一声。
 
 | 工具 | 描述 | 参数 |
@@ -358,7 +359,25 @@ input         = ⑥ 较早对话的摘要（压缩过才有）+ 之后的原始�
 
 卡片：`src/react/views/agent/AgentExport.tsx`。用户导出后（成功或失败）会写一条 `user_action` 消息（action=export），模型下一轮能看到结果；助手正在回复时按钮不可点。
 
-### 3.11 遗留工具
+### 3.11 compare 组（图片对比）
+
+「读结果」和「操作窗口」是两个工具：`compare_images` 只查数据、不碰窗口，结果返回给模型（聊天里附缩略图）；`control_compare_window` 只让用户在对比窗口里看到，不返回结果。执行逻辑在 `src-tauri/src/app/agent/compare.rs`。
+
+组用法：
+> - 读结果和操作窗口是两件事：compare_images 只查数据、不碰窗口，结果返回给你（附缩略图）；control_compare_window 只是让用户在对比窗口里看到，不返回结果。用户只是问「和这张比有什么不同」时用 compare_images 自己查；用户要在窗口里看时才操作窗口。
+> - relation：artists=画师串完全相同的其它图；vibeDiffStyle=VIBE 引用组合相同、提示词不同；styleDiffVibe=提示词相同（忽略质量词）、VIBE 不同；models=提示词相同、模型不同（按模型分组，只看最新 500 张）；custom=自定义对比。
+> - custom：observe=要比较的那一项（结果都和 A 在这一项上不同）；dedupe=true 时把这一项取值相同的图合成一组，这时没列进 allowed 的条件都必须和 A 一致（两边都没记录也算一致），allowed 不填=其它条件都允许不同。dedupe=false 时 allowed 不起作用。字段：artists、positive、character、negative、vibe、model、sampler、steps、seed、scale、cfgRescale、noiseSchedule、dimensions。例：只看换了种子、其它参数都一样的图 → observe=seed, dedupe=true, allowed=[]。
+> - 每条结果的 differences 是 B 相对 A 的差别：只详细列出这次比较关注的项（提示词类给新增/移除的 TAG，正向里不含画师串部分；参数类给 [A 的值, B 的值]），其它也不同的项只在 alsoDifferent 里列名字，需要细看时用 find_rows / read_library_item 读这几张图。结果多时用 nextOffset 翻页。
+> - control_compare_window：rowId 是 A；给 targetRowId 直接打开 A/B 并排；relation 切到某个关系；relation=custom 加 custom 条件就在窗口里运行自定义对比。
+
+| 工具 | 描述 | 参数 |
+|---|---|---|
+| compare_images | 以 rowId 为参考图 A 查对比结果（只读数据，不碰任何窗口），返回结果图片和每张相对 A 的差别。 | rowId*、relation*（artists / vibeDiffStyle / styleDiffVibe / models / custom）、custom{observe*, dedupe, allowed}、offset、limit（默认 20，最多 50） |
+| control_compare_window | 操作图片对比窗口给用户看（不返回对比结果）：以 A 打开，可直接并排 A/B，切到某个关系，或在窗口里运行自定义对比。 | rowId*、targetRowId、relation、custom |
+
+各关系详细列出的差别项：artists → 正向、角色；vibeDiffStyle → 画师串、正向、角色；styleDiffVibe → VIBE 引用数；models → 模型（按模型分组，每组给前 10 张）；custom → observe 那一项。自定义对比的查询复用对比窗口的 `query_compare_custom`，模型分档用 `db/agent/model_badge.rs` 的 `comparison_tier`（与前端 `modelComparisonTier` 同规则）。窗口那边：`open_compare_window` 多了可选的 `view{tab | custom}`，对比窗口载入样本后切到该关系或直接运行自定义对比；窗口上报给助手的状态里多了 `customConditions` 和 `listedTotal`。
+
+### 3.12 遗留工具
 
 `list_generation_values`：旧工具，只给以前调用过它的旧对话回放用，新对话不会出现（`tools.rs`）。
 

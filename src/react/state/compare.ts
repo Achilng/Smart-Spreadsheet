@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { getRowsByIds, type RowRecord } from "../../lib/api";
-import { customPage, queryCompareCustom, startingConditions, type CompareOptions, type CompareGroups, type CustomPage } from "../../lib/api/compare-conditions";
+import { compareFields, customPage, queryCompareCustom, startingConditions, type CompareField, type CompareOptions, type CompareGroups, type CustomPage } from "../../lib/api/compare-conditions";
+import type { CompareWindowView } from "../../lib/windows/compare";
 import { notify } from "./notices";
 import { getCompareSample, queryCompareSameArtists, queryCompareSameVibeDiffStyle, queryCompareSameStyleDiffVibe, queryCompareSameStyleAllModels, type CompareSample, type CompareModelSection } from "../../lib/api/compare";
 import { createRequestQueue } from "../../lib/utils/request-queue";
@@ -28,7 +29,7 @@ export function resetCompare(): void {
   useCompare.setState({ options: startingConditions("blank"), activeTab: "artists", rowId: null, sample: null, sampleError: null, sampleLoading: false, target: null, ...sections() });
 }
 
-export async function setCompareSample(rowId: number, force = false, targetId?: number): Promise<void> {
+export async function setCompareSample(rowId: number, force = false, targetId?: number, view?: CompareWindowView): Promise<void> {
   if (!Number.isInteger(rowId) || rowId <= 0) return;
   const state = useCompare.getState();
   if (!force && state.rowId === rowId && (state.sample || state.sampleLoading)) return;
@@ -49,6 +50,10 @@ export async function setCompareSample(rowId: number, force = false, targetId?: 
         if (generation === requestGeneration) notify(`读取目标 B 失败：${errorText(error)}`, "error");
       }
     }
+    if (view?.custom) {
+      const allowed = view.custom.allowed ?? (Object.keys(compareFields) as CompareField[]);
+      useCompare.setState({ options: { observe: view.custom.observe, dedupe: view.custom.dedupe === true, allowed: allowed.filter(field => field !== view.custom!.observe) }, groups: null, activeTab: "custom" });
+    } else if (view?.tab) useCompare.setState({ activeTab: view.tab });
     void selectCompareTab(useCompare.getState().activeTab);
   } catch (error) {
     if (generation === requestGeneration) useCompare.setState({ sampleError: errorText(error) });

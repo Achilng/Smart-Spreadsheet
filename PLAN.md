@@ -1,5 +1,14 @@
 # 项目计划
 
+## 整理助手：图片对比（读结果 + 操作窗口）（2026-11-23）
+
+- 新增按需加载的 compare 工具组（`src-tauri/src/app/agent/compare.rs`），「获取结果」和「操作窗口」分成两个工具：
+  - `compare_images`：只读数据、不碰窗口。以 A 查相同画师串 / 相同 VIBE / 相同提示词 / 不同模型 / 自定义对比（observe、dedupe、allowed，与对比窗口的「自定义对比」同一套查询），每张结果附相对 A 的差别（关注项详细列出，其它不同项只列名字），支持翻页，聊天里显示缩略图。
+  - `control_compare_window`：打开对比窗口，可直接并排 A/B、切到某个关系，或在窗口里运行自定义对比。`open_compare_window` 新增可选 `view{tab | custom}`（新窗口走 URL 参数，已开窗口走 `compare://set-sample`），参数在后端白名单校验。
+- 后端新增 `comparison_tier` / `model_label`（`db/agent/model_badge.rs`），与前端 `modelComparisonTier` 同规则，用于自定义对比的模型分档和「不同模型」分组。
+- 对比窗口上报给助手的状态增加 `customConditions`、`listedTotal`。系统提示、工具组说明、软件功能说明（guide.md）和 docs/AGENT-CONTEXT.md 同步更新。
+- 用实际资料库的备份副本跑过一遍五种关系（相同画师串 21 张、按模型去重 6 组等），临时测试已删除。窗口那一侧（切关系、在窗口里跑自定义对比）还没在真实软件里点过。
+
 ## v_52 发布及本机升级（2026-11-23）
 
 - 从 feat/library-agent 的 70c9540 发布 v_52（0.12.29）：整理助手聊天里用户发的图片显示为缩略图，说明见 .github/release-notes/v_52.md。

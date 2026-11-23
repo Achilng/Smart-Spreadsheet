@@ -44,7 +44,7 @@ pub const GROUPS: &[ToolGroup] = &[
         key: "mainWindow",
         label: "主窗口控制",
         summary: "勾选图片、设置搜索/TAG/去重等筛选、切换视图与排序、打开某个分组或某张图的详情、打开图片对比窗口",
-        guide: "- 只要求勾选时用 set_main_selection；要设置搜索框、TAG、画师串、去重、只看单画师、只看有 VIBE 等筛选控件时用 set_main_filters。\n- control_main_window 可切换视图（画廊/表格/分组/重复/素材/提示词）、排序、重复视图的去重方式，打开某个分组、在详情面板显示某张图、清空筛选并在画廊定位某张图，或打开图片对比窗口（A 必填、B 可选）。\n- 这些操作只改界面不改数据，不需要预演；发出后可再调用 get_main_window_state 确认结果。定位图片会清空用户当前的筛选，用之前先说一声。",
+        guide: "- 只要求勾选时用 set_main_selection；要设置搜索框、TAG、画师串、去重、只看单画师、只看有 VIBE 等筛选控件时用 set_main_filters。\n- control_main_window 可切换视图（画廊/表格/分组/重复/素材/提示词）、排序、重复视图的去重方式，打开某个分组、在详情面板显示某张图、清空筛选并在画廊定位某张图，或打开图片对比窗口（A 必填、B 可选；要切对比关系、运行自定义对比或自己读对比结果，加载 compare 工具组）。\n- 这些操作只改界面不改数据，不需要预演；发出后可再调用 get_main_window_state 确认结果。定位图片会清空用户当前的筛选，用之前先说一声。",
         tools: &["set_main_selection", "set_main_filters", "control_main_window"],
     },
     ToolGroup {
@@ -102,6 +102,13 @@ pub const GROUPS: &[ToolGroup] = &[
         summary: "把一批图导出为带图 Excel、智绘姬 JSON、轮询脚本 JSON，或复制 / 硬链接 / 去元数据导出图片文件；助手只准备导出卡片，由用户在卡片上选位置并导出",
         guide: "- 你不能直接写文件。prepare_export 只在对话里显示一张导出卡片，用户点卡片上的按钮、自己选保存位置后才真正导出；结果会以一条「你导出了…」的消息出现。在那之前不要说已经导出。\n- format：xlsx=带缩略图的 Excel 表格；zhihuijiJson=智绘姬 JSON（options.noteNumberNames 用备注里的编号当名字，默认 false；artistsAsPositive 把画师串当正向，默认 true；deduplicate 去掉最终正向相同的重复项，默认 false）；rotationJson=轮询脚本 JSON；copyImages=把原图复制到一个新文件夹；hardlinkImages=硬链接到新文件夹（不占额外空间，要求同一个磁盘）；cleanImages=导出图片副本，可改名、可去掉生成信息（options.rename=original|random|custom，custom 时给 customName；stripMetadata 默认 true）。\n- 用户只说「导出」没说格式时，先问要哪种。范围不清楚时先问清楚，张数很多时先说明。",
         tools: &["prepare_export"],
+    },
+    ToolGroup {
+        key: "compare",
+        label: "图片对比",
+        summary: "以一张图为参考 A，查出和它只在某些方面不同的图（相同画师串 / 相同 VIBE / 相同提示词 / 不同模型 / 自定义对比条件），结果直接返回给你；也能操作对比窗口给用户看",
+        guide: "- 读结果和操作窗口是两件事：compare_images 只查数据、不碰窗口，结果返回给你（附缩略图）；control_compare_window 只是让用户在对比窗口里看到，不返回结果。用户只是问「和这张比有什么不同」时用 compare_images 自己查；用户要在窗口里看时才操作窗口。\n- relation：artists=画师串完全相同的其它图；vibeDiffStyle=VIBE 引用组合相同、提示词不同；styleDiffVibe=提示词相同（忽略质量词）、VIBE 不同；models=提示词相同、模型不同（按模型分组，只看最新 500 张）；custom=自定义对比。\n- custom：observe=要比较的那一项（结果都和 A 在这一项上不同）；dedupe=true 时把这一项取值相同的图合成一组，这时没列进 allowed 的条件都必须和 A 一致（两边都没记录也算一致），allowed 不填=其它条件都允许不同。dedupe=false 时 allowed 不起作用。字段：artists 画师串、positive 正向、character 角色、negative 负向、vibe VIBE 引用组合、model 模型、sampler 采样器、steps 步数、seed 种子、scale 提示词引导、cfgRescale 引导重缩放、noiseSchedule 噪声调度、dimensions 尺寸。例：只看换了种子、其它参数都一样的图 → observe=seed, dedupe=true, allowed=[]。\n- 每条结果的 differences 是 B 相对 A 的差别：只详细列出这次比较关注的项（提示词类给新增/移除的 TAG，正向里不含画师串部分；参数类给 [A 的值, B 的值]），其它也不同的项只在 alsoDifferent 里列名字，需要细看时用 find_rows / read_library_item 读这几张图。结果多时用 nextOffset 翻页。\n- control_compare_window：rowId 是 A；给 targetRowId 直接打开 A/B 并排；relation 切到某个关系；relation=custom 加 custom 条件就在窗口里运行自定义对比。",
+        tools: &["compare_images", "control_compare_window"],
     },
 ];
 
@@ -174,6 +181,20 @@ fn target_schema(description: &str) -> Value {
             "sql": {"type": "string"}
         },
         "required": ["scope"],
+        "additionalProperties": false
+    })
+}
+
+fn compare_custom_schema() -> Value {
+    json!({
+        "type": "object",
+        "description": "自定义对比条件，relation=custom 时必填",
+        "properties": {
+            "observe": {"type": "string", "enum": crate::app::commands::windows::COMPARE_FIELDS, "description": "要比较的那一项"},
+            "dedupe": {"type": "boolean", "default": false, "description": "把这一项取值相同的图合成一组"},
+            "allowed": {"type": "array", "items": {"type": "string", "enum": crate::app::commands::windows::COMPARE_FIELDS}, "description": "dedupe 时还允许哪些条件和 A 不同；不填=都允许"}
+        },
+        "required": ["observe"],
         "additionalProperties": false
     })
 }
@@ -323,8 +344,21 @@ field 取 positive / character / negative。caseSensitive 必须明确给出。�
             "openGroupId": {"type":"integer","description":"切到分组视图并展开这个分组"},
             "openDetailRowId": {"type":"integer","description":"在详情面板显示这张图（不改筛选）"},
             "locateRowId": {"type":"integer","description":"清空筛选，切到画廊并滚动到这张图"},
-            "compare": {"type":"object","properties":{"rowId":{"type":"integer","description":"参考图 A"},"targetRowId":{"type":"integer","description":"可选的对比图 B"}},"required":["rowId"],"additionalProperties":false}
+            "compare": {"type":"object","description":"打开图片对比窗口；要切关系或运行自定义对比用 compare 工具组的 control_compare_window","properties":{"rowId":{"type":"integer","description":"参考图 A"},"targetRowId":{"type":"integer","description":"可选的对比图 B"}},"required":["rowId"],"additionalProperties":false}
         }), &[]),
+        tool("compare_images", "以 rowId 为参考图 A 查对比结果（只读数据，不碰任何窗口），返回结果图片和每张相对 A 的差别。用法见 compare 工具组说明。", json!({
+            "rowId": {"type":"integer","description":"参考图 A"},
+            "relation": {"type":"string","enum": super::compare::RELATIONS},
+            "custom": compare_custom_schema(),
+            "offset": {"type":"integer","minimum":0,"default":0},
+            "limit": {"type":"integer","minimum":1,"maximum":50,"default":20}
+        }), &["rowId","relation"]),
+        tool("control_compare_window", "操作图片对比窗口给用户看（不返回对比结果）：以 A 打开，可直接并排 A/B，切到某个关系，或在窗口里运行自定义对比。", json!({
+            "rowId": {"type":"integer","description":"参考图 A"},
+            "targetRowId": {"type":"integer","description":"可选：直接并排对照 B"},
+            "relation": {"type":"string","enum": super::compare::RELATIONS, "description":"左侧切到哪个关系；custom 需同时给 custom"},
+            "custom": compare_custom_schema()
+        }), &["rowId"]),
         tool("preview_library_change", "预演一次分组 / TAG / 画师串的整理（不会改数据），得到 previewId，用户同意后用 apply_changes 执行，可撤销。用法见 library 工具组说明。", json!({
             "title": {"type":"string","description":"一句话说明，例如「把 TAG 风景 合并到 landscape」"},
             "operation": {"type":"object","description":"{type: renameGroup|mergeGroups|deleteGroups|deleteEmptyGroups|renameTag|mergeTags|deleteTags|setArtistAlias|setArtistRepresentative, ...}","properties":{"type":{"type":"string"}},"required":["type"]}
@@ -477,6 +511,7 @@ pub fn run(app: &AppHandle, conversation_id: &str, call_id: &str, name: &str, ar
         | "get_style_extraction_status" | "control_style_extraction" | "prepare_export" => {
             super::toolbox::run(app, conversation_id, call_id, name, arguments, &view)
         }
+        "compare_images" | "control_compare_window" => super::compare::run(app, name, arguments),
         "load_tools" => {
             #[derive(Deserialize)]
             struct Args { groups: Vec<String> }

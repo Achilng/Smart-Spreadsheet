@@ -43,6 +43,70 @@ pub(crate) async fn open_toolbox_window(
     Ok(())
 }
 
+const COMPARE_TABS: [&str; 4] = ["artists", "vibeDiffStyle", "styleDiffVibe", "models"];
+pub(crate) const COMPARE_FIELDS: [&str; 13] = [
+    "artists", "positive", "character", "negative", "vibe", "model", "sampler",
+    "steps", "seed", "scale", "cfgRescale", "noiseSchedule", "dimensions",
+];
+
+/// Which relation the compare window should show, or a custom comparison to run.
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct CompareView {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tab: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub custom: Option<CompareCustom>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct CompareCustom {
+    pub observe: String,
+    #[serde(default)]
+    pub dedupe: bool,
+    /// Missing means every other condition may differ, like the editor's default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allowed: Option<Vec<String>>,
+}
+
+impl CompareView {
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        if self.tab.is_some() && self.custom.is_some() {
+            return Err("tab 和 custom 只能给一个".into());
+        }
+        if let Some(tab) = &self.tab
+            && !COMPARE_TABS.contains(&tab.as_str()) {
+            return Err(format!("tab 只能是 {}", COMPARE_TABS.join("、")));
+        }
+        if let Some(custom) = &self.custom {
+            let fields = || COMPARE_FIELDS.join("、");
+            if !COMPARE_FIELDS.contains(&custom.observe.as_str()) {
+                return Err(format!("observe 只能是 {}", fields()));
+            }
+            if let Some(field) = custom.allowed.iter().flatten().find(|f| !COMPARE_FIELDS.contains(&f.as_str())) {
+                return Err(format!("allowed 里的「{field}」不是可比较的条件，只能是 {}", fields()));
+            }
+        }
+        Ok(())
+    }
+
+    /// Query-string form for a newly created window; every value is a whitelisted identifier.
+    fn query(&self) -> String {
+        let mut query = String::new();
+        if let Some(tab) = &self.tab {
+            query.push_str(&format!("&tab={tab}"));
+        }
+        if let Some(custom) = &self.custom {
+            query.push_str(&format!("&tab=custom&observe={}&dedupe={}", custom.observe, u8::from(custom.dedupe)));
+            if let Some(allowed) = &custom.allowed {
+                query.push_str(&format!("&allowed={}", allowed.join(",")));
+            }
+        }
+        query
+    }
+}
+
 /// 打开（或复用）单实例图片对比窗口并切换样本。样本 id 直接写进新窗口
 /// URL，新窗口自行拉取数据；窗口已存在时由后端向其推送
 /// `compare://set-sample` 通知样本与可选的对比目标，
@@ -51,15 +115,19 @@ pub(crate) async fn open_toolbox_window(
 pub(crate) async fn open_compare_window(
     row_id: i64,
     target_id: Option<i64>,
+    view: Option<CompareView>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
+    if let Some(view) = &view {
+        view.validate()?;
+    }
     if let Some(compare) = app.get_webview_window("compare") {
         compare.show().map_err(error_text)?;
         compare.unminimize().map_err(error_text)?;
         compare.set_focus().map_err(error_text)?;
-        let payload = match target_id {
-            Some(target) => serde_json::json!({ "rowId": row_id, "targetId": target }),
-            None => serde_json::json!(row_id),
+        let payload = match (target_id, &view) {
+            (None, None) => serde_json::json!(row_id),
+            _ => serde_json::json!({ "rowId": row_id, "targetId": target_id, "view": view }),
         };
         compare
             .emit_to("compare", "compare://set-sample", payload)
@@ -70,6 +138,9 @@ pub(crate) async fn open_compare_window(
     let mut url = format!("index.html?window=compare&row={row_id}");
     if let Some(target) = target_id {
         url.push_str(&format!("&target={target}"));
+    }
+    if let Some(view) = &view {
+        url.push_str(&view.query());
     }
     WebviewWindowBuilder::new(
         &app,

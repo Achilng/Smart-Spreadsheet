@@ -1,7 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { getRowsByIds } from "../../lib/api";
 import { reportAgentMainView } from "../../lib/api/agent";
-import { openCompareWindow } from "../../lib/windows/compare";
+import { openCompareWindow, type CompareWindowView } from "../../lib/windows/compare";
 import type { ViewMode } from "../../lib/utils/view-modes";
 import { snapshotQueryFilters } from "../../lib/utils/library-query";
 import { errorText, formatCount } from "../../lib/utils/format";
@@ -31,7 +31,7 @@ const MAX_REPORTED_SECTIONS = 20;
 interface MainControl {
   viewMode?: ViewMode | null; sort?: string | null; duplicatesMode?: DuplicateMode | null;
   openGroupId?: number | null; openDetailRowId?: number | null; locateRowId?: number | null;
-  compare?: { rowId: number; targetRowId?: number | null } | null;
+  compare?: { rowId: number; targetRowId?: number | null; view?: CompareWindowView | null } | null;
 }
 
 /** Group sections the user has open, as the agent sees them. */
@@ -102,7 +102,7 @@ async function applyControl(control: MainControl) {
     notify(`整理助手已清空筛选并定位到 #${control.locateRowId}`);
   }
   if (control.compare && typeof control.compare.rowId === "number") {
-    await openCompareWindow(control.compare.rowId, control.compare.targetRowId ?? undefined);
+    await openCompareWindow(control.compare.rowId, control.compare.targetRowId ?? undefined, control.compare.view ?? undefined);
   }
 }
 

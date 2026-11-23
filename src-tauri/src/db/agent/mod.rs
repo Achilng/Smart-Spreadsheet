@@ -9,6 +9,7 @@ mod target;
 pub use apply::{OperationRecord, RulePatch, UndoOutcome};
 pub use changes::{Action, RowChange};
 pub use library::LibraryOp;
+pub use model_badge::{comparison_tier, model_label};
 pub(crate) use read::{COUNT_FIELDS, CountSort, DEFAULT_PROMPT_STATS_LIMIT, MAX_PROMPT_STATS_LIMIT, PromptStatsSort, ROW_FIELDS, RowSort};
 pub(crate) use changes::PLACEHOLDERS;
 pub(crate) use target::local_time;

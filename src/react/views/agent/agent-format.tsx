@@ -41,13 +41,21 @@ export const TOOL_LABELS: Record<string, string> = {
   get_style_extraction_status: "查看 LLM 提取进度",
   control_style_extraction: "操作 LLM 提取任务",
   prepare_export: "准备导出",
+  compare_images: "查对比结果",
+  control_compare_window: "操作对比窗口",
+};
+
+const COMPARE_TAB_LABELS: Record<string, string> = { artists: "相同画师串", vibeDiffStyle: "相同 VIBE", styleDiffVibe: "相同提示词", models: "不同模型" };
+const COMPARE_FIELD_LABELS: Record<string, string> = {
+  positive: "正向提示词", negative: "负向提示词", character: "角色提示词", artists: "画师串", model: "模型", vibe: "VIBE 引用组合",
+  sampler: "采样器", steps: "步数", seed: "种子", scale: "提示词引导", cfgRescale: "引导重缩放", noiseSchedule: "噪声调度", dimensions: "图片尺寸",
 };
 
 const SAME_LABELS: Record<string, string> = { artists: "画师串", positivePrompt: "正向提示词", vibes: "VIBE 组合" };
 
 const TOOL_GROUP_LABELS: Record<string, string> = {
   mainWindow: "主窗口控制", library: "分组 / TAG 管理", automation: "自动规则", records: "素材与导入记录", attachments: "聊天附件", sql: "只读 SQL 查询",
-  similar: "以图搜图", styleExtraction: "LLM 提取画师串", export: "导出",
+  similar: "以图搜图", styleExtraction: "LLM 提取画师串", export: "导出", compare: "图片对比",
 };
 const VIEW_LABELS: Record<string, string> = { gallery: "画廊", table: "表格", group: "分组", duplicates: "重复", materials: "素材", promptDocs: "提示词" };
 const SORT_LABELS: Record<string, string> = { timeAsc: "按导入先后", timeDesc: "最新在前", recentlyUpdated: "最近修改在前" };
@@ -64,8 +72,13 @@ export function describeStepDisplay(display: Record<string, unknown> | null): st
   if (typeof request.openGroupId === "number") parts.push(`打开分组 #${request.openGroupId}`);
   if (typeof request.openDetailRowId === "number") parts.push(`详情显示 #${request.openDetailRowId}`);
   if (typeof request.locateRowId === "number") parts.push(`定位到 #${request.locateRowId}`);
-  const compare = request.compare as { rowId?: number; targetRowId?: number | null } | null | undefined;
-  if (compare?.rowId) parts.push(`对比 #${compare.rowId}${compare.targetRowId ? ` 和 #${compare.targetRowId}` : ""}`);
+  const compare = request.compare as { rowId?: number; targetRowId?: number | null; view?: { tab?: string; custom?: { observe?: string } } | null } | null | undefined;
+  if (compare?.rowId) {
+    let text = `对比 #${compare.rowId}${compare.targetRowId ? ` 和 #${compare.targetRowId}` : ""}`;
+    if (compare.view?.custom?.observe) text += `，自定义对比${COMPARE_FIELD_LABELS[compare.view.custom.observe] ?? compare.view.custom.observe}`;
+    else if (compare.view?.tab) text += `，看${COMPARE_TAB_LABELS[compare.view.tab] ?? compare.view.tab}`;
+    parts.push(text);
+  }
   return parts.join("，");
 }
 

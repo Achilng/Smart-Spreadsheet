@@ -1,4 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
+import type { CompareField } from "../api/compare-conditions";
+
+/** Which relation the window opens on, or a custom comparison to run right away. */
+export interface CompareWindowView {
+  tab?: "artists" | "vibeDiffStyle" | "styleDiffVibe" | "models";
+  custom?: { observe: CompareField; dedupe?: boolean; allowed?: CompareField[] | null };
+}
 
 let opening: Promise<void> | null = null;
 
@@ -7,11 +14,11 @@ let opening: Promise<void> | null = null;
  * 后端负责单实例、URL 传参与 `compare://set-sample` 推送，
  * 前端不需要自己跨窗口发事件，也没有新建窗口的就绪竞态。
  */
-export function openCompareWindow(rowId: number, targetId?: number): Promise<void> {
+export function openCompareWindow(rowId: number, targetId?: number, view?: CompareWindowView): Promise<void> {
   if (opening) {
     return opening;
   }
-  opening = invoke<void>("open_compare_window", { rowId, targetId }).finally(() => {
+  opening = invoke<void>("open_compare_window", { rowId, targetId, view: view ?? null }).finally(() => {
     opening = null;
   });
   return opening;

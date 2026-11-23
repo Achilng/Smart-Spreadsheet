@@ -34,6 +34,25 @@ pub(super) fn badge_label(model: Option<&str>) -> Option<&'static str> {
     name.contains("v3").then_some("v3")
 }
 
+/// Same grouping key as `modelComparisonTier` in model-version.ts: a confirmed badge, or the raw
+/// name when an unknown build hash leaves the variant unclear.
+pub fn comparison_tier(model: Option<&str>) -> String {
+    let Some(raw) = model.map(str::trim).filter(|raw| !raw.is_empty()) else { return "unknown".into() };
+    let Some(label) = badge_label(Some(raw)) else { return format!("raw:{raw}") };
+    let lower = raw.to_ascii_lowercase();
+    if let Some(parts) = BUILD_SUFFIX.captures(&lower)
+        && !BUILDS.contains_key(&parts[1]) {
+        return format!("raw:{raw}");
+    }
+    format!("badge:{label}")
+}
+
+/// Short model label shown on thumbnails, e.g. "v4.5 F"; the raw name when unrecognised.
+pub fn model_label(model: Option<&str>) -> String {
+    let raw = model.map(str::trim).unwrap_or_default();
+    badge_label(Some(raw)).map(str::to_owned).unwrap_or_else(|| if raw.is_empty() { "未知模型".into() } else { raw.to_owned() })
+}
+
 pub(super) fn badge_key(label: &str) -> String {
     label
         .split_whitespace()

@@ -24,6 +24,7 @@ import { SideBySide } from "./SideBySide";
 import { CompareRowContextMenu } from "./CompareRowContextMenu";
 import { compareFields, describeChange, inspectionTab, orderedRows, startingConditions, type CompareField, type CompareOptions } from "../../../lib/api/compare-conditions";
 import { CompareConditionsEditor } from "./CompareConditionsEditor";
+import type { CompareWindowView } from "../../../lib/windows/compare";
 import "./compare.css";
 
 const tabs = [
@@ -33,6 +34,19 @@ const tabs = [
   { key: "models", label: "不同模型", hint: "比较相同提示词下的模型表现", icon: SlidersHorizontal },
 ] as const;
 const rowTitle = (row: RowRecord) => row.note?.trim() || rowFileName(row) || `第 ${row.sourceOrdinal} 张`;
+const isField = (value: string | null): value is CompareField => value !== null && Object.hasOwn(compareFields, value);
+
+/** The relation or custom comparison a newly opened window should start on (set by the backend). */
+function viewFromQuery(params: URLSearchParams): CompareWindowView | undefined {
+  const tab = params.get("tab");
+  if (tab === "custom") {
+    const observe = params.get("observe");
+    if (!isField(observe)) return undefined;
+    const allowed = params.get("allowed");
+    return { custom: { observe, dedupe: params.get("dedupe") === "1", allowed: allowed === null ? null : allowed.split(",").filter(isField) } };
+  }
+  return tabs.some(item => item.key === tab) ? { tab: tab as CompareWindowView["tab"] } : undefined;
+}
 
 const afterCompareDelete: AfterRowsDeleted = async (_result, selection) => {
   thumbnails.clear(); clearProgressiveImages();
@@ -63,11 +77,11 @@ export function CompareWindow() {
     let disposed = false;
     const cleanups: (() => void)[] = [];
     const register = (promise: Promise<() => void>) => void promise.then(fn => { if (disposed) fn(); else cleanups.push(fn); }, error => { if (!disposed) notify(`窗口事件连接失败：${String(error)}`, "error"); });
-    register(listen<number | { rowId: number; targetId?: number }>("compare://set-sample", ({ payload }) => {
+    register(listen<number | { rowId: number; targetId?: number | null; view?: CompareWindowView | null }>("compare://set-sample", ({ payload }) => {
       if (disposed) return;
       pendingPick.current = null;
       if (typeof payload === "number") void setCompareSample(payload, true);
-      else void setCompareSample(payload.rowId, true, payload.targetId);
+      else void setCompareSample(payload.rowId, true, payload.targetId ?? undefined, payload.view ?? undefined);
     }));
     register(listen<{ requestId: string; sampleId: number; row: RowRecord | null }>("compare://pick-finished", ({ payload }) => {
       if (disposed || pendingPick.current !== payload.requestId || useCompare.getState().rowId !== payload.sampleId) return;
@@ -84,11 +98,12 @@ export function CompareWindow() {
     }));
     const params = new URLSearchParams(window.location.search);
     const initialRowId = Number(params.get("row"));
-    if (initialRowId > 0) void setCompareSample(initialRowId, false, Number(params.get("target")) || undefined);
+    if (initialRowId > 0) void setCompareSample(initialRowId, false, Number(params.get("target")) || undefined, viewFromQuery(params));
     return () => { disposed = true; cleanups.forEach(fn => fn()); };
   }, []);
   const listed = state.activeTab === "models" ? null : state[state.activeTab].items;
   const listedKey = listed?.map(row => row.id).join(",") ?? "";
+  const listedTotal = state.activeTab === "models" ? null : state[state.activeTab].loaded ? state[state.activeTab].total : null;
   useEffect(() => {
     // Lets the library agent see what the user is comparing ("these two", "the A image").
     const tab = state.activeTab === "custom" ? "自定义对比" : tabs.find(item => item.key === state.activeTab)?.label ?? state.activeTab;
@@ -97,9 +112,11 @@ export function CompareWindow() {
       targetRowId: state.target?.id ?? null,
       relation: state.target ? (state.manualTarget ? "手动选择的 B" : tab) : null,
       activeTab: tab,
+      ...(state.activeTab === "custom" && { customConditions: state.options }),
+      listedTotal,
       listedRowIds: listedKey ? listedKey.split(",").map(Number) : [],
     }).catch(() => {});
-  }, [state.rowId, state.target?.id, state.manualTarget, state.activeTab, listedKey]);
+  }, [state.rowId, state.target?.id, state.manualTarget, state.activeTab, state.options, listedKey, listedTotal]);
   useEffect(() => { results.current?.scrollTo({ top: 0 }); }, [state.rowId, state.activeTab, state.artists.offset, state.vibeDiffStyle.offset, state.styleDiffVibe.offset, state.custom.offset, state.modelTier, state.modelOffset]);
   useLayoutEffect(() => {
     if (state.target) { lastTarget.current = state.target.id; return; }
