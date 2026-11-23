@@ -1,5 +1,12 @@
 # 项目计划
 
+## v_53 发布及本机升级（2026-11-23）
+
+- 从 feat/library-agent 的 c9b584a 发布 v_53（0.12.30）：整理助手新增「图片对比」工具组（compare_images 读结果、control_compare_window 操作窗口，含自定义对比），说明见 .github/release-notes/v_53.md。
+- 本机编译并签名，没有触发 GitHub Actions。发布前核对更新清单的版本、说明、下载地址和签名，三个附件大小和 SHA-256 与本地一致；公开后重新下载的清单版本是 0.12.30，安装器 SHA-256 一致（29A16625…3405）。
+- 本机：程序未在运行，旧主程序备份到 D:/应用/智能表格/backups/smart-spreadsheet-before-v53-20261123.exe；新主程序写入 NSIS 类型标记（与原文件只差 3 个字节）后替换，Windows 应用登记版本改为 0.12.30；试启动正常。
+- 构建日志和中间文件在 D:/Agent/Agent_temp/smart-spreadsheet-release-v53/。
+
 ## 整理助手：图片对比（读结果 + 操作窗口）（2026-11-23）
 
 - 新增按需加载的 compare 工具组（`src-tauri/src/app/agent/compare.rs`），「获取结果」和「操作窗口」分成两个工具：
