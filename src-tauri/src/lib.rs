@@ -65,6 +65,7 @@ pub fn run() {
             app::commands::agent::agent_delete_conversation,
             app::commands::agent::agent_dismiss_error,
             app::commands::agent::agent_note_export,
+            app::commands::agent::agent_attachment_preview,
             app::commands::agent::agent_operations,
             app::commands::agent::agent_undo,
             app::commands::agent::agent_apply_preview,

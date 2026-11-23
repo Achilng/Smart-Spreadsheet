@@ -177,6 +177,13 @@ pub(crate) async fn agent_dismiss_error(conversation_id: String, message_id: i64
     blocking(app, move |runtime| runtime.agent_db(false, |db| db.agent_dismiss_error(&conversation_id, message_id))).await
 }
 
+/// A preview of an image the user attached: small for the chat bubble, large for the viewer.
+#[tauri::command]
+pub(crate) async fn agent_attachment_preview(conversation_id: String, message_id: i64, number: u8, large: bool, app: tauri::AppHandle) -> Result<String, String> {
+    let side = if large { 2000 } else { 360 };
+    blocking(app, move |runtime| agent::vision::attachment_preview(runtime, &conversation_id, message_id, number, side)).await
+}
+
 /// The user finished (or failed) an export from a card the assistant prepared.
 #[tauri::command]
 pub(crate) fn agent_note_export(conversation_id: String, export_id: String, title: String, result: String, app: tauri::AppHandle) {

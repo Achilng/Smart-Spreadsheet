@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { FileText, X } from "lucide-react";
-import type { AgentAttachment } from "../../../lib/api/agent";
+import { Dialog } from "radix-ui";
+import { FileText, ImageOff, X } from "lucide-react";
+import { agentAttachmentPreview, type AgentAttachment } from "../../../lib/api/agent";
 
 const types: Record<string, string> = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", pdf: "application/pdf" };
 for (const ext of ["txt", "md", "csv", "tsv", "json", "log", "yaml", "yml", "xml"]) types[ext] = "text/plain";
@@ -50,6 +51,63 @@ export function DraftAttachment({ file, onRemove, disabled }: { file: File; onRe
   </span>;
 }
 
-export function attachmentNames(value: unknown): string[] {
-  return Array.isArray(value) ? value.flatMap(a => typeof a?.name === "string" ? [a.name] : []) : [];
+export interface SentAttachment { name: string; image: boolean }
+export function sentAttachments(value: unknown): SentAttachment[] {
+  return Array.isArray(value) ? value.flatMap(a => typeof a?.name === "string"
+    ? [{ name: a.name, image: typeof a.mime === "string" && a.mime.startsWith("image/") }] : []) : [];
+}
+
+const previews = new Map<string, Promise<string>>();
+function loadPreview(conversationId: string, messageId: number, number: number, large: boolean): Promise<string> {
+  const key = `${conversationId}:${messageId}:${number}:${large ? "l" : "s"}`;
+  let pending = previews.get(key);
+  if (!pending) {
+    pending = agentAttachmentPreview(conversationId, messageId, number, large);
+    pending.catch(() => previews.delete(key));
+    previews.set(key, pending);
+    if (previews.size > 200) previews.delete(previews.keys().next().value!);
+  }
+  return pending;
+}
+
+function usePreview(conversationId: string, messageId: number, number: number, large: boolean, enabled = true) {
+  const [state, setState] = useState<{ key: string; url: string | null; failed: boolean }>({ key: "", url: null, failed: false });
+  const key = `${conversationId}:${messageId}:${number}:${large}`;
+  useEffect(() => {
+    if (!enabled) return;
+    let alive = true;
+    loadPreview(conversationId, messageId, number, large)
+      .then(url => { if (alive) setState({ key, url, failed: false }); })
+      .catch(() => { if (alive) setState({ key, url: null, failed: true }); });
+    return () => { alive = false; };
+  }, [conversationId, messageId, number, large, enabled, key]);
+  return state.key === key ? state : { url: null, failed: false };
+}
+
+/** An image the user sent in a message, shown as a thumbnail that opens a larger view. */
+export function SentImage({ conversationId, messageId, number, name }: { conversationId: string; messageId: number; number: number; name: string }) {
+  const { url, failed } = usePreview(conversationId, messageId, number, false);
+  const [open, setOpen] = useState(false);
+  return <>
+    <button type="button" className={`ag-thumb ag-sent-image${url ? "" : " is-empty"}`} title={name} aria-label={`查看图片 ${name}`} onClick={() => setOpen(true)}>
+      {url ? <img src={url} alt="" draggable={false} /> : failed ? <ImageOff className="icon sm" aria-hidden="true" /> : null}
+    </button>
+    <Dialog.Root open={open} onOpenChange={setOpen}><Dialog.Portal>
+      <Dialog.Overlay className="ag-viewer-overlay" />
+      <Dialog.Content className="ag-viewer" aria-describedby={undefined}>
+        <header className="ag-viewer-head">
+          <Dialog.Title className="ag-viewer-title">{name}</Dialog.Title>
+          <Dialog.Close asChild><button type="button" className="ag-viewer-btn" aria-label="关闭"><X className="icon" /></button></Dialog.Close>
+        </header>
+        <div className="ag-viewer-stage">{open && <LargeSentImage conversationId={conversationId} messageId={messageId} number={number} small={url} name={name} />}</div>
+      </Dialog.Content>
+    </Dialog.Portal></Dialog.Root>
+  </>;
+}
+
+function LargeSentImage({ conversationId, messageId, number, small, name }: { conversationId: string; messageId: number; number: number; small: string | null; name: string }) {
+  const large = usePreview(conversationId, messageId, number, true);
+  const url = large.url ?? small;
+  if (!url) return <div className="ag-viewer-missing">{large.failed ? <><ImageOff className="icon" />图片读取不到</> : <span className="spinner" aria-label="加载中" />}</div>;
+  return <img src={url} alt={name} draggable={false} />;
 }

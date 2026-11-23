@@ -2,7 +2,7 @@ import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState, type
 import { emit, listen } from "@tauri-apps/api/event";
 import { cjk } from "@streamdown/cjk";
 import { ArrowDown, ArrowUp, Check, ChevronDown, Copy, FileText, History, Images, MoreHorizontal, PanelLeft, Paperclip, Sparkles, SquarePen, X } from "lucide-react";
-import { attachmentAccept, attachmentNames, DraftAttachment, encodeAttachment, validateFiles } from "./AgentAttachments";
+import { attachmentAccept, DraftAttachment, encodeAttachment, SentImage, sentAttachments, validateFiles, type SentAttachment } from "./AgentAttachments";
 import { Streamdown, defaultRemarkPlugins, type StreamdownProps } from "streamdown";
 import { GalleryLink, isGalleryLink, remarkGalleryImages } from "./AgentGalleryLinks";
 import { useStickToBottom } from "use-stick-to-bottom";
@@ -44,7 +44,7 @@ type Live = { text: string; reasoning: string; tool: string | null; retry: strin
 type StepItem = { type: "step"; id: number; at: number; doneAt: number | null; name: string; args: string; output: string | null; ok: boolean; display: Record<string, unknown> | null };
 type ReasoningItem = { type: "reasoning"; id: number; at: number; text: string };
 type Item =
-  | { type: "user"; id: number; at: number; text: string; files: string[] }
+  | { type: "user"; id: number; at: number; text: string; files: SentAttachment[] }
   | { type: "assistant"; id: number; at: number; text: string }
   | { type: "error"; id: number; at: number; text: string; stopped: boolean }
   | { type: "action"; id: number; at: number; action: string; title: string; operationId: number | null; exportId: string | null; result: string }
@@ -78,7 +78,7 @@ function toItems(messages: AgentMessage[]): Item[] {
     const at = timestamp(message.createdAt);
     const reasoning = reasoningText(content.reasoning);
     if (reasoning) items.push({ type: "reasoning", id: message.id, at, text: reasoning });
-    if (message.kind === "user") items.push({ type: "user", id: message.id, at, text: String(content.text ?? ""), files: attachmentNames(content.attachments) });
+    if (message.kind === "user") items.push({ type: "user", id: message.id, at, text: String(content.text ?? ""), files: sentAttachments(content.attachments) });
     else if (message.kind === "assistant") items.push({ type: "assistant", id: message.id, at, text: String(content.text ?? "") });
     else if (message.kind === "user_action") items.push({
       type: "action", id: message.id, at, action: String(content.action ?? ""), title: String(content.title ?? ""),
@@ -453,7 +453,9 @@ export function AgentWindow() {
   const renderBlock = (block: Block, index: number) => {
     switch (block.type) {
       case "user": return <div key={block.id} className="msg msg-user">
-        {block.files.length > 0 && <div className="ag-file-list">{block.files.map((name, i) => <span className="ag-file-chip" key={i} title={name}><FileText className="icon sm" /><span>{name}</span></span>)}</div>}
+        {block.files.length > 0 && <div className="ag-file-list">{block.files.map((file, i) => file.image && current
+          ? <SentImage key={i} conversationId={current} messageId={block.id} number={i + 1} name={file.name} />
+          : <span className="ag-file-chip" key={i} title={file.name}><FileText className="icon sm" /><span>{file.name}</span></span>)}</div>}
         {block.text && <p className="msg-bubble">{block.text}</p>}
       </div>;
       case "assistant": return <div key={block.id} className="msg msg-assistant">

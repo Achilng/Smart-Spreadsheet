@@ -99,6 +99,9 @@ export const agentModels = (libraryId: string, channel: AgentChannel) =>
 export const agentMessages = (conversationId: string) => invoke<AgentMessage[]>("agent_messages", { conversationId });
 export interface AgentAttachment { name: string; mime: string; data: string }
 export const agentSend = (conversationId: string | null, text: string, attachments: AgentAttachment[] = []) => invoke<string>("agent_send", { conversationId, text, attachments });
+/** JPEG data URL of an image the user attached; `large` for the viewer, otherwise a small thumbnail. */
+export const agentAttachmentPreview = (conversationId: string, messageId: number, number: number, large = false) =>
+  invoke<string>("agent_attachment_preview", { conversationId, messageId, number, large });
 export const agentCancel = (conversationId: string) => invoke<void>("agent_cancel", { conversationId });
 export const renameAgentConversation = (id: string, title: string) => invoke<void>("agent_rename_conversation", { id, title });
 export const deleteAgentConversation = (id: string) => invoke<void>("agent_delete_conversation", { id });

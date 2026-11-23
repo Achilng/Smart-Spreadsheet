@@ -76,8 +76,34 @@ pub fn render_attachment(
     Ok((url, info))
 }
 
+/// A JPEG of an image the user attached, for the chat window only (never sent to the model).
+pub fn attachment_preview(
+    runtime: &AppRuntime,
+    conversation: &str,
+    message_id: i64,
+    number: u8,
+    side: u32,
+) -> Result<String, String> {
+    let (_, encoded) = runtime.agent_db(false, |db| {
+        db.agent_image_attachment(conversation, message_id, number)
+    })?;
+    if encoded.len() > MAX_SOURCE.div_ceil(3) * 4 {
+        return Err("附件超过大小限制".into());
+    }
+    let bytes = STANDARD.decode(encoded).map_err(|_| "附件编码无效")?;
+    render_side(&bytes, side, None).map(|(url, _)| url)
+}
+
 /// One metadata-free JPEG view of an encoded image: whole or cropped, standard or high detail.
 pub(crate) fn render_bytes(bytes: &[u8], detail: Detail, crop_box: Option<Crop>) -> Result<(String, Value), String> {
+    let side = match detail {
+        Detail::Standard => 2000,
+        Detail::High => 3072,
+    };
+    render_side(bytes, side, crop_box)
+}
+
+fn render_side(bytes: &[u8], side: u32, crop_box: Option<Crop>) -> Result<(String, Value), String> {
     let _slot = RENDER_SLOT.lock().map_err(|_| "图片处理暂不可用")?;
     if bytes.len() > MAX_SOURCE {
         return Err("图片超过大小限制".into());
@@ -135,10 +161,6 @@ pub(crate) fn render_bytes(bytes: &[u8], detail: Detail, crop_box: Option<Crop>)
         Rgb([r, g, b].map(|v| (255 - ((255 - u32::from(v)) * u32::from(a) + 127) / 255) as u8))
     });
     drop(rgba);
-    let side = match detail {
-        Detail::Standard => 2000,
-        Detail::High => 3072,
-    };
     if rgb.width().max(rgb.height()) > side {
         rgb = DynamicImage::ImageRgb8(rgb)
             .thumbnail(side, side)

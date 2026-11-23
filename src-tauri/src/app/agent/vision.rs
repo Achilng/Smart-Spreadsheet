@@ -11,7 +11,7 @@ use crate::app::AppRuntime;
 
 #[path = "attachment_view.rs"]
 mod attachment_view;
-pub use attachment_view::{AttachmentView, render_attachment};
+pub use attachment_view::{AttachmentView, attachment_preview, render_attachment};
 use attachment_view::{Crop, Detail, render_bytes};
 
 /// A closer look at one gallery image: its original file, in high detail or cropped.

@@ -235,6 +235,8 @@
   .chat-main:has(.ag-drop-target) { position: relative; }
   .ag-drop-target { position: absolute; z-index: 12; inset: 8px; pointer-events: none; display: flex; align-items: center; justify-content: center; gap: 8px; border: 2px dashed var(--brand); border-radius: 20px; background: color-mix(in srgb, var(--chat-bg) 88%, transparent); color: var(--text); font-weight: 600; }
   .ag-file-list { display: flex; flex-wrap: wrap; gap: 6px; max-width: 100%; }
+  .msg-user .ag-file-list { justify-content: flex-end; }
+  .ag-sent-image { width: 132px; height: 132px; border-radius: 14px; }
   .ag-file-chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0; padding: 4px 8px; background: var(--chat-active); border-radius: 8px; color: var(--text-2); font-size: 12px; }
   .ag-file-chip > span { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ag-file-chip img { width: 44px; height: 44px; object-fit: contain; border-radius: 5px; }
