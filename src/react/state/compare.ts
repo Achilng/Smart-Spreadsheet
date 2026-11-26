@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { getRowsByIds, type RowRecord } from "../../lib/api";
-import { compareFields, customPage, queryCompareCustom, startingConditions, type CompareField, type CompareOptions, type CompareGroups, type CustomPage } from "../../lib/api/compare-conditions";
+import { compareFields, customPage, queryCompareCustom, startingConditions, type CompareField, type CompareOptions, type CompareGroups } from "../../lib/api/compare-conditions";
 import type { CompareWindowView } from "../../lib/windows/compare";
 import { notify } from "./notices";
 import { getCompareSample, queryCompareSameArtists, queryCompareSameVibeDiffStyle, queryCompareSameStyleDiffVibe, queryCompareSameStyleAllModels, type CompareSample, type CompareModelSection } from "../../lib/api/compare";
@@ -9,23 +9,35 @@ import { modelComparisonTier, modelVersionBadge } from "../../lib/utils/model-ve
 
 export type CompareSectionKey = "artists" | "vibeDiffStyle" | "styleDiffVibe" | "custom";
 export type CompareTab = CompareSectionKey | "models";
-export interface SectionState { items: RowRecord[]; total: number; loading: boolean; error: string | null; loaded: boolean; offset: number }
-const emptySection = (): SectionState => ({ items: [], total: 0, loading: false, error: null, loaded: false, offset: 0 });
-const sections = () => ({ groups: null as CompareGroups | null, memberGroup: null as number[] | null, custom: emptySection(), artists: emptySection(), vibeDiffStyle: emptySection(), styleDiffVibe: emptySection(), models: { rows: [], totalCount: 0, truncated: false } as CompareModelSection, modelsLoading: false, modelsError: null as string | null, modelsLoaded: false, modelTier: "", modelOffset: 0, manualTarget: false });
-interface CompareState { groups: CompareGroups | null; memberGroup: number[] | null; custom: SectionState; options: CompareOptions; manualTarget: boolean; rowId: number | null; sample: CompareSample | null; sampleLoading: boolean; sampleError: string | null; activeTab: CompareTab; artists: SectionState; vibeDiffStyle: SectionState; styleDiffVibe: SectionState; models: CompareModelSection; modelsLoading: boolean; modelsError: string | null; modelsLoaded: boolean; modelTier: string; modelOffset: number; target: RowRecord | null }
+/** Results load in batches as the list scrolls; `items` is everything loaded so far. */
+export interface SectionState { items: RowRecord[]; total: number; loading: boolean; error: string | null; loaded: boolean }
+const emptySection = (): SectionState => ({ items: [], total: 0, loading: false, error: null, loaded: false });
+const sections = () => ({
+  groups: null as CompareGroups | null, expandedGroup: null as number[] | null, memberRows: null as RowRecord[] | null,
+  custom: emptySection(), artists: emptySection(), vibeDiffStyle: emptySection(), styleDiffVibe: emptySection(),
+  models: { rows: [], totalCount: 0, truncated: false } as CompareModelSection, modelsLoading: false, modelsError: null as string | null, modelsLoaded: false, manualTarget: false,
+});
+interface CompareState {
+  groups: CompareGroups | null;
+  /** Members of the deduplicated group opened inline in the results. */
+  expandedGroup: number[] | null;
+  /** Set when B was opened from an expanded group; B then moves within that group. */
+  memberRows: RowRecord[] | null;
+  custom: SectionState; options: CompareOptions; manualTarget: boolean; rowId: number | null; sample: CompareSample | null; sampleLoading: boolean; sampleError: string | null; activeTab: CompareTab;
+  artists: SectionState; vibeDiffStyle: SectionState; styleDiffVibe: SectionState; models: CompareModelSection; modelsLoading: boolean; modelsError: string | null; modelsLoaded: boolean; target: RowRecord | null;
+}
 export const useCompare = create<CompareState>(() => ({ options: startingConditions("blank"), rowId: null, sample: null, sampleLoading: false, sampleError: null, activeTab: "artists", target: null, ...sections() }));
 const enqueue = createRequestQueue();
-export const COMPARE_PAGE_SIZE = 24;
+const BATCH_SIZE = 60;
+const OPTIONS_DEBOUNCE_MS = 160;
 let generation = 0;
+const sectionRequests: Record<CompareSectionKey, number> = { artists: 0, vibeDiffStyle: 0, styleDiffVibe: 0, custom: 0 };
+let optionsTimer: ReturnType<typeof setTimeout> | undefined;
 const errorText = (error: unknown) => error instanceof Error ? error.message : String(error);
-
-export function applyCompareOptions(options: CompareOptions, page: CustomPage) {
-  useCompare.setState({ options: { ...options }, groups: page.groups, memberGroup: null, activeTab: "custom", target: null, manualTarget: false,
-    custom: { items: page.rows, total: page.totalCount, offset: page.offset, loading: false, error: null, loaded: true } });
-}
 
 export function resetCompare(): void {
   generation++;
+  clearTimeout(optionsTimer);
   useCompare.setState({ options: startingConditions("blank"), activeTab: "artists", rowId: null, sample: null, sampleError: null, sampleLoading: false, target: null, ...sections() });
 }
 
@@ -34,6 +46,7 @@ export async function setCompareSample(rowId: number, force = false, targetId?: 
   const state = useCompare.getState();
   if (!force && state.rowId === rowId && (state.sample || state.sampleLoading)) return;
   const requestGeneration = ++generation;
+  clearTimeout(optionsTimer);
   const pair = targetId !== undefined && targetId > 0 && targetId !== rowId;
   useCompare.setState({ rowId, sample: null, sampleError: null, sampleLoading: true, target: null, ...sections() });
   try {
@@ -66,35 +79,53 @@ export async function refreshCompare(): Promise<void> {
   if (rowId !== null) await setCompareSample(rowId, true);
 }
 export async function selectCompareTab(tab: CompareTab): Promise<void> {
-  useCompare.setState({ activeTab: tab });
+  useCompare.setState({ activeTab: tab, expandedGroup: null });
   const state = useCompare.getState();
   if (!state.sample) return;
   if (tab === "models") { if (!state.modelsLoaded) await loadCompareModels(); }
-  else if (!state[tab].loaded) await loadCompareSectionPage(tab, true);
+  else if (!state[tab].loaded) await loadCompareSection(tab, true);
 }
-export async function loadCompareSectionPage(section: CompareSectionKey, first = false, direction: 1 | -1 = 1): Promise<void> {
+
+/** Changes the custom comparison; results follow shortly after, keeping the old ones (dimmed) until then. */
+export function setCompareOptions(options: CompareOptions): void {
+  clearTimeout(optionsTimer);
+  useCompare.setState(state => ({ options, groups: null, expandedGroup: null, activeTab: "custom", target: null, manualTarget: false, memberRows: null, custom: { ...state.custom, loading: true, error: null } }));
+  optionsTimer = setTimeout(() => void loadCompareSection("custom", true), OPTIONS_DEBOUNCE_MS);
+}
+
+/** Loads the first batch (`reset`) or the next one after what is already loaded. */
+export async function loadCompareSection(section: CompareSectionKey, reset = false): Promise<void> {
   const state = useCompare.getState();
-  if (state.rowId === null || state[section].loading) return;
+  if (state.rowId === null || !state.sample) return;
   const before = state[section];
-  if (!first && (direction === 1 ? before.offset + before.items.length >= before.total : before.offset === 0)) return;
-  const offset = first ? 0 : Math.max(0, before.offset + direction * COMPARE_PAGE_SIZE);
+  if (!reset && (before.loading || before.error || !before.loaded || before.items.length >= before.total)) return;
+  const offset = reset ? 0 : before.items.length;
+  const request = ++sectionRequests[section];
   const requestGeneration = generation;
-  const current = () => generation === requestGeneration && (section !== "custom" || useCompare.getState().options === state.options);
-  const update = (patch: Partial<SectionState>) => { if (current()) useCompare.setState(current => ({ [section]: { ...current[section], ...patch } })); };
-  update({ loading: true, error: null });
+  const current = () => generation === requestGeneration && sectionRequests[section] === request && (section !== "custom" || useCompare.getState().options === state.options);
+  const update = (patch: (section: SectionState) => Partial<SectionState>) => {
+    if (current()) useCompare.setState(latest => ({ [section]: { ...latest[section], ...patch(latest[section]) } }));
+  };
+  update(() => ({ loading: true, error: null }));
   try {
     const query = section === "artists" ? queryCompareSameArtists : section === "vibeDiffStyle" ? queryCompareSameVibeDiffStyle : queryCompareSameStyleDiffVibe;
-    const page = await enqueue(() => current() && useCompare.getState().activeTab === section,
-      async () => {
-        if (section !== "custom") return query(state.rowId!, offset, COMPARE_PAGE_SIZE);
-        const groups = state.groups ?? await queryCompareCustom(state.sample!, state.options);
-        if (!current()) return;
-        useCompare.setState({ groups });
-        return customPage(groups, offset, COMPARE_PAGE_SIZE);
-      });
-    if (page) update({ items: page.rows, total: page.totalCount, offset: page.offset, loaded: true });
-  } catch (error) { update({ error: errorText(error) }); }
-  finally { update({ loading: false }); }
+    const page = await enqueue(current, async () => {
+      if (section !== "custom") return query(state.rowId!, offset, BATCH_SIZE);
+      const groups = state.groups ?? await queryCompareCustom(state.sample!, state.options);
+      if (!current()) return;
+      useCompare.setState({ groups });
+      return customPage(groups, offset, BATCH_SIZE);
+    });
+    if (page) update(latest => ({ items: reset ? page.rows : [...latest.items, ...page.rows], total: page.totalCount, loaded: true }));
+  } catch (error) { update(() => ({ error: errorText(error) })); }
+  finally { update(() => ({ loading: false })); }
+}
+/** Retries a failed batch, or continues after the last one. */
+export function retryCompareSection(section: CompareSectionKey): void {
+  const state = useCompare.getState()[section];
+  if (!state.loaded) { void loadCompareSection(section, true); return; }
+  useCompare.setState(latest => ({ [section]: { ...latest[section], error: null } }));
+  void loadCompareSection(section);
 }
 export async function loadCompareModels(): Promise<void> {
   const state = useCompare.getState();
@@ -102,19 +133,23 @@ export async function loadCompareModels(): Promise<void> {
   const requestGeneration = generation;
   useCompare.setState({ modelsLoading: true, modelsError: null });
   try {
-    const models = await enqueue(() => generation === requestGeneration && useCompare.getState().activeTab === "models", () => queryCompareSameStyleAllModels(state.rowId!));
+    const models = await enqueue(() => generation === requestGeneration, () => queryCompareSameStyleAllModels(state.rowId!));
     if (models && generation === requestGeneration) useCompare.setState({ models, modelsLoaded: true });
   } catch (error) {
     if (generation === requestGeneration) useCompare.setState({ modelsError: errorText(error) });
   } finally { if (generation === requestGeneration) useCompare.setState({ modelsLoading: false }); }
 }
-export function openSideBySide(target: RowRecord, manualTarget = false, memberGroup: number[] | null = null): void {
-  useCompare.setState(state => state.activeTab === "models" ? { target, manualTarget, memberGroup } : { target, manualTarget, memberGroup, [state.activeTab]: { ...state[state.activeTab], error: null } });
+export function openSideBySide(target: RowRecord, manualTarget = false, memberRows: RowRecord[] | null = null): void {
+  useCompare.setState({ target, manualTarget, memberRows });
 }
-export function closeSideBySide(): void { useCompare.setState({ target: null, memberGroup: null }); }
+export function closeSideBySide(): void { useCompare.setState({ target: null, memberRows: null }); }
+export function pickCompareTarget(target: RowRecord): void { useCompare.setState({ target }); }
+export function setExpandedGroup(group: number[] | null): void { useCompare.setState({ expandedGroup: group }); }
 
 export interface CompareModelGroup { tier: string; title: string; rank: number; rows: RowRecord[] }
+let modelGroupsCache: { models: CompareModelSection; sample: RowRecord | undefined; groups: CompareModelGroup[] } | null = null;
 export function compareModelGroups(models: CompareModelSection, sample: RowRecord | undefined): CompareModelGroup[] {
+  if (modelGroupsCache?.models === models && modelGroupsCache.sample === sample) return modelGroupsCache.groups;
   const groups = new Map<string, CompareModelGroup>();
   const sampleTier = modelComparisonTier(sample?.generationModel ?? null);
   for (const row of models.rows) {
@@ -128,66 +163,58 @@ export function compareModelGroups(models: CompareModelSection, sample: RowRecor
     }
     group.rows.push(row);
   }
-  return [...groups.values()].sort((a, b) => b.rank - a.rank || a.title.localeCompare(b.title));
+  const sorted = [...groups.values()].sort((a, b) => b.rank - a.rank || a.title.localeCompare(b.title));
+  modelGroupsCache = { models, sample, groups: sorted };
+  return sorted;
 }
-export function selectCompareModel(tier: string): void { useCompare.setState({ modelTier: tier, modelOffset: 0 }); }
-export function setCompareModelOffset(offset: number): void { useCompare.setState({ modelOffset: Math.max(0, offset) }); }
+
+/** The results B moves through: the expanded group, all model groups in order, or the current relation. */
+export interface CompareList { rows: RowRecord[]; total: number; more: boolean; loading: boolean; error: string | null; section: CompareSectionKey | null }
+export function compareList(state: CompareState): CompareList | null {
+  if (state.manualTarget) return null;
+  if (state.memberRows) return { rows: state.memberRows, total: state.memberRows.length, more: false, loading: false, error: null, section: null };
+  if (state.activeTab === "models") {
+    const rows = compareModelGroups(state.models, state.sample?.row).flatMap(group => group.rows);
+    return { rows, total: rows.length, more: false, loading: state.modelsLoading, error: state.modelsError, section: null };
+  }
+  const section = state[state.activeTab];
+  return { rows: section.items, total: section.total, more: section.items.length < section.total, loading: section.loading, error: section.error, section: state.activeTab };
+}
 
 export function compareNavigation(state: CompareState) {
-  if (state.manualTarget) return null;
-  if (state.memberGroup && state.target) {
-    const position = state.memberGroup.indexOf(state.target.id) + 1;
-    const total = state.memberGroup.length;
-    return { position, total, previous: position > 1, next: position > 0 && position < total, loading: false, error: null, group: "同组图片" };
-  }
-  const group = state.activeTab === "models"
-    ? compareModelGroups(state.models, state.sample?.row).find(item => item.rows.some(row => row.id === state.target?.id))
-    : undefined;
-  const section = state.activeTab === "models" ? null : state[state.activeTab];
-  const rows = group?.rows ?? section?.items ?? [];
-  const index = rows.findIndex(row => row.id === state.target?.id);
-  const position = index < 0 ? 0 : (section?.offset ?? 0) + index + 1;
-  const total = group?.rows.length ?? section?.total ?? 0;
-  return { position, total, previous: position > 1, next: position > 0 && position < total, loading: section ? section.loading : state.modelsLoading, error: section ? section.error : state.modelsError, group: group?.title };
+  const list = compareList(state);
+  if (!list) return null;
+  const index = list.rows.findIndex(row => row.id === state.target?.id);
+  const position = index + 1;
+  const group = state.memberRows ? "同组图片"
+    : state.activeTab === "models" ? compareModelGroups(state.models, state.sample?.row).find(item => item.rows.some(row => row.id === state.target?.id))?.title
+      : undefined;
+  // Only waiting matters when B sits on the last loaded result; elsewhere loading runs in the background.
+  return { position, total: list.total, previous: position > 1, next: position > 0 && (position < list.rows.length || list.more), loading: list.loading && position >= list.rows.length, error: list.error, group };
 }
 
-/** Keep A fixed, advancing B within the current relation (and model group). */
+/** Keep A fixed, advancing B through the current list; loads the next batch at the end of what is loaded. */
 export async function moveCompareTarget(direction: 1 | -1): Promise<void> {
   const state = useCompare.getState();
-  if (!state.target || state.manualTarget) return;
-  const navigation = compareNavigation(state);
-  if (!navigation || navigation.loading || !(direction === 1 ? navigation.next : navigation.previous)) return;
-  if (state.memberGroup) {
-    const id = state.memberGroup[navigation.position - 1 + direction];
-    try {
-      const [target] = await getRowsByIds([id]);
-      const latest = useCompare.getState();
-      if (latest.memberGroup === state.memberGroup && latest.target === state.target) {
-        if (target) useCompare.setState({ target });
-        else notify("这张图片已移除，请返回刷新结果。", "error");
-      }
-    } catch (error) { notify(errorText(error), "error"); }
-    return;
-  }
-  if (state.activeTab === "models") {
-    const group = compareModelGroups(state.models, state.sample?.row).find(item => item.rows.some(row => row.id === state.target!.id));
-    const index = (group?.rows.findIndex(row => row.id === state.target!.id) ?? -1) + direction;
-    const target = group?.rows[index];
-    if (target && group) useCompare.setState({ target, modelTier: group.tier, modelOffset: Math.floor(index / COMPARE_PAGE_SIZE) * COMPARE_PAGE_SIZE });
-    return;
-  }
-  const sectionKey = state.activeTab;
-  const before = state[sectionKey];
-  const index = before.items.findIndex(row => row.id === state.target!.id);
-  const adjacent = before.items[index + direction];
-  if (adjacent) { useCompare.setState({ target: adjacent, [sectionKey]: { ...before, error: null } }); return; }
-  const requestGeneration = generation;
-  await loadCompareSectionPage(sectionKey, false, direction);
+  if (!state.target) return;
+  const list = compareList(state);
+  if (!list) return;
+  const index = list.rows.findIndex(row => row.id === state.target!.id);
+  if (index < 0) return;
+  const adjacent = list.rows[index + direction];
+  if (adjacent) { useCompare.setState({ target: adjacent }); return; }
+  if (direction !== 1 || !list.more || !list.section || list.loading) return;
+  const section = list.section;
+  if (list.error) useCompare.setState(latest => ({ [section]: { ...latest[section], error: null } }));
+  await loadCompareSection(section);
   const after = useCompare.getState();
   // A sample switch, back action, or another selection invalidates this navigation.
-  if (generation !== requestGeneration || after.manualTarget || (sectionKey === "custom" && after.options !== state.options) || after.activeTab !== sectionKey || after.target?.id !== state.target.id) return;
-  const page = after[sectionKey];
-  if (page.error || page.offset === before.offset) return;
-  const target = direction === 1 ? page.items[0] : page.items.at(-1);
-  if (target) useCompare.setState({ target });
+  if (after.target?.id !== state.target.id || after.activeTab !== section || after.memberRows) return;
+  const next = after[section].items[index + 1];
+  if (next) useCompare.setState({ target: next });
+}
+/** Loads more of the list B moves through, when it has more. */
+export function loadMoreCompareList(): void {
+  const list = compareList(useCompare.getState());
+  if (list?.section && list.more) void loadCompareSection(list.section);
 }

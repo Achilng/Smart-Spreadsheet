@@ -11,15 +11,21 @@ import type { compareNavigation } from "../../state/compare";
 import { notify } from "../../state/notices";
 import { PaneImage, OriginalLightbox } from "./CompareImages";
 import { CompareRowContextMenu } from "./CompareRowContextMenu";
+import { CompareFilmstrip } from "./CompareFilmstrip";
 
 function Tokens({ items, quality }: { items: PromptToken[]; quality: boolean }) {
   return <ul className="tokens">{items.map((token, index) => <li key={index} className={`token ${quality && token.isQuality ? "quality" : ""}`}>{token.display}</li>)}</ul>;
 }
 const value = (input: string | number | null | undefined) => input == null || input === "" ? "未记录" : String(input);
 type Navigation = ReturnType<typeof compareNavigation>;
-interface Props { initialTab?: DiffTab; sample: RowRecord; target: RowRecord; relation: string; navigation: Navigation; onMove: (direction: 1 | -1) => Promise<void>; onBack: () => void; onChooseTarget: () => void }
+interface Props {
+  initialTab?: DiffTab; sample: RowRecord; target: RowRecord; relation: string; navigation: Navigation;
+  /** Results B can move through, shown as a strip under the images. */
+  film: { rows: RowRecord[]; more: boolean } | null;
+  onMove: (direction: 1 | -1) => Promise<void>; onPick: (row: RowRecord) => void; onLoadMore: () => void; onBack: () => void; onChooseTarget: () => void;
+}
 
-export function SideBySide({ initialTab = "positive", sample, target, relation, navigation, onMove, onBack, onChooseTarget }: Props) {
+export function SideBySide({ initialTab = "positive", sample, target, relation, navigation, film, onMove, onPick, onLoadMore, onBack, onChooseTarget }: Props) {
   const [tab, setTab] = useState<DiffTab>(initialTab);
   const [showShared, setShowShared] = useState(false);
   const [onlyChangedParams, setOnlyChangedParams] = useState(true);
@@ -105,7 +111,8 @@ export function SideBySide({ initialTab = "positive", sample, target, relation, 
               <div className="pane-footer"><p title={pane.row.imagePath || undefined}>{pane.row.note?.trim() || rowFileName(pane.row) || `#${pane.row.id}`}</p><button onClick={() => void locate(pane.row.id)} title="在主画廊定位" aria-label={`在主画廊定位${pane.mark === "A" ? "样本" : "目标"}`}><Crosshair size={13} />定位</button></div>
             </figure></CompareRowContextMenu>;
           })}</div>
-          <footer className="stage-note"><span>点击查看原图 · 保持原始比例</span><span>{navigation && <>← → 切换目标<span className="shortcut-divider">·</span></>}Esc 返回</span></footer>
+          {film && film.rows.length > 1 && <CompareFilmstrip rows={film.rows} currentId={target.id} more={film.more} onPick={onPick} onNearEnd={onLoadMore} />}
+          <footer className="stage-note"><span>点击图片查看原图</span><span>{navigation && <>← → 切换 B<span className="shortcut-divider">·</span></>}Esc 返回</span></footer>
         </main>
         <div className="inspector-resize" role="separator" tabIndex={0} aria-label="调整差异面板宽度" aria-orientation="vertical" aria-controls="compare-inspector" aria-valuenow={inspectorWidth} aria-valuemin={300} aria-valuemax={maximumWidth} title="拖动调整宽度；聚焦后使用左右键"
           onPointerDown={event => { if (event.button !== 0) return; event.currentTarget.setPointerCapture(event.pointerId); setDragging(true); }}

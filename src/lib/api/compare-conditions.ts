@@ -54,21 +54,26 @@ export function fieldValue(row: RowRecord, field: CompareField): string {
   return String(values[field] ?? "");
 }
 
-export function describeChange(a: RowRecord, b: RowRecord, field: CompareField) {
+export interface ChangeToken { kind: "add" | "remove"; text: string; quality: boolean }
+/** How B differs from A in one field: prompt tokens B added or removed, or a single line for other fields. */
+export interface ChangeSummary { tokens: ChangeToken[]; text: string | null; full: string }
+const PROMPT_FIELDS: readonly CompareField[] = ["positive", "negative", "character", "artists"];
+
+export function describeChange(a: RowRecord, b: RowRecord, field: CompareField): ChangeSummary {
   const before = fieldValue(a, field), after = fieldValue(b, field);
-  if (["positive", "negative", "character", "artists"].includes(field)) {
+  if (PROMPT_FIELDS.includes(field)) {
     const diff = diffPromptField(before, after);
-    const added = diff.onlyRight.map(token => `新增 ${token.display}`);
-    const removed = diff.onlyLeft.map(token => `移除 ${token.display}`);
-    const changes = [...added, ...removed];
-    if (changes.length) {
-      const lines = added.length && removed.length ? [added[0], removed[0]] : changes.slice(0, 2);
-      return { lines, more: changes.length - lines.length, full: changes.join("\n") };
-    }
+    const tokens: ChangeToken[] = [
+      ...diff.onlyRight.map(token => ({ kind: "add" as const, text: token.display, quality: token.isQuality })),
+      ...diff.onlyLeft.map(token => ({ kind: "remove" as const, text: token.display, quality: token.isQuality })),
+    ].sort((x, y) => Number(x.quality) - Number(y.quality));
+    if (tokens.length) return { tokens, text: null, full: tokens.map(token => `${token.kind === "add" ? "+" : "−"} ${token.text}`).join("\n") };
+    const same = `${compareFields[field]}没有差别`;
+    return { tokens, text: same, full: same };
   }
   let line = `${before || "空"} → ${after || "空"}`;
   if (field === "model" && before === after) line = `${a.generationModel} → ${b.generationModel}`;
   if (field === "vibe" && before === after) line = `${after}，引用组合不同`;
   const summary = `${compareFields[field]} ${line}`;
-  return { lines: [summary], more: 0, full: summary };
+  return { tokens: [], text: summary, full: summary };
 }
