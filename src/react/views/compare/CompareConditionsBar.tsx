@@ -20,7 +20,7 @@ export function CompareConditionsBar({ options }: { options: CompareOptions }) {
   return <div className="rc-conditions">
     <span className="rc-conditions-label">比较</span>
     <Select label="要比较什么" value={options.observe} options={fields} onChange={observe => update({ observe })} />
-    <label className="ce-field" title="和 A 的差别完全相同的图合成一组，只显示一张"><Checkbox checked={options.dedupe} onCheckedChange={checked => update({ dedupe: checked === true })} />差别相同的合成一组</label>
+    <label className="ce-field" title="和 A 的差别完全相同的图合成一组，只显示一张"><Checkbox checked={options.dedupe} onCheckedChange={checked => update({ dedupe: checked === true })} />去除重复项</label>
     {options.dedupe && <Popover.Root>
       <Popover.Trigger asChild><Button size="sm" variant="ghost" className="rc-locked-trigger">{lockedSummary(locked, others.length)}<ChevronDown size={13} /></Button></Popover.Trigger>
       <Popover.Portal><Popover.Content className="rc-allowed-popover" align="start" sideOffset={6} collisionPadding={12} aria-label="哪些条件可以和 A 不同">

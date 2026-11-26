@@ -219,8 +219,9 @@ export function RightClickMenu({ items, children }: { items?: MenuItem[]; childr
   </ContextMenu.Portal></ContextMenu.Root>;
 }
 
-export function Modal({ open, onClose, title, description, busy = false, width = 440, children, footer, onEscapeKeyDown }: {
+export function Modal({ open, onClose, title, description, busy = false, width = 440, children, footer, onEscapeKeyDown, className }: {
   open: boolean;
+  className?: string;
   onClose: () => void;
   title: string;
   description?: string;
@@ -236,7 +237,7 @@ export function Modal({ open, onClose, title, description, busy = false, width =
   useLayoutEffect(() => { if (open) opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; }, [open]);
   return <Dialog.Root open={open} onOpenChange={next => { if (!next && !busy) onClose(); }}><Dialog.Portal>
     <Dialog.Overlay className="r-dialog-overlay" />
-    <Dialog.Content ref={content} className="r-dialog" style={{ width }} aria-describedby={description ? descriptionId : undefined}
+    <Dialog.Content ref={content} className={className ? `r-dialog ${className}` : "r-dialog"} style={{ width }} aria-describedby={description ? descriptionId : undefined}
       onOpenAutoFocus={event => {
         const firstInput = content.current?.querySelector<HTMLElement>('input:not([disabled]), textarea:not([disabled]), [data-autofocus]');
         if (firstInput) { event.preventDefault(); firstInput.focus(); }

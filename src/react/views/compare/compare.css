@@ -97,13 +97,8 @@
 
 /* ---------- Result cards ---------- */
 .rc-card { min-width: 0; }
-.rc-card .thumb-wrap { position: relative; isolation: isolate; }
-/* A deduplicated group reads as a small deck: two edges peek out above the card. */
-.rc-card.is-stack .thumb-wrap::before, .rc-card.is-stack .thumb-wrap::after { content: ""; position: absolute; z-index: -1; height: 24px; border-radius: 8px 8px 0 0; background: var(--border-strong); }
-.rc-card.is-stack .thumb-wrap::before { top: -5px; left: 7px; right: 7px; }
-.rc-card.is-stack .thumb-wrap::after { top: -10px; left: 15px; right: 15px; background: var(--border); }
+.rc-card .thumb-wrap { position: relative; }
 .rc-card .thumb { position: relative; width: 100%; aspect-ratio: 4 / 5; background: var(--compare-stage); border-radius: 8px; overflow: hidden; }
-.rc-card.is-expanded .thumb { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent); }
 .rc-card .thumb .rc-image img { object-fit: cover; }
 .rc-card .card-open, .rc-side .image-open { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; border: 0; border-radius: inherit; padding: 0; background: transparent; }
 .rc-card .card-open:focus-visible, .rc-side .image-open:focus-visible { outline-offset: -3px; }
@@ -114,7 +109,6 @@
 .rc-card .card-open:hover .open-hint, .rc-card .card-open:focus-visible .open-hint, .rc-side .image-open:hover .original-hint, .rc-side .image-open:focus-visible .original-hint { opacity: 1; }
 .rc-card .stack-count { position: absolute; left: 8px; bottom: 8px; z-index: 2; display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 9px; border: 0; border-radius: 999px; background: var(--on-image); color: var(--text); font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums; box-shadow: 0 1px 3px rgb(0 0 0 / 14%); }
 .rc-card .stack-count:hover { background: var(--surface); color: var(--accent-hover); }
-.rc-card .stack-count[aria-expanded="true"] { background: var(--accent); color: #fff; }
 /* B's difference from A, clamped to two lines with a trailing ellipsis. */
 .rc-card .card-diff { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; margin-top: 10px; font-size: 12px; line-height: 23px; color: var(--text-3); overflow-wrap: anywhere; }
 .rc-card .diff-chip { margin-right: 4px; padding: 2px 6px; border-radius: 4px; white-space: nowrap; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
@@ -123,20 +117,17 @@
 .rc-card .diff-text { color: var(--text-2); }
 .rc-card .diff-chip.is-quality { opacity: .55; }
 
-/* An expanded group, under the line that holds its card. */
-.rc-group-panel { margin-bottom: 28px; padding: 14px 16px 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--rail); --compare-stage: var(--surface-3); }
-.rc-group-panel > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
-.rc-group-panel > header strong { display: block; font-size: var(--font-sm); font-weight: 600; }
-.rc-group-panel > header span { display: block; margin-top: 2px; font-size: 12px; color: var(--text-3); }
-.rc-group-panel .group-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 10px; }
-.rc-group-panel .group-thumb { position: relative; display: block; width: 100%; aspect-ratio: 4 / 5; padding: 0; border: 0; border-radius: 6px; overflow: hidden; background: var(--compare-stage); }
-.rc-group-panel .group-thumb .rc-image img { object-fit: cover; }
-.rc-group-panel .group-thumb:hover { box-shadow: inset 0 0 0 1px var(--border-hover); filter: brightness(1.04); }
-.rc-group-panel .group-thumb .card-badges { top: 6px; left: 6px; right: 6px; }
-.rc-group-panel .group-thumb .version-badge, .rc-group-panel .group-thumb .vibe-badge { font-size: 10px; padding: 1px 5px; }
-.rc-group-panel .group-loading, .rc-group-panel .group-error { display: flex; align-items: center; gap: 10px; min-height: 64px; font-size: var(--font-xs); color: var(--text-3); }
-.rc-group-panel .group-error { color: var(--danger); }
-.rc-group-panel .group-loading .rc-image-loading { width: 16px; height: 16px; }
+/* Every member of a deduplicated group, in a dialog over the results. */
+.rc-group-dialog { --compare-stage: var(--surface-3); }
+.rc-group-dialog .group-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 10px; }
+.rc-group-dialog .group-thumb { position: relative; display: block; width: 100%; aspect-ratio: 4 / 5; padding: 0; border: 0; border-radius: 6px; overflow: hidden; background: var(--compare-stage); }
+.rc-group-dialog .group-thumb .rc-image img { object-fit: cover; }
+.rc-group-dialog .group-thumb:hover { box-shadow: inset 0 0 0 1px var(--border-hover); filter: brightness(1.04); }
+.rc-group-dialog .group-thumb .card-badges { top: 6px; left: 6px; right: 6px; }
+.rc-group-dialog .group-thumb .version-badge, .rc-group-dialog .group-thumb .vibe-badge { font-size: 10px; padding: 1px 5px; }
+.rc-group-dialog .group-loading, .rc-group-dialog .group-error { display: flex; align-items: center; gap: 10px; min-height: 64px; font-size: var(--font-xs); color: var(--text-3); }
+.rc-group-dialog .group-error { color: var(--danger); }
+.rc-group-dialog .group-loading .rc-image-loading { width: 16px; height: 16px; }
 
 .rc-side { display: flex; flex: 1; flex-direction: column; min-height: 0; }
 .rc-side .compare-toolbar { display: flex; align-items: center; gap: 20px; min-height: 58px; flex: none; padding: 10px 20px; border-bottom: 1px solid var(--border); background: var(--surface); }
@@ -231,9 +222,9 @@
 .rc-side .film-item.is-more .rc-image-loading { width: 16px; height: 16px; }
 .rc-image { width: 100%; height: 100%; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; }
 .rc-image img { display: block; width: 100%; height: 100%; max-width: 100%; max-height: 100%; object-fit: contain; }
-.rc-window .rc-image-unavailable { position: relative; z-index: 2; display: flex; align-items: center; flex-direction: column; gap: 8px; padding: 6px; text-align: center; color: var(--text-3); font-size: var(--font-xs); pointer-events: none; }
-.rc-window .rc-image-unavailable small { font-size: 12px; }
-.rc-window .image-retry { pointer-events: auto; display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-height: 28px; border: 1px solid var(--border-strong); border-radius: 5px; padding: 4px 8px; background: var(--surface); color: var(--text-2); font-size: 12px; }
+.rc-window .rc-image-unavailable, .rc-group-dialog .rc-image-unavailable { position: relative; z-index: 2; display: flex; align-items: center; flex-direction: column; gap: 8px; padding: 6px; text-align: center; color: var(--text-3); font-size: var(--font-xs); pointer-events: none; }
+.rc-window .rc-image-unavailable small, .rc-group-dialog .rc-image-unavailable small { font-size: 12px; }
+.rc-window .image-retry, .rc-group-dialog .image-retry { pointer-events: auto; display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-height: 28px; border: 1px solid var(--border-strong); border-radius: 5px; padding: 4px 8px; background: var(--surface); color: var(--text-2); font-size: 12px; }
 .rc-window .image-retry:hover { background: var(--surface-2); }
 .rc-image-loading { display: inline-block; flex: none; width: 24px; height: 24px; border: 2px solid var(--border-strong); border-top-color: var(--text-3); border-radius: 50%; animation: rc-spin 900ms linear infinite; }
 .rc-window .state-page { flex: 1; display: flex; align-items: center; justify-content: center; flex-direction: column; padding: 40px; gap: 14px; text-align: center; color: var(--text-3); }

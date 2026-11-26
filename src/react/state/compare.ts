@@ -19,7 +19,7 @@ const sections = () => ({
 });
 interface CompareState {
   groups: CompareGroups | null;
-  /** Members of the deduplicated group opened inline in the results. */
+  /** Members of the deduplicated group shown in the group dialog. */
   expandedGroup: number[] | null;
   /** Set when B was opened from an expanded group; B then moves within that group. */
   memberRows: RowRecord[] | null;
@@ -140,7 +140,8 @@ export async function loadCompareModels(): Promise<void> {
   } finally { if (generation === requestGeneration) useCompare.setState({ modelsLoading: false }); }
 }
 export function openSideBySide(target: RowRecord, manualTarget = false, memberRows: RowRecord[] | null = null): void {
-  useCompare.setState({ target, manualTarget, memberRows });
+  // Opened from outside the group dialog, B leaves that group, so the dialog stays closed on return.
+  useCompare.setState(state => ({ target, manualTarget, memberRows, expandedGroup: memberRows ? state.expandedGroup : null }));
 }
 export function closeSideBySide(): void { useCompare.setState({ target: null, memberRows: null }); }
 export function pickCompareTarget(target: RowRecord): void { useCompare.setState({ target }); }

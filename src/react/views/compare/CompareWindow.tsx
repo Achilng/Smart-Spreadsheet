@@ -123,9 +123,11 @@ export function CompareWindow() {
   }, [state.rowId, state.target?.id, state.manualTarget, state.activeTab, state.options, listedKey, listedTotal, expandedKey, state.expandedGroup?.length]);
   useEffect(() => { results.current?.scrollTo({ top: 0 }); }, [state.rowId, state.activeTab, state.options]);
   useLayoutEffect(() => {
-    // Back from the side-by-side view, bring the last B into view in the results.
+    // Back from the side-by-side view, bring the last B into view in the results (or reopen its group).
     if (state.target) { lastTarget.current = state.target.id; return; }
-    if (lastTarget.current !== null) setReveal({ rowId: lastTarget.current });
+    if (lastTarget.current === null) return;
+    const group = useCompare.getState().expandedGroup;
+    setReveal(group ? { rowId: group[0], memberId: lastTarget.current } : { rowId: lastTarget.current });
   }, [state.target]);
   const sample = state.sample;
   const navigation = compareNavigation(state);

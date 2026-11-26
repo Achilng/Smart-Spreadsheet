@@ -1,12 +1,12 @@
-import { memo, useCallback, useEffect, useMemo, useState, type RefObject } from "react";
-import { ArrowUpRight, Images, Layers, X } from "lucide-react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { ArrowUpRight, Images, Layers } from "lucide-react";
 import type { RowRecord } from "../../../lib/api";
 import { compareFields, describeChange, orderedRows, startingConditions, type ChangeSummary, type CompareField } from "../../../lib/api/compare-conditions";
 import { modelVersionBadge } from "../../../lib/utils/model-version";
 import { rowFileName, rowResolution } from "../../../lib/utils/row-display";
 import { formatCount, errorText } from "../../../lib/utils/format";
 import { compareModelGroups, loadCompareModels, loadCompareSection, openSideBySide, retryCompareSection, setCompareOptions, setExpandedGroup, useCompare, type CompareSectionKey } from "../../state/compare";
-import { Button } from "../../ui/controls";
+import { Button, Modal } from "../../ui/controls";
 import { CompareGrid, type GridSection } from "./CompareGrid";
 import { CompareConditionsBar } from "./CompareConditionsBar";
 import { CompareRowContextMenu } from "./CompareRowContextMenu";
@@ -21,7 +21,8 @@ const RELATION_COPY: Record<Exclude<CompareSectionKey, "custom">, { title: strin
 };
 const MAX_CHIPS = 40;
 
-export type Reveal = { rowId: number } | null;
+/** A card to bring into view and focus; `memberId` is the group member to focus when the group dialog reopens. */
+export type Reveal = { rowId: number; memberId?: number } | null;
 export const rowDetails = (row: RowRecord) => [[rowFileName(row), rowResolution(row), `#${row.id}`].filter(Boolean).join(" · "), row.imagePath].filter(Boolean).join("\n");
 
 export function Badges({ row }: { row: RowRecord }) {
@@ -37,50 +38,56 @@ function ChangeLine({ change }: { change: ChangeSummary }) {
   </p>;
 }
 
-const CompareCard = memo(function CompareCard({ row, sample, field, group, expanded }: {
-  row: RowRecord; sample: RowRecord; field: CompareField | null; group?: number[]; expanded?: boolean;
+const CompareCard = memo(function CompareCard({ row, sample, field, group }: {
+  row: RowRecord; sample: RowRecord; field: CompareField | null; group?: number[];
 }) {
   const change = useMemo(() => field ? describeChange(sample, row, field) : null, [sample, row, field]);
-  return <CompareRowContextMenu row={row}><article className={`rc-card${group ? " is-stack" : ""}${expanded ? " is-expanded" : ""}`}>
+  return <CompareRowContextMenu row={row}><article className="rc-card">
     <div className="thumb-wrap"><div className="thumb">
       <PaneImage row={row} tier="gallery" lazy />
       <div className="card-badges"><Badges row={row} /></div>
       <button type="button" className="card-open" data-compare-id={row.id} aria-label={`和 A 并排对比：${rowFileName(row) || `#${row.id}`}`} title={rowDetails(row)} onClick={() => openSideBySide(row)}>
         <span className="open-hint"><ArrowUpRight size={14} />对比这张</span>
       </button>
-      {group && <button type="button" className="stack-count" aria-expanded={expanded} title={expanded ? "收起这一组" : `差别相同的 ${group.length} 张，点开查看`} onClick={() => setExpandedGroup(expanded ? null : group)}>
-        <Layers size={12} />{formatCount(group.length)} 张
+      {group && <button type="button" className="stack-count" data-stack-id={row.id} aria-haspopup="dialog" title={`差别相同的 ${group.length} 张，点开查看`} onClick={() => setExpandedGroup(group)}>
+        <Layers size={12} />共 {formatCount(group.length)} 张
       </button>}
     </div></div>
     {change && <ChangeLine change={change} />}
   </article></CompareRowContextMenu>;
 });
 
-/** Members of one deduplicated group, all at once, under the card that stands for them. */
-function GroupPanel({ ids, field, onClose }: { ids: number[]; field: CompareField; onClose: () => void }) {
+/** All members of one deduplicated group, in a dialog over the results. */
+function GroupDialog({ ids, field, focusId }: { ids: number[]; field: CompareField; focusId?: number }) {
   const [rows, setRows] = useState<RowRecord[] | null>(null);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
+  const grid = useRef<HTMLDivElement>(null);
   useEffect(() => {
     let active = true;
     setError("");
     void orderedRows(ids).then(list => { if (active) setRows(list); }).catch(cause => { if (active) setError(errorText(cause)); });
     return () => { active = false; };
   }, [ids, attempt]);
-  return <section className="rc-group-panel" aria-label={`差别相同的 ${ids.length} 张`}>
-    <header>
-      <div><strong>差别相同的 {formatCount(ids.length)} 张</strong><span>和 A 的{compareFields[field]}差别一样，其它允许不同的条件可能各不相同。</span></div>
-      <button type="button" className="icon-button" aria-label="收起这一组" title="收起" onClick={onClose}><X size={16} /></button>
-    </header>
+  useEffect(() => {
+    // Back from the side-by-side view, focus the B that was last open.
+    if (rows && focusId !== undefined) grid.current?.querySelector<HTMLElement>(`[data-compare-id="${focusId}"]`)?.focus();
+  }, [rows, focusId]);
+  const close = () => {
+    setExpandedGroup(null);
+    requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-stack-id="${ids[0]}"]`)?.focus());
+  };
+  return <Modal open onClose={close} width={980} className="rc-group-dialog" title={`差别相同的 ${formatCount(ids.length)} 张`}
+    description={`和 A 的${compareFields[field]}差别一样，其它允许不同的条件可能各不相同。点一张和 A 并排对比。`}>
     {error ? <p className="group-error" role="alert">{error}<Button size="sm" onClick={() => setAttempt(attempt + 1)}>重试</Button></p>
       : !rows ? <p className="group-loading" role="status"><span className="rc-image-loading" />正在读取这一组…</p>
-        : <div className="group-grid">{rows.map(row => <CompareRowContextMenu row={row} key={row.id}>
+        : <div className="group-grid" ref={grid}>{rows.map(row => <CompareRowContextMenu row={row} key={row.id}>
           <button type="button" className="group-thumb" data-compare-id={row.id} title={rowDetails(row)} aria-label={`和 A 并排对比：${rowFileName(row) || `#${row.id}`}`} onClick={() => openSideBySide(row, false, rows)}>
             <PaneImage row={row} tier="gallery" lazy />
             <span className="card-badges"><Badges row={row} /></span>
           </button>
         </CompareRowContextMenu>)}</div>}
-  </section>;
+  </Modal>;
 }
 
 function GridFooter({ loaded, total, unit, error, onRetry }: { loaded: number; total: number; unit: string; error: string | null; onRetry: () => void }) {
@@ -99,6 +106,7 @@ export function CompareSection({ section, scrollRef, reveal }: { section: Compar
   const options = useCompare(s => s.options);
   const groups = useCompare(s => s.groups);
   const expandedGroup = useCompare(s => s.expandedGroup);
+  const hasTarget = useCompare(s => s.target !== null);
   const custom = section === "custom";
   const grouped = custom && options.dedupe;
   const field = custom ? options.observe : RELATION_FIELD[section];
@@ -111,8 +119,7 @@ export function CompareSection({ section, scrollRef, reveal }: { section: Compar
   const refreshing = custom && state.loading && !groups && state.loaded;
   const gridSections = useMemo<GridSection[]>(() => [{ key: section, rows: state.items }], [section, state.items]);
   const onNearEnd = useCallback(() => void loadCompareSection(section), [section]);
-  const expanded = useMemo(() => expandedGroup && groupOf?.get(expandedGroup[0]) === expandedGroup
-    ? { rowId: expandedGroup[0], content: <GroupPanel ids={expandedGroup} field={field} onClose={() => setExpandedGroup(null)} /> } : null, [expandedGroup, groupOf, field]);
+  const openGroup = expandedGroup && groupOf?.get(expandedGroup[0]) === expandedGroup ? expandedGroup : null;
   const unit = grouped ? "组" : "张";
   return <section className={`rc-section${refreshing ? " is-refreshing" : ""}`} aria-busy={state.loading}>
     <header className="section-head">
@@ -125,16 +132,16 @@ export function CompareSection({ section, scrollRef, reveal }: { section: Compar
       </div>
       {custom && <CompareConditionsBar options={options} />}
     </header>
-    {state.items.length ? <CompareGrid scrollRef={scrollRef} sections={gridSections} expanded={expanded} onNearEnd={onNearEnd} reveal={reveal}
+    {state.items.length ? <CompareGrid scrollRef={scrollRef} sections={gridSections} onNearEnd={onNearEnd} reveal={reveal}
       footer={<GridFooter loaded={state.items.length} total={state.total} unit={unit} error={state.error} onRetry={() => retryCompareSection(section)} />}
       renderCard={row => {
         const group = groupOf?.get(row.id);
-        const stacked = group && group.length > 1 ? group : undefined;
-        return <CompareCard row={row} sample={sample.row} field={field} group={stacked} expanded={!!stacked && expandedGroup === stacked} />;
+        return <CompareCard row={row} sample={sample.row} field={field} group={group && group.length > 1 ? group : undefined} />;
       }} />
       : state.error ? <div className="error" role="alert"><span>{state.error}</span><Button onClick={() => retryCompareSection(section)}>重新加载</Button></div>
         : state.loading || !state.loaded ? <Skeleton />
           : <div className="empty"><Images size={28} /><h2>{unavailable ? "缺少对比信息" : "暂时没有匹配图片"}</h2><p>{custom ? "换一个要比较的项，或者放宽要和 A 一致的条件。" : unavailable ? missing : "资料库中还没有符合这个关系的图片，可以切换其他关系继续探索。"}</p></div>}
+    {openGroup && !hasTarget && <GroupDialog key={openGroup[0]} ids={openGroup} field={field} focusId={reveal?.memberId} />}
   </section>;
 }
 
