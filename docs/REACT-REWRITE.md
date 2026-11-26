@@ -2,6 +2,8 @@
 
 日期：2026-09-21。状态：主体迁移收尾；三个 React 窗口和主要业务已迁移，默认入口已切换。用户要求停止后续测试，未完成的验证不计为通过。
 
+2026-11-26 已完成收尾清理：旧 Svelte 源码（123 个文件）、Svelte 依赖、`svelte.config.js`，以及临时兼容入口 `react.html`、`vite.react.config.ts` 和 `dev:react` / `build:react` / `check:react` 脚本均已移除。下文关于 Svelte 现状的段落是迁移时的历史记录。
+
 
 ## 当前实现与验收边界
 

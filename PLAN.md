@@ -1,5 +1,12 @@
 # 项目计划
 
+## 清理旧 Svelte 前端（2026-11-26，分支 `refactor/ui-cleanup`）
+
+- 实际运行的界面早已是 React，`src/lib` 里的旧 Svelte 页面一直没删，之后的改动还会误改到它们。按入口（`src/main.ts`）和单元测试做引用追踪，删除所有追踪不到的文件：110 个 `.svelte` / `.svelte.ts` 和 13 个只被旧页面使用的 `.ts` / `.css`，旧目录 `src/lib/views`、`src/lib/ui` 整个移除。
+- 同时移除 Svelte 依赖（`svelte`、`svelte-check`、`@sveltejs/vite-plugin-svelte`、`@lucide/svelte`）、`svelte.config.js`，以及迁移期临时入口 `react.html`、`vite.react.config.ts` 和对应 npm 脚本；`tsconfig.json`、`src/vite-env.d.ts` 去掉 Svelte 相关内容。`docs/ARCHITECTURE.md` 前端一节按 React 实际结构重写。
+- `src/lib` 里保留 React 仍在用的 `api`、`windows`、`images`、`utils`、`dev`（模拟后端）以及 `stores`、`features` 中的少量纯逻辑模块。
+- 发现但未处理：`src/react/views/tools/StyleWebTools.tsx` 也没有任何地方引用，属于 React 里的遗留文件，不在这次范围内。
+- 验证：`npm run check`、生产构建、现有 45 项单元测试通过。
 ## v_54 发布及本机升级（2026-11-23）
 
 - 从 feat/library-agent 的 7ecb550 发布 v_54（0.12.31）：整理助手提高缓存命中（发送时间跟着用户消息、prompt_cache_key、圆环显示命中数），说明见 .github/release-notes/v_54.md。

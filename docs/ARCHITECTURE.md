@@ -4,28 +4,25 @@
 
 ## 前端
 
+前端是 React（入口 `src/main.ts` → `src/react/main.tsx`）。主窗口、工具箱、对比窗口和整理助手共用同一个页面入口，按地址参数 `?window=` 选择窗口；开发时加 `?mock` 使用 `src/lib/dev/` 的模拟后端。
+
 | 目录 / 模块 | 负责什么 | 修改约定 |
 | --- | --- | --- |
-| `src/lib/views/` | 页面布局、组件组合、输入事件 | 复杂业务流程交给对应功能模块；样式保留在组件中 |
-| `src/lib/features/` | 规则、快速整理、素材、文档、图片导出、资料库操作 | 页面控制器在组件初始化时创建，状态与生命周期属于该页面实例 |
-| `stores/library-state.svelte.ts` | 当前资料库快照与查询版本 | 不放窗口布局、任务进度或文件操作 |
-| `stores/workspace-state.svelte.ts` | 视图、面板开关和尺寸 | 只保存当前窗口的展示偏好 |
-| `stores/task-state.svelte.ts`、`tasks.ts` | 进度、忙碌状态、操作错误收尾 | 这是当前窗口状态，不是后端全局互斥锁 |
-| `stores/notices.svelte.ts` | 通知队列与消失计时 | 所有通知从此入口创建 / 清除 |
-| 其它 `stores/` | 行缓存、选区、Tag、分组、历史、导航 | 保留现有业务范围；通过事件或登记回调解开互相引用 |
+| `src/react/views/` | 各窗口的页面、弹窗和工具箱工具 | 复杂业务流程交给 `state/`；页面专属样式放在同目录 |
+| `src/react/state/` | Zustand 状态与业务操作：资料库快照、工作区、选区、任务、通知、历史等 | 跨页面共享的状态都在这里，按功能一文件 |
+| `src/react/ui/` | 公共控件与交互钩子；基础控件集中在 `controls.tsx`（基于 Radix） | 新页面优先复用这里的控件，不直接写浏览器原生下拉框等 |
+| `src/react/styles/` | 色板、基础样式、共用控件和页面框架样式 | 颜色和尺寸使用 `tokens.css` 变量 |
 | `src/lib/api/` | 请求 / 响应类型和 IPC 调用 | 不操作页面状态，不显示通知 |
 | `src/lib/windows/` | 窗口事件与导航 | 协议与调用方业务操作分开 |
-| `src/lib/ui/`、`images/`、`utils/` | 公共界面、图片加载、纯计算 | 公共工具不反向导入具体页面 |
-
-`controller.svelte.ts` 中的 `$state`、`$derived` 和生命周期函数需要在组件创建控制器时注册。不要将这些工厂的返回值提升为模块单例；需要跨页面共享的状态应有明确的 store。
+| `src/lib/images/`、`utils/`、`stores/`、`features/` | 图片加载、布局计算、纯函数工具及少量与界面框架无关的状态 | 不依赖 React，单元测试直接引用这里 |
 
 新增常见逻辑前先查以下入口：
 
 - Tag / 列表文本：`utils/list-text.ts`；规则动作默认值：`features/automation/rule-defaults.ts`。
 - 查询公共筛选快照：`utils/library-query.ts`。分页、选择范围、分组排除等仍由调用方显式补充。
-- 画廊和素材网格：`images/gallery-layout.ts`；画廊 / 表格恢复滚动：`stores/viewport-scroll.svelte.ts`；位置记忆：`stores/view-state.ts`。
+- 画廊和素材网格：`images/gallery-layout.ts`；位置记忆：`stores/view-state.ts`。
 - 工具箱定位主窗口图片：`windows/toolbox.ts`；资料库变更通知：`windows/library-events.ts`。
-- 详情文本编辑：`features/library/field-editor.svelte.ts`；错误和数量格式：`utils/format.ts`。
+- 详情文本编辑：`src/react/ui/FieldEditor.tsx`；错误和数量格式：`utils/format.ts`。
 - 视图标识、顺序和文案：`utils/view-modes.ts`。
 
 ## 后端
