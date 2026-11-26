@@ -290,12 +290,15 @@
 }
 .r-menu-item[data-disabled] { opacity: .4; pointer-events: none; }
 .r-menu-item.is-danger { color: var(--danger); }
-/* Highlight is one shared pill (GlidePill) that slides between items instead of per-item backgrounds. */
+/* Highlight is one shared pill (GlidePill) that slides between items instead of per-item backgrounds.
+   Rows become stacking contexts while their entrance animation transforms them, so the pill sits at
+   z-index -1 inside an isolated host to stay beneath them. */
+.r-menu, .r-select-menu [data-radix-select-viewport] { isolation: isolate; }
 .r-glide-pill {
   position: absolute;
   top: 0;
   left: 0;
-  z-index: 0;
+  z-index: -1;
   border-radius: var(--radius-s);
   background: var(--menu-highlight);
   opacity: 0;
