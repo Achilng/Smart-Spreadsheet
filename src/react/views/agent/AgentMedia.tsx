@@ -1,9 +1,57 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { Dialog } from "radix-ui";
 import { ChevronLeft, ChevronRight, ImageOff, X } from "lucide-react";
-import { isImageLoadCancelled, type ImageLoader } from "../../../lib/images/image-loader";
+import { save } from "@tauri-apps/plugin-dialog";
+import { exportRowImage, getRowFilePath, getRowOriginal } from "../../../lib/api";
+import { binaryBuffer, isImageLoadCancelled, type ImageLoader } from "../../../lib/images/image-loader";
 import { galleryPreviews } from "../../../lib/images/progressive-images";
 import { thumbnails } from "../../../lib/images/thumbnails";
+import { errorText } from "../../../lib/utils/format";
+import { openRowInMainWindow } from "../../../lib/windows/toolbox";
+import { notify } from "../../state/notices";
+import { RightClickMenu, type MenuItem } from "../../ui/controls";
+
+async function copyRowImage(id: number) {
+  try {
+    // The original arrives as PNG bytes, the one image type the clipboard accepts.
+    const png = getRowOriginal(id).then(bytes => new Blob([binaryBuffer(bytes)], { type: "image/png" }));
+    await navigator.clipboard.write([new ClipboardItem({ "image/png": png })]);
+    notify("已复制图片");
+  } catch (error) { notify(`复制图片失败：${errorText(error)}`, "error"); }
+}
+
+async function copyRowPath(id: number) {
+  try {
+    await navigator.clipboard.writeText(await getRowFilePath(id));
+    notify("已复制图片路径");
+  } catch (error) { notify(`复制图片路径失败：${errorText(error)}`, "error"); }
+}
+
+async function saveRowImageAs(id: number) {
+  try {
+    const name = (await getRowFilePath(id)).split(/[\\/]/).pop() || `图片${id}.png`;
+    const path = await save({ title: "将图像另存为", defaultPath: name, filters: [{ name: "图片文件", extensions: ["png", "jpg", "jpeg", "webp", "bmp"] }] });
+    if (typeof path !== "string") return;
+    await exportRowImage(id, path);
+    notify(`已保存到 ${path}`);
+  } catch (error) { notify(`保存图片失败：${errorText(error)}`, "error"); }
+}
+
+async function showRowInGallery(id: number) {
+  try { await openRowInMainWindow(id); }
+  catch (error) { notify(`没能在画廊中显示：${errorText(error)}`, "error"); }
+}
+
+/** Replaces the browser's own menu on library images shown in the agent window. */
+function RowImageMenu({ id, children }: { id: number; children: ReactElement }) {
+  const items: MenuItem[] = [
+    { label: "复制图片", action: () => void copyRowImage(id) },
+    { label: "复制图片路径", action: () => void copyRowPath(id) },
+    { label: "将图像另存为", action: () => void saveRowImageAs(id) },
+    { label: "在画廊中查看", separator: true, action: () => void showRowInGallery(id) },
+  ];
+  return <RightClickMenu items={items}>{children}</RightClickMenu>;
+}
 
 /** Object URL of a row image, loaded while the component is mounted. */
 function useRowImage(loader: ImageLoader, id: number, enabled = true): { url: string | null; failed: boolean } {
@@ -27,8 +75,8 @@ export function RowThumb({ id, size = 56, onOpen, label }: { id: number; size?: 
   const content = url ? <img src={url} alt="" draggable={false} /> : failed ? <ImageOff className="icon sm" aria-hidden="true" /> : null;
   const style = { width: size, height: size };
   const title = label ?? `#${id}`;
-  if (!onOpen) return <span className={`ag-thumb${url ? "" : " is-empty"}`} style={style} title={title}>{content}</span>;
-  return <button type="button" className={`ag-thumb${url ? "" : " is-empty"}`} style={style} title={title} aria-label={`查看图片 ${title}`} onClick={onOpen}>{content}</button>;
+  if (!onOpen) return <RowImageMenu id={id}><span className={`ag-thumb${url ? "" : " is-empty"}`} style={style} title={title}>{content}</span></RowImageMenu>;
+  return <RowImageMenu id={id}><button type="button" className={`ag-thumb${url ? "" : " is-empty"}`} style={style} title={title} aria-label={`查看图片 ${title}`} onClick={onOpen}>{content}</button></RowImageMenu>;
 }
 
 /** A row of thumbnails; the last tile turns into "+N" when there are more than fit. */
@@ -72,7 +120,7 @@ function LargeImage({ id }: { id: number }) {
   const large = useRowImage(galleryPreviews, id);
   const url = large.url ?? thumb.url;
   if (!url) return <div className="ag-viewer-missing">{large.failed && thumb.failed ? <><ImageOff className="icon" />图片读取不到</> : <span className="spinner" aria-label="加载中" />}</div>;
-  return <img key={id} src={url} alt={`图片 #${id}`} draggable={false} />;
+  return <RowImageMenu key={id} id={id}><img src={url} alt={`图片 #${id}`} draggable={false} /></RowImageMenu>;
 }
 
 function ImageViewer({ request, onClose }: { request: ViewerRequest | null; onClose: () => void }) {
