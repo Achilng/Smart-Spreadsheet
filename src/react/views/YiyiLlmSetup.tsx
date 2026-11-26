@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { createLlm, llmModels, llmSnapshot, saveLlmSettings, type LlmChannel } from "../../lib/api/local-llm";
 import { errorText } from "../../lib/utils/format";
 import { notify } from "../state/notices";
-import { Button, Modal } from "../ui/controls";
+import { Button, Modal, Select } from "../ui/controls";
 import "./llm-setup.css";
 
 const BASE_URL = "https://oneapi.hakoyu.com/v1";
@@ -86,9 +86,7 @@ export function YiyiLlmSetup({ libraryId, onBack, onComplete }: {
 
   if (step === "model") return <Modal key="model" open onClose={onBack} busy={!!busy} title="请选择一个模型" description="没有找到默认模型，请从可用模型中选择。" width={460}
     footer={<><Button disabled={!!busy} onClick={() => { setStep("key"); setError(null); }}>重新填写 Key</Button><Button variant="primary" disabled={!!busy || !models.includes(model)} onClick={() => void perform("正在保存…", () => saveConfiguration(model, key.trim()))}>{busy || "确认"}</Button></>}>
-    <select className="r-input" data-autofocus aria-label="可用模型" disabled={!!busy} value={model} onChange={event => { setModel(event.target.value); setError(null); }}>
-      <option value="" disabled>选择模型</option>{models.map(value => <option key={value} value={value}>{value}</option>)}
-    </select>
+    <Select label="可用模型" autoFocus placeholder="选择模型" disabled={!!busy} value={model} onChange={value => { setModel(value); setError(null); }} options={models.map(value => [value, value] as const)} />
     {errorMessage}
   </Modal>;
 

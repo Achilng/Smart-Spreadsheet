@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ContextMenu } from "radix-ui";
+import { GlidePill } from "./controls";
 import { flushSync } from "react-dom";
 import { create } from "zustand";
 import { artistWhitelistSelection, updateArtistWhitelist, type ArtistTextSelection, type ArtistWhitelistSelection } from "../../lib/api/local-llm";
@@ -80,6 +81,7 @@ export function ArtistWhitelistMenu({ text, revision, onChanged, children }: { t
           {menu.preview.addTags.length > 0 && <ContextMenu.Item className="r-menu-item" disabled={busy} onSelect={() => void apply(false)}>将这些tag加入白名单（所有图片生效）</ContextMenu.Item>}
           {menu.preview.removeTags.length > 0 && <ContextMenu.Item className="r-menu-item" disabled={busy} onSelect={() => void apply(true)}>取消加入白名单（所有图片生效）</ContextMenu.Item>}
         </>}
+      <GlidePill />
     </ContextMenu.Content></ContextMenu.Portal>
   </ContextMenu.Root>;
 }

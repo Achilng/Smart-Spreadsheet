@@ -4,7 +4,7 @@ import { ContextMenu, RadioGroup } from "radix-ui";
 import { hasActiveFilters, refreshTags, setQuery, useLibrary, useRows } from "../state/library";
 import { useWorkspace } from "../state/workspace";
 import { TagManagementDialog } from "./TagManagementDialog";
-import { Button, Checkbox, Hint } from "../ui/controls";
+import { Button, Checkbox, GlidePill, Hint } from "../ui/controls";
 import { formatCount } from "../../lib/utils/format";
 import { tagColorFor } from "../../lib/utils/tag-colors";
 
@@ -36,7 +36,7 @@ export function TagSidebar({ onFilter }: { onFilter: () => void }) {
     <div className="r-tag-list">{tagError ? <div className="r-list-note"><p>Tag 列表加载失败：{tagError}</p><Button onClick={() => void refreshTags()}>重试</Button></div> : entries.length === 0 ? <p className="r-list-note">还没有 Tag。选中图片后点“编辑 Tag”即可创建。</p> : entries.map(tag => <ContextMenu.Root key={tag.name}><ContextMenu.Trigger asChild><label className="r-check-row r-tag-row" data-active={query.tags.includes(tag.name)}>
       <Checkbox checked={query.tags.includes(tag.name)} onCheckedChange={checked => setQuery({ tags: checked ? [...query.tags, tag.name] : query.tags.filter(value => value !== tag.name) })} />
       <span className="r-tag-swatch" style={{ background: tagColorFor(tag.name, tags).background }} /><span className="r-tag-name" title={tag.name}>{tag.name}</span><small>{formatCount(tag.rowCount)}</small>
-    </label></ContextMenu.Trigger><ContextMenu.Portal><ContextMenu.Content className="r-menu"><ContextMenu.Item className="r-menu-item" onSelect={() => setEditing({ name: tag.name, mode: "rename" })}>重命名</ContextMenu.Item><ContextMenu.Item className="r-menu-item is-danger" onSelect={() => setEditing({ name: tag.name, mode: "delete" })}>删除 Tag</ContextMenu.Item></ContextMenu.Content></ContextMenu.Portal></ContextMenu.Root>)}</div>
+    </label></ContextMenu.Trigger><ContextMenu.Portal><ContextMenu.Content className="r-menu"><ContextMenu.Item className="r-menu-item" onSelect={() => setEditing({ name: tag.name, mode: "rename" })}>重命名</ContextMenu.Item><ContextMenu.Item className="r-menu-item is-danger" onSelect={() => setEditing({ name: tag.name, mode: "delete" })}>删除 Tag</ContextMenu.Item><GlidePill /></ContextMenu.Content></ContextMenu.Portal></ContextMenu.Root>)}</div>
     {editing && <TagManagementDialog key={editing.name + editing.mode} {...editing} onClose={() => setEditing(null)} />}
   </aside>;
 }

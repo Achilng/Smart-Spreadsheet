@@ -136,11 +136,19 @@
 .r-field-error { color: var(--danger); font-size: var(--font-sm); line-height: 1.6; overflow-wrap: anywhere; }
 
 /* ---- Select ---- */
-.r-select { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; text-align: left; cursor: pointer; }
+.r-select {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; text-align: left; cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out), transform var(--dur-instant) var(--ease-out);
+}
+.r-select:active:not(:disabled) { transform: scale(.98); }
 .r-select > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.r-select > span:first-child:has([data-placeholder]), .r-select[data-placeholder] > span:first-child { color: var(--text-4); }
 .r-select > span:last-child { display: flex; flex: none; color: var(--text-3); transition: transform var(--dur-base) var(--ease-emphasized); }
 .r-select[data-state="open"] > span:last-child { transform: rotate(180deg); }
 .r-select.is-pill { border-radius: var(--radius-full); padding-left: 14px; padding-right: 10px; }
+.r-select-button .r-select-icon { display: flex; }
+/* The picked label settles in from a slight blur. */
+.r-select-value[data-swap] { animation: r-value-swap 180ms var(--ease-out); }
 .r-select-menu {
   z-index: calc(var(--z-modal) + 20);
   min-width: var(--radix-select-trigger-width);
@@ -154,6 +162,8 @@
   box-shadow: var(--elev-3);
   transform-origin: var(--radix-select-content-transform-origin);
 }
+/* With nothing under the pointer, the current choice keeps a faint mark. */
+.r-select-menu [data-radix-select-viewport]:not(:has([data-highlighted])) .r-menu-item[data-state="checked"] { background: color-mix(in srgb, var(--menu-highlight) 70%, transparent); }
 
 /* ---- Checkbox (Radix) ---- */
 .r-checkbox {
@@ -246,6 +256,7 @@
 .r-menu-trigger[data-state="open"]:not(.btn-primary) { background: var(--surface-3); }
 
 .r-menu {
+  position: relative;
   z-index: calc(var(--z-modal) + 20);
   min-width: 210px;
   max-width: min(340px, calc(100vw - 16px));
@@ -259,9 +270,11 @@
   outline: none;
   transform-origin: var(--radix-dropdown-menu-content-transform-origin, var(--radix-context-menu-content-transform-origin));
 }
-.r-menu[data-state="open"], .r-select-menu[data-state="open"] { animation: r-surface-in var(--dur-base) var(--ease-emphasized); }
-.r-menu[data-state="closed"], .r-select-menu[data-state="closed"] { animation: r-surface-out 220ms var(--ease-in); pointer-events: none; }
+.r-menu[data-state="open"], .r-select-menu[data-state="open"] { animation: r-menu-in var(--dur-base) var(--ease-emphasized); }
+.r-menu[data-state="closed"], .r-select-menu[data-state="closed"] { animation: r-menu-out 140ms var(--ease-in) forwards; pointer-events: none; }
 .r-menu-item {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -275,12 +288,29 @@
   cursor: default;
   outline: none;
   user-select: none;
-  transition: background var(--dur-instant) var(--ease-out);
+  transition: background var(--dur-fast) var(--ease-out);
 }
-.r-menu-item[data-highlighted] { background: var(--surface-2); }
 .r-menu-item[data-disabled] { opacity: .4; pointer-events: none; }
 .r-menu-item.is-danger { color: var(--danger); }
-.r-menu-item.is-danger[data-highlighted] { background: var(--danger-soft); }
+/* Highlight is one shared pill (GlidePill) that slides between items instead of per-item backgrounds. */
+.r-glide-pill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  border-radius: var(--radius-s);
+  background: var(--menu-highlight);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform var(--dur-base) var(--ease-emphasized),
+    width var(--dur-base) var(--ease-emphasized),
+    height var(--dur-base) var(--ease-emphasized),
+    background-color var(--dur-fast) var(--ease-out),
+    opacity var(--dur-fast) var(--ease-out);
+}
+.r-glide-pill[data-shown="true"] { opacity: 1; }
+.r-glide-pill.is-danger { background: var(--danger-soft); }
 .r-menu-copy { display: grid; gap: 1px; min-width: 0; }
 .r-menu-copy small { color: var(--text-3); font-size: var(--font-xs); }
 .r-menu-check { flex: none; color: var(--accent); }

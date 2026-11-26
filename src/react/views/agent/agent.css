@@ -307,7 +307,7 @@
   .r-input::placeholder { color: var(--text-3); }
   .r-menu, .r-select-menu { padding: 6px; border: 1px solid var(--line-ctl); border-radius: var(--r-lg); background: var(--raised); box-shadow: 0 16px 40px var(--shadow); }
   .r-menu-item { min-height: 36px; border-radius: var(--r-sm); font-size: 13.5px; }
-  .r-menu-item[data-highlighted] { background: var(--raised-2); }
+  .r-glide-pill { border-radius: var(--r-sm); }
   .r-menu-item small { font-size: 11.5px; color: var(--text-3); }
 
   .field { display: flex; flex-direction: column; gap: 8px; }

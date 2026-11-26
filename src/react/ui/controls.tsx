@@ -1,4 +1,4 @@
-import { Fragment, useId, useLayoutEffect, useRef, type ComponentProps, type ReactElement, type ReactNode } from "react";
+import { Fragment, useId, useLayoutEffect, useRef, useState, type ComponentProps, type ReactElement, type ReactNode } from "react";
 import { Checkbox as CheckboxPrimitive, ContextMenu, Dialog, DropdownMenu, Select as SelectPrimitive, Slider as SliderPrimitive, Slot, Tooltip } from "radix-ui";
 import { Check, ChevronDown, Minus, Search, X } from "lucide-react";
 import { cn } from "./cn";
@@ -42,13 +42,90 @@ export function Checkbox({ className, ...props }: ComponentProps<typeof Checkbox
   </CheckboxPrimitive.Root>;
 }
 
-export function Select<T extends string>({ value, onChange, options, label, disabled, pill = false }: { value: T; onChange: (value: T) => void; options: readonly (readonly [T, string])[]; label: string; disabled?: boolean; pill?: boolean }) {
+/** [value, label] or [value, label, second-line hint]. */
+export type SelectOption<T extends string> = readonly [T, string] | readonly [T, string, string];
+
+export function Select<T extends string>({ value, onChange, options, label, disabled, pill = false, appearance = "field", className, heading, placeholder, align = "start", autoFocus }: {
+  value: T;
+  onChange: (value: T) => void;
+  options: readonly SelectOption<T>[];
+  label: string;
+  disabled?: boolean;
+  pill?: boolean;
+  /** "menu" renders the trigger as a ghost toolbar button, like Menu. */
+  appearance?: "field" | "menu";
+  className?: string;
+  heading?: string;
+  placeholder?: string;
+  align?: "start" | "center" | "end";
+  autoFocus?: boolean;
+}) {
+  const swap = useChangeCount(value);
+  const items = options.map(([key, text, hint]) => <SelectPrimitive.Item value={key} key={key} className="r-menu-item">
+    <span className="r-menu-copy"><SelectPrimitive.ItemText>{text}</SelectPrimitive.ItemText>{hint && <small>{hint}</small>}</span>
+    <SelectPrimitive.ItemIndicator className="r-menu-check"><Check size={13} /></SelectPrimitive.ItemIndicator>
+  </SelectPrimitive.Item>);
   return <SelectPrimitive.Root value={value} onValueChange={next => onChange(next as T)} disabled={disabled}>
-    <SelectPrimitive.Trigger className={cn("r-input r-select", pill && "is-pill")} aria-label={label}><SelectPrimitive.Value /><SelectPrimitive.Icon><ChevronDown size={14} /></SelectPrimitive.Icon></SelectPrimitive.Trigger>
-    <SelectPrimitive.Portal><SelectPrimitive.Content position="popper" sideOffset={5} collisionPadding={8} className="r-select-menu"><SelectPrimitive.Viewport>
-      {options.map(([key, text]) => <SelectPrimitive.Item value={key} key={key} className="r-menu-item"><SelectPrimitive.ItemText>{text}</SelectPrimitive.ItemText><SelectPrimitive.ItemIndicator><Check size={13} /></SelectPrimitive.ItemIndicator></SelectPrimitive.Item>)}
+    <SelectPrimitive.Trigger aria-label={label} data-autofocus={autoFocus || undefined}
+      className={appearance === "menu" ? cn("btn btn-ghost r-menu-trigger r-select-button", className) : cn("r-input r-select", pill && "is-pill", className)}>
+      <span key={swap} className="r-select-value" data-swap={swap ? "" : undefined}><SelectPrimitive.Value placeholder={placeholder} /></span>
+      <SelectPrimitive.Icon className="r-select-icon"><ChevronDown size={appearance === "menu" ? 13 : 14} className="r-caret" /></SelectPrimitive.Icon>
+    </SelectPrimitive.Trigger>
+    <SelectPrimitive.Portal><SelectPrimitive.Content position="popper" align={align} sideOffset={5} collisionPadding={8} className="r-select-menu"><SelectPrimitive.Viewport>
+      {heading ? <SelectPrimitive.Group><SelectPrimitive.Label className="r-menu-heading">{heading}</SelectPrimitive.Label>{items}</SelectPrimitive.Group> : items}
+      <GlidePill />
     </SelectPrimitive.Viewport></SelectPrimitive.Content></SelectPrimitive.Portal>
   </SelectPrimitive.Root>;
+}
+
+/** Increments whenever value changes after mount, so the first render stays still. */
+function useChangeCount(value: unknown): number {
+  const [state, setState] = useState({ value, count: 0 });
+  if (state.value !== value) setState({ value, count: state.count + 1 });
+  return state.value === value ? state.count : state.count + 1;
+}
+
+/**
+ * Sliding highlight shared by selects, dropdown and context menus. Place it as the last
+ * child of a positioned list; it follows whichever item Radix marks [data-highlighted].
+ */
+export function GlidePill() {
+  const ref = useRef<HTMLSpanElement>(null);
+  useLayoutEffect(() => {
+    const pill = ref.current;
+    const host = pill?.parentElement;
+    if (!pill || !host) return;
+    let shown = false;
+    let hideTimer = 0;
+    const place = () => {
+      const item = host.querySelector<HTMLElement>(".r-menu-item[data-highlighted]");
+      window.clearTimeout(hideTimer);
+      if (!item) {
+        // Radix clears the highlight between leaving one item and entering the next; wait before hiding.
+        hideTimer = window.setTimeout(() => { shown = false; pill.dataset.shown = "false"; }, 60);
+        return;
+      }
+      let top = 0, left = 0;
+      for (let node: HTMLElement | null = item; node && node !== host; node = node.offsetParent as HTMLElement | null) { top += node.offsetTop; left += node.offsetLeft; }
+      // A hidden pill jumps to the item and only fades in; a visible one glides.
+      if (!shown) pill.style.transition = "none";
+      pill.classList.toggle("is-danger", item.classList.contains("is-danger"));
+      pill.style.transform = `translate(${left}px, ${top}px)`;
+      pill.style.width = `${item.offsetWidth}px`;
+      pill.style.height = `${item.offsetHeight}px`;
+      if (!shown) {
+        void pill.offsetHeight;
+        pill.style.transition = "";
+        shown = true;
+      }
+      pill.dataset.shown = "true";
+    };
+    place();
+    const observer = new MutationObserver(place);
+    observer.observe(host, { subtree: true, attributes: true, attributeFilter: ["data-highlighted"] });
+    return () => { observer.disconnect(); window.clearTimeout(hideTimer); };
+  }, []);
+  return <span ref={ref} className="r-glide-pill" aria-hidden="true" />;
 }
 
 export function Slider({ className, ...props }: ComponentProps<typeof SliderPrimitive.Root>) {
@@ -92,6 +169,7 @@ export function Menu({ label, items, variant = "ghost", disabled, direction = "d
     <DropdownMenu.Content side={direction === "up" ? "top" : direction === "right" ? "right" : "bottom"} align="end" sideOffset={direction === "right" ? 10 : 6} collisionPadding={8} className="r-menu">
       {heading && <DropdownMenu.Label className="r-menu-heading">{heading}</DropdownMenu.Label>}
       {items.map(item => <MenuEntry key={item.label} item={item} />)}
+      <GlidePill />
     </DropdownMenu.Content>
   </DropdownMenu.Portal></DropdownMenu.Root>;
 }
@@ -117,6 +195,7 @@ export function RightClickMenu({ items, children }: { items?: MenuItem[]; childr
       {items.map(item => <Fragment key={item.label}>{item.separator && <ContextMenu.Separator className="r-menu-separator" />}
         <ContextMenu.Item disabled={item.disabled} className={cn("r-menu-item", item.danger && "is-danger")} onSelect={item.action}><span className="r-menu-copy"><span>{item.label}</span>{item.hint && <small>{item.hint}</small>}</span></ContextMenu.Item>
       </Fragment>)}
+      <GlidePill />
     </ContextMenu.Content>
   </ContextMenu.Portal></ContextMenu.Root>;
 }

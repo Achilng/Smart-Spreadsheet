@@ -71,6 +71,7 @@
   /* Concentric surfaces: outer radius = inner radius + inset, without a border. */
   --menu-inset: 4px;
   --menu-radius: calc(var(--radius-s) + var(--menu-inset));
+  --menu-highlight: var(--surface-3);
   --card-inset: 20px;
   --card-radius: calc(var(--radius-s) + var(--card-inset));
   --dialog-inset: 24px;

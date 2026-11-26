@@ -1,12 +1,12 @@
 import type { SortMode } from "../../lib/api";
-import { Menu } from "./controls";
+import { Select, type SelectOption } from "./controls";
 
-const options = [
-  { value: "timeAsc", label: "时间正序", hint: "早期导入在前，新图片在后" },
-  { value: "timeDesc", label: "时间倒序", hint: "新导入的图片优先显示" },
-  { value: "recentlyUpdated", label: "最近更新", hint: "最近编辑或整理的图片在前" },
-] as const;
+const options: readonly SelectOption<SortMode>[] = [
+  ["timeAsc", "时间正序", "早期导入在前，新图片在后"],
+  ["timeDesc", "时间倒序", "新导入的图片优先显示"],
+  ["recentlyUpdated", "最近更新", "最近编辑或整理的图片在前"],
+];
 
 export function ImageSortMenu({ value, onChange }: { value: SortMode; onChange: (sort: SortMode) => void }) {
-  return <Menu className="r-sort-trigger" label={options.find(option => option.value === value)?.label ?? "时间正序"} heading="选择图片顺序" items={options.map(option => ({ ...option, checked: option.value === value, action: () => onChange(option.value) }))} />;
+  return <Select appearance="menu" className="r-sort-trigger" align="end" label="图片顺序" heading="选择图片顺序" value={value} onChange={onChange} options={options} />;
 }

@@ -8,6 +8,7 @@ import { isSelected, selectedCount, selectionDto, setExplicitSelection, useSelec
 import { useTasks } from "../state/tasks";
 import { notify } from "../state/notices";
 import { markArtistRepresentative } from "../state/artist-representatives";
+import { GlidePill } from "./controls";
 
 export function RowContextMenu({ row, children }: { row: RowRecord; children: ReactElement }) {
   const busy = useTasks(state => state.busy);
@@ -46,6 +47,7 @@ export function RowContextMenu({ row, children }: { row: RowRecord; children: Re
       {action("编辑提示词", () => void requestPromptEdit(target.selection, target.count), busy)}
       <ContextMenu.Separator className="r-menu-separator" />
       {action(target.count > 1 ? `删除已选 ${formatCount(target.count)} 行` : "删除", () => void requestDelete(target.selection, target.count), busy, true)}
+      <GlidePill />
     </ContextMenu.Content>
   </ContextMenu.Portal></ContextMenu.Root>;
 }
