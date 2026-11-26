@@ -90,6 +90,11 @@
 .r-menu[data-state="closed"] > :not(.r-glide-pill), .r-select-menu[data-state="closed"] [data-radix-select-viewport] > :not(.r-glide-pill) {
   animation: r-content-out 120ms var(--ease-in) min(calc(var(--enter-index, 0) * 20ms), 80ms) both;
 }
+/* The pill's transform is its position, so it moves with its row through `translate` instead. */
+.r-glide-pill { animation: r-pill-in var(--dur-fast) var(--ease-out) min(calc(var(--enter-index, 0) * 20ms), 80ms) backwards; }
+:is(.r-menu, .r-select-menu)[data-state="closed"] .r-glide-pill {
+  animation: r-pill-out 120ms var(--ease-in) min(calc(var(--enter-index, 0) * 20ms), 80ms) both;
+}
 .rd-lightbox-head, .rd-lightbox-stage, .rd-lightbox-footer {
   animation: r-content-in var(--dur-base) var(--ease-out) backwards;
 }
@@ -103,6 +108,8 @@
 @keyframes r-fade-out { to { opacity: 0; } }
 @keyframes r-content-in { from { opacity: 0; transform: translateY(4px); } }
 @keyframes r-content-out { to { opacity: 0; transform: translateY(-3px); } }
+@keyframes r-pill-in { from { opacity: 0; translate: 0 4px; } }
+@keyframes r-pill-out { to { opacity: 0; translate: 0 -3px; } }
 @keyframes r-surface-in { from { transform: scale(.985); } }
 @keyframes r-surface-out { from { transform: none; } to { transform: scale(.99); } }
 @keyframes r-pop-in { from { opacity: 0; transform: scale(.96); } }

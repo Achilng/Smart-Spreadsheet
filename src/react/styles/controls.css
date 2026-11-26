@@ -162,8 +162,6 @@
   box-shadow: var(--elev-3);
   transform-origin: var(--radix-select-content-transform-origin);
 }
-/* With nothing under the pointer, the current choice keeps a faint mark. */
-.r-select-menu [data-radix-select-viewport]:not(:has([data-highlighted])) .r-menu-item[data-state="checked"] { background: color-mix(in srgb, var(--menu-highlight) 70%, transparent); }
 
 /* ---- Checkbox (Radix) ---- */
 .r-checkbox {
@@ -310,6 +308,8 @@
     opacity var(--dur-fast) var(--ease-out);
 }
 .r-glide-pill[data-shown="true"] { opacity: 1; }
+/* With nothing under the pointer, the pill rests dimmed on a select's current choice. */
+.r-glide-pill[data-shown="rest"] { opacity: .7; }
 .r-glide-pill.is-danger { background: var(--danger-soft); }
 .r-menu-copy { display: grid; gap: 1px; min-width: 0; }
 .r-menu-copy small { color: var(--text-3); font-size: var(--font-xs); }

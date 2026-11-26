@@ -73,7 +73,7 @@ export function Select<T extends string>({ value, onChange, options, label, disa
     </SelectPrimitive.Trigger>
     <SelectPrimitive.Portal><SelectPrimitive.Content position="popper" align={align} sideOffset={5} collisionPadding={8} className="r-select-menu"><SelectPrimitive.Viewport>
       {heading ? <SelectPrimitive.Group><SelectPrimitive.Label className="r-menu-heading">{heading}</SelectPrimitive.Label>{items}</SelectPrimitive.Group> : items}
-      <GlidePill />
+      <GlidePill restOnChecked />
     </SelectPrimitive.Viewport></SelectPrimitive.Content></SelectPrimitive.Portal>
   </SelectPrimitive.Root>;
 }
@@ -88,43 +88,62 @@ function useChangeCount(value: unknown): number {
 /**
  * Sliding highlight shared by selects, dropdown and context menus. Place it as the last
  * child of a positioned list; it follows whichever item Radix marks [data-highlighted].
+ * With restOnChecked it rests, dimmed, on the checked item while nothing is highlighted.
  */
-export function GlidePill() {
+export function GlidePill({ restOnChecked = false }: { restOnChecked?: boolean }) {
   const ref = useRef<HTMLSpanElement>(null);
   useLayoutEffect(() => {
     const pill = ref.current;
     const host = pill?.parentElement;
     if (!pill || !host) return;
     let shown = false;
+    let first = true;
     let hideTimer = 0;
-    const place = () => {
-      const item = host.querySelector<HTMLElement>(".r-menu-item[data-highlighted]");
-      window.clearTimeout(hideTimer);
-      if (!item) {
-        // Radix clears the highlight between leaving one item and entering the next; wait before hiding.
-        hideTimer = window.setTimeout(() => { shown = false; pill.dataset.shown = "false"; }, 60);
-        return;
-      }
+    const move = (item: HTMLElement, state: "true" | "rest") => {
       let top = 0, left = 0;
       for (let node: HTMLElement | null = item; node && node !== host; node = node.offsetParent as HTMLElement | null) { top += node.offsetTop; left += node.offsetLeft; }
-      // A hidden pill jumps to the item and only fades in; a visible one glides.
-      if (!shown) pill.style.transition = "none";
+      // A hidden pill jumps to the item and only fades in (not even that when the list opens); a visible one glides.
+      if (!shown) {
+        // Enter in step with the item's own staggered entrance (see motion.css).
+        let row: HTMLElement = item;
+        while (row.parentElement && row.parentElement !== host) row = row.parentElement;
+        pill.style.setProperty("--enter-index", getComputedStyle(row).getPropertyValue("--enter-index") || "0");
+        pill.style.transition = first ? "none" : "opacity var(--dur-fast) var(--ease-out)";
+      }
       pill.classList.toggle("is-danger", item.classList.contains("is-danger"));
       pill.style.transform = `translate(${left}px, ${top}px)`;
       pill.style.width = `${item.offsetWidth}px`;
       pill.style.height = `${item.offsetHeight}px`;
+      pill.dataset.shown = state;
       if (!shown) {
         void pill.offsetHeight;
         pill.style.transition = "";
         shown = true;
       }
-      pill.dataset.shown = "true";
+      first = false;
+    };
+    const place = () => {
+      const active = host.querySelector<HTMLElement>(".r-menu-item[data-highlighted]");
+      const rest = restOnChecked ? host.querySelector<HTMLElement>('.r-menu-item[data-state="checked"]') : null;
+      window.clearTimeout(hideTimer);
+      if (active) return move(active, "true");
+      if (first) {
+        if (rest) move(rest, "rest");
+        first = false;
+        return;
+      }
+      // Radix clears the highlight between leaving one item and entering the next; wait before leaving.
+      hideTimer = window.setTimeout(() => {
+        if (rest) return move(rest, "rest");
+        shown = false;
+        pill.dataset.shown = "false";
+      }, 60);
     };
     place();
     const observer = new MutationObserver(place);
     observer.observe(host, { subtree: true, attributes: true, attributeFilter: ["data-highlighted"] });
     return () => { observer.disconnect(); window.clearTimeout(hideTimer); };
-  }, []);
+  }, [restOnChecked]);
   return <span ref={ref} className="r-glide-pill" aria-hidden="true" />;
 }
 
