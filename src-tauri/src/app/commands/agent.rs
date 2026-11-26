@@ -29,7 +29,9 @@ pub(crate) async fn open_agent_window(app: tauri::AppHandle) -> Result<(), Strin
         window.set_focus().map_err(error_text)?;
         return Ok(());
     }
-    WebviewWindowBuilder::new(&app, "agent", WebviewUrl::App("index.html?window=agent".into()))
+    // Created hidden and revealed by the page once its first screen is rendered; the background
+    // matches the page so the first composited frame is never a different color.
+    let window = WebviewWindowBuilder::new(&app, "agent", WebviewUrl::App("index.html?window=agent".into()))
         .title("整理助手")
         .inner_size(1120.0, 760.0)
         .min_inner_size(760.0, 520.0)
@@ -37,11 +39,23 @@ pub(crate) async fn open_agent_window(app: tauri::AppHandle) -> Result<(), Strin
         .resizable(true)
         .decorations(false)
         .skip_taskbar(false)
+        .visible(false)
+        .background_color(tauri::window::Color(255, 255, 255, 255))
         .disable_drag_drop_handler()
         .build()
         .map_err(error_text)?;
+    // If the page never reports ready (slow load, script error), show it anyway.
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(AGENT_REVEAL_FALLBACK_MS)).await;
+        if window.is_visible().is_ok_and(|visible| !visible) {
+            let _ = window.show();
+            let _ = window.set_focus();
+        }
+    });
     Ok(())
 }
+
+const AGENT_REVEAL_FALLBACK_MS: u64 = 2000;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
