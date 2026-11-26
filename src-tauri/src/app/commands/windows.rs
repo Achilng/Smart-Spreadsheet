@@ -1,6 +1,28 @@
 use super::error_text;
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
+/// Every page's background (`--bg` / `--surface`), so the first composited frame never differs.
+const PAGE_BACKGROUND: tauri::window::Color = tauri::window::Color(255, 255, 255, 255);
+const REVEAL_FALLBACK: std::time::Duration = std::time::Duration::from_millis(2000);
+
+/// Builds a secondary window hidden; its page shows it once the first screen is rendered
+/// (`useRevealWindow`). If the page never does (slow load, script error), it is shown anyway.
+pub(crate) fn build_hidden_until_ready(builder: WebviewWindowBuilder<'_, tauri::Wry, tauri::AppHandle>) -> Result<(), String> {
+    let window = builder
+        .visible(false)
+        .background_color(PAGE_BACKGROUND)
+        .build()
+        .map_err(error_text)?;
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(REVEAL_FALLBACK).await;
+        if window.is_visible().is_ok_and(|visible| !visible) {
+            let _ = window.show();
+            let _ = window.set_focus();
+        }
+    });
+    Ok(())
+}
+
 /// 打开应用内部的单实例工具箱窗口。
 ///
 /// 使用 `WebviewUrl::App` 明确加载内置前端资源，避免动态 URL 被系统浏览器接管。
@@ -22,25 +44,24 @@ pub(crate) async fn open_toolbox_window(
         return Ok(());
     }
 
-    WebviewWindowBuilder::new(
-        &app,
-        "toolbox",
-        WebviewUrl::App(if llm_settings {
-            "index.html?window=toolbox&target=llmSettings".into()
-        } else {
-            "index.html?window=toolbox".into()
-        }),
+    build_hidden_until_ready(
+        WebviewWindowBuilder::new(
+            &app,
+            "toolbox",
+            WebviewUrl::App(if llm_settings {
+                "index.html?window=toolbox&target=llmSettings".into()
+            } else {
+                "index.html?window=toolbox".into()
+            }),
+        )
+        .title("工具箱")
+        .inner_size(960.0, 680.0)
+        .min_inner_size(760.0, 520.0)
+        .center()
+        .resizable(true)
+        .decorations(false)
+        .skip_taskbar(false),
     )
-    .title("工具箱")
-    .inner_size(960.0, 680.0)
-    .min_inner_size(760.0, 520.0)
-    .center()
-    .resizable(true)
-    .decorations(false)
-    .skip_taskbar(false)
-    .build()
-    .map_err(error_text)?;
-    Ok(())
 }
 
 const COMPARE_TABS: [&str; 4] = ["artists", "vibeDiffStyle", "styleDiffVibe", "models"];
@@ -142,21 +163,16 @@ pub(crate) async fn open_compare_window(
     if let Some(view) = &view {
         url.push_str(&view.query());
     }
-    WebviewWindowBuilder::new(
-        &app,
-        "compare",
-        WebviewUrl::App(url.into()),
+    build_hidden_until_ready(
+        WebviewWindowBuilder::new(&app, "compare", WebviewUrl::App(url.into()))
+            .title("图片对比")
+            .inner_size(1080.0, 760.0)
+            .min_inner_size(860.0, 600.0)
+            .center()
+            .resizable(true)
+            .decorations(false)
+            .skip_taskbar(false),
     )
-    .title("图片对比")
-    .inner_size(1080.0, 760.0)
-    .min_inner_size(860.0, 600.0)
-    .center()
-    .resizable(true)
-    .decorations(false)
-    .skip_taskbar(false)
-    .build()
-    .map_err(error_text)?;
-    Ok(())
 }
 
 #[tauri::command]

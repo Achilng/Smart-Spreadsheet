@@ -11,6 +11,7 @@ import { thumbnails } from "../../ui/use-image";
 import { Button, Modal, Tooltip } from "../../ui/controls";
 import { Notices } from "../../ui/Notices";
 import { WindowControls } from "../../ui/WindowControls";
+import { useRevealWindow } from "../../ui/reveal-window";
 import { notifyMainStateChanged, notifyToolboxLibraryChanged } from "../../../lib/windows/library-events";
 import type { AfterRowsDeleted } from "../../state/row-actions";
 import { DeleteRowsDialog } from "../DeleteRowsDialog";
@@ -73,6 +74,8 @@ export function CompareWindow() {
   }
   const results = useRef<HTMLElement>(null);
   const lastTarget = useRef<number | null>(null);
+  const [opensOnSample] = useState(() => Number(new URLSearchParams(window.location.search).get("row")) > 0);
+  useRevealWindow(!opensOnSample || !!state.sample || !!state.sampleError);
   useEffect(() => {
     let disposed = false;
     const cleanups: (() => void)[] = [];

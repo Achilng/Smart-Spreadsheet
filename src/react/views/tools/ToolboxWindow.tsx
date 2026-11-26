@@ -14,6 +14,7 @@ import { errorText } from "../../../lib/utils/format";
 import { Button } from "../../ui/controls";
 import { Notices } from "../../ui/Notices";
 import { WindowControls } from "../../ui/WindowControls";
+import { useRevealWindow } from "../../ui/reveal-window";
 import ArtistPrefixTool from "./ArtistPrefixTool";
 import StyleExtractionTool from "./StyleExtractionTool";
 
@@ -51,6 +52,7 @@ export function ToolboxWindow() {
   const library = useLibrary(), tasks = useTasks(), history = useHistory(), deferred = useRef(false), invalidateHistory = useRef(false);
   const hasLibrary = !!library.snapshot?.dataDirectory && !library.snapshot.startupError && (library.snapshot.library?.rowCount ?? 0) > 0;
   const definition = tools.find(tool => tool.id === active)!;
+  useRevealWindow(library.loaded);
   useEffect(() => {
     void refreshToolboxSnapshot(); let disposed = false; const cleanups: (() => void)[] = [];
     const keep = (promise: Promise<() => void>) => void promise.then(fn => { if (disposed) fn(); else cleanups.push(fn); }).catch(error => { if (!disposed) notify(errorText(error), "error"); });

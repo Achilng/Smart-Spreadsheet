@@ -1,6 +1,5 @@
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { emit, listen } from "@tauri-apps/api/event";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { cjk } from "@streamdown/cjk";
 import { ArrowDown, ArrowUp, Check, ChevronDown, Copy, FileText, History, Images, MoreHorizontal, PanelLeft, Paperclip, Sparkles, SquarePen, X } from "lucide-react";
 import { attachmentAccept, DraftAttachment, encodeAttachment, SentImage, sentAttachments, validateFiles, type SentAttachment } from "./AgentAttachments";
@@ -15,6 +14,7 @@ import { errorText } from "../../../lib/utils/format";
 import { Button, Menu, Modal, Tooltip } from "../../ui/controls";
 import { Notices } from "../../ui/Notices";
 import { WindowControls } from "../../ui/WindowControls";
+import { useRevealWindow } from "../../ui/reveal-window";
 import { notify } from "../../state/notices";
 import { thumbnails } from "../../../lib/images/thumbnails";
 import { clearProgressiveImages } from "../../../lib/images/progressive-images";
@@ -339,14 +339,7 @@ export function AgentWindow() {
   }, [reloadOperations, reloadState, settleLive, updateLive]);
 
   useEffect(() => { setFiles([]); setDragging(false); dragDepth.current = 0; updateLive(() => NO_LIVE); void reloadMessages(current); }, [current, reloadMessages, updateLive]);
-  // The window is created hidden; reveal it once the first real screen is in the DOM, so it never opens blank.
-  const revealed = useRef(false);
-  useEffect(() => {
-    if (revealed.current || (!state && !loadError)) return;
-    revealed.current = true;
-    const appWindow = getCurrentWindow();
-    void appWindow.show().then(() => appWindow.setFocus()).catch(() => {});
-  }, [state, loadError]);
+  useRevealWindow(!!state || !!loadError);
   useEffect(() => {
     // Outside the chat pane, reject file drops instead of navigating the WebView to a local file.
     const preventNavigation = (e: DragEvent) => { if (e.dataTransfer?.types.includes("Files")) e.preventDefault(); };
