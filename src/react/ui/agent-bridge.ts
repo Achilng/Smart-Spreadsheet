@@ -1,6 +1,6 @@
 import { listen } from "@tauri-apps/api/event";
 import { getRowsByIds } from "../../lib/api";
-import { reportAgentMainView } from "../../lib/api/agent";
+import { noteAgentCard, reportAgentMainView } from "../../lib/api/agent";
 import { openCompareWindow, type CompareWindowView } from "../../lib/windows/compare";
 import type { ViewMode } from "../../lib/utils/view-modes";
 import { snapshotQueryFilters } from "../../lib/utils/library-query";
@@ -20,6 +20,8 @@ import { notify } from "../state/notices";
 import { hasFieldDrafts } from "./FieldEditor";
 import { materialChangedElsewhere, revealMaterial } from "../state/materials";
 import { promptDocChangedElsewhere, revealPromptDoc } from "../state/prompt-docs";
+import { requestDelete, useRowActions } from "../state/row-actions";
+import { runImageImport } from "../state/import-actions";
 
 const FILTER_KEYS = ["search", "tags", "tagMode", "artistFilter", "dedupe", "singleArtistOnly", "hasVibe", "untaggedOnly", "hideGrouped"] as const;
 const BOOLEAN_KEYS = new Set<string>(["singleArtistOnly", "hasVibe", "untaggedOnly", "hideGrouped"]);
@@ -81,6 +83,42 @@ function openGroup(id: number) {
 }
 
 /** Interface changes the agent asked for; none of them touch library data. */
+interface CardRequest { action: "delete" | "import"; conversationId: string; cardId: string; title: string; rowIds?: number[]; path?: string }
+
+/** Open the usual delete dialog for a delete card and tell the conversation how it ended. */
+async function runDeleteCard(request: CardRequest, report: (result: string) => void) {
+  const ids = request.rowIds ?? [];
+  await requestDelete({ kind: "explicit", rowIds: ids }, ids.length);
+  const opened = useRowActions.getState().request;
+  if (opened?.kind !== "delete") { report("主窗口没能打开删除确认（可能正在执行别的任务，或这些图已经不在了），没有删除任何图"); return; }
+  let deleting = false, trash = useRowActions.getState().trashOriginals;
+  const stop = useRowActions.subscribe(state => {
+    if (state.deleting) deleting = true;
+    if (state.request?.serial === opened.serial) { trash = state.trashOriginals; return; }
+    if (state.deleting) return;
+    stop();
+    if (!deleting) { report("你在删除确认框里取消了，没有删除任何图"); return; }
+    void getRowsByIds(ids).then(rows => {
+      const removed = ids.length - rows.length;
+      report(removed > 0
+        ? `已删除 ${formatCount(removed)} 张图片，${trash ? "原图文件移入了回收站（压缩包里的图除外）" : "只删了资料库里的记录，原图文件还在原处"}`
+        : "删除没有成功，图片都还在");
+    }).catch(() => report("已执行删除，但没能核对删掉了几张"));
+  });
+}
+
+/** Import what the user picked on an import card and tell the conversation how many images were added. */
+async function runImportCard(request: CardRequest, report: (result: string) => void) {
+  if (useTasks.getState().busy) { report("主窗口正在执行别的任务，没有开始导入，等它结束后在卡片上再选一次"); return; }
+  const count = () => useLibrary.getState().snapshot?.library?.rowCount ?? 0;
+  const before = count();
+  await runImageImport(request.path ?? "");
+  const added = count() - before;
+  report(added > 0
+    ? `已导入 ${formatCount(added)} 张新图片（来自 ${request.path}）`
+    : `没有新增图片（来自 ${request.path}）：可能都已经在库里、没有生成信息，或导入被取消了，具体看主窗口的提示`);
+}
+
 async function applyControl(control: MainControl) {
   if (control.viewMode && VIEW_MODES.has(control.viewMode)) useWorkspace.getState().setView(control.viewMode);
   if (control.duplicatesMode && DEDUPE.has(control.duplicatesMode)) {
@@ -178,6 +216,11 @@ export function installAgentBridge(): () => void {
   retain(listen<{ kind: string; id: number | string }>("agent://content-changed", ({ payload }) => {
     if (payload.kind === "material") void materialChangedElsewhere(Number(payload.id));
     else if (payload.kind === "doc") void promptDocChangedElsewhere(String(payload.id));
+  }));
+  retain(listen<CardRequest>("agent://card-request", ({ payload }) => {
+    const report = (result: string) => void noteAgentCard(payload.conversationId, payload.cardId, payload.action, payload.title, result).catch(() => {});
+    const run = payload.action === "delete" ? runDeleteCard : runImportCard;
+    void run(payload, report).catch(error => { notify(errorText(error), "error"); report(`出错了：${errorText(error)}`); });
   }));
   retain(listen<{ kind: string; id: number | string }>("agent://reveal-content", ({ payload }) => {
     if (payload.kind === "material") void revealMaterial(Number(payload.id));

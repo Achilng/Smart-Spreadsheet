@@ -1,5 +1,6 @@
 //! Toolbox features the agent can use: image search by perceptual hash, background LLM
-//! extraction of artist strings, and exports (prepared as a card the user completes).
+//! extraction of artist strings, and exports, deletions and imports (prepared as a card the
+//! user completes).
 use serde::Deserialize;
 use serde_json::{Value, json};
 use tauri::{AppHandle, Emitter, Manager};
@@ -46,6 +47,8 @@ pub fn run(
         "get_style_extraction_status" => extraction_status(app, &runtime, arguments),
         "control_style_extraction" => control_extraction(app, &runtime, arguments),
         "prepare_export" => prepare_export(&runtime, call_id, arguments, view),
+        "prepare_delete_images" => prepare_delete(&runtime, call_id, arguments, view),
+        "prepare_import" => prepare_import(call_id, arguments),
         other => Err(format!("没有名为 {other} 的工具")),
     }
 }
@@ -324,5 +327,52 @@ fn prepare_export(runtime: &AppRuntime, call_id: &str, arguments: &Value, view: 
             "note": "导出卡片已经显示给用户。用户在卡片上点按钮、自己选好保存位置后才会真正导出，导出结果会以一条消息告诉你；在那之前不要说已经导出。",
         }),
         display: json!({"kind": "export", "exportId": call_id, "title": title, "format": args.format, "options": options, "rowIds": ids}),
+    })
+}
+
+// ---- 删除 / 导入（只准备卡片） ----
+
+fn card_title(title: Option<String>, fallback: &str) -> String {
+    title.map(|title| title.trim().to_owned()).filter(|title| !title.is_empty()).unwrap_or_else(|| fallback.to_owned())
+}
+
+fn prepare_delete(runtime: &AppRuntime, call_id: &str, arguments: &Value, view: &MainView) -> Result<ToolOutput, String> {
+    #[derive(Deserialize)]
+    struct Args {
+        title: Option<String>,
+        target: Target,
+    }
+    let args: Args = parse(arguments)?;
+    let ids = resolve_ids(runtime, &args.target, view)?;
+    let title = card_title(args.title, "删除图片");
+    Ok(ToolOutput {
+        output: json!({
+            "cardId": call_id,
+            "rows": ids.len(),
+            "note": "删除卡片已经显示给用户。用户在卡片上点按钮后，主窗口会弹出平时的删除确认框，用户在那里决定是否把原图移入回收站并确认；结果会以一条消息告诉你。在那之前不要说已经删除。删除后不能用 undo_operation 撤销。",
+        }),
+        display: json!({"kind": "delete", "cardId": call_id, "title": title, "rowIds": ids}),
+    })
+}
+
+fn prepare_import(call_id: &str, arguments: &Value) -> Result<ToolOutput, String> {
+    #[derive(Deserialize)]
+    struct Args {
+        title: Option<String>,
+        source: Option<String>,
+    }
+    let args: Args = parse(arguments)?;
+    let source = args.source.unwrap_or_else(|| "folder".into());
+    if source != "folder" && source != "archive" {
+        return Err("source 只能是 folder（文件夹）或 archive（压缩包）".into());
+    }
+    let title = card_title(args.title, "导入图片");
+    Ok(ToolOutput {
+        output: json!({
+            "cardId": call_id,
+            "source": source,
+            "note": "导入卡片已经显示给用户。用户在卡片上自己选文件夹或压缩包后，主窗口才开始导入；结果会以一条消息告诉你。在那之前不要说已经导入。刚导入的这一批可在主窗口按 Ctrl+Z 撤销。",
+        }),
+        display: json!({"kind": "import", "cardId": call_id, "title": title, "source": source}),
     })
 }

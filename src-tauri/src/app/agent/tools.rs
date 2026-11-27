@@ -111,10 +111,19 @@ pub const GROUPS: &[ToolGroup] = &[
         tools: &["prepare_export"],
     },
     ToolGroup {
+        key: "files",
+        label: "删除 / 导入图片",
+        summary: "准备删除图片的卡片（用户在主窗口的删除确认框里确认，可选把原图移入回收站）和导入图片的卡片（用户自己选文件夹或压缩包）；助手不会自己删图或导入",
+        guide: "- 你不能直接删除或导入图片。prepare_delete_images 只在对话里显示一张删除卡片，用户点卡片上的按钮后，主窗口弹出平时的删除确认框，由用户决定是否「同时将原始图片文件移入回收站」并确认；prepare_import 只显示导入卡片，由用户自己选文件夹或压缩包。结果都会以一条消息告诉你，在那之前不要说已经删除或导入。
+- 删除影响很大而且不能用 undo_operation 撤销（原图进了回收站只能去回收站还原）：准备卡片前先用 count_rows / find_rows 把范围和张数确认清楚，范围有任何不确定都先问；用户没有明确说要删就不要准备删除卡片。不要建议清空回收站。
+- 导入：source=folder（文件夹，默认）或 archive（zip / 7z / rar）。已在库里的图片会跳过，没有生成信息的图会被移到失败图片目录；刚导入的一批可在主窗口按 Ctrl+Z 撤销。导入后可用 count_rows by=batch 查这一批。",
+        tools: &["prepare_delete_images", "prepare_import"],
+    },
+    ToolGroup {
         key: "compare",
         label: "图片对比",
-        summary: "以一张图为参考 A，查出和它只在某些方面不同的图（相同画师串 / 相同 VIBE / 相同提示词 / 不同模型 / 自定义对比条件），结果直接返回给你；也能操作对比窗口给用户看",
-        guide: "- 读结果和操作窗口是两件事：compare_images 只查数据、不碰窗口，结果返回给你（附缩略图）；control_compare_window 只是让用户在对比窗口里看到，不返回结果。用户只是问「和这张比有什么不同」时用 compare_images 自己查；用户要在窗口里看时才操作窗口。\n- relation：artists=画师串完全相同的其它图；vibeDiffStyle=VIBE 引用组合相同、提示词不同；styleDiffVibe=提示词相同（忽略质量词）、VIBE 不同；models=提示词相同、模型不同（按模型分组，只看最新 500 张）；custom=自定义对比。\n- custom：observe=要比较的那一项（结果都和 A 在这一项上不同）；dedupe=true 时把这一项取值相同的图合成一组，这时没列进 allowed 的条件都必须和 A 一致（两边都没记录也算一致），allowed 不填=其它条件都允许不同。dedupe=false 时 allowed 不起作用。字段：artists 画师串、positive 正向、character 角色、negative 负向、vibe VIBE 引用组合、model 模型、sampler 采样器、steps 步数、seed 种子、scale 提示词引导、cfgRescale 引导重缩放、noiseSchedule 噪声调度、dimensions 尺寸。例：只看换了种子、其它参数都一样的图 → observe=seed, dedupe=true, allowed=[]。\n- 每条结果的 differences 是 B 相对 A 的差别：只详细列出这次比较关注的项（提示词类给新增/移除的 TAG，正向里不含画师串部分；参数类给 [A 的值, B 的值]），其它也不同的项只在 alsoDifferent 里列名字，需要细看时用 find_rows / read_library_item 读这几张图。结果多时用 nextOffset 翻页。\n- control_compare_window：rowId 是 A；给 targetRowId 直接打开 A/B 并排；relation 切到某个关系；relation=custom 加 custom 条件就在窗口里运行自定义对比。",
+        summary: "以一张图为参考 A，查出和它只在某些方面不同的图（相同画师串 / 相同 VIBE / 相同提示词 / 不同模型 / 自定义对比条件），结果直接返回给你，含提示词、参数和 VIBE 引用（增减、强度变化）的差别；也能操作对比窗口给用户看",
+        guide: "- 读结果和操作窗口是两件事：compare_images 只查数据、不碰窗口，结果返回给你（附缩略图）；control_compare_window 只是让用户在对比窗口里看到，不返回结果。用户只是问「和这张比有什么不同」时用 compare_images 自己查；用户要在窗口里看时才操作窗口。\n- relation：artists=画师串完全相同的其它图；vibeDiffStyle=VIBE 引用组合相同、提示词不同；styleDiffVibe=提示词相同（忽略质量词）、VIBE 不同；models=提示词相同、模型不同（按模型分组，只看最新 500 张）；custom=自定义对比。\n- custom：observe=要比较的那一项（结果都和 A 在这一项上不同）；dedupe=true 时把这一项取值相同的图合成一组，这时没列进 allowed 的条件都必须和 A 一致（两边都没记录也算一致），allowed 不填=其它条件都允许不同。dedupe=false 时 allowed 不起作用。字段：artists 画师串、positive 正向、character 角色、negative 负向、vibe VIBE 引用组合、model 模型、sampler 采样器、steps 步数、seed 种子、scale 提示词引导、cfgRescale 引导重缩放、noiseSchedule 噪声调度、dimensions 尺寸。例：只看换了种子、其它参数都一样的图 → observe=seed, dedupe=true, allowed=[]。\n- 每条结果的 differences 是 B 相对 A 的差别：只详细列出这次比较关注的项（提示词类给新增/移除的 TAG，正向里不含画师串部分；参数类给 [A 的值, B 的值]），vibe 给 VIBE 引用的差别：added / removed 是 B 多出 / 少了的引用（短编号、强度、信息提取），strengthChanged 是两边都用了但强度或信息提取不同的引用（[A 的值, B 的值]）；读不到逐项明细时只给引用数。「相同 VIBE」只看用了哪几张参考图，不看强度，所以 vibeDiffStyle 的结果里也可能有强度不同的图。其它也不同的项只在 alsoDifferent 里列名字，需要细看时用 find_rows / read_library_item 读这几张图。结果多时用 nextOffset 翻页。\n- control_compare_window：rowId 是 A；给 targetRowId 直接打开 A/B 并排；relation 切到某个关系；relation=custom 加 custom 条件就在窗口里运行自定义对比。",
         tools: &["compare_images", "control_compare_window"],
     },
 ];
@@ -391,6 +400,14 @@ field 取 positive / character / negative。caseSensitive 必须明确给出。�
             "operation": {"type":"object","description":"{type: renameGroup|mergeGroups|deleteGroups|deleteEmptyGroups|renameTag|mergeTags|deleteTags|setArtistAlias|setArtistRepresentative, ...}","properties":{"type":{"type":"string"}},"required":["type"]}
         }), &["title","operation"]),
         tool("list_artist_prefix_candidates", "列出可以补 artist: 前缀的画师名：这些名字在别的图里明确写过 artist:名字，但有些图的提示词里只写了裸名字。返回每个名字涉及的图片数和样例。", json!({}), &[]),
+        tool("prepare_delete_images", "准备删除一批图片：在对话里显示删除卡片（不会删除任何东西）。用户点卡片后在主窗口的删除确认框里确认。用法见 files 工具组说明。", json!({
+            "title": {"type":"string","description":"一句话说明要删哪些图"},
+            "target": target_schema("要删除的图片范围")
+        }), &["target"]),
+        tool("prepare_import", "准备导入图片：在对话里显示导入卡片，用户在卡片上选文件夹或压缩包后才开始导入。", json!({
+            "title": {"type":"string"},
+            "source": {"type":"string","enum":["folder","archive"],"default":"folder"}
+        }), &[]),
         tool("create_material", "新建一张素材卡片（直接生效，可撤销）。用法见 content 工具组说明。", json!({
             "title": {"type":"string"},
             "versions": {"type":"array","minItems":1,"maxItems":128,"items":{"type":"object","properties":{
@@ -548,7 +565,7 @@ pub fn run(app: &AppHandle, conversation_id: &str, call_id: &str, name: &str, ar
     let plain = |output: Value| Ok(ToolOutput { display: json!({"kind": "info"}), output });
     match name {
         "find_similar_images" | "refresh_perceptual_hashes" | "estimate_style_extraction" | "start_style_extraction"
-        | "get_style_extraction_status" | "control_style_extraction" | "prepare_export" => {
+        | "get_style_extraction_status" | "control_style_extraction" | "prepare_export" | "prepare_delete_images" | "prepare_import" => {
             super::toolbox::run(app, conversation_id, call_id, name, arguments, &view)
         }
         "compare_images" | "control_compare_window" => super::compare::run(app, name, arguments),

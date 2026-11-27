@@ -20,6 +20,7 @@ import { thumbnails } from "../../../lib/images/thumbnails";
 import { clearProgressiveImages } from "../../../lib/images/progressive-images";
 import { OperationCard, PreviewCard } from "./AgentCards";
 import { ExportCard, type ExportDisplay } from "./AgentExport";
+import { DeleteCard, ImportCard, type DeleteDisplay, type ImportDisplay } from "./AgentFileCards";
 import { AgentPreferencesDialog } from "./AgentPreferencesDialog";
 import { ContextMeter } from "./ContextMeter";
 import { ImageViewerProvider, ThumbStrip, useImageViewer } from "./AgentMedia";
@@ -71,6 +72,17 @@ function reasoningText(value: unknown): string {
     .join("\n\n");
 }
 
+/** User actions whose result belongs to a card (keyed by the card id). */
+const CARD_ACTIONS = new Set(["export", "delete", "import"]);
+function actionText(block: { action: string; title: string; result: string }): string {
+  switch (block.action) {
+    case "undo": return `你撤销了「${block.title}」`;
+    case "export": return block.result.startsWith("导出失败") ? `导出「${block.title}」没有成功` : `你导出了「${block.title}」`;
+    case "delete": case "import": return `${block.action === "delete" ? "删除" : "导入"}「${block.title}」：${block.result}`;
+    default: return `你确认执行了「${block.title}」`;
+  }
+}
+
 function toItems(messages: AgentMessage[]): Item[] {
   const items: Item[] = [];
   const steps = new Map<string, StepItem>();
@@ -84,7 +96,7 @@ function toItems(messages: AgentMessage[]): Item[] {
     else if (message.kind === "user_action") items.push({
       type: "action", id: message.id, at, action: String(content.action ?? ""), title: String(content.title ?? ""),
       operationId: typeof content.operationId === "number" ? content.operationId : null,
-      exportId: typeof content.exportId === "string" ? content.exportId : null, result: String(content.result ?? ""),
+      exportId: typeof content.exportId === "string" ? content.exportId : typeof content.cardId === "string" ? content.cardId : null, result: String(content.result ?? ""),
     });
     else if (message.kind === "error") items.push({ type: "error", id: message.id, at, text: String(content.message ?? ""), stopped: content.stopped === true });
     else if (message.kind === "compaction") items.push({ type: "compaction", id: message.id, at, summary: String(content.summary ?? ""), tokensBefore: Number(content.tokensBefore) || 0 });
@@ -363,7 +375,7 @@ export function AgentWindow() {
   /** Latest recorded outcome of each export card in this conversation. */
   const exportResults = useMemo(() => {
     const map = new Map<string, string>();
-    for (const item of items) if (item.type === "action" && item.action === "export" && item.exportId) map.set(item.exportId, item.result);
+    for (const item of items) if (item.type === "action" && CARD_ACTIONS.has(item.action) && item.exportId) map.set(item.exportId, item.result);
     return map;
   }, [items]);
   /** Previews already on screen in this conversation; their operations update those cards instead of adding new ones. */
@@ -451,6 +463,14 @@ export function AgentWindow() {
           const card = display as unknown as ExportDisplay;
           return <div key={step.id} className="msg msg-card"><ExportCard display={card} conversationId={current} exported={exportResults.get(card.exportId) ?? null} busy={running} /></div>;
         }
+        if (display?.kind === "delete") {
+          const card = display as unknown as DeleteDisplay;
+          return <div key={step.id} className="msg msg-card"><DeleteCard display={card} conversationId={current} result={exportResults.get(card.cardId) ?? null} busy={running} /></div>;
+        }
+        if (display?.kind === "import") {
+          const card = display as unknown as ImportDisplay;
+          return <div key={step.id} className="msg msg-card"><ImportCard display={card} conversationId={current} result={exportResults.get(card.cardId) ?? null} busy={running} /></div>;
+        }
         return null;
       })}
     </Fragment>;
@@ -467,7 +487,7 @@ export function AgentWindow() {
         <Markdown text={block.text} />
         <div className="msg-actions"><CopyAction text={block.text} /></div>
       </div>;
-      case "action": return <p key={block.id} className="msg msg-user-action"><Check className="icon sm" aria-hidden="true" /><span>{block.action === "undo" ? `你撤销了「${block.title}」` : block.action === "export" ? (block.result.startsWith("导出失败") ? `导出「${block.title}」没有成功` : `你导出了「${block.title}」`) : `你确认执行了「${block.title}」`}</span>{block.operationId !== null && <span className="ag-time">#{block.operationId}</span>}</p>;
+      case "action": return <p key={block.id} className="msg msg-user-action"><Check className="icon sm" aria-hidden="true" /><span>{actionText(block)}</span>{block.operationId !== null && <span className="ag-time">#{block.operationId}</span>}</p>;
       case "error": return block.stopped
         ? <p key={block.id} className="msg msg-notice">{block.text}</p>
         : <div key={block.id} className="msg msg-error" role="alert">

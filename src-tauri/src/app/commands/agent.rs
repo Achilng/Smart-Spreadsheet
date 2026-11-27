@@ -250,6 +250,44 @@ pub(crate) async fn agent_apply_preview(conversation_id: String, preview_id: Str
     Ok(record)
 }
 
+/// Hand a delete or import card over to the main window, which runs its usual dialogs.
+#[tauri::command]
+pub(crate) fn agent_card_request(conversation_id: String, card_id: String, action: String, title: String, row_ids: Option<Vec<i64>>, path: Option<String>, app: tauri::AppHandle) -> Result<(), String> {
+    if app.state::<Engine>().is_running(&conversation_id) {
+        return Err("助手还在处理这个对话，请等它停下来再操作".into());
+    }
+    let payload = match action.as_str() {
+        "delete" => json!({"action": action, "conversationId": conversation_id, "cardId": card_id, "title": title,
+            "rowIds": row_ids.filter(|ids| !ids.is_empty()).ok_or("没有要删除的图片")?}),
+        "import" => json!({"action": action, "conversationId": conversation_id, "cardId": card_id, "title": title,
+            "path": path.filter(|path| !path.trim().is_empty()).ok_or("没有选择要导入的位置")?}),
+        _ => return Err("未知的卡片操作".into()),
+    };
+    app.emit_to("main", "agent://card-request", payload).map_err(error_text)?;
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+    }
+    Ok(())
+}
+
+/// Tell the conversation how a delete or import card ended (sent by the main window).
+#[tauri::command]
+pub(crate) fn agent_note_card(conversation_id: String, card_id: String, action: String, title: String, result: String, app: tauri::AppHandle) -> Result<(), String> {
+    let card = match action.as_str() {
+        "delete" => "删除",
+        "import" => "导入",
+        _ => return Err("未知的卡片操作".into()),
+    };
+    note_user_action(
+        &app,
+        Some(&conversation_id),
+        format!("（我在{card}卡片「{title}」上操作了：{result}）"),
+        json!({"action": action, "cardId": card_id, "title": title, "result": result}),
+    );
+    Ok(())
+}
+
 /// Show a material or prompt doc the assistant wrote in the main window.
 #[tauri::command]
 pub(crate) fn agent_reveal_content(kind: String, id: Value, app: tauri::AppHandle) -> Result<(), String> {

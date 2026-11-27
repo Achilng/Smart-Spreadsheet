@@ -126,6 +126,11 @@ export const showAgentChangedRows = (source: "preview" | "operation", id: string
 export const agentChangePage = (source: "preview" | "operation", id: string, offset: number, limit: number) =>
   invoke<{ total: number; changes: AgentRowChange[] }>("agent_change_page", { source, id, offset, limit });
 export const revealAgentContent = (kind: "material" | "doc", id: number | string) => invoke<void>("agent_reveal_content", { kind, id });
+/** Hand a delete or import card to the main window, which runs its usual dialogs and reports back. */
+export const agentCardRequest = (conversationId: string, cardId: string, action: "delete" | "import", title: string, extra: { rowIds?: number[]; path?: string }) =>
+  invoke<void>("agent_card_request", { conversationId, cardId, action, title, rowIds: extra.rowIds ?? null, path: extra.path ?? null });
+export const noteAgentCard = (conversationId: string, cardId: string, action: "delete" | "import", title: string, result: string) =>
+  invoke<void>("agent_note_card", { conversationId, cardId, action, title, result });
 export const openAgentWindow = () => invoke<void>("open_agent_window");
 export const reportAgentMainView = (selection: unknown, filtered: unknown, info: unknown) =>
   invoke<void>("agent_report_main_view", { selection, filtered, info });
