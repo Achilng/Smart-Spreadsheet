@@ -31,15 +31,18 @@ pub(crate) async fn open_toolbox_window(
     app: tauri::AppHandle,
     target: Option<String>,
 ) -> Result<(), String> {
-    let llm_settings = target.as_deref() == Some("llmSettings");
+    let (target, event) = match target.as_deref() {
+        None => (None, None),
+        Some("llmSettings") => (Some("llmSettings"), Some("toolbox://open-llm-settings")),
+        Some("update") => (Some("update"), Some("toolbox://open-update")),
+        Some(other) => return Err(format!("未知的工具箱页面：{other}")),
+    };
     if let Some(toolbox) = app.get_webview_window("toolbox") {
         toolbox.show().map_err(error_text)?;
         toolbox.unminimize().map_err(error_text)?;
         toolbox.set_focus().map_err(error_text)?;
-        if llm_settings {
-            toolbox
-                .emit_to("toolbox", "toolbox://open-llm-settings", ())
-                .map_err(error_text)?;
+        if let Some(event) = event {
+            toolbox.emit_to("toolbox", event, ()).map_err(error_text)?;
         }
         return Ok(());
     }
@@ -48,10 +51,9 @@ pub(crate) async fn open_toolbox_window(
         WebviewWindowBuilder::new(
             &app,
             "toolbox",
-            WebviewUrl::App(if llm_settings {
-                "index.html?window=toolbox&target=llmSettings".into()
-            } else {
-                "index.html?window=toolbox".into()
+            WebviewUrl::App(match target {
+                Some(target) => format!("index.html?window=toolbox&target={target}").into(),
+                None => "index.html?window=toolbox".into(),
             }),
         )
         .title("工具箱")

@@ -19,7 +19,7 @@ export interface ToolboxSelectionSnapshot {
  * 由 Tauri 后端打开内部工具箱窗口。
  * 后端负责单实例、恢复与聚焦，避免前端 URL 被系统浏览器接管。
  */
-export async function openToolboxWindow(target?: "llmSettings"): Promise<void> {
+export async function openToolboxWindow(target?: "llmSettings" | "update"): Promise<void> {
   if (opening) {
     await opening;
     if (!target) return;

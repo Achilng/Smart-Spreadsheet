@@ -345,6 +345,42 @@
 .r-notice > span { min-width: 0; overflow-wrap: anywhere; }
 .r-notice .btn-icon { width: 24px; height: 24px; min-height: 24px; color: var(--text-3); }
 
+.r-update-reminder {
+  position: fixed;
+  top: calc(var(--topbar-h) + 12px);
+  right: 18px;
+  z-index: var(--z-toast);
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  max-width: min(340px, calc(100vw - 36px));
+  padding: 4px;
+  border-radius: var(--radius-m);
+  background: var(--surface);
+  box-shadow: var(--elev-3);
+  animation: r-notice-in var(--dur-slow) var(--ease-emphasized);
+}
+.r-update-reminder > button:first-child {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  padding: 8px 6px 8px 10px;
+  border: 0;
+  border-radius: calc(var(--radius-m) - 4px);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.r-update-reminder > button:first-child:hover:not(:disabled) { background: var(--accent-soft); }
+.r-update-reminder > button:first-child:disabled { cursor: progress; }
+.r-update-reminder > button:first-child > svg { flex: none; margin-top: 2px; color: var(--accent); }
+.r-update-reminder span { display: flex; flex-direction: column; gap: 2px; font-size: var(--font-sm); line-height: 1.5; }
+.r-update-reminder small { color: var(--text-3); }
+.r-update-reminder .btn-icon { flex: none; width: 24px; height: 24px; min-height: 24px; margin: 6px 4px 0 0; color: var(--text-3); }
+
 .r-task-progress {
   position: fixed;
   top: calc(var(--topbar-h) + 12px);

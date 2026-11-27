@@ -28,6 +28,7 @@ import { AlbumNavigation } from "./views/AlbumNavigation";
 import { useGroups } from "./state/groups";
 import { useDuplicates } from "./state/duplicates";
 import { LlmSetupReminder } from "./views/LlmSetupReminder";
+import { UpdateReminder } from "./views/UpdateReminder";
 
 export function App() {
   useWorkspaceLifecycle();
@@ -51,6 +52,6 @@ export function App() {
         </main>{(view !== "group" || expandedGroups.length > 0) && (view !== "duplicates" || duplicateDetails) && <DetailPanel />}</>}</div>
       </div>}
     {dialog === "过滤" && <FilterPanel onClose={() => setDialog(null)} />}{dialog === "update" && <UpdateImportDialog onClose={() => setDialog(null)} />}
-    <RowActionDialogs /><JsonExportDialog /><TaskProgress /><LlmSetupReminder /><Notices />
+    <RowActionDialogs /><JsonExportDialog /><TaskProgress /><LlmSetupReminder /><UpdateReminder /><Notices />
   </Tooltip.Provider>;
 }
