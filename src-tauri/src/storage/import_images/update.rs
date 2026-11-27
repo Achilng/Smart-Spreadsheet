@@ -279,6 +279,7 @@ impl DataDirectory {
                 stored_image_is_original: true,
                 vibe_reference_count: image.vibe_reference_count,
                 vibe_signature: image.vibe_signature,
+                vibe_details: Some(image.vibe_details),
                 image_width: image.image_width,
                 image_height: image.image_height,
                 generation_model: image.generation_model,

@@ -29,6 +29,7 @@ pub struct ExistingImageUpdate {
     pub stored_image_is_original: bool,
     pub vibe_reference_count: u32,
     pub vibe_signature: Option<String>,
+    pub vibe_details: Option<String>,
     pub image_width: Option<u32>,
     pub image_height: Option<u32>,
     pub generation_model: Option<String>,
@@ -195,7 +196,8 @@ impl Database {
                     generation_scale = ?23,
                     generation_cfg_rescale = ?24,
                     generation_noise_schedule = ?25,
-                    style_signature = ?26
+                    style_signature = ?26,
+                    vibe_details = ?27
                  WHERE id = ?1",
             )?;
             for update in updates {
@@ -226,6 +228,7 @@ impl Database {
                     update.generation_cfg_rescale,
                     update.generation_noise_schedule,
                     crate::pipeline::style_signature_of(update.positive_prompt.as_deref()),
+                    update.vibe_details,
                 ])? as u64;
             }
         }
@@ -282,6 +285,7 @@ mod tests {
                 stored_image_is_original: true,
                 vibe_reference_count: 2,
                 vibe_signature: Some("vibesig".into()),
+                vibe_details: None,
                 image_width: Some(1024),
                 image_height: Some(1536),
                 generation_model: Some("NovelAI V4".into()),

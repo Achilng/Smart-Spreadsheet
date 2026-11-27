@@ -5,12 +5,14 @@ mod library;
 mod model_badge;
 mod read;
 mod target;
+mod vibes;
 
 pub use apply::{OperationRecord, RulePatch, UndoOutcome};
 pub use changes::{Action, RowChange};
 pub use library::LibraryOp;
 pub use model_badge::{comparison_tier, model_label};
 pub(crate) use read::{COUNT_FIELDS, CountSort, DEFAULT_PROMPT_STATS_LIMIT, MAX_PROMPT_STATS_LIMIT, PromptStatsSort, ROW_FIELDS, RowSort};
+pub(crate) use vibes::{vibe_diff, vibe_display_ids, vibes_json};
 pub(crate) use changes::PLACEHOLDERS;
 pub(crate) use target::local_time;
 pub use target::{MainView, Target};

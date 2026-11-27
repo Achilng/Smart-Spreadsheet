@@ -22,7 +22,7 @@ pub(crate) use artist::{llm_artist_pool_fragments, without_artist_blocks};
 pub use metadata::{
     CharacterPrompt, character_prompts,
     NovelAiMetadata, generation_model_of, parse_novelai_metadata, vibe_reference_count,
-    vibe_status,
+    vibe_reference_key, vibe_status,
 };
 pub use metadata_fingerprint::metadata_fingerprint;
 pub use style_signature::{STYLE_SIGNATURE_VERSION, style_signature_of};

@@ -110,6 +110,9 @@ pub struct RowRecord {
     pub generation_noise_schedule: Option<String>,
     pub metadata_failed: bool,
     pub vibe_reference_count: Option<u32>,
+    /// 逐项 VIBE 明细 JSON（`[{"key","strength","info"}]`）；只供后端使用，不发给界面。
+    #[serde(skip)]
+    pub vibe_details: Option<String>,
     pub group_id: Option<i64>,
     pub group_name: Option<String>,
     pub tags: Vec<String>,
@@ -896,7 +899,7 @@ pub(super) fn query_page_metadata(connection: &Connection) -> Result<Vec<RowReco
                 rows.generation_seed, rows.generation_scale,
                 rows.generation_cfg_rescale, rows.generation_noise_schedule,
                 rows.metadata_failed, rows.vibe_reference_count, rows.group_id, groups.name, rows.artist_llm, rows.favorite,
-                rows.id IN (SELECT row_id FROM artist_representatives)
+                rows.id IN (SELECT row_id FROM artist_representatives), rows.vibe_details
          FROM {PAGE_ROWS_TABLE} AS page
          JOIN rows ON rows.id = page.id
          LEFT JOIN groups ON groups.id = rows.group_id
@@ -932,6 +935,7 @@ pub(super) fn query_page_metadata(connection: &Connection) -> Result<Vec<RowReco
                 generation_noise_schedule: row.get(20)?,
                 metadata_failed: row.get(21)?,
                 vibe_reference_count: row.get(22)?,
+                vibe_details: row.get(28)?,
                 group_id: row.get(23)?,
                 group_name: row.get(24)?,
                 artist_llm: row.get(25)?,

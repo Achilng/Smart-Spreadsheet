@@ -462,6 +462,10 @@ fn apply_pending_migrations(
         transaction.execute_batch(migrations::MIGRATION_30)?;
         version = 30;
     }
+    if version == 30 {
+        transaction.execute_batch(migrations::MIGRATION_31)?;
+        version = 31;
+    }
     debug_assert_eq!(version, CURRENT_SCHEMA_VERSION);
     transaction.pragma_update(None, "user_version", version)?;
     transaction.commit()?;
@@ -1197,6 +1201,7 @@ mod tests {
                 stored_image_is_original: true,
                 vibe_reference_count: 0,
                 vibe_signature: None,
+                vibe_details: None,
                 image_width: None,
                 image_height: None,
                 generation_model: None,

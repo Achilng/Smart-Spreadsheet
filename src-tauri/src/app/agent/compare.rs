@@ -9,7 +9,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use super::tools::ToolOutput;
 use crate::app::AppRuntime;
 use crate::app::commands::windows::{COMPARE_FIELDS, CompareCustom, CompareView};
-use crate::db::agent::{comparison_tier, model_label};
+use crate::db::agent::{comparison_tier, model_label, vibe_diff, vibes_json};
 use crate::db::{CompareConditions, Database, RowRecord};
 use crate::pipeline::prompt_text::normalize_prompt_token;
 
@@ -122,7 +122,7 @@ fn compare_rows(db: &mut Database, args: &CompareArgs) -> Result<ToolOutput, Str
                     if !sample.has_vibe_signature {
                         notes.push(if sample.vibe_signature_unreadable { "样本原图不可读，读不到 VIBE 引用。" } else { "样本没有引用 VIBE。" });
                     }
-                    (db.query_compare_same_vibe_diff_style(row_id, offset as u64, limit as u32), &["artists", "positive", "character"])
+                    (db.query_compare_same_vibe_diff_style(row_id, offset as u64, limit as u32), &["artists", "positive", "character", "vibe"])
                 }
                 _ => {
                     if !sample.has_style_signature { notes.push("样本没有可比较的提示词。"); }
@@ -134,7 +134,7 @@ fn compare_rows(db: &mut Database, args: &CompareArgs) -> Result<ToolOutput, Str
             let items = page.rows.iter().map(|row| {
                 let mut diff = differences(&a, row, detail);
                 if relation == "styleDiffVibe" && diff.get("vibe").is_none() {
-                    diff["vibe"] = json!("引用数量相同，引用的图不同");
+                    diff["vibe"] = json!("读不到两边的逐项明细，只知道引用组合不同");
                 }
                 json!({"rowId": row.id, "differences": diff})
             }).collect::<Vec<_>>();
@@ -143,7 +143,8 @@ fn compare_rows(db: &mut Database, args: &CompareArgs) -> Result<ToolOutput, Str
         }
     };
     output["relation"] = json!(args.relation);
-    output["sample"] = json!({"rowId": a.id, "artists": a.artists, "model": model_label(a.generation_model.as_deref()), "vibeReferences": a.vibe_reference_count});
+    output["sample"] = json!({"rowId": a.id, "artists": a.artists, "model": model_label(a.generation_model.as_deref()),
+        "vibeReferences": a.vibe_reference_count, "vibes": vibes_json(a.vibe_details.as_deref(), a.vibe_reference_count)});
     if !notes.is_empty() { output["notes"] = json!(notes); }
     if args.relation != "models" && offset + ids.len() < total {
         output["nextOffset"] = json!(offset + ids.len());
@@ -219,8 +220,8 @@ fn differences(a: &RowRecord, b: &RowRecord, detail: &[&str]) -> Value {
     note("noiseSchedule", pair(a.generation_noise_schedule.clone(), b.generation_noise_schedule.clone()));
     let size = |row: &RowRecord| row.image_width.zip(row.image_height).map(|(w, h)| format!("{w}x{h}"));
     note("dimensions", pair(size(a), size(b)));
-    let vibes = |row: &RowRecord| row.vibe_reference_count.map(|v| format!("{v} 个引用"));
-    note("vibe", pair(vibes(a), vibes(b)));
+    fn vibes(row: &RowRecord) -> (Option<&str>, Option<u32>) { (row.vibe_details.as_deref(), row.vibe_reference_count) }
+    note("vibe", vibe_diff(vibes(a), vibes(b)));
     if !also.is_empty() {
         out.insert("alsoDifferent".into(), json!(also));
     }

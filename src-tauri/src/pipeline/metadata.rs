@@ -42,6 +42,8 @@ pub struct NovelAiMetadata {
     /// VIBE 引用组合的稳定签名：逐项 SHA-256 后排序再整体哈希，
     /// 引用顺序不同不影响结果；无引用时为 None。
     pub vibe_signature: Option<String>,
+    /// 逐项 VIBE 明细的 JSON 数组（见 [`vibe_details_of`]）；无引用时为 `[]`。
+    pub vibe_details: String,
     pub generation_model: Option<String>,
     pub generation_sampler: Option<String>,
     pub generation_steps: Option<u32>,
@@ -103,6 +105,7 @@ pub fn parse_novelai_metadata(text_chunks: &BTreeMap<String, String>) -> NovelAi
         u32::try_from(references.len()).unwrap_or(u32::MAX)
     });
     let vibe_signature = vibe_references.and_then(|references| vibe_signature_of(references));
+    let vibe_details = comment_json.as_ref().map_or_else(|| "[]".to_owned(), vibe_details_of);
     let generation_model = generation_model_of(text_chunks);
     let generation_sampler = comment_json
         .as_ref()
@@ -133,6 +136,7 @@ pub fn parse_novelai_metadata(text_chunks: &BTreeMap<String, String>) -> NovelAi
         artist_tags,
         vibe_reference_count,
         vibe_signature,
+        vibe_details,
         generation_model,
         generation_sampler,
         generation_steps,
@@ -148,20 +152,49 @@ pub fn vibe_reference_count(text_chunks: &BTreeMap<String, String>) -> u32 {
     vibe_status(text_chunks).0
 }
 
-/// 读取 VIBE 引用数量与组合签名；供旧资料库索引回填使用。
-pub fn vibe_status(text_chunks: &BTreeMap<String, String>) -> (u32, Option<String>) {
-    let Some(references) = text_chunks
+/// 读取 VIBE 引用数量、组合签名与逐项明细；供旧资料库索引回填使用。
+pub fn vibe_status(text_chunks: &BTreeMap<String, String>) -> (u32, Option<String>, String) {
+    let Some(comment) = text_chunks
         .get("Comment")
         .and_then(|comment| serde_json::from_str::<Value>(comment).ok())
-        .and_then(|json| json.get("reference_image_multiple").cloned())
     else {
-        return (0, None);
+        return (0, None, "[]".into());
     };
-    let Some(references) = references.as_array() else {
-        return (0, None);
+    let Some(references) = comment.get("reference_image_multiple").and_then(Value::as_array) else {
+        return (0, None, "[]".into());
     };
     let count = u32::try_from(references.len()).unwrap_or(u32::MAX);
-    (count, vibe_signature_of(references))
+    (count, vibe_signature_of(references), vibe_details_of(&comment))
+}
+
+/// 单项引用的短编号：与组合签名同源的逐项 SHA-256 取前 8 位。
+/// 同一份 VIBE 在不同图里得到相同编号，用来跨图辨认“是不是同一个引用”。
+pub fn vibe_reference_key(reference: &Value) -> String {
+    format!("{:x}", Sha256::digest(reference.to_string().as_bytes()))[..8].to_owned()
+}
+
+/// 逐项 VIBE 明细，按图内原顺序：`[{"key","strength","info"}]`。
+/// strength / info 取自 `reference_strength_multiple` 与
+/// `reference_information_extracted_multiple` 的同位项，缺失时为 null。
+fn vibe_details_of(comment: &Value) -> String {
+    let Some(references) = comment.get("reference_image_multiple").and_then(Value::as_array) else {
+        return "[]".into();
+    };
+    let number_at = |key: &str, index: usize| {
+        comment.get(key).and_then(Value::as_array).and_then(|values| values.get(index)).and_then(Value::as_f64)
+    };
+    let details = references
+        .iter()
+        .enumerate()
+        .map(|(index, reference)| {
+            serde_json::json!({
+                "key": vibe_reference_key(reference),
+                "strength": number_at("reference_strength_multiple", index),
+                "info": number_at("reference_information_extracted_multiple", index),
+            })
+        })
+        .collect::<Vec<_>>();
+    Value::Array(details).to_string()
 }
 
 /// 读取作画模型名（优先 `Source` 文本块，其次 Comment JSON 的 model/source）；
@@ -439,8 +472,9 @@ mod tests {
         assert_eq!(parse_novelai_metadata(&empty).vibe_signature, None);
         assert_eq!(parse_novelai_metadata(&missing).vibe_signature, None);
 
-        assert_eq!(vibe_status(&forward), (2, forward_signature));
-        assert_eq!(vibe_status(&missing), (0, None));
+        let (count, signature, _) = vibe_status(&forward);
+        assert_eq!((count, signature), (2, forward_signature));
+        assert_eq!(vibe_status(&missing), (0, None, "[]".into()));
     }
 
     #[test]

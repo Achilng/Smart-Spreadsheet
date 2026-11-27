@@ -43,7 +43,7 @@ impl DataDirectory {
             ..VibeStatusProgress::default()
         });
 
-        let mut batch: Vec<(i64, Option<u32>, Option<String>, String)> =
+        let mut batch: Vec<(i64, Option<u32>, Option<String>, String, String)> =
             Vec::with_capacity(WRITE_BATCH_ROWS.min(total));
         let mut unreadable = 0;
         for (index, locator) in candidates.into_iter().enumerate() {
@@ -52,22 +52,22 @@ impl DataDirectory {
                 .filter(|read| !read.is_unreadable())
                 .map(|read| read.chunks)
                 .map(|chunks| {
-                    let (count, signature) = vibe_status(&chunks);
-                    (count, signature, generation_model_of(&chunks))
+                    let (count, signature, details) = vibe_status(&chunks);
+                    (count, signature, generation_model_of(&chunks), details)
                 });
             // 文件不可读时保留既有数量（无则记 0），签名写空串标记“已扫描”，
             // 避免每次启动重复尝试；空串不参与“按 VIBE”聚合。模型名读不
             // 到时同样写空串标记，落库时既有真实模型名不会被覆盖。
-            let (count, signature, model) = match scanned {
-                Some((count, signature, model)) => {
-                    (Some(count), signature, model.unwrap_or_default())
+            let (count, signature, model, details) = match scanned {
+                Some((count, signature, model, details)) => {
+                    (Some(count), signature, model.unwrap_or_default(), details)
                 }
                 None => {
                     unreadable += 1;
-                    (None, Some(String::new()), String::new())
+                    (None, Some(String::new()), String::new(), String::new())
                 }
             };
-            batch.push((locator.row_id, count, signature, model));
+            batch.push((locator.row_id, count, signature, model, details));
             if batch.len() >= WRITE_BATCH_ROWS {
                 database.update_vibe_statuses(&batch)?;
                 batch.clear();

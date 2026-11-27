@@ -13,7 +13,7 @@ use crate::app::AppRuntime;
 use crate::automation::model::AutomationRuleDraft;
 use crate::db::agent::{
     Action, COUNT_FIELDS, CountSort, DEFAULT_PROMPT_STATS_LIMIT, LibraryOp, MAX_PROMPT_STATS_LIMIT, PLACEHOLDERS,
-    PromptStatsSort, ROW_FIELDS, RowSort, RulePatch, Target,
+    PromptStatsSort, ROW_FIELDS, RowSort, RulePatch, Target, vibe_display_ids,
 };
 
 pub struct ToolOutput {
@@ -35,7 +35,7 @@ pub struct ToolGroup {
 
 const CORE: &[&str] = &[
     "get_main_window_state", "get_library_overview", "find_rows", "count_rows", "summarize_rows", "analyze_text",
-    "list_artist_strings", "read_library_item", "view_images", "preview_changes", "apply_changes", "undo_operation",
+    "list_artist_strings", "summarize_vibes", "read_library_item", "view_images", "preview_changes", "apply_changes", "undo_operation",
     "list_operations", "show_selected_images", "read_app_guide", "load_tools",
 ];
 
@@ -303,6 +303,11 @@ field 取 positive / character / negative。caseSensitive 必须明确给出。�
             "target": target_schema("统计范围，一般用 all"),
             "contains": {"type": "string", "description": "画师串或别名包含的文字（不区分大小写）"},
             "limit": {"type": "integer"}, "offset":{"type":"integer","minimum":0}
+        }), &["target"]),
+        tool("summarize_vibes", "统计范围内用到的 VIBE 引用。每个引用有一个短编号（同一份 VIBE 在不同图里编号相同），返回每个引用被多少张图用过、强度（strength）和信息提取（info）的最小~最大值、最早用到它的图（firstRowId，可当代表图给用户看）和样例图，以及最常见的引用组合。给 reference=某个编号时改为列出用到这个引用的图和每张图用的强度。单张图的引用明细用 find_rows 的 vibes 字段。", json!({
+            "target": target_schema("统计范围，一般用 all"),
+            "reference": {"type":"string","description":"只看这一个引用编号（8 位）"},
+            "limit": {"type":"integer","minimum":1,"maximum":50}, "offset":{"type":"integer","minimum":0}
         }), &["target"]),
         tool("preview_changes", "预演一次修改（不会改数据）。返回 previewId、会改多少张、每个字段改多少、匹配分析、边界提醒和修改前后样例。用户会在界面上看到这份预演。", json!({
             "title": {"type": "string", "description": "一句话说明这次修改，例如「删除正向里 Text: 及之后的内容」"},
@@ -700,6 +705,25 @@ pub fn run(app: &AppHandle, conversation_id: &str, call_id: &str, name: &str, ar
             plain(runtime.agent_db(false, |db| {
                 db.agent_artist_strings(&args.target, &view, args.contains.as_deref(), args.limit.unwrap_or(30), args.offset)
             })?)
+        }
+        "summarize_vibes" => {
+            #[derive(Deserialize)]
+            struct Args {
+                target: Target,
+                #[serde(default)]
+                reference: Option<String>,
+                #[serde(default)]
+                limit: Option<usize>,
+                #[serde(default)]
+                offset: usize,
+            }
+            let args: Args = parse(arguments)?;
+            let reference = args.reference.as_deref().map(|key| key.trim().trim_start_matches('#').to_lowercase());
+            let output = runtime.agent_db(false, |db| {
+                db.agent_vibe_stats(&args.target, &view, reference.as_deref(), args.limit, args.offset)
+            })?;
+            let ids = vibe_display_ids(&output);
+            Ok(ToolOutput { display: json!({"kind": "rows", "rowIds": ids, "total": ids.len()}), output })
         }
         "preview_changes" => {
             #[derive(Deserialize)]

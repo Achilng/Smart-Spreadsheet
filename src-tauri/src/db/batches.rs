@@ -74,6 +74,8 @@ pub struct NewRow {
     pub vibe_reference_count: u32,
     /// VIBE 引用组合签名；无引用时为 None。
     pub vibe_signature: Option<String>,
+    /// 逐项 VIBE 明细 JSON；None 表示未读取（有引用时由启动回填补齐）。
+    pub vibe_details: Option<String>,
     pub image_width: Option<u32>,
     pub image_height: Option<u32>,
     pub generation_model: Option<String>,
@@ -154,12 +156,12 @@ impl Database {
                     style_signature,
                     image_width, image_height, generation_model, generation_sampler,
                     generation_steps, generation_seed, generation_scale,
-                    generation_cfg_rescale, generation_noise_schedule, updated_at
+                    generation_cfg_rescale, generation_noise_schedule, vibe_details, updated_at
                  ) VALUES (
                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
                     ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20,
                     ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30,
-                    ?31,
+                    ?31, ?32,
                     strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
                  )",
             )?;
@@ -227,6 +229,7 @@ impl Database {
                     row.generation_scale,
                     row.generation_cfg_rescale,
                     row.generation_noise_schedule,
+                    row.vibe_details,
                 ])?;
                 added_row_ids.push(transaction.last_insert_rowid());
                 added += 1;

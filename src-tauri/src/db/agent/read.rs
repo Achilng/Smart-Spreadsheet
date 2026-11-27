@@ -17,7 +17,7 @@ pub(crate) const MAX_PROMPT_STATS_LIMIT: usize = 50;
 pub(crate) const ROW_FIELDS: &[&str] = &[
     "positive", "character", "negative", "artists", "note", "group", "tags", "favorite", "file",
     "model", "modelBadge", "sampler", "steps", "seed", "scale", "cfgRescale", "noiseSchedule",
-    "width", "height", "time", "vibeReferenceCount", "metadataFailed", "artistRepresentative",
+    "width", "height", "time", "vibeReferenceCount", "vibes", "metadataFailed", "artistRepresentative",
     "groupId", "batchId", "importedAt", "updatedAt", "fileModifiedAt", "sourceOrdinal", "sourceType",
     "sourcePath", "sourceSize", "imageFolder", "imagePath", "storedImagePath",
 ];
@@ -253,7 +253,7 @@ impl Database {
     }
 
     /// IDs in a target, without loading full rows unless conditions need them.
-    fn agent_scope_ids(&mut self, target: &Target, view: &MainView) -> Res<(Vec<i64>, Vec<String>)> {
+    pub(super) fn agent_scope_ids(&mut self, target: &Target, view: &MainView) -> Res<(Vec<i64>, Vec<String>)> {
         if target.has_row_filters() {
             let resolved = self.agent_resolve(target, view)?;
             Ok((resolved.rows.iter().map(|row| row.id).collect(), resolved.notes))
@@ -359,6 +359,7 @@ impl Database {
                     "height" => json!(row.image_height),
                     "time" => json!(row.time),
                     "vibeReferenceCount" => json!(row.vibe_reference_count),
+                    "vibes" => super::vibes::vibes_json(row.vibe_details.as_deref(), row.vibe_reference_count),
                     "metadataFailed" => json!(row.metadata_failed),
                     "artistRepresentative" => json!(row.artist_representative),
                     "batchId" => json!(row.batch_id),

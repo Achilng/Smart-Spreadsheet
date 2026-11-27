@@ -1,4 +1,11 @@
-pub const CURRENT_SCHEMA_VERSION: u32 = 30;
+pub const CURRENT_SCHEMA_VERSION: u32 = 31;
+
+/// Per-reference VIBE details (short key, strength, information extracted) as a JSON array.
+/// NULL means not read yet: rows with references are filled by the startup backfill.
+pub(super) const MIGRATION_31: &str = r#"
+ALTER TABLE rows ADD COLUMN vibe_details TEXT;
+UPDATE rows SET vibe_details = '[]' WHERE vibe_reference_count = 0;
+"#;
 
 pub(super) const MIGRATION_30: &str = r#"
 CREATE TABLE agent_image_attachments (
