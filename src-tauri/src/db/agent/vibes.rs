@@ -216,5 +216,7 @@ pub(crate) fn vibe_display_ids(result: &Value) -> Vec<i64> {
     } else {
         result["references"].as_array().into_iter().flatten().filter_map(|item| item["firstRowId"].as_i64()).collect()
     };
-    ids.into_iter().take(16).collect()
+    // One image often carries several references, so firstRowId repeats.
+    let mut seen = std::collections::HashSet::new();
+    ids.into_iter().filter(|id| seen.insert(*id)).take(16).collect()
 }

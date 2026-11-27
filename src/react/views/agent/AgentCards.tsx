@@ -370,7 +370,7 @@ function ContentCard({ content, title, warnings, operation, onApply, onChanged }
     </div>)}
     <div className="ag-card-actions">
       {!operation && <Button variant="primary" size="sm" disabled={!onApply || applying} title={onApply ? undefined : "助手正在处理，等它停下来再执行"} onClick={() => void apply()}>
-        <Check size={14} />{applying ? "执行中…" : "确认修改"}
+        <Check size={14} />{applying ? "执行中…" : "确认执行"}
       </Button>}
       {operation && !undone && <Button size="sm" disabled={undoing} onClick={() => void undo()}><Undo2 size={14} />{undoing ? "撤销中…" : undoLabel}</Button>}
       {!undone && <Button size="sm" variant="ghost" onClick={() => void reveal()}><MonitorUp size={14} />在主窗口打开</Button>}

@@ -132,13 +132,13 @@ pub const GROUPS: &[ToolGroup] = &[
 const LEGACY: &[&str] = &["list_generation_values"];
 
 const CONTENT_GUIDE: &str = "\
-- 素材 = 素材页里的一张卡片：标题、展示图、TAG，以及 1~128 个版本（每个版本一个名字和一段文字，通常是一套提示词）。提示词文档 = 「提示词」视图里的一篇自由排版的文档。用户只说「记下来 / 存起来」没说存成哪种时：一段段可直接复制使用的提示词存素材，长篇说明、教程、笔记存文档；拿不准就问一句。\n\
+- 素材 = 素材页里的一张卡片：标题、展示图、TAG，以及 1~128 个版本（每个版本一个名字和一段文字，通常是一套提示词）。提示词文档 = 主窗口「文档」页里的一篇自由排版的文档。用户只说「记下来 / 存起来」没说存成哪种时：一段段可直接复制使用的提示词存素材，长篇说明、教程、笔记存文档；拿不准就问一句。\n\
 - 新建直接生效：create_material / create_prompt_doc 调用后马上建好，卡片上有撤销按钮，也可以 undo_operation。不需要预演，但建之前要确认标题和内容是用户想要的。\n\
 - create_material 必须给展示图 cover，二选一：{rowId}（图库图片，例如用户正在讨论的那张）或 {messageId, attachmentNumber}（用户在聊天里上传的图）。用户没说用哪张图时先问。每个版本也可以单独给 cover。\n\
 - create_prompt_doc 的正文用 Markdown 写：支持 # ~ ### 标题、列表、引用、代码块、粗体 / 斜体 / 删除线、链接、分隔线；表格会变成一行一段的「A | B」文字。提示词放在代码块里方便用户复制。\n\
 - 改已有的素材 / 文档必须先 preview_content_change 预演，用户在卡片上确认或同意后再 apply_changes(previewId)，可撤销。改之前先用 read_library_item 读出现在的内容和版本 ID。\n\
 - operation.type：addMaterialVersion{materialId, name?, text, cover?}（加一个新版本，原有版本不动）；updateMaterial{materialId, title?, tags?（整体替换）, addTags?, removeTags?, versions?:[{versionId, name?, text?}]}（只改给出的部分）；editPromptDoc{docId, title?, markdown?, mode: append（默认，追加到末尾）| replace（整体替换正文）}。\n\
-- 不能删除素材、版本或文档；用户要删请告诉用户在素材页 / 提示词页手动删。用户正在编辑同一篇文档时，提醒用户先保存。";
+- 不能删除素材、版本或文档；用户要删请告诉用户在「素材」页 / 「文档」页手动删。用户正在编辑同一篇文档时，提醒用户先保存。";
 
 pub fn group_of(name: &str) -> Option<&'static ToolGroup> {
     GROUPS.iter().find(|group| group.tools.contains(&name))
@@ -776,7 +776,8 @@ pub fn run(app: &AppHandle, conversation_id: &str, call_id: &str, name: &str, ar
                 db.agent_vibe_stats(&args.target, &view, reference.as_deref(), args.limit, args.offset)
             })?;
             let ids = vibe_display_ids(&output);
-            Ok(ToolOutput { display: json!({"kind": "rows", "rowIds": ids, "total": ids.len()}), output })
+            let total = output["rowsWithVibes"].as_u64().or_else(|| output["images"].as_u64()).unwrap_or(ids.len() as u64);
+            Ok(ToolOutput { display: json!({"kind": "rows", "rowIds": ids, "total": total}), output })
         }
         "preview_changes" => {
             #[derive(Deserialize)]

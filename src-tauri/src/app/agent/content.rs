@@ -173,7 +173,7 @@ fn create_material(app: &AppHandle, runtime: &AppRuntime, conversation_id: &str,
             "title": format!("新建素材「{}」", material.title),
             "content": {"type": "material", "action": "create", "id": material.id, "name": material.title,
                 "lines": lines, "diffs": diffs, "cover": args.cover},
-            "materialId": material.id, "updatedAt": material.updated_at, "createdTags": created_tags,
+            "materialId": material.id, "updatedAt": material.updated_at, "state": material_state(&material), "createdTags": created_tags,
         });
         db.agent_record_content(conversation_id, "material_create", &format!("新建素材「{}」", material.title), &report, None)
     })?;
@@ -209,18 +209,19 @@ fn create_prompt_doc(app: &AppHandle, runtime: &AppRuntime, conversation_id: &st
         }
     };
     let title = format!("新建提示词文档「{}」", saved.title);
+    let state = load_doc(runtime, &saved.id).map(|doc| doc_state(&doc)).unwrap_or(Value::Null);
     let report = json!({
         "title": title,
         "content": {"type": "doc", "action": "create", "id": saved.id, "name": saved.title,
             "lines": [format!("新建提示词文档「{}」，正文约 {} 字", saved.title, plain.chars().count())],
             "diffs": [{"label": "正文", "after": excerpt(&plain, EXCERPT)}]},
-        "docId": saved.id, "updatedAt": saved.updated_at,
+        "docId": saved.id, "updatedAt": saved.updated_at, "state": state,
     });
     let record = runtime.agent_db(false, |db| db.agent_record_content(conversation_id, "doc_create", &title, &report, None))?;
     changed(app, "doc", json!(saved.id));
     operation_output(&record, json!({
         "operationId": record.id, "docId": saved.id, "title": saved.title,
-        "note": "文档已经建好，用户可在「提示词」视图里看到；撤销用 undo_operation。",
+        "note": "文档已经建好，用户可在主窗口的「文档」页看到；撤销用 undo_operation。",
     }))
 }
 
@@ -447,8 +448,58 @@ fn load_doc(runtime: &AppRuntime, id: &str) -> Result<PromptDocDetail, String> {
     runtime.load_prompt_doc(id).map_err(|_| format!("提示词文档 {id} 不存在"))
 }
 
+/// The parts of a material a change reads. While they stay the same, the change still does exactly
+/// what its preview showed, whatever else was edited in between.
+fn material_basis(material: &Material, op: &ContentOp) -> Value {
+    match op {
+        ContentOp::AddMaterialVersion { name, .. } => json!({"name": version_name(name, material.versions.len())}),
+        ContentOp::UpdateMaterial { title, tags, add_tags, remove_tags, versions, .. } => json!({
+            "title": title.as_ref().map(|_| &material.title),
+            "tags": tags.as_ref().map(|_| &material.tags),
+            "addTags": add_tags.iter().map(|tag| material.tags.contains(tag)).collect::<Vec<_>>(),
+            "removeTags": remove_tags.iter().map(|tag| material.tags.contains(tag)).collect::<Vec<_>>(),
+            "versions": versions.iter()
+                .map(|patch| material.versions.iter().find(|version| version.id == patch.version_id).map(|version| json!([version.name, version.text])))
+                .collect::<Vec<_>>(),
+        }),
+        ContentOp::EditPromptDoc { .. } => unreachable!("doc op"),
+    }
+}
+
+/// Appending keeps whatever the doc holds by then, so only a replacement depends on the old body.
+fn doc_basis(doc: &PromptDocDetail, op: &ContentOp) -> Value {
+    let ContentOp::EditPromptDoc { title, markdown: text, mode, .. } = op else { unreachable!("material op") };
+    let replaces = *mode == DocMode::Replace && text.as_deref().is_some_and(|text| !text.trim().is_empty());
+    json!({"title": title.as_ref().map(|_| &doc.title), "content": replaces.then_some(&doc.content)})
+}
+
+/// What a material looks like to the user, to tell whether anything changed since an operation.
+/// Unlike `updated_at`, undoing a later operation brings it back.
+fn material_state(material: &Material) -> Value {
+    let mut tags = material.tags.clone();
+    tags.sort();
+    json!({
+        "title": material.title, "tags": tags,
+        "versions": material.versions.iter().map(|version| json!([version.id, version.name, version.text, version.has_image])).collect::<Vec<_>>(),
+    })
+}
+
+fn doc_state(doc: &PromptDocDetail) -> Value {
+    json!({"title": doc.title, "content": doc.content})
+}
+
+/// Whether the item still looks as it did right after the operation. Records written before
+/// snapshots existed only have the modification time.
+fn unchanged_since(state: &Value, current_state: Value, updated_at: &Value, current_updated_at: &str) -> bool {
+    if state.is_null() { updated_at.as_str() == Some(current_updated_at) } else { *state == current_state }
+}
+
+fn drifted(name: &str) -> String {
+    format!("预览之后，「{name}」里这次要改的内容又被改过了，按这张预览执行会和看到的不一样，所以没有执行。请重新预览一次（可以直接让助手重做预览）")
+}
+
 fn preview(runtime: &AppRuntime, conversation_id: &str, args: PreviewArgs) -> Result<ToolOutput, String> {
-    let (kind, id, name, updated_at, lines, diffs, warnings) = match &args.operation {
+    let (kind, id, name, updated_at, basis, lines, diffs, warnings) = match &args.operation {
         ContentOp::AddMaterialVersion { material_id, .. } | ContentOp::UpdateMaterial { material_id, .. } => {
             let material = load_material(runtime, *material_id)?;
             let plan = plan_material(&material, &args.operation)?;
@@ -456,12 +507,14 @@ fn preview(runtime: &AppRuntime, conversation_id: &str, args: PreviewArgs) -> Re
                 // Fail now rather than after the user confirms.
                 load_cover(runtime, conversation_id, source)?;
             }
-            ("material", json!(material.id), material.title.clone(), material.updated_at.clone(), plan.lines, plan.diffs, Vec::new())
+            let basis = material_basis(&material, &args.operation);
+            ("material", json!(material.id), material.title.clone(), material.updated_at.clone(), basis, plan.lines, plan.diffs, Vec::new())
         }
         ContentOp::EditPromptDoc { doc_id, .. } => {
             let doc = load_doc(runtime, doc_id)?;
             let plan = plan_doc(&doc, &args.operation)?;
-            ("doc", json!(doc.id), doc.title.clone(), doc.updated_at.clone(), plan.lines, plan.diffs, plan.warnings)
+            let basis = doc_basis(&doc, &args.operation);
+            ("doc", json!(doc.id), doc.title.clone(), doc.updated_at.clone(), basis, plan.lines, plan.diffs, plan.warnings)
         }
     };
     let preview_id = new_preview_id();
@@ -473,7 +526,7 @@ fn preview(runtime: &AppRuntime, conversation_id: &str, args: PreviewArgs) -> Re
         // Fields the row preview card also reads.
         "summary": [], "newTags": [], "newGroups": [], "changedRows": 0, "unchangedRows": 0,
     });
-    let plan = json!({"kind": "content", "op": args.operation, "expectedUpdatedAt": updated_at, "title": title});
+    let plan = json!({"kind": "content", "op": args.operation, "expectedUpdatedAt": updated_at, "basis": basis, "title": title});
     runtime.agent_db(false, |db| db.agent_store_content_preview(conversation_id, &preview_id, &plan, &report))?;
     Ok(ToolOutput {
         output: json!({"previewId": preview_id, "target": {"type": kind, "id": id, "name": name}, "changes": lines, "warnings": warnings,
@@ -501,14 +554,18 @@ pub fn apply(app: &AppHandle, conversation_id: &str, preview_id: &str) -> Result
     }
     let op: ContentOp = serde_json::from_value(stored.plan["op"].clone()).map_err(text)?;
     let expected = stored.plan["expectedUpdatedAt"].as_str().unwrap_or_default();
+    // Previews stored before `basis` existed fall back to the modification time.
+    let still_valid = |basis: Value, updated_at: &str| match stored.plan.get("basis") {
+        Some(stored_basis) => *stored_basis == basis,
+        None => updated_at == expected,
+    };
     let title = stored.plan["title"].as_str().unwrap_or("修改").to_owned();
-    let drifted = "预览之后这份内容又被改过，结果可能不同。请重新调用 preview_content_change 并把新结果告诉用户";
     let mut report = stored.report.clone();
     let (kind, record) = match &op {
         ContentOp::AddMaterialVersion { material_id, .. } | ContentOp::UpdateMaterial { material_id, .. } => {
             let before = load_material(&runtime, *material_id)?;
-            if before.updated_at != expected {
-                return Err(drifted.into());
+            if !still_valid(material_basis(&before, &op), &before.updated_at) {
+                return Err(drifted(&before.title));
             }
             let plan = plan_material(&before, &op)?;
             let cover = plan.new_cover.as_ref().map(|source| load_cover(&runtime, conversation_id, source)).transpose()?;
@@ -519,19 +576,22 @@ pub fn apply(app: &AppHandle, conversation_id: &str, preview_id: &str) -> Result
             let record = runtime.agent_db(false, |db| {
                 let created_tags = db.agent_new_tags(&plan.tags)?;
                 let after = db.save_material_versions(&plan.draft(before.id), None, &version_images).map_err(text)?;
-                report["undo"] = json!({"materialId": before.id, "before": before, "updatedAt": after.updated_at, "createdTags": created_tags});
+                report["undo"] = json!({"materialId": before.id, "before": before, "updatedAt": after.updated_at,
+                    "after": material_state(&after), "createdTags": created_tags});
                 db.agent_record_content(conversation_id, "material_edit", &title, &report, Some(preview_id))
             })?;
             (("material", json!(material_id)), record)
         }
         ContentOp::EditPromptDoc { doc_id, .. } => {
             let before = load_doc(&runtime, doc_id)?;
-            if before.updated_at != expected {
-                return Err(drifted.into());
+            if !still_valid(doc_basis(&before, &op), &before.updated_at) {
+                return Err(drifted(&before.title));
             }
             let plan = plan_doc(&before, &op)?;
             let after = runtime.save_prompt_doc(doc_id, &plan.title, &plan.content, &plan.plain).map_err(text)?;
-            report["undo"] = json!({"docId": doc_id, "title": before.title, "content": before.content, "plainText": before.plain_text, "updatedAt": after.updated_at});
+            let state = load_doc(&runtime, doc_id).map(|saved| doc_state(&saved)).unwrap_or(Value::Null);
+            report["undo"] = json!({"docId": doc_id, "title": before.title, "content": before.content, "plainText": before.plain_text,
+                "updatedAt": after.updated_at, "after": state});
             let record = runtime.agent_db(false, |db| db.agent_record_content(conversation_id, "doc_edit", &title, &report, Some(preview_id)))?;
             (("doc", json!(doc_id)), record)
         }
@@ -562,7 +622,7 @@ pub fn undo(app: &AppHandle, operation_id: i64) -> Result<(UndoOutcome, Option<O
             let id = report["materialId"].as_i64().ok_or("操作记录缺少素材 ID")?;
             let message = match runtime.agent_db(false, |db| Ok(db.material(id).ok()))? {
                 None => "这个素材已经不在了".to_owned(),
-                Some(current) if Some(current.updated_at.as_str()) != report["updatedAt"].as_str() => {
+                Some(current) if !unchanged_since(&report["state"], material_state(&current), &report["updatedAt"], &current.updated_at) => {
                     return Err(format!("素材「{}」建好之后又被改过，为了不丢掉这些修改没有删除；确实不要的话请在素材页手动删除", current.title));
                 }
                 Some(current) => {
@@ -579,7 +639,7 @@ pub fn undo(app: &AppHandle, operation_id: i64) -> Result<(UndoOutcome, Option<O
             let undo = &report["undo"];
             let id = undo["materialId"].as_i64().ok_or("操作记录缺少素材 ID")?;
             let current = load_material(&runtime, id).map_err(|_| "这个素材已经被删除，无法改回".to_owned())?;
-            if Some(current.updated_at.as_str()) != undo["updatedAt"].as_str() {
+            if !unchanged_since(&undo["after"], material_state(&current), &undo["updatedAt"], &current.updated_at) {
                 return Err(format!("素材「{}」之后又被改过，保留现状", current.title));
             }
             let before = material_from(&undo["before"])?;
@@ -593,8 +653,8 @@ pub fn undo(app: &AppHandle, operation_id: i64) -> Result<(UndoOutcome, Option<O
             let id = report["docId"].as_str().ok_or("操作记录缺少文档 ID")?.to_owned();
             let message = match runtime.load_prompt_doc(&id) {
                 Err(_) => "这个文档已经不在了".to_owned(),
-                Ok(current) if Some(current.updated_at.as_str()) != report["updatedAt"].as_str() => {
-                    return Err(format!("文档「{}」建好之后又被改过，为了不丢掉这些修改没有删除；确实不要的话请在提示词页手动删除", current.title));
+                Ok(current) if !unchanged_since(&report["state"], doc_state(&current), &report["updatedAt"], &current.updated_at) => {
+                    return Err(format!("文档「{}」建好之后又被改过，为了不丢掉这些修改没有删除；确实不要的话请在「文档」页手动删除", current.title));
                 }
                 Ok(current) => {
                     runtime.delete_prompt_doc(&id).map_err(text)?;
@@ -607,7 +667,7 @@ pub fn undo(app: &AppHandle, operation_id: i64) -> Result<(UndoOutcome, Option<O
             let undo = &report["undo"];
             let id = undo["docId"].as_str().ok_or("操作记录缺少文档 ID")?.to_owned();
             let current = load_doc(&runtime, &id).map_err(|_| "这个文档已经被删除，无法改回".to_owned())?;
-            if Some(current.updated_at.as_str()) != undo["updatedAt"].as_str() {
+            if !unchanged_since(&undo["after"], doc_state(&current), &undo["updatedAt"], &current.updated_at) {
                 return Err(format!("文档「{}」之后又被改过，保留现状", current.title));
             }
             let title = undo["title"].as_str().unwrap_or_default();

@@ -317,13 +317,13 @@ input         = ⑥ 较早对话的摘要（压缩过才有）+ 之后的原始�
 新建直接生效、可撤销；改已有的走「预演 → apply_changes → 可撤销」。执行逻辑在 `src-tauri/src/app/agent/content.rs`，Markdown 转编辑器格式在 `markdown.rs`（pulldown-cmark），记录存取在 `src-tauri/src/db/agent/content.rs`。
 
 组用法：
-> - 素材 = 素材页里的一张卡片：标题、展示图、TAG，以及 1~128 个版本（每个版本一个名字和一段文字，通常是一套提示词）。提示词文档 = 「提示词」视图里的一篇自由排版的文档。用户只说「记下来 / 存起来」没说存成哪种时：一段段可直接复制使用的提示词存素材，长篇说明、教程、笔记存文档；拿不准就问一句。
+> - 素材 = 素材页里的一张卡片：标题、展示图、TAG，以及 1~128 个版本（每个版本一个名字和一段文字，通常是一套提示词）。提示词文档 = 主窗口「文档」页里的一篇自由排版的文档。用户只说「记下来 / 存起来」没说存成哪种时：一段段可直接复制使用的提示词存素材，长篇说明、教程、笔记存文档；拿不准就问一句。
 > - 新建直接生效：create_material / create_prompt_doc 调用后马上建好，卡片上有撤销按钮，也可以 undo_operation。不需要预演，但建之前要确认标题和内容是用户想要的。
 > - create_material 必须给展示图 cover，二选一：{rowId}（图库图片，例如用户正在讨论的那张）或 {messageId, attachmentNumber}（用户在聊天里上传的图）。用户没说用哪张图时先问。每个版本也可以单独给 cover。
 > - create_prompt_doc 的正文用 Markdown 写：支持 # ~ ### 标题、列表、引用、代码块、粗体 / 斜体 / 删除线、链接、分隔线；表格会变成一行一段的「A | B」文字。提示词放在代码块里方便用户复制。
 > - 改已有的素材 / 文档必须先 preview_content_change 预演，用户在卡片上确认或同意后再 apply_changes(previewId)，可撤销。改之前先用 read_library_item 读出现在的内容和版本 ID。
 > - operation.type：addMaterialVersion{materialId, name?, text, cover?}（加一个新版本，原有版本不动）；updateMaterial{materialId, title?, tags?（整体替换）, addTags?, removeTags?, versions?:[{versionId, name?, text?}]}（只改给出的部分）；editPromptDoc{docId, title?, markdown?, mode: append（默认，追加到末尾）| replace（整体替换正文）}。
-> - 不能删除素材、版本或文档；用户要删请告诉用户在素材页 / 提示词页手动删。用户正在编辑同一篇文档时，提醒用户先保存。
+> - 不能删除素材、版本或文档；用户要删请告诉用户在「素材」页 / 「文档」页手动删。用户正在编辑同一篇文档时，提醒用户先保存。
 
 | 工具 | 描述 | 参数 |
 |---|---|---|
