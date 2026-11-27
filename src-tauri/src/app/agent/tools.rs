@@ -65,8 +65,15 @@ pub const GROUPS: &[ToolGroup] = &[
         key: "records",
         label: "素材 / 提示词文档 / 导入批次",
         summary: "分页列出素材、提示词文档、自动规则和导入批次",
-        guide: "- list_library_items 分页列出 materials / promptDocs / automationRules / importBatches，拿到 ID 后用 read_library_item 读详情（素材版本、文档正文、规则内容）。\n- 导入批次的 id 可以直接用在 target.batchIds 里筛出这次导入的图；只想看最近导入的图也可以用 target.importedAfter。",
+        guide: "- list_library_items 分页列出 materials / promptDocs / automationRules / importBatches，拿到 ID 后用 read_library_item 读详情（素材版本、文档正文、规则内容）。\n- 要新建或修改素材 / 提示词文档，加载 content 工具组。\n- 导入批次的 id 可以直接用在 target.batchIds 里筛出这次导入的图；只想看最近导入的图也可以用 target.importedAfter。",
         tools: &["list_library_items"],
+    },
+    ToolGroup {
+        key: "content",
+        label: "写素材 / 提示词文档",
+        summary: "新建素材卡片（标题、多个版本的文字、TAG、展示图）和提示词文档；给已有素材加版本、改标题 / TAG / 版本文字，给已有文档追加或替换内容",
+        guide: CONTENT_GUIDE,
+        tools: &["create_material", "create_prompt_doc", "preview_content_change"],
     },
     ToolGroup {
         key: "attachments",
@@ -114,6 +121,15 @@ pub const GROUPS: &[ToolGroup] = &[
 
 /// Tools kept only so that older conversations that called them still replay.
 const LEGACY: &[&str] = &["list_generation_values"];
+
+const CONTENT_GUIDE: &str = "\
+- 素材 = 素材页里的一张卡片：标题、展示图、TAG，以及 1~128 个版本（每个版本一个名字和一段文字，通常是一套提示词）。提示词文档 = 「提示词」视图里的一篇自由排版的文档。用户只说「记下来 / 存起来」没说存成哪种时：一段段可直接复制使用的提示词存素材，长篇说明、教程、笔记存文档；拿不准就问一句。\n\
+- 新建直接生效：create_material / create_prompt_doc 调用后马上建好，卡片上有撤销按钮，也可以 undo_operation。不需要预演，但建之前要确认标题和内容是用户想要的。\n\
+- create_material 必须给展示图 cover，二选一：{rowId}（图库图片，例如用户正在讨论的那张）或 {messageId, attachmentNumber}（用户在聊天里上传的图）。用户没说用哪张图时先问。每个版本也可以单独给 cover。\n\
+- create_prompt_doc 的正文用 Markdown 写：支持 # ~ ### 标题、列表、引用、代码块、粗体 / 斜体 / 删除线、链接、分隔线；表格会变成一行一段的「A | B」文字。提示词放在代码块里方便用户复制。\n\
+- 改已有的素材 / 文档必须先 preview_content_change 预演，用户在卡片上确认或同意后再 apply_changes(previewId)，可撤销。改之前先用 read_library_item 读出现在的内容和版本 ID。\n\
+- operation.type：addMaterialVersion{materialId, name?, text, cover?}（加一个新版本，原有版本不动）；updateMaterial{materialId, title?, tags?（整体替换）, addTags?, removeTags?, versions?:[{versionId, name?, text?}]}（只改给出的部分）；editPromptDoc{docId, title?, markdown?, mode: append（默认，追加到末尾）| replace（整体替换正文）}。\n\
+- 不能删除素材、版本或文档；用户要删请告诉用户在素材页 / 提示词页手动删。用户正在编辑同一篇文档时，提醒用户先保存。";
 
 pub fn group_of(name: &str) -> Option<&'static ToolGroup> {
     GROUPS.iter().find(|group| group.tools.contains(&name))
@@ -183,6 +199,12 @@ fn target_schema(description: &str) -> Value {
         "required": ["scope"],
         "additionalProperties": false
     })
+}
+
+fn cover_schema(description: &str) -> Value {
+    json!({"type":"object","description": format!("{description}：{{rowId}} 用图库图片，或 {{messageId, attachmentNumber}} 用聊天里上传的图"),
+        "properties":{"rowId":{"type":"integer"},"messageId":{"type":"integer"},"attachmentNumber":{"type":"integer","minimum":1,"maximum":4}},
+        "additionalProperties":false})
 }
 
 fn compare_custom_schema() -> Value {
@@ -314,10 +336,10 @@ field 取 positive / character / negative。caseSensitive 必须明确给出。�
             "target": target_schema("要修改的图片范围"),
             "actions": actions
         }), &["title", "target", "actions"]),
-        tool("apply_changes", "执行一个预演（preview_changes、preview_library_change 或 preview_rule_on_library 得到的 previewId）。只有需求完全明确、预演结果符合用户预期时才能调用。", json!({
+        tool("apply_changes", "执行一个预演（preview_changes、preview_library_change、preview_rule_on_library 或 preview_content_change 得到的 previewId）。只有需求完全明确、预演结果符合用户预期时才能调用。", json!({
             "previewId": {"type": "string"}
         }), &["previewId"]),
-        tool("undo_operation", "撤销一次已执行的修改（包括图库整理和自动规则的增删改）。之后又被改过的图会保留现状并计入跳过数。", json!({
+        tool("undo_operation", "撤销一次已执行的修改（包括图库整理、自动规则的增删改，以及新建 / 修改素材和提示词文档）。之后又被改过的图会保留现状并计入跳过数；之后又被改过的素材或文档不会撤销。", json!({
             "operationId": {"type": "integer"}
         }), &["operationId"]),
         tool("list_operations", "列出最近执行过的修改记录（含 id、类型、状态）。", json!({
@@ -369,6 +391,24 @@ field 取 positive / character / negative。caseSensitive 必须明确给出。�
             "operation": {"type":"object","description":"{type: renameGroup|mergeGroups|deleteGroups|deleteEmptyGroups|renameTag|mergeTags|deleteTags|setArtistAlias|setArtistRepresentative, ...}","properties":{"type":{"type":"string"}},"required":["type"]}
         }), &["title","operation"]),
         tool("list_artist_prefix_candidates", "列出可以补 artist: 前缀的画师名：这些名字在别的图里明确写过 artist:名字，但有些图的提示词里只写了裸名字。返回每个名字涉及的图片数和样例。", json!({}), &[]),
+        tool("create_material", "新建一张素材卡片（直接生效，可撤销）。用法见 content 工具组说明。", json!({
+            "title": {"type":"string"},
+            "versions": {"type":"array","minItems":1,"maxItems":128,"items":{"type":"object","properties":{
+                "name":{"type":"string","description":"版本名，不填为「版本 1」等"},
+                "text":{"type":"string","description":"这个版本的文字（通常是一套提示词）"},
+                "cover": cover_schema("可选：这个版本单独的图片")
+            },"required":["text"],"additionalProperties":false}},
+            "tags": {"type":"array","items":{"type":"string"}},
+            "cover": cover_schema("素材展示图（必填）")
+        }), &["title","versions","cover"]),
+        tool("create_prompt_doc", "新建一篇提示词文档（直接生效，可撤销）。正文用 Markdown。", json!({
+            "title": {"type":"string"},
+            "markdown": {"type":"string","description":"正文 Markdown"}
+        }), &["title","markdown"]),
+        tool("preview_content_change", "预演对已有素材或提示词文档的修改（不会改数据），得到 previewId，用户同意后 apply_changes 执行，可撤销。用法见 content 工具组说明。", json!({
+            "title": {"type":"string","description":"一句话说明，例如「给素材 夏日 加一个夜景版本」"},
+            "operation": {"type":"object","description":"{type: addMaterialVersion|updateMaterial|editPromptDoc, ...}","properties":{"type":{"type":"string","enum":["addMaterialVersion","updateMaterial","editPromptDoc"]}},"required":["type"]}
+        }), &["title","operation"]),
         tool("create_automation_rule", "创建一条自动规则（以后导入新图时自动执行）。只有用户明确同意建立自动规则后才能调用。", json!({
             "rule": {"type": "object", "description": "自动规则：{name, description?, enabled?, runOnImport?(默认 true), runOnUpdate?, conditions:{mode:'all'|'any', groups:[{mode, conditions:[...]}]}, actions:[...]}。actions 格式同 preview_changes，但 setGroup 用 {groupId}（必须是已有分组 id），不支持 setFavorite。"}
         }), &["rule"]),
@@ -446,11 +486,6 @@ fn parse<T: for<'de> Deserialize<'de>>(arguments: &Value) -> Result<T, String> {
     serde_json::from_value(arguments.clone()).map_err(|error| format!("参数格式不对：{error}"))
 }
 
-fn changed(app: &AppHandle) {
-    let _ = app.emit("agent://library-changed", ());
-    let _ = app.emit("agent://operations-changed", ());
-}
-
 fn rules_changed(app: &AppHandle) {
     let _ = app.emit("automation-rules://changed", ());
     let _ = app.emit("agent://operations-changed", ());
@@ -517,6 +552,7 @@ pub fn run(app: &AppHandle, conversation_id: &str, call_id: &str, name: &str, ar
             super::toolbox::run(app, conversation_id, call_id, name, arguments, &view)
         }
         "compare_images" | "control_compare_window" => super::compare::run(app, name, arguments),
+        "create_material" | "create_prompt_doc" | "preview_content_change" => super::content::run(app, conversation_id, name, arguments),
         "load_tools" => {
             #[derive(Deserialize)]
             struct Args { groups: Vec<String> }
@@ -778,8 +814,7 @@ pub fn run(app: &AppHandle, conversation_id: &str, call_id: &str, name: &str, ar
                 preview_id: String,
             }
             let args: Args = parse(arguments)?;
-            let record = runtime.agent_db(true, |db| db.agent_apply(conversation_id, &args.preview_id))?;
-            changed(app);
+            let record = super::content::apply(app, conversation_id, &args.preview_id)?;
             operation_output(&record, json!({"operationId": record.id, "changedRows": record.changed_rows, "title": record.title, "state": "applied"}))
         }
         "undo_operation" => {
@@ -789,9 +824,7 @@ pub fn run(app: &AppHandle, conversation_id: &str, call_id: &str, name: &str, ar
                 operation_id: i64,
             }
             let args: Args = parse(arguments)?;
-            let outcome = runtime.agent_db(true, |db| db.agent_undo(args.operation_id))?;
-            changed(app);
-            let _ = app.emit("automation-rules://changed", ());
+            let (outcome, _) = super::content::undo(app, args.operation_id)?;
             let value = serde_json::to_value(&outcome).map_err(|e| e.to_string())?;
             Ok(ToolOutput { display: json!({"kind": "undo", "outcome": value}), output: value })
         }

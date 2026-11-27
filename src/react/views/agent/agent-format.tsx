@@ -43,6 +43,10 @@ export const TOOL_LABELS: Record<string, string> = {
   prepare_export: "准备导出",
   compare_images: "查对比结果",
   control_compare_window: "操作对比窗口",
+  summarize_vibes: "统计 VIBE 引用",
+  create_material: "新建素材",
+  create_prompt_doc: "新建提示词文档",
+  preview_content_change: "预演素材 / 文档修改",
 };
 
 const COMPARE_TAB_LABELS: Record<string, string> = { artists: "相同画师串", vibeDiffStyle: "相同 VIBE", styleDiffVibe: "相同提示词", models: "不同模型" };
@@ -55,7 +59,7 @@ const SAME_LABELS: Record<string, string> = { artists: "画师串", positiveProm
 
 const TOOL_GROUP_LABELS: Record<string, string> = {
   mainWindow: "主窗口控制", library: "分组 / TAG 管理", automation: "自动规则", records: "素材与导入记录", attachments: "聊天附件", sql: "只读 SQL 查询",
-  similar: "以图搜图", styleExtraction: "LLM 提取画师串", export: "导出", compare: "图片对比",
+  similar: "以图搜图", styleExtraction: "LLM 提取画师串", export: "导出", compare: "图片对比", content: "写素材 / 提示词文档",
 };
 const VIEW_LABELS: Record<string, string> = { gallery: "画廊", table: "表格", group: "分组", duplicates: "重复", materials: "素材", promptDocs: "提示词" };
 const SORT_LABELS: Record<string, string> = { timeAsc: "按导入先后", timeDesc: "最新在前", recentlyUpdated: "最近修改在前" };

@@ -70,6 +70,7 @@ pub fn run() {
             app::commands::agent::agent_undo,
             app::commands::agent::agent_apply_preview,
             app::commands::agent::agent_show_changed_rows,
+            app::commands::agent::agent_reveal_content,
             app::commands::agent::agent_change_page,
             app::commands::agent::agent_report_main_view,
             app::commands::agent::agent_report_compare_view,

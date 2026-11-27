@@ -62,6 +62,10 @@ fn new_id() -> String {
     format!("p{:x}", nanos)
 }
 
+pub fn new_preview_id() -> String {
+    new_id()
+}
+
 /// Write one side (`before` or `after`) of a change.
 fn write_side(transaction: &Transaction<'_>, change: &RowChange, after: bool, group_map: &HashMap<i64, i64>) -> Res<()> {
     let mut sets = Vec::new();
@@ -333,26 +337,8 @@ impl Database {
     }
 
     fn store_preview(&self, conversation_id: &str, plan: &Value, changes: &[RowChange], report: &PreviewReport) -> Res<()> {
-        self.connection
-            .execute(
-                "INSERT INTO agent_previews(id, conversation_id, plan, changes, report) VALUES (?1, ?2, ?3, ?4, ?5)",
-                params![
-                    report.preview_id,
-                    conversation_id,
-                    plan.to_string(),
-                    serde_json::to_string(changes).map_err(s)?,
-                    serde_json::to_string(report).map_err(s)?
-                ],
-            )
-            .map_err(s)?;
-        self.connection
-            .execute(
-                "DELETE FROM agent_previews WHERE id NOT IN
-                 (SELECT id FROM agent_previews ORDER BY created_at DESC, rowid DESC LIMIT ?1)",
-                [PREVIEW_LIMIT],
-            )
-            .map_err(s)?;
-        Ok(())
+        let changes = serde_json::to_string(changes).map_err(s)?;
+        store_preview_value(self, conversation_id, &report.preview_id, plan, &changes, &serde_json::to_value(report).map_err(s)?)
     }
 
     /// Dry run of a group / TAG / artist-string change; applied later with `agent_apply`.
@@ -418,6 +404,9 @@ impl Database {
         let plan: Value = serde_json::from_str(&plan_json).map_err(s)?;
         let changes: Vec<RowChange> = serde_json::from_str(&changes_json).map_err(s)?;
         let mut report: Value = serde_json::from_str(&report_json).map_err(s)?;
+        if plan["kind"] == "content" {
+            return Err("素材 / 文档的预演要通过助手的执行入口处理".into());
+        }
         if plan["kind"] == "library" {
             return self.apply_library(conversation_id, preview_id, &plan, changes, report);
         }
@@ -605,6 +594,9 @@ impl Database {
         if operation.state == "undone" {
             return Err("这次修改已经撤销过了".into());
         }
+        if super::content::is_content_kind(&operation.kind) {
+            return Err("素材 / 文档的修改要通过助手的撤销入口处理".into());
+        }
         if operation.kind == "rule" {
             let rule_id = operation.report["ruleId"].as_i64().ok_or("操作记录缺少规则 ID")?;
             let deleted = self.delete_automation_rule(rule_id).map_err(s)?;
@@ -677,7 +669,7 @@ impl Database {
         Ok(UndoOutcome { operation_id, restored_rows: restored, skipped_rows: skipped, message })
     }
 
-    fn mark_undone(&self, operation_id: i64, message: &str) -> Res<()> {
+    pub(super) fn mark_undone(&self, operation_id: i64, message: &str) -> Res<()> {
         self.connection
             .execute(
                 "UPDATE agent_operations SET state = 'undone', undo_message = ?2,
@@ -764,7 +756,24 @@ impl Database {
     }
 }
 
-fn prune_operations(transaction: &Transaction<'_>) -> Res<()> {
+pub(super) fn store_preview_value(db: &Database, conversation_id: &str, preview_id: &str, plan: &Value, changes: &str, report: &Value) -> Res<()> {
+    db.connection
+        .execute(
+            "INSERT INTO agent_previews(id, conversation_id, plan, changes, report) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![preview_id, conversation_id, plan.to_string(), changes, report.to_string()],
+        )
+        .map_err(s)?;
+    db.connection
+        .execute(
+            "DELETE FROM agent_previews WHERE id NOT IN
+             (SELECT id FROM agent_previews ORDER BY created_at DESC, rowid DESC LIMIT ?1)",
+            [PREVIEW_LIMIT],
+        )
+        .map_err(s)?;
+    Ok(())
+}
+
+pub(super) fn prune_operations(transaction: &Transaction<'_>) -> Res<()> {
     transaction
         .execute(
             "DELETE FROM agent_operations WHERE id NOT IN

@@ -30,7 +30,7 @@ pub(crate) struct MaterialInspection {
     warning: Option<String>,
 }
 
-fn encode(image: &DynamicImage, edge: u32) -> Result<Vec<u8>, String> {
+pub(crate) fn encode(image: &DynamicImage, edge: u32) -> Result<Vec<u8>, String> {
     let mut out = Cursor::new(Vec::new());
     image
         .thumbnail(edge, edge)
@@ -39,17 +39,32 @@ fn encode(image: &DynamicImage, edge: u32) -> Result<Vec<u8>, String> {
     Ok(out.into_inner())
 }
 
-fn decode(path: &Path) -> Result<DynamicImage, String> {
-    let mut reader = ImageReader::open(path)
-        .map_err(text)?
-        .with_guessed_format()
-        .map_err(text)?;
+fn limits() -> image::Limits {
     let mut limits = image::Limits::default();
     limits.max_image_width = Some(16384);
     limits.max_image_height = Some(16384);
     limits.max_alloc = Some(512 * 1024 * 1024);
-    reader.limits(limits);
+    limits
+}
+
+pub(crate) fn decode(path: &Path) -> Result<DynamicImage, String> {
+    let mut reader = ImageReader::open(path)
+        .map_err(text)?
+        .with_guessed_format()
+        .map_err(text)?;
+    reader.limits(limits());
     reader.decode().map_err(text)
+}
+
+pub(crate) fn decode_bytes(bytes: &[u8]) -> Result<DynamicImage, String> {
+    let mut reader = ImageReader::new(Cursor::new(bytes)).with_guessed_format().map_err(text)?;
+    reader.limits(limits());
+    reader.decode().map_err(text)
+}
+
+/// The cover and thumbnail stored for a material or version.
+pub(crate) fn cover_pair(image: &DynamicImage) -> Result<(Vec<u8>, Vec<u8>), String> {
+    Ok((encode(image, 1600)?, encode(image, 360)?))
 }
 
 fn metadata_sections(chunks: &BTreeMap<String, String>) -> Vec<MetadataSection> {

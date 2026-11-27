@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { AlertTriangle, Check, ChevronDown, ChevronRight, ListChecks, MonitorUp, RotateCcw, Undo2, Wand2 } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, ChevronRight, FileText, Layers, ListChecks, MonitorUp, RotateCcw, Undo2, Wand2 } from "lucide-react";
 import {
-  agentChangePage, showAgentChangedRows, undoAgentOperation,
-  type AgentChangeGroup, type AgentMatchAnalysis, type AgentOperation, type AgentPreviewReport, type AgentRowChange, type AgentSample,
+  agentChangePage, revealAgentContent, showAgentChangedRows, undoAgentOperation,
+  type AgentChangeGroup, type AgentContentReport, type AgentMatchAnalysis, type AgentOperation, type AgentPreviewReport, type AgentRowChange, type AgentSample,
 } from "../../../lib/api/agent";
 import { errorText, formatCount } from "../../../lib/utils/format";
 import { Button } from "../../ui/controls";
@@ -311,6 +311,74 @@ async function showInMain(source: Source) {
   catch (error) { notify(`没能在主窗口显示：${errorText(error)}`, "error"); }
 }
 
+
+/** A text excerpt on a content card; long ones fold. */
+function ContentText({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  const long = Array.from(text).length > 240 || text.split("\n").length > 8;
+  return <div className="ag-content-text">
+    <pre className={long && !open ? "is-clipped" : undefined}>{text || "（空）"}</pre>
+    {long && <button type="button" className="ag-link" onClick={() => setOpen(!open)}>{open ? <><ChevronDown size={14} />收起</> : <><ChevronRight size={14} />展开全文</>}</button>}
+  </div>;
+}
+
+/**
+ * A material or prompt doc the assistant creates or edits. Previews of edits turn into the
+ * applied operation on the same card, like row previews do.
+ */
+function ContentCard({ content, title, warnings, operation, onApply, onChanged }: {
+  content: AgentContentReport; title: string; warnings: string[];
+  operation?: AgentOperation; onApply?: () => Promise<void>; onChanged: () => void;
+}) {
+  const [applying, setApplying] = useState(false);
+  const { busy: undoing, undo } = useUndo(operation, onChanged);
+  const view = useImageViewer();
+  const undone = operation?.state === "undone";
+  const thing = content.type === "material" ? "素材" : "文档";
+  const badge = !operation ? "预演 · 还没改动" : undone ? "已撤销" : content.action === "create" ? "已新建" : "已修改";
+  const apply = async () => {
+    if (!onApply) return;
+    setApplying(true);
+    try { await onApply(); }
+    catch (error) { notify(`执行失败：${errorText(error)}`, "error"); }
+    finally { setApplying(false); }
+  };
+  const reveal = async () => {
+    try { await revealAgentContent(content.type, content.id); }
+    catch (error) { notify(`没能在主窗口打开：${errorText(error)}`, "error"); }
+  };
+  const coverRow = content.cover?.rowId;
+  const undoLabel = content.action === "create" ? `撤销（删除这个${thing}）` : "撤销（改回原样）";
+  return <section className={`ag-card${operation ? " is-applied" : ""}${undone ? " is-undone" : ""}`}>
+    <header className="ag-card-head">
+      {operation ? <Check size={16} /> : content.type === "material" ? <Layers size={16} /> : <FileText size={16} />}
+      <strong>{title || (operation?.title ?? `${thing}修改预演`)}</strong>
+      <span className={`ag-badge${operation ? (undone ? " is-muted" : " is-ok") : ""}`}>{badge}</span>
+      {operation && <span className="ag-time">#{operation.id} · {formatTime(operation.createdAt)}</span>}
+    </header>
+    <div className={coverRow !== undefined ? "ag-content-head has-cover" : "ag-content-head"}>
+      {coverRow !== undefined && <RowThumb id={coverRow} size={64} onOpen={() => view({ title: `展示图 · 图片 #${coverRow}`, ids: [coverRow], index: 0 })} />}
+      <SummaryLines lines={content.lines} />
+    </div>
+    {undone && operation?.undoMessage && <p className="ag-op-line is-muted">{operation.undoMessage}</p>}
+    {warnings.length > 0 && <div className="ag-warnings">{warnings.map(text => <p key={text}><AlertTriangle size={14} />{text}</p>)}</div>}
+    {!undone && content.diffs.map((diff, index) => <div key={index} className="ag-change-field">
+      <span className="ag-field-label">{diff.label}</span>
+      {diff.before !== undefined && diff.after !== undefined
+        ? <DiffPair before={diff.before} after={diff.after} />
+        : <ContentText text={diff.after ?? diff.before ?? ""} />}
+    </div>)}
+    <div className="ag-card-actions">
+      {!operation && <Button variant="primary" size="sm" disabled={!onApply || applying} title={onApply ? undefined : "助手正在处理，等它停下来再执行"} onClick={() => void apply()}>
+        <Check size={14} />{applying ? "执行中…" : "确认修改"}
+      </Button>}
+      {operation && !undone && <Button size="sm" disabled={undoing} onClick={() => void undo()}><Undo2 size={14} />{undoing ? "撤销中…" : undoLabel}</Button>}
+      {!undone && <Button size="sm" variant="ghost" onClick={() => void reveal()}><MonitorUp size={14} />在主窗口打开</Button>}
+    </div>
+    {operation && !undone && <p className="ag-hint">如果之后你又改过这个{thing}，撤销会被拒绝，以免丢掉你的修改</p>}
+  </section>;
+}
+
 /**
  * A planned change, and later its result: the same card turns into the applied operation,
  * with undo, instead of a second card appearing.
@@ -321,6 +389,13 @@ export function PreviewCard({ report, applied, onApply, onChanged }: {
   /** Missing when it cannot be run from here (another conversation, or the assistant is busy). */
   onApply?: () => Promise<void>;
   onChanged: () => void;
+}) {
+  if (report.content) return <ContentCard content={report.content} title={report.title} warnings={report.warnings ?? []} operation={applied} onApply={onApply} onChanged={onChanged} />;
+  return <RowPreviewCard report={report} applied={applied} onApply={onApply} onChanged={onChanged} />;
+}
+
+function RowPreviewCard({ report, applied, onApply, onChanged }: {
+  report: AgentPreviewReport; applied?: AgentOperation; onApply?: () => Promise<void>; onChanged: () => void;
 }) {
   const [applying, setApplying] = useState(false);
   const [details, setDetails] = useState(false);
@@ -375,6 +450,12 @@ export function PreviewCard({ report, applied, onApply, onChanged }: {
 }
 
 export function OperationCard({ operation, onChanged }: { operation: AgentOperation; onChanged: () => void }) {
+  const content = operation.report?.content;
+  if (content) return <ContentCard content={content} title={operation.title} warnings={operation.report.warnings ?? []} operation={operation} onChanged={onChanged} />;
+  return <RowOperationCard operation={operation} onChanged={onChanged} />;
+}
+
+function RowOperationCard({ operation, onChanged }: { operation: AgentOperation; onChanged: () => void }) {
   const [details, setDetails] = useState(false);
   const { busy, undo } = useUndo(operation, onChanged);
   const undone = operation.state === "undone";

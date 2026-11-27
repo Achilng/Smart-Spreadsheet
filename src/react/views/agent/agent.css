@@ -353,6 +353,11 @@
   .ag-card.is-undone .ag-lede { color: var(--text-2); }
   .ag-summary ul { margin: 0; padding-left: 18px; list-style: disc; line-height: 1.75; color: var(--text); font-size: 13px; overflow-wrap: anywhere; }
   .ag-summary li::marker { color: var(--text-3); }
+  .ag-content-head.has-cover { display: flex; align-items: flex-start; gap: 12px; }
+  .ag-content-head .ag-summary { flex: 1; min-width: 0; }
+  .ag-content-text { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+  .ag-content-text pre { box-sizing: border-box; width: 100%; margin: 0; padding: 6px 10px; border-radius: var(--r-sm); border: 1px solid var(--line); background: var(--chat-bg); font-family: inherit; font-size: 12.5px; line-height: 1.65; color: var(--text-2); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .ag-content-text pre.is-clipped { max-height: 9.5em; overflow: hidden; -webkit-mask-image: linear-gradient(#000 70%, transparent); mask-image: linear-gradient(#000 70%, transparent); }
   .ag-params ul { margin: 0; padding-left: 18px; list-style: disc; line-height: 1.75; color: var(--text-2); overflow-wrap: anywhere; }
   .ag-params li::marker { color: var(--text-3); }
   .ag-params li.ag-note { color: var(--text-3); }

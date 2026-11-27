@@ -215,15 +215,9 @@ fn note_user_action(app: &tauri::AppHandle, conversation_id: Option<&str>, text:
 #[tauri::command]
 pub(crate) async fn agent_undo(operation_id: i64, app: tauri::AppHandle) -> Result<UndoOutcome, String> {
     let handle = app.clone();
-    let (outcome, operation) = blocking(app, move |runtime| {
-        runtime.agent_db(true, |db| Ok((db.agent_undo(operation_id)?, db.agent_operation(operation_id)?)))
-    })
-    .await?;
-    let _ = handle.emit("agent://library-changed", ());
-    let _ = handle.emit("agent://operations-changed", ());
-    if operation.as_ref().is_some_and(|operation| operation.kind.starts_with("rule")) {
-        let _ = handle.emit("automation-rules://changed", ());
-    }
+    let (outcome, operation) = tauri::async_runtime::spawn_blocking(move || agent::content::undo(&app, operation_id))
+        .await
+        .map_err(error_text)??;
     if let Some(operation) = operation {
         note_user_action(
             &handle,
@@ -243,9 +237,9 @@ pub(crate) async fn agent_apply_preview(conversation_id: String, preview_id: Str
     }
     let handle = app.clone();
     let id = conversation_id.clone();
-    let record = blocking(app, move |runtime| runtime.agent_db(true, |db| db.agent_apply(&id, &preview_id))).await?;
-    let _ = handle.emit("agent://library-changed", ());
-    let _ = handle.emit("agent://operations-changed", ());
+    let record = tauri::async_runtime::spawn_blocking(move || agent::content::apply(&app, &id, &preview_id))
+        .await
+        .map_err(error_text)??;
     let rows = if record.changed_rows > 0 { format!("，影响了 {} 张", record.changed_rows) } else { String::new() };
     note_user_action(
         &handle,
@@ -254,6 +248,20 @@ pub(crate) async fn agent_apply_preview(conversation_id: String, preview_id: Str
         json!({"action": "apply", "operationId": record.id, "title": record.title}),
     );
     Ok(record)
+}
+
+/// Show a material or prompt doc the assistant wrote in the main window.
+#[tauri::command]
+pub(crate) fn agent_reveal_content(kind: String, id: Value, app: tauri::AppHandle) -> Result<(), String> {
+    if kind != "material" && kind != "doc" {
+        return Err("未知的内容类型".into());
+    }
+    app.emit_to("main", "agent://reveal-content", json!({"kind": kind, "id": id})).map_err(error_text)?;
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+    }
+    Ok(())
 }
 
 /// Show the rows a preview or operation changes (optionally one change group) in the main window.

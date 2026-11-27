@@ -46,6 +46,25 @@ useLibrary.subscribe((state, previous) => {
     void reloadMaterials();
   }
 });
+function loadedMaterial(id: number) { return [...useMaterials.getState().pages.values()].flat().find(item => item.id === id) ?? null; }
+/** The assistant created, changed or deleted this material. */
+export async function materialChangedElsewhere(id: number) {
+  const state = useMaterials.getState(); clearImages();
+  if (state.editorOpen && state.editing?.id === id) notify("整理助手改了你正在编辑的这个素材；如果你在编辑窗口里点保存，会覆盖助手的修改。", "error");
+  useMaterials.setState({ revision: state.revision + 1 });
+  void refreshTags();
+  if (!state.initialized) return;
+  await reloadMaterials();
+  if (useMaterials.getState().selected?.id === id) useMaterials.setState({ selected: loadedMaterial(id) });
+}
+/** Open the materials view with this material selected; agent edits move it to the top of the list. */
+export async function revealMaterial(id: number) {
+  useWorkspace.getState().setView("materials");
+  useMaterials.setState({ search: "", selectedTags: [], untagged: false });
+  await reloadMaterials();
+  const item = loadedMaterial(id);
+  if (item) useMaterials.setState({ selected: item }); else notify("找不到这个素材，可能已经被删除了。", "error");
+}
 export function initializeMaterials() { if (!useMaterials.getState().initialized) void reloadMaterials(); }
 export async function reloadMaterials(keepSelection = true) {
   generation++; pending = new Set(); visiblePages = new Set([0]);

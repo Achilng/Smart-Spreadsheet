@@ -129,6 +129,28 @@ export function initializePromptDocs(): Promise<void> {
   return initializePromise;
 }
 
+/** The assistant created, changed or deleted this doc: refresh the list, and the open doc unless it has unsaved edits. */
+export async function promptDocChangedElsewhere(id: string): Promise<void> {
+  if (!usePromptDocs.getState().initialized) return;
+  try {
+    const docs = await listPromptDocs();
+    usePromptDocs.setState({ docs });
+    if (usePromptDocs.getState().active?.id !== id) return;
+    if (hasPromptDocDrafts() || savePromise) {
+      notify("整理助手改了你正在编辑的这篇文档；你还有没保存的修改，保存后会覆盖助手的修改。", "error");
+      return;
+    }
+    if (!docs.some(doc => doc.id === id)) { applyDoc(null); if (docs[0]) applyDoc(await loadPromptDoc(docs[0].id)); return; }
+    applyDoc(await loadPromptDoc(id));
+  } catch (error) { notify(errorText(error), "error"); }
+}
+
+/** Open this doc in the prompt-doc view (after saving the open one). */
+export async function revealPromptDoc(id: string): Promise<void> {
+  await initializePromptDocs();
+  await switchPromptDoc(id, async () => false);
+}
+
 export function editPromptDoc(patch: Partial<Pick<PromptDocsState, "title" | "content" | "plainText">>): void {
   if (!usePromptDocs.getState().active) return;
   usePromptDocs.setState(state => ({ ...patch, revision: state.revision + 1, saveState: "dirty" }));

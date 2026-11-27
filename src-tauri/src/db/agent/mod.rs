@@ -1,13 +1,15 @@
 //! Agent persistence: conversations, dry-run previews and undoable operations.
 mod apply;
 mod changes;
+mod content;
 mod library;
 mod model_badge;
 mod read;
 mod target;
 mod vibes;
 
-pub use apply::{OperationRecord, RulePatch, UndoOutcome};
+pub use apply::{OperationRecord, RulePatch, UndoOutcome, new_preview_id};
+pub use content::is_content_kind;
 pub use changes::{Action, RowChange};
 pub use library::LibraryOp;
 pub use model_badge::{comparison_tier, model_label};

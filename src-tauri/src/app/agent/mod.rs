@@ -1,7 +1,9 @@
 //! Conversational library agent: model loop, cancellation and main-window state.
 mod compaction;
 mod compare;
+pub(crate) mod content;
 mod library_data;
+mod markdown;
 mod prompt;
 mod responses;
 mod sql;

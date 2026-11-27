@@ -18,6 +18,8 @@ import { useTasks } from "../state/tasks";
 import { useWorkspace } from "../state/workspace";
 import { notify } from "../state/notices";
 import { hasFieldDrafts } from "./FieldEditor";
+import { materialChangedElsewhere, revealMaterial } from "../state/materials";
+import { promptDocChangedElsewhere, revealPromptDoc } from "../state/prompt-docs";
 
 const FILTER_KEYS = ["search", "tags", "tagMode", "artistFilter", "dedupe", "singleArtistOnly", "hasVibe", "untaggedOnly", "hideGrouped"] as const;
 const BOOLEAN_KEYS = new Set<string>(["singleArtistOnly", "hasVibe", "untaggedOnly", "hideGrouped"]);
@@ -172,6 +174,14 @@ export function installAgentBridge(): () => void {
   }));
   retain(listen<MainControl>("agent://main-control", ({ payload }) => {
     void applyControl(payload ?? {}).catch(error => notify(`整理助手操作主窗口失败：${errorText(error)}`, "error"));
+  }));
+  retain(listen<{ kind: string; id: number | string }>("agent://content-changed", ({ payload }) => {
+    if (payload.kind === "material") void materialChangedElsewhere(Number(payload.id));
+    else if (payload.kind === "doc") void promptDocChangedElsewhere(String(payload.id));
+  }));
+  retain(listen<{ kind: string; id: number | string }>("agent://reveal-content", ({ payload }) => {
+    if (payload.kind === "material") void revealMaterial(Number(payload.id));
+    else if (payload.kind === "doc") { useWorkspace.getState().setView("promptDocs"); void revealPromptDoc(String(payload.id)); }
   }));
   let refreshTimer: ReturnType<typeof setTimeout> | undefined;
   const refresh = async () => {

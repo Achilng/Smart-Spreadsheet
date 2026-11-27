@@ -76,6 +76,14 @@ export interface AgentPreviewReport {
   summary?: string[];
   /** Set when the preview is a library operation (rename / merge / delete groups or TAGs, aliases). */
   library?: { type: string; [key: string]: unknown } | null;
+  /** Set when the preview or operation creates or edits a material or a prompt doc. */
+  content?: AgentContentReport;
+}
+export interface AgentContentReport {
+  type: "material" | "doc"; action: "create" | "edit"; id: number | string; name: string;
+  lines: string[];
+  diffs: { label: string; before?: string; after?: string }[];
+  cover?: { rowId?: number; messageId?: number; attachmentNumber?: number };
 }
 export type AgentRuleSnapshot = { id: number; name: string; description?: string; enabled?: boolean };
 export interface AgentOperation {
@@ -117,6 +125,7 @@ export const showAgentChangedRows = (source: "preview" | "operation", id: string
   invoke<number>("agent_show_changed_rows", { source, id, group: group ?? null });
 export const agentChangePage = (source: "preview" | "operation", id: string, offset: number, limit: number) =>
   invoke<{ total: number; changes: AgentRowChange[] }>("agent_change_page", { source, id, offset, limit });
+export const revealAgentContent = (kind: "material" | "doc", id: number | string) => invoke<void>("agent_reveal_content", { kind, id });
 export const openAgentWindow = () => invoke<void>("open_agent_window");
 export const reportAgentMainView = (selection: unknown, filtered: unknown, info: unknown) =>
   invoke<void>("agent_report_main_view", { selection, filtered, info });
